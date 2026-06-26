@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tema base de la app. Splash con fondo de marca (navy) para que el arranque
+         no muestre pantalla negra (problema que tuvimos en la versión web/TWA). -->
+    <style name="Theme.Sania" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">#1e2d5e</item>
+        <item name="android:windowBackground">@color/sania_sand</item>
+    </style>
+</resources>

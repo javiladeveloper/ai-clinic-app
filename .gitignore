@@ -1,0 +1,24 @@
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+captures/
+.cxx/
+
+# Local config (NO commitear: rutas del SDK del equipo)
+local.properties
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Keystore de firma (NO commitear)
+*.jks
+*.keystore
+
+# Ignore vscode AI rules
+.github\instructions\codacy.instructions.md
