@@ -64,6 +64,7 @@ object Sania {
         @Composable get() = LocalSaniaColors.current
     val dim: Dimens get() = Dimens
     val shape: Formas get() = Formas
+    val txt: Texto get() = Texto
 }
 
 private val EsquemaM3 = lightColorScheme(

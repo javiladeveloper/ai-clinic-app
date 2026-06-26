@@ -31,6 +31,9 @@ kotlin {
             implementation(libs.androidx.credentials)
             implementation(libs.androidx.credentials.play.services)
             implementation(libs.googleid)
+            // Mapa OSM + ubicación
+            implementation(libs.osmdroid)
+            implementation(libs.play.location)
         }
         commonMain.dependencies {
             implementation(compose.runtime)

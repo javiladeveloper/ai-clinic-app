@@ -66,7 +66,7 @@ fun PortalConTabs(nombre: String?, onCerrarSesion: () -> Unit) {
         Box(Modifier.fillMaxSize().padding(padding).background(Sand)) {
             when (tab) {
                 Tab.Inicio -> PantallaPortal(nombre = nombre, onCerrarSesion = onCerrarSesion)
-                Tab.Reservar -> PantallaReservar()
+                Tab.Reservar -> pe.saniape.app.ui.reservar.FlujoReservar()
                 Tab.Tratamiento -> PantallaSalud()
                 Tab.Mas -> PantallaMas(nombre = nombre, onCerrarSesion = onCerrarSesion)
             }
