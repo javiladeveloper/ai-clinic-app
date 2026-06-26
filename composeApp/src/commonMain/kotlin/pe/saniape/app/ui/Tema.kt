@@ -1,46 +1,36 @@
 package pe.saniape.app.ui
 
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Shapes
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
+import pe.saniape.app.ui.theme.Paleta
+import pe.saniape.app.ui.theme.TemaSania as TemaSaniaImpl
 
-// Paleta Sania — igual que la web (globals.css).
-val Navy = Color(0xFF2C3E7A)
-val NavyDark = Color(0xFF1E2D5E)
-val Lav = Color(0xFF8892C8)
-val Sand = Color(0xFFF7F8FC)
-val BorderColor = Color(0xFFDDE1F0)
-val Muted = Color(0xFF6B7280)
-val GreenOk = Color(0xFF16A34A)
-val Amber = Color(0xFFD97706)
-val RedDanger = Color(0xFFDC2626)
+/**
+ * Puente de compatibilidad: las pantallas existentes usan estos nombres sueltos
+ * (Navy, Sand, …). Apuntan a la ÚNICA paleta central [Paleta]. Para colores nuevos,
+ * usar `Sania.colors.*` (sistema de diseño) en vez de agregar aquí.
+ *
+ * El tema real vive en `ui/theme/Tema.kt`.
+ */
 
-private val ColoresSania = lightColorScheme(
-    primary = Navy,
-    onPrimary = Color.White,
-    secondary = Lav,
-    background = Sand,
-    onBackground = Color(0xFF1F2937),
-    surface = Color.White,
-    onSurface = Color(0xFF1F2937),
-    outline = BorderColor,
-)
+val Navy: Color get() = Paleta.Navy600
+val NavyDark: Color get() = Paleta.Navy700
+val Lav: Color get() = Paleta.Lav300
+val Sand: Color get() = Paleta.Sand
+val BorderColor: Color get() = Paleta.Borde
+val Muted: Color get() = Paleta.Muted
+val GreenOk: Color get() = Paleta.Green
+val Amber: Color get() = Paleta.Amber
+val RedDanger: Color get() = Paleta.Red
 
-private val FormasSania = Shapes(
-    small = RoundedCornerShape(10.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(20.dp),
-)
+// Adicionales nombrados (reemplazan literales sueltos en las pantallas)
+val TextoPrincipal: Color get() = Paleta.Texto
+val Blanco: Color get() = Paleta.Blanco
+val Navy50: Color get() = Paleta.Navy50
+val GreenBg: Color get() = Paleta.GreenBg
+val AmberBg: Color get() = Paleta.AmberBg
+val RedBg: Color get() = Paleta.RedBg
+val Blue: Color get() = Paleta.Blue
 
 @Composable
-fun TemaSania(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = ColoresSania,
-        shapes = FormasSania,
-        content = content,
-    )
-}
+fun TemaSania(content: @Composable () -> Unit) = TemaSaniaImpl(content)

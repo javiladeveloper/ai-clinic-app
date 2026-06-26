@@ -14,6 +14,10 @@ import io.github.jan.supabase.postgrest.Postgrest
 object Supabase {
     const val URL = "https://rigohpumndmlbufngced.supabase.co"
 
+    // Base del sitio web (para llamar a los endpoints /api que reutilizan la lógica
+    // segura: reservar con verificación de DNI, rate-limit, etc.).
+    const val SITE_URL = "https://www.saniape.com"
+
     // anon key (pública) — idéntica a la de la web. RLS protege los datos.
     const val ANON_KEY =
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpZ29ocHVtbmRtbGJ1Zm5nY2VkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExOTEwODksImV4cCI6MjA5Njc2NzA4OX0.EYWO4z_j9CSqcuC9oOn8LoBtM-zJ4A-t3iWohSLAexI"

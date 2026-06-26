@@ -24,16 +24,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Tab Reservar — placeholder hasta conectar con la API web. */
-@Composable
-fun PantallaReservar() {
-    PantallaSimple(
-        emoji = "📅",
-        titulo = "Reservar una cita",
-        texto = "Pronto podrás reservar tu cita aquí, eligiendo clínica, profesional y horario.",
-    )
-}
-
 /** Tab Salud — muestra el tratamiento del paciente (reusa la lógica del portal). */
 @Composable
 fun PantallaSalud() {
@@ -54,17 +44,17 @@ fun PantallaMas(nombre: String?, onCerrarSesion: () -> Unit) {
 
             nombre?.let {
                 Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White)
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Blanco)
                         .padding(16.dp),
                 ) {
-                    Text(it, color = Color(0xFF1F2937), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(it, color = TextoPrincipal, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     Text("Paciente", color = Muted, fontSize = 13.sp)
                 }
                 Spacer(Modifier.height(16.dp))
             }
 
             Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.White)
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Blanco)
                     .clickable { onCerrarSesion() }.padding(16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {

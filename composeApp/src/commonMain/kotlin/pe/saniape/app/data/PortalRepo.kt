@@ -40,6 +40,11 @@ object PortalRepo {
         return filas.mapNotNull { it.str("id") }
     }
 
+    // Slug de la clínica habitual del paciente (la de su cita más reciente con slug).
+    // Lo usa la pantalla de reservar para precargar "tu clínica de siempre".
+    var clinicaHabitualSlug: String? = null
+        private set
+
     /** Citas del paciente con profesional/clínica, separadas en próximas y pasadas. */
     suspend fun misCitas(): Pair<List<CitaPortal>, List<CitaPortal>> {
         val pacIds = misPacienteIds()
@@ -49,7 +54,7 @@ object PortalRepo {
             .select(
                 Columns.raw(
                     "id, fecha, hora, estado, tipo, " +
-                        "terapeuta:terapeutas(nombre), clinica:clinicas(nombre)"
+                        "terapeuta:terapeutas(nombre), clinica:clinicas(nombre, slug)"
                 )
             ) {
                 filter { isIn("paciente_id", pacIds) }
@@ -69,6 +74,15 @@ object PortalRepo {
                 clinica = o.nested("clinica")?.str("nombre"),
             )
         }
+        // Clínica habitual = la de la cita más próxima (futura) con slug; si no hay
+        // próximas, la de la cita más reciente. Las citas vienen ordenadas por fecha
+        // ascendente, así que filtramos las de hoy en adelante primero.
+        val hoyParaSlug = hoyIso()
+        clinicaHabitualSlug =
+            filas.firstOrNull { (it.str("fecha") ?: "") >= hoyParaSlug && it.nested("clinica")?.str("slug") != null }
+                ?.nested("clinica")?.str("slug")
+                ?: filas.reversed().firstNotNullOfOrNull { it.nested("clinica")?.str("slug") }
+
         // Hoy en adelante = próximas; antes = pasadas (orden inverso para historial).
         val hoy = hoyIso()
         val proximas = citas.filter { it.fecha >= hoy && it.estado != "Cancelada" }

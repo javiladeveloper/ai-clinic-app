@@ -74,7 +74,7 @@ fun PantallaLogin(onLogueado: () -> Unit) {
                 enabled = !cargando,
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.White, contentColor = Color(0xFF1F2937),
+                    containerColor = Blanco, contentColor = TextoPrincipal,
                 ),
                 modifier = Modifier.fillMaxWidth().height(52.dp),
             ) {

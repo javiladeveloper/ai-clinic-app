@@ -75,9 +75,9 @@ fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("Sania", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("Sania", color = Blanco, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 TextButton(onClick = onCerrarSesion) {
-                    Text("Cerrar sesión", color = Color.White, fontSize = 13.sp)
+                    Text("Cerrar sesión", color = Blanco, fontSize = 13.sp)
                 }
             }
 
@@ -98,7 +98,7 @@ fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
                         Column {
                             Text(
                                 if (primerNombre != null) "Hola, $primerNombre 👋" else "Hola 👋",
-                                color = Color(0xFF1F2937), fontSize = 24.sp, fontWeight = FontWeight.Bold,
+                                color = TextoPrincipal, fontSize = 24.sp, fontWeight = FontWeight.Bold,
                             )
                             Text("Tu salud, en un solo lugar.", color = Muted, fontSize = 13.sp)
                         }
@@ -169,15 +169,15 @@ private fun CitaHero(c: CitaPortal) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(c.fecha, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text(c.fecha, color = Blanco, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 Box(
-                    Modifier.clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.15f))
+                    Modifier.clip(RoundedCornerShape(20.dp)).background(Blanco.copy(alpha = 0.15f))
                         .padding(horizontal = 10.dp, vertical = 4.dp),
-                ) { Text(c.estado, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                ) { Text(c.estado, color = Blanco, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
             }
-            Text(c.hora.take(5), color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+            Text(c.hora.take(5), color = Blanco, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         }
-        Column(Modifier.fillMaxWidth().background(Color.White).padding(18.dp)) {
+        Column(Modifier.fillMaxWidth().background(Blanco).padding(18.dp)) {
             c.clinica?.let { Text(it, color = Navy, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
             Text(
                 (c.tipo ?: "Cita") + (c.profesional?.let { " · con $it" } ?: ""),
@@ -190,7 +190,7 @@ private fun CitaHero(c: CitaPortal) {
 @Composable
 private fun CitaItem(c: CitaPortal, atenuar: Boolean) {
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color.White)
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Blanco)
             .border(1.dp, BorderColor, RoundedCornerShape(14.dp)).padding(14.dp),
     ) {
         Row(
@@ -200,7 +200,7 @@ private fun CitaItem(c: CitaPortal, atenuar: Boolean) {
         ) {
             Text(
                 "${c.fecha} · ${c.hora.take(5)}",
-                color = if (atenuar) Muted else Color(0xFF1F2937),
+                color = if (atenuar) Muted else TextoPrincipal,
                 fontSize = 15.sp, fontWeight = FontWeight.Bold,
             )
             BadgeEstado(c.estado)
@@ -217,7 +217,7 @@ private fun CitaItem(c: CitaPortal, atenuar: Boolean) {
 private fun TarjetaTratamiento(t: Tratamiento) {
     var verSesiones by remember { mutableStateOf(false) }
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White)
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Blanco)
             .border(1.dp, BorderColor, RoundedCornerShape(16.dp)).padding(16.dp),
     ) {
         Row(
@@ -226,13 +226,13 @@ private fun TarjetaTratamiento(t: Tratamiento) {
             verticalAlignment = Alignment.Top,
         ) {
             Column(Modifier.weight(1f)) {
-                Text(t.procedimiento, color = Color(0xFF1F2937), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text(t.procedimiento, color = TextoPrincipal, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 t.clinica?.let { Text("🏥 $it", color = Muted, fontSize = 12.sp) }
             }
             val activo = t.estado == "Activo"
             Box(
                 Modifier.clip(RoundedCornerShape(20.dp))
-                    .background(if (activo) Color(0xFFDCFCE7) else Color(0xFFEEF0F9))
+                    .background(if (activo) GreenBg else Navy50)
                     .padding(horizontal = 10.dp, vertical = 4.dp),
             ) {
                 Text(
@@ -253,13 +253,13 @@ private fun TarjetaTratamiento(t: Tratamiento) {
                 Text("Progreso", color = Muted, fontSize = 12.sp)
                 Text(
                     "${t.sesionesCompletadas} de ${t.totalSesiones} sesiones",
-                    color = Color(0xFF1F2937), fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    color = TextoPrincipal, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                 )
             }
             Spacer(Modifier.height(4.dp))
             Box(
                 Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFFEEF0F9)),
+                    .background(Navy50),
             ) {
                 Box(
                     Modifier.fillMaxWidth(pct).height(8.dp).clip(RoundedCornerShape(20.dp))
@@ -288,7 +288,7 @@ private fun TarjetaTratamiento(t: Tratamiento) {
                                     .background(colorEstadoSesion(s.estado)),
                             )
                             Spacer(Modifier.width(8.dp))
-                            Text("Sesión #${s.numero}", color = Color(0xFF1F2937), fontSize = 13.sp)
+                            Text("Sesión #${s.numero}", color = TextoPrincipal, fontSize = 13.sp)
                             Spacer(Modifier.width(6.dp))
                             Text("· ${s.fecha}", color = Muted, fontSize = 12.sp)
                             Spacer(Modifier.weight(1f))
@@ -304,13 +304,13 @@ private fun TarjetaTratamiento(t: Tratamiento) {
 @Composable
 private fun TarjetaVacia() {
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White)
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Blanco)
             .border(1.dp, BorderColor, RoundedCornerShape(16.dp)).padding(vertical = 32.dp, horizontal = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text("📅", fontSize = 34.sp)
         Spacer(Modifier.height(8.dp))
-        Text("No tienes citas próximas", color = Color(0xFF1F2937), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text("No tienes citas próximas", color = TextoPrincipal, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(4.dp))
         Text(
             "Cuando reserves una cita, aparecerá aquí.",
@@ -322,10 +322,10 @@ private fun TarjetaVacia() {
 @Composable
 private fun BadgeEstado(estado: String) {
     val (fg, bg) = when (estado) {
-        "Confirmada", "Completada" -> GreenOk to Color(0xFFDCFCE7)
-        "Pendiente" -> Amber to Color(0xFFFEF3C7)
-        "Cancelada" -> RedDanger to Color(0xFFFEE2E2)
-        else -> Navy to Color(0xFFEEF0F9)
+        "Confirmada", "Completada" -> GreenOk to GreenBg
+        "Pendiente" -> Amber to AmberBg
+        "Cancelada" -> RedDanger to RedBg
+        else -> Navy to Navy50
     }
     Box(
         Modifier.clip(RoundedCornerShape(20.dp)).background(bg)
@@ -335,7 +335,7 @@ private fun BadgeEstado(estado: String) {
 
 private fun colorEstadoSesion(estado: String): Color = when (estado) {
     "Completada" -> GreenOk
-    "En progreso" -> Color(0xFF1D6FA8)
+    "En progreso" -> Blue
     "Reprogramada" -> Amber
     else -> Muted
 }

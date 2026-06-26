@@ -44,7 +44,7 @@ fun PortalConTabs(nombre: String?, onCerrarSesion: () -> Unit) {
 
     Scaffold(
         bottomBar = {
-            NavigationBar(containerColor = Color.White) {
+            NavigationBar(containerColor = Blanco) {
                 Tab.entries.forEach { t ->
                     NavigationBarItem(
                         selected = tab == t,
@@ -54,7 +54,7 @@ fun PortalConTabs(nombre: String?, onCerrarSesion: () -> Unit) {
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = Navy,
                             selectedTextColor = Navy,
-                            indicatorColor = Color(0xFFEEF0F9),
+                            indicatorColor = Navy50,
                             unselectedIconColor = Muted,
                             unselectedTextColor = Muted,
                         ),
