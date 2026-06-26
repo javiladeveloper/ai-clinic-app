@@ -54,6 +54,7 @@ fun PantallaDirectorio(onElegirClinica: (ClinicaDir) -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var miUbicacion by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var vista by remember { mutableStateOf(Vista.Mapa) }
+    var recentrarTick by remember { mutableStateOf(0) }
 
     val solicitarUbicacion = recordarSolicitarUbicacion { miUbicacion = it }
 
@@ -102,14 +103,34 @@ fun PantallaDirectorio(onElegirClinica: (ClinicaDir) -> Unit) {
                 }
 
                 if (vista == Vista.Mapa) {
-                    MapaClinicas(
-                        clinicas = ordenadas,
-                        miUbicacion = miUbicacion,
-                        onTocarClinica = onElegirClinica,
-                        modifier = Modifier.fillMaxWidth().height(280.dp)
+                    Box(
+                        Modifier.fillMaxWidth().height(300.dp)
                             .padding(horizontal = Sania.dim.lg)
                             .clip(RoundedCornerShape(Sania.shape.md.dp)),
-                    )
+                    ) {
+                        MapaClinicas(
+                            clinicas = ordenadas,
+                            miUbicacion = miUbicacion,
+                            recentrarEnMi = recentrarTick,
+                            onTocarClinica = onElegirClinica,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        // Botón flotante "Mi ubicación" (esquina inferior derecha).
+                        Box(
+                            Modifier.align(Alignment.BottomEnd).padding(Sania.dim.md)
+                                .clip(RoundedCornerShape(Sania.shape.pill.dp))
+                                .background(c.superficie)
+                                .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.pill.dp))
+                                .clickable {
+                                    if (miUbicacion == null) solicitarUbicacion()
+                                    recentrarTick++
+                                }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                        ) {
+                            Text("📍 Mi ubicación", color = c.navy,
+                                fontSize = Sania.txt.pequeno, fontWeight = FontWeight.Bold)
+                        }
+                    }
                     Spacer(Modifier.height(Sania.dim.sm))
                 }
 

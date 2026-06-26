@@ -12,6 +12,8 @@ import pe.saniape.app.data.ClinicaDir
 expect fun MapaClinicas(
     clinicas: List<ClinicaDir>,
     miUbicacion: Pair<Double, Double>?,
+    // Cambia este valor para pedir al mapa que recentre en mi ubicación (botón 📍).
+    recentrarEnMi: Int,
     onTocarClinica: (ClinicaDir) -> Unit,
     modifier: Modifier,
 )
