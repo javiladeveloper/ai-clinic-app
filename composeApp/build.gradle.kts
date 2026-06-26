@@ -43,6 +43,7 @@ kotlin {
             implementation(libs.navigation.compose)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
+            implementation(libs.kotlinx.datetime)
 
             // Supabase: mismo backend que la web
             implementation(project.dependencies.platform(libs.supabase.bom))

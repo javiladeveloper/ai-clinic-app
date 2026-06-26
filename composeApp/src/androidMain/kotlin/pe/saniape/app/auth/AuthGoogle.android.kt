@@ -60,9 +60,9 @@ actual class GoogleAuthLauncher(
     }
 
     companion object {
-        // TODO: pegar el "Web client" OAuth Client ID de Google Cloud (termina en
-        // .apps.googleusercontent.com). El mismo que tiene Supabase en Auth > Google.
-        const val WEB_CLIENT_ID = "REEMPLAZAR_CON_WEB_CLIENT_ID.apps.googleusercontent.com"
+        // "Web client" OAuth Client ID de Google Cloud (el mismo que usa Supabase
+        // en Auth > Google). NO es el de tipo Android.
+        const val WEB_CLIENT_ID = "942581341329-7qfpdj6fsol2bkkhj2movknju4tets1q.apps.googleusercontent.com"
     }
 }
 
