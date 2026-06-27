@@ -43,6 +43,8 @@ fun PantallaLogin(onLogueado: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
+            LogoSania(size = 64.dp)
+            Spacer(Modifier.height(10.dp))
             Text("Sania", color = Navy, fontSize = 36.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
             Text("Portal del paciente", color = Navy, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)

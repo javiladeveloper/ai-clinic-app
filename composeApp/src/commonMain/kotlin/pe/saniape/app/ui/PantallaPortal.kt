@@ -75,7 +75,11 @@ fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("Sania", color = Blanco, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    LogoSania(size = 26.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Sania", color = Blanco, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
                 TextButton(onClick = onCerrarSesion) {
                     Text("Cerrar sesión", color = Blanco, fontSize = 13.sp)
                 }

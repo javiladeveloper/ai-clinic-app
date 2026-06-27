@@ -3,8 +3,28 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- "S" de Sania en blanco, centrada en la zona segura del ícono adaptativo. -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M64,40 C64,36 60,34 54,34 C47,34 43,37 43,42 C43,47 47,49 55,51 C65,53 70,57 70,64 C70,71 64,75 54,75 C46,75 41,72 39,67 L46,64 C47,67 50,69 54,69 C59,69 62,67 62,64 C62,61 59,59 52,57 C43,55 37,51 37,43 C37,35 44,28 54,28 C62,28 68,31 70,37 Z" />
+    <!-- Isotipo de Sania (mismo path/latido ECG que la web), con gradiente
+         azul→morado. El path original está en viewBox 48; lo centramos en la zona
+         segura del ícono adaptativo (108) con un group escalado y trasladado. -->
+    <group
+        android:scaleX="1.35"
+        android:scaleY="1.35"
+        android:translateX="22.6"
+        android:translateY="21.6">
+        <path
+            android:strokeWidth="4.8"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M34,13 C29,9 16.5,8.6 14,15 C12.2,19.8 17,23.4 22,24 L24.6,24 L27,18.6 L29.4,29 L31.4,24 C35.4,24.6 37.4,27.6 36.3,31.3 C34.5,37.8 21.5,39.5 15.8,34.8">
+            <aapt:attr name="android:strokeColor" xmlns:aapt="http://schemas.android.com/aapt">
+                <gradient
+                    android:type="linear"
+                    android:startX="10" android:startY="8"
+                    android:endX="38" android:endY="40">
+                    <item android:offset="0" android:color="#FFFFFFFF" />
+                    <item android:offset="1" android:color="#FFD9DEF9" />
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
 </vector>

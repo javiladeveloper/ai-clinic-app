@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -62,7 +63,11 @@ fun PantallaInicioStaff(ctx: ContextoStaff) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(ctx.clinicaNombre, color = c.sobreNavy, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    pe.saniape.app.ui.LogoSania(size = 24.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(ctx.clinicaNombre, color = c.sobreNavy, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
                 ctx.rol?.let { Text(it, color = c.sobreNavy.copy(alpha = 0.8f), fontSize = 12.sp) }
             }
 

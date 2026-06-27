@@ -87,10 +87,15 @@ fun IntroMarca(onFin: () -> Unit) {
             }
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                LogoSania(
+                    size = 80.dp,
+                    modifier = Modifier.alpha(textoAlpha.value).scale(textoScale.value),
+                )
+                Spacer(Modifier.height(12.dp))
                 Text(
                     "Sania",
                     color = Color.White,
-                    fontSize = 48.sp,
+                    fontSize = 44.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.alpha(textoAlpha.value).scale(textoScale.value),
                 )
