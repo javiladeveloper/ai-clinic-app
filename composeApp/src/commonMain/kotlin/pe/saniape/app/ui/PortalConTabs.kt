@@ -42,6 +42,11 @@ private enum class Tab(val titulo: String, val icono: ImageVector) {
 fun PortalConTabs(nombre: String?, onCerrarSesion: () -> Unit) {
     var tab by remember { mutableStateOf(Tab.Inicio) }
 
+    // Botón Atrás en una tab que no es Inicio → vuelve a Inicio (no cierra la app).
+    // En la tab Reservar, su propio flujo maneja el back primero (form→landing→dir);
+    // cuando ya está en el directorio, este handler lo lleva a Inicio.
+    ManejarAtras(activo = tab != Tab.Inicio) { tab = Tab.Inicio }
+
     Scaffold(
         bottomBar = {
             NavigationBar(containerColor = Blanco) {
