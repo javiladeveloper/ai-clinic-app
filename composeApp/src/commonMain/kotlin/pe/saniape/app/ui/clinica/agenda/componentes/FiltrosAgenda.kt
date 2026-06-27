@@ -22,18 +22,25 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import pe.saniape.app.data.staff.TerapeutaRef
 import pe.saniape.app.ui.theme.Sania
 
 private val ESTADOS = listOf("Pendiente", "Confirmada", "Completada", "Cancelada")
 private val TIPOS = listOf("Consulta", "Evaluación", "Sesión")
 
-/** Filtros de la agenda: búsqueda + chips de estado y tipo (como la web). */
+/** Filtros de la agenda: búsqueda + chips de estado/tipo/profesional + ver historial (como la web). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FiltrosAgenda(
     busqueda: String, onBusqueda: (String) -> Unit,
     filtroEstado: String?, onEstado: (String?) -> Unit,
     filtroTipo: String?, onTipo: (String?) -> Unit,
+    // Filtro por profesional (solo gestores sin scope propio).
+    terapeutas: List<TerapeutaRef> = emptyList(),
+    filtroTerapeuta: String? = null, onTerapeuta: (String?) -> Unit = {},
+    puedeFiltrarPorPersonal: Boolean = false,
+    // Ver historial (citas pasadas) — toggle.
+    verHistorial: Boolean = false, onVerHistorial: () -> Unit = {},
 ) {
     val c = Sania.colors
     Column(Modifier.fillMaxWidth().padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm)) {
@@ -56,6 +63,24 @@ fun FiltrosAgenda(
             TIPOS.forEach { t ->
                 ChipFiltro(t, filtroTipo == t, esTipo = true) {
                     onTipo(if (filtroTipo == t) null else t)
+                }
+            }
+            // Ver historial (📜) — chip toggle.
+            Box(Modifier.width(1.dp))
+            ChipFiltro(if (verHistorial) "📅 Solo próximas" else "📜 Ver historial", verHistorial) {
+                onVerHistorial()
+            }
+        }
+
+        // Filtro por profesional (solo gestores): "Todo el personal" + chip por terapeuta.
+        if (puedeFiltrarPorPersonal && terapeutas.isNotEmpty()) {
+            Spacer(Modifier.height(Sania.dim.sm))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                ChipFiltro("👥 Todo el personal", filtroTerapeuta == null) { onTerapeuta(null) }
+                terapeutas.forEach { t ->
+                    ChipFiltro(t.nombre, filtroTerapeuta == t.id, esTipo = true) {
+                        onTerapeuta(if (filtroTerapeuta == t.id) null else t.id)
+                    }
                 }
             }
         }

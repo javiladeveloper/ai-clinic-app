@@ -38,6 +38,7 @@ data class CitaStaff(
     val pacienteTelefono: String?,
     val tratamientoId: String?,
     val procedimiento: String?,
+    val notaRecepcion: String?,   // recordatorio del tratamiento vinculado (📌)
 )
 
 /**
@@ -71,12 +72,37 @@ object AgendaRepo {
         return filas.map { mapearCita(it) }
     }
 
+    /**
+     * Citas paginadas (vista lista, sin filtrar por un día concreto). Igual que la web:
+     * si [verHistorial] es false solo trae las de hoy en adelante; si es true, todas.
+     * Ordena por fecha+hora. [pagina] de tamaño 10. [miTerapeutaId] acota el scope.
+     */
+    suspend fun citasPaginadas(
+        verHistorial: Boolean, pagina: Int, miTerapeutaId: String?, hoy: String,
+    ): List<CitaStaff> {
+        val desde = pagina * PAGE_SIZE
+        val filas = Supabase.client.postgrest["citas"]
+            .select(Columns.raw(SELECT_CITA)) {
+                filter {
+                    if (!verHistorial) gte("fecha", hoy)
+                    if (miTerapeutaId != null) eq("terapeuta_id", miTerapeutaId)
+                }
+                order("fecha", if (verHistorial) Order.DESCENDING else Order.ASCENDING)
+                order("hora", Order.ASCENDING)
+                range(desde.toLong(), (desde + PAGE_SIZE - 1).toLong())
+            }
+            .decodeList<JsonObject>()
+        return filas.map { mapearCita(it) }
+    }
+
+    const val PAGE_SIZE = 10
+
     /** Columnas comunes de una cita (con joins). Una sola fuente. */
     const val SELECT_CITA =
         "id, fecha, hora, estado, tipo, costo, duracion, origen, confirmada_por_paciente, " +
             "terapeuta_id, paciente_id, tratamiento_id, " +
             "paciente:pacientes(nombre, telefono), terapeuta:terapeutas(nombre), " +
-            "tratamiento:tratamientos!citas_tratamiento_id_fkey(procedimiento:procedimientos(nombre)), " +
+            "tratamiento:tratamientos!citas_tratamiento_id_fkey(nota_recepcion, procedimiento:procedimientos(nombre)), " +
             "sesion:sesiones!citas_sesion_id_fkey(numero)"
 
     fun mapearCita(o: JsonObject): CitaStaff {
@@ -101,6 +127,8 @@ object AgendaRepo {
                 tratamientoId = s("tratamiento_id"),
                 procedimiento = (obj("tratamiento")?.get("procedimiento") as? JsonObject)
                     ?.get("nombre")?.let { (it as? JsonPrimitive)?.content?.takeIf { v -> v != "null" } },
+                notaRecepcion = (obj("tratamiento")?.get("nota_recepcion") as? JsonPrimitive)
+                    ?.content?.takeIf { it != "null" && it.isNotBlank() },
             )
     }
 

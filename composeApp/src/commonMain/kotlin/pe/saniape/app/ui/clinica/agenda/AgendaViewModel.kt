@@ -18,6 +18,7 @@ import pe.saniape.app.data.staff.BannersAgenda
 import pe.saniape.app.data.staff.CitaStaff
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.EspecialidadRef
+import pe.saniape.app.data.staff.TerapeutaRef
 
 /**
  * ViewModel de la Agenda: ÚNICA fuente de estado y lógica. La pantalla solo
@@ -43,9 +44,22 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     var busqueda by mutableStateOf(""); private set
     var filtroEstado by mutableStateOf<String?>(null); private set
     var filtroTipo by mutableStateOf<String?>(null); private set
+    var filtroTerapeuta by mutableStateOf<String?>(null); private set   // solo gestores
+
+    // ── Vista historial + paginación (igual que la web) ──
+    var verHistorial by mutableStateOf(false); private set
+    var pagina by mutableStateOf(0); private set
+    var hayMasPaginas by mutableStateOf(false); private set
+    /** true = vista lista paginada (historial/todas); false = un día concreto. */
+    val modoLista: Boolean get() = verHistorial
+
+    // Profesionales activos para el filtro (solo si es gestor sin scope).
+    var terapeutas by mutableStateOf<List<TerapeutaRef>>(emptyList()); private set
 
     val miTerapeutaId: String? get() = ctx.miTerapeutaId
     val esGestor: Boolean get() = ctx.esGestor
+    /** El gestor sin scope propio puede filtrar por profesional. */
+    val puedeFiltrarPorPersonal: Boolean get() = ctx.miTerapeutaId == null
 
     /** Citas tras aplicar los filtros (lo que la pantalla pinta). */
     val citasFiltradas: List<CitaStaff>
@@ -54,12 +68,18 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                 (c.pacienteNombre?.contains(busqueda, ignoreCase = true) == true) ||
                 (c.procedimiento?.contains(busqueda, ignoreCase = true) == true)) &&
                 (filtroEstado == null || c.estado == filtroEstado) &&
-                (filtroTipo == null || c.tipo == filtroTipo)
+                (filtroTipo == null || c.tipo == filtroTipo) &&
+                (filtroTerapeuta == null || c.terapeutaId == filtroTerapeuta)
         }
+
+    /** Citas del día sin profesional asignado (aviso "⚠ Asignar"). */
+    val citasSinProfesional: List<CitaStaff>
+        get() = citasFiltradas.filter { it.terapeutaId == null && it.estado != "Cancelada" }
 
     fun cambiarBusqueda(v: String) { busqueda = v }
     fun cambiarFiltroEstado(v: String?) { filtroEstado = v }
     fun cambiarFiltroTipo(v: String?) { filtroTipo = v }
+    fun cambiarFiltroTerapeuta(v: String?) { filtroTerapeuta = v }
 
     init {
         cargarDia(fechaSel)
@@ -68,9 +88,20 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
 
     // ── Intents ──
     fun seleccionarDia(iso: String) {
+        verHistorial = false
         fechaSel = iso
         cargarDia(iso)
     }
+
+    /** Alterna la vista lista (historial/todas) vs el día seleccionado. */
+    fun alternarHistorial() {
+        verHistorial = !verHistorial
+        pagina = 0
+        if (verHistorial) cargarLista() else cargarDia(fechaSel)
+    }
+
+    fun paginaSiguiente() { if (hayMasPaginas) { pagina++; cargarLista() } }
+    fun paginaAnterior() { if (pagina > 0) { pagina--; cargarLista() } }
 
     fun limpiarMensaje() { mensaje = null }
 
@@ -82,9 +113,24 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         }
     }
 
+    private fun cargarLista() {
+        viewModelScope.launch {
+            cargando = true
+            val r = runCatching {
+                AgendaRepo.citasPaginadas(verHistorial, pagina, ctx.miTerapeutaId, hoy)
+            }.getOrDefault(emptyList())
+            citas = r
+            hayMasPaginas = r.size >= AgendaRepo.PAGE_SIZE
+            cargando = false
+        }
+    }
+
     private fun cargarAuxiliares() {
         viewModelScope.launch {
             especialidades = runCatching { AgendaRepo.especialidades() }.getOrDefault(emptyList())
+            if (puedeFiltrarPorPersonal) {
+                terapeutas = runCatching { AgendaRepo.terapeutasActivos() }.getOrDefault(emptyList())
+            }
             recargarBanners()
         }
     }
@@ -95,7 +141,15 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         }.getOrNull()
     }
 
-    /** Acción genérica sobre una cita. Refresca día + banners al terminar. */
+    /** Recarga las citas según el modo actual (lista paginada vs día). */
+    private suspend fun recargarCitas() {
+        citas = runCatching {
+            if (verHistorial) AgendaRepo.citasPaginadas(verHistorial, pagina, ctx.miTerapeutaId, hoy)
+            else AgendaRepo.citasDelDia(fechaSel, ctx.miTerapeutaId)
+        }.getOrDefault(citas)
+    }
+
+    /** Acción genérica sobre una cita. Refresca citas + banners al terminar. */
     fun ejecutar(
         accion: AccionCita, cita: CitaStaff,
         observaciones: String? = null, diagnostico: String? = null, derivarEspId: String? = null,
@@ -110,7 +164,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                 AccionCita.Cancelar -> AgendaRepo.cancelar(cita.id)
             }
             mensaje = if (ok) "✓ Listo" else "⚠ No se pudo, intenta de nuevo"
-            citas = runCatching { AgendaRepo.citasDelDia(fechaSel, ctx.miTerapeutaId) }.getOrDefault(citas)
+            recargarCitas()
             recargarBanners()
             accionando = false
         }
@@ -122,7 +176,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         viewModelScope.launch {
             accionando = true
             val ok = AgendaRepo.reprogramar(cita.id, fecha, hora)
-            citas = runCatching { AgendaRepo.citasDelDia(fechaSel, ctx.miTerapeutaId) }.getOrDefault(citas)
+            recargarCitas()
             accionando = false
             onFin(ok)
         }
@@ -135,7 +189,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             accionando = true; mensaje = null
             val ok = AgendaRepo.pasarAEvaluacion(cita, fecha, hora, costo, notas)
             mensaje = if (ok) "✓ Evaluación agendada" else "⚠ No se pudo"
-            citas = runCatching { AgendaRepo.citasDelDia(fechaSel, ctx.miTerapeutaId) }.getOrDefault(citas)
+            recargarCitas()
             recargarBanners()
             accionando = false
             onFin(ok)
@@ -151,10 +205,9 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         }
     }
 
-    /** Recarga el día actual y los banners (tras crear cita). */
+    /** Recarga las citas (modo actual) y los banners (tras crear cita). */
     fun refrescar() {
-        cargarDia(fechaSel)
-        viewModelScope.launch { recargarBanners() }
+        viewModelScope.launch { recargarCitas(); recargarBanners() }
     }
 }
 

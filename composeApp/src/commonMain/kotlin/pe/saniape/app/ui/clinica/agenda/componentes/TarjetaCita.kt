@@ -80,6 +80,15 @@ fun TarjetaCita(
             color = c.textoSuave, fontSize = 12.sp,
         )
 
+        // Nota de recepción (recordatorio del tratamiento) — 📌
+        cita.notaRecepcion?.let { nota ->
+            Spacer(Modifier.height(4.dp))
+            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                .background(c.pendBg).padding(horizontal = 8.dp, vertical = 5.dp)) {
+                Text("📌 $nota", color = c.pend, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+
         // Chips: costo, Web, asignar
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
             if (puedeVerCosto) {

@@ -52,19 +52,21 @@ fun PantallaAgenda(ctx: ContextoStaff) {
     val c = Sania.colors
     val vm: AgendaViewModel = viewModel(key = ctx.clinicaId) { AgendaViewModel(ctx) }
 
-    // Sub-pantalla: crear cita
+    // Sub-pantalla: crear cita (con o sin pre-llenado de → Evaluación)
     var creandoCita by remember { mutableStateOf(false) }
+    var prefillEval by remember { mutableStateOf<PrefillCita?>(null) }
     // Modales (la cita objetivo, o null)
     var completar by remember { mutableStateOf<CitaStaff?>(null) }
     var confirmar by remember { mutableStateOf<Pair<CitaStaff, AccionCita>?>(null) }
     var editar by remember { mutableStateOf<CitaStaff?>(null) }
     var pasarEval by remember { mutableStateOf<CitaStaff?>(null) }
 
-    if (creandoCita) {
+    if (creandoCita || prefillEval != null) {
         PantallaCrearCita(
             ctx = ctx, fechaInicial = vm.fechaSel,
-            onListo = { creandoCita = false; vm.refrescar() },
-            onCancelar = { creandoCita = false },
+            prefill = prefillEval,
+            onListo = { creandoCita = false; prefillEval = null; vm.refrescar() },
+            onCancelar = { creandoCita = false; prefillEval = null },
         )
         return
     }
@@ -87,12 +89,19 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                 ) { Text("+ Nueva", color = c.sobreNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
             }
 
-            TiraDias(hoy = vm.hoy, seleccionado = vm.fechaSel, onSeleccionar = { vm.seleccionarDia(it) })
+            // La tira de días solo aplica en modo "día" (no en la lista/historial).
+            if (!vm.modoLista) {
+                TiraDias(hoy = vm.hoy, seleccionado = vm.fechaSel, onSeleccionar = { vm.seleccionarDia(it) })
+            }
 
             FiltrosAgenda(
                 busqueda = vm.busqueda, onBusqueda = { vm.cambiarBusqueda(it) },
                 filtroEstado = vm.filtroEstado, onEstado = { vm.cambiarFiltroEstado(it) },
                 filtroTipo = vm.filtroTipo, onTipo = { vm.cambiarFiltroTipo(it) },
+                terapeutas = vm.terapeutas,
+                filtroTerapeuta = vm.filtroTerapeuta, onTerapeuta = { vm.cambiarFiltroTerapeuta(it) },
+                puedeFiltrarPorPersonal = vm.puedeFiltrarPorPersonal,
+                verHistorial = vm.verHistorial, onVerHistorial = { vm.alternarHistorial() },
             )
 
             vm.mensaje?.let {
@@ -122,6 +131,16 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                     }
                 }
 
+                // Aviso de citas sin profesional asignado (origen web sin terapeuta).
+                if (vm.citasSinProfesional.isNotEmpty()) {
+                    item {
+                        BannerSinProfesional(
+                            citas = vm.citasSinProfesional,
+                            onAsignar = { editar = it },
+                        )
+                    }
+                }
+
                 when {
                     vm.cargando -> item {
                         Box(Modifier.fillMaxWidth().padding(Sania.dim.xxl), Alignment.Center) {
@@ -131,8 +150,11 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                     vm.citasFiltradas.isEmpty() -> item {
                         Box(Modifier.fillMaxWidth().padding(Sania.dim.xxl), Alignment.Center) {
                             Text(
-                                if (vm.citas.isEmpty()) "No hay citas para este día."
-                                else "No hay citas con esos filtros.",
+                                when {
+                                    vm.citas.isEmpty() && vm.verHistorial -> "No hay citas en el historial."
+                                    vm.citas.isEmpty() -> "No hay citas para este día."
+                                    else -> "No hay citas con esos filtros."
+                                },
                                 color = c.textoSuave, fontSize = Sania.txt.cuerpo,
                             )
                         }
@@ -156,6 +178,21 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                                     }
                                 },
                             )
+                        }
+                    }
+                }
+
+                // Paginación (solo en modo lista/historial).
+                if (vm.modoLista && !vm.cargando && (vm.pagina > 0 || vm.hayMasPaginas)) {
+                    item {
+                        Row(
+                            Modifier.fillMaxWidth().padding(Sania.dim.lg),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            BotonPagina("← Anterior", habilitado = vm.pagina > 0) { vm.paginaAnterior() }
+                            Text("Página ${vm.pagina + 1}", color = c.textoSuave, fontSize = Sania.txt.pequeno)
+                            BotonPagina("Siguiente →", habilitado = vm.hayMasPaginas) { vm.paginaSiguiente() }
                         }
                     }
                 }
@@ -193,8 +230,62 @@ fun PantallaAgenda(ctx: ContextoStaff) {
             cita = cita,
             onCancelar = { pasarEval = null },
             onElegir = { fecha, hora ->
-                vm.pasarAEvaluacion(cita, fecha, hora, costo = 0.0, notas = null) { pasarEval = null }
+                // Igual que la web: abre el formulario de Evaluación pre-llenado.
+                // Al guardar se completa la consulta origen (citaOrigenId) y se crea la cita.
+                prefillEval = PrefillCita(
+                    tipo = "Evaluación",
+                    pacienteId = cita.pacienteId,
+                    pacienteNombre = cita.pacienteNombre,
+                    fecha = fecha, hora = hora,
+                    terapeutaId = cita.terapeutaId,
+                    citaOrigenId = cita.id,
+                )
+                pasarEval = null
             },
         )
+    }
+}
+
+/** Aviso de citas sin profesional asignado (origen web). Tocar una abre el editor para asignar. */
+@Composable
+private fun BannerSinProfesional(citas: List<CitaStaff>, onAsignar: (CitaStaff) -> Unit) {
+    val c = Sania.colors
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm)
+            .clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.pendBg)
+            .padding(Sania.dim.md),
+    ) {
+        Text("⚠ ${citas.size} cita${if (citas.size == 1) "" else "s"} sin profesional asignado",
+            color = c.pend, fontSize = Sania.txt.pequeno, fontWeight = FontWeight.Bold)
+        Text("No aparecen en ninguna agenda. Asígnales un profesional.",
+            color = c.pend, fontSize = 11.sp, modifier = Modifier.padding(bottom = 4.dp))
+        citas.forEach { cita ->
+            Row(
+                Modifier.fillMaxWidth().clickable { onAsignar(cita) }.padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("${cita.hora.take(5)} · ${cita.pacienteNombre ?: "Paciente"} · ${cita.tipo ?: ""}",
+                    color = c.texto, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Box(
+                    Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.pend)
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                ) { Text("Asignar", color = c.sobreNavy, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BotonPagina(texto: String, habilitado: Boolean, onClick: () -> Unit) {
+    val c = Sania.colors
+    Box(
+        Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp))
+            .background(if (habilitado) c.navy else c.chipBg)
+            .then(if (habilitado) Modifier.clickable { onClick() } else Modifier)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    ) {
+        Text(texto, color = if (habilitado) c.sobreNavy else c.textoSuave,
+            fontSize = 12.sp, fontWeight = FontWeight.Bold)
     }
 }

@@ -60,13 +60,34 @@ import pe.saniape.app.ui.theme.Sania
 private val TIPOS = listOf("Consulta", "Evaluación", "Sesión")
 
 /**
+ * Pre-llenado del formulario (para "→ Evaluación"): tipo, paciente, fecha/hora y
+ * profesional ya seleccionados. [citaOrigenId] = consulta a completar al guardar
+ * (flujo Consulta → Evaluación, igual que la web).
+ */
+data class PrefillCita(
+    val tipo: String,
+    val pacienteId: String?,
+    val pacienteNombre: String?,
+    val fecha: String,
+    val hora: String,
+    val terapeutaId: String?,
+    val citaOrigenId: String? = null,
+)
+
+/**
  * Formulario de crear cita (igual que CitaForm de la web): tipo, paciente,
  * tratamiento (si Sesión), fecha, hora (pickers nativos), profesional, costo, notas.
  * Respeta el scope: si es profesional vinculado, el profesional queda fijado a él.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PantallaCrearCita(ctx: ContextoStaff, fechaInicial: String, onListo: () -> Unit, onCancelar: () -> Unit) {
+fun PantallaCrearCita(
+    ctx: ContextoStaff,
+    fechaInicial: String,
+    onListo: () -> Unit,
+    onCancelar: () -> Unit,
+    prefill: PrefillCita? = null,
+) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
 
@@ -77,13 +98,13 @@ fun PantallaCrearCita(ctx: ContextoStaff, fechaInicial: String, onListo: () -> U
     var precioConsulta by remember { mutableStateOf(0.0) }
     var precioEvaluacion by remember { mutableStateOf(40.0) }
 
-    var tipo by remember { mutableStateOf("Consulta") }
+    var tipo by remember { mutableStateOf(prefill?.tipo ?: "Consulta") }
     var paciente by remember { mutableStateOf<RefNombre?>(null) }
     var tratamiento by remember { mutableStateOf<TratamientoRef?>(null) }
     var terapeuta by remember { mutableStateOf<TerapeutaRef?>(null) }
     var especialidad by remember { mutableStateOf<EspecialidadRef?>(null) }
-    var fecha by remember { mutableStateOf(fechaInicial) }
-    var hora by remember { mutableStateOf("09:00") }
+    var fecha by remember { mutableStateOf(prefill?.fecha ?: fechaInicial) }
+    var hora by remember { mutableStateOf(prefill?.hora ?: "09:00") }
     var costo by remember { mutableStateOf("0") }
     var diagnostico by remember { mutableStateOf("") }
     var notas by remember { mutableStateOf("") }
@@ -123,7 +144,14 @@ fun PantallaCrearCita(ctx: ContextoStaff, fechaInicial: String, onListo: () -> U
             especialidadesClinica = runCatching { AgendaRepo.especialidades() }.getOrDefault(emptyList())
             val (pc, pe) = AgendaRepo.precios()
             precioConsulta = pc; precioEvaluacion = pe
-            costo = pc.toString()
+            costo = if (prefill?.tipo == "Evaluación") pe.toString() else pc.toString()
+            // Resolver referencias del pre-llenado (→ Evaluación).
+            prefill?.let { pf ->
+                paciente = pf.pacienteId?.let { id ->
+                    pacientes.find { it.id == id } ?: pf.pacienteNombre?.let { RefNombre(id, it) }
+                }
+                terapeuta = pf.terapeutaId?.let { id -> terapeutas.find { it.id == id } }
+            }
         } catch (_: Exception) {}
     }
 
@@ -349,6 +377,11 @@ fun PantallaCrearCita(ctx: ContextoStaff, fechaInicial: String, onListo: () -> U
                         }
                         guardando = true
                         scope.launch {
+                            // Flujo → Evaluación: completar primero la consulta origen
+                            // (igual que handleEvalSave de la web), luego crear la cita.
+                            prefill?.citaOrigenId?.let { origenId ->
+                                runCatching { AgendaRepo.completar(origenId) }
+                            }
                             val terId = if (ctx.miTerapeutaId != null) ctx.miTerapeutaId else terapeuta?.id
                             // Especialidad: la elegida, o la del profesional si solo tiene una.
                             val espId = especialidad?.id
