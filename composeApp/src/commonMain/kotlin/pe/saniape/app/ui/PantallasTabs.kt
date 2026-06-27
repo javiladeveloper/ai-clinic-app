@@ -24,16 +24,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Tab Salud — muestra el tratamiento del paciente (reusa la lógica del portal). */
-@Composable
-fun PantallaSalud() {
-    PantallaSimple(
-        emoji = "💙",
-        titulo = "Mi salud",
-        texto = "Aquí verás tu tratamiento, progreso y documentos.",
-    )
-}
-
 /** Tab Más — perfil, ajustes y cerrar sesión. */
 @Composable
 fun PantallaMas(nombre: String?, onCerrarSesion: () -> Unit) {
@@ -61,23 +51,6 @@ fun PantallaMas(nombre: String?, onCerrarSesion: () -> Unit) {
                 Text("Cerrar sesión", color = RedDanger, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 Text("→", color = RedDanger, fontSize = 15.sp)
             }
-        }
-    }
-}
-
-@Composable
-private fun PantallaSimple(emoji: String, titulo: String, texto: String) {
-    Surface(color = Sand, modifier = Modifier.fillMaxSize()) {
-        Column(
-            Modifier.fillMaxSize().padding(28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(emoji, fontSize = 44.sp)
-            Spacer(Modifier.height(12.dp))
-            Text(titulo, color = Navy, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(8.dp))
-            Text(texto, color = Muted, fontSize = 14.sp, textAlign = TextAlign.Center)
         }
     }
 }
