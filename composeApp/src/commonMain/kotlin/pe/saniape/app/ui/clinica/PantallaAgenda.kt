@@ -65,9 +65,10 @@ fun PantallaAgenda(ctx: ContextoStaff) {
     var accionando by remember { mutableStateOf(false) }
     var mensaje by remember { mutableStateOf<String?>(null) }
 
-    // Diálogos
+    // Diálogos / sub-pantallas
     var completarCita by remember { mutableStateOf<CitaStaff?>(null) }    // modal completar (por tipo)
     var confirmarCita by remember { mutableStateOf<Pair<CitaStaff, String>?>(null) } // (cita, accion) cancelar/revertir
+    var creandoCita by remember { mutableStateOf(false) }                  // pantalla de nueva cita
 
     suspend fun recargar() {
         cargando = true
@@ -98,12 +99,32 @@ fun PantallaAgenda(ctx: ContextoStaff) {
         accionando = false
     }
 
+    // Pantalla de crear cita (solo si tiene permiso de citas).
+    if (creandoCita) {
+        PantallaCrearCita(
+            ctx = ctx, fechaInicial = fechaSel,
+            onListo = { creandoCita = false; scope.launch { recargar() } },
+            onCancelar = { creandoCita = false },
+        )
+        return
+    }
+
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            // Barra
-            Box(Modifier.fillMaxWidth().background(c.navyDark)
-                .padding(horizontal = Sania.dim.xl, vertical = Sania.dim.lg)) {
+            // Barra con botón "+ Nueva"
+            Row(
+                Modifier.fillMaxWidth().background(c.navyDark)
+                    .padding(horizontal = Sania.dim.xl, vertical = Sania.dim.lg),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
                 Text("Agenda", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
+                Box(
+                    Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+                        .background(c.sobreNavy.copy(alpha = 0.15f))
+                        .clickable { creandoCita = true }
+                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                ) { Text("+ Nueva", color = c.sobreNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
             }
 
             // Tira de días: desde 2 días atrás hasta +12 (igual que la web).

@@ -152,6 +152,101 @@ object AgendaRepo {
             EspecialidadRef(id, it.str("nombre") ?: "")
         }
     }
+
+    // ── Datos para el formulario de crear cita (lectura directa, RLS de staff) ──
+
+    /** Pacientes activos (no Inactivo) para el selector. */
+    suspend fun pacientesParaSelector(): List<RefNombre> {
+        val filas = Supabase.client.postgrest["pacientes"]
+            .select(Columns.list("id, nombre, estado")) {
+                filter { neq("estado", "Inactivo") }
+                order("nombre", Order.ASCENDING)
+                limit(500)
+            }
+            .decodeList<JsonObject>()
+        return filas.mapNotNull {
+            val id = it.str("id") ?: return@mapNotNull null
+            RefNombre(id, it.str("nombre") ?: "Paciente")
+        }
+    }
+
+    /** Terapeutas activos para el selector de profesional. */
+    suspend fun terapeutasActivos(): List<RefNombre> {
+        val filas = Supabase.client.postgrest["terapeutas"]
+            .select(Columns.list("id, nombre, estado")) {
+                filter { eq("estado", "Activo") }
+                order("nombre", Order.ASCENDING)
+            }
+            .decodeList<JsonObject>()
+        return filas.mapNotNull {
+            val id = it.str("id") ?: return@mapNotNull null
+            RefNombre(id, it.str("nombre") ?: "Profesional")
+        }
+    }
+
+    /** Tratamientos activos de un paciente (para tipo Sesión). */
+    suspend fun tratamientosActivos(pacienteId: String): List<TratamientoRef> {
+        val filas = Supabase.client.postgrest["tratamientos"]
+            .select(
+                Columns.raw("id, modalidad, terapeuta_id, procedimiento:procedimientos(nombre)")
+            ) {
+                filter { eq("paciente_id", pacienteId); eq("estado", "Activo") }
+            }
+            .decodeList<JsonObject>()
+        return filas.mapNotNull {
+            val id = it.str("id") ?: return@mapNotNull null
+            TratamientoRef(
+                id = id,
+                procedimiento = it.nested("procedimiento")?.str("nombre") ?: "Tratamiento",
+                modalidad = it.str("modalidad") ?: "",
+                terapeutaId = it.str("terapeuta_id"),
+            )
+        }
+    }
+
+    /** Precios por defecto (consulta/evaluación) de la configuración. */
+    suspend fun precios(): Pair<Double, Double> {
+        val filas = Supabase.client.postgrest["configuracion"]
+            .select(Columns.list("clave, valor")) {
+                filter { isIn("clave", listOf("precio_consulta", "precio_evaluacion")) }
+            }
+            .decodeList<JsonObject>()
+        var consulta = 0.0; var evaluacion = 40.0
+        for (o in filas) {
+            when (o.str("clave")) {
+                "precio_consulta" -> consulta = o.str("valor")?.toDoubleOrNull() ?: 0.0
+                "precio_evaluacion" -> evaluacion = o.str("valor")?.toDoubleOrNull() ?: 40.0
+            }
+        }
+        return consulta to evaluacion
+    }
+
+    /** Crea una cita vía endpoint (maneja sesión vinculada + notificación). */
+    suspend fun crearCita(
+        pacienteId: String, tipo: String, fecha: String, hora: String,
+        terapeutaId: String?, tratamientoId: String?, costo: Double, duracion: Int, notas: String?,
+    ): Boolean {
+        val tk = token() ?: return false
+        val cuerpo = buildJsonObject {
+            put("pacienteId", pacienteId)
+            put("tipo", tipo)
+            put("fecha", fecha)
+            put("hora", hora)
+            if (terapeutaId != null) put("terapeutaId", terapeutaId)
+            if (tratamientoId != null) put("tratamientoId", tratamientoId)
+            put("costo", costo)
+            put("duracion", duracion)
+            if (!notas.isNullOrBlank()) put("notas", notas)
+        }
+        val resp = http.post("${Supabase.SITE_URL}/api/staff/cita/crear") {
+            header("Authorization", "Bearer $tk")
+            contentType(ContentType.Application.Json)
+            setBody(cuerpo.toString())
+        }
+        return resp.status == HttpStatusCode.OK
+    }
 }
 
 data class EspecialidadRef(val id: String, val nombre: String)
+data class RefNombre(val id: String, val nombre: String)
+data class TratamientoRef(val id: String, val procedimiento: String, val modalidad: String, val terapeutaId: String?)
