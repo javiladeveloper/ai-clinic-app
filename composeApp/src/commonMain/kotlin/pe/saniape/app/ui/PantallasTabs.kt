@@ -16,12 +16,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -59,6 +61,7 @@ fun PantallaMas(nombre: String?, onCerrarSesion: () -> Unit) {
     var guardando by remember { mutableStateOf(false) }
     var mensaje by remember { mutableStateOf<String?>(null) }
     var mensajeOk by remember { mutableStateOf(false) }
+    var confirmarDni by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         try {
@@ -72,6 +75,25 @@ fun PantallaMas(nombre: String?, onCerrarSesion: () -> Unit) {
 
     // El DNI ya existe (no editable) si el perfil cargado lo tiene.
     val dniBloqueado = !perfil?.dni.isNullOrBlank()
+
+    // Guardado real (se llama directo si no hay DNI nuevo, o tras confirmar el popup).
+    fun ejecutarGuardado() {
+        guardando = true
+        scope.launch {
+            val r = PerfilRepo.guardar(
+                telefono = telefono,
+                dni = if (!dniBloqueado && dni.isNotBlank()) dni else null,
+            )
+            guardando = false
+            when (r) {
+                is ResultadoPerfil.Ok -> {
+                    mensaje = "Datos guardados"; mensajeOk = true
+                    perfil = PerfilRepo.cargar() // refleja DNI bloqueado si recién se seteó
+                }
+                is ResultadoPerfil.Error -> { mensaje = r.mensaje; mensajeOk = false }
+            }
+        }
+    }
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -156,25 +178,12 @@ fun PantallaMas(nombre: String?, onCerrarSesion: () -> Unit) {
                             if (guardando) return@Button
                             mensaje = null
                             if (telefono.isBlank()) { mensaje = "Indica tu teléfono"; mensajeOk = false; return@Button }
-                            if (!dniBloqueado && dni.isNotBlank() && dni.length != 8) {
+                            val seteaDni = !dniBloqueado && dni.isNotBlank()
+                            if (seteaDni && dni.length != 8) {
                                 mensaje = "El DNI debe tener 8 dígitos"; mensajeOk = false; return@Button
                             }
-                            guardando = true
-                            scope.launch {
-                                val r = PerfilRepo.guardar(
-                                    telefono = telefono,
-                                    dni = if (!dniBloqueado && dni.isNotBlank()) dni else null,
-                                )
-                                guardando = false
-                                when (r) {
-                                    is ResultadoPerfil.Ok -> {
-                                        mensaje = "Datos guardados"; mensajeOk = true
-                                        // Recargar para reflejar DNI bloqueado si se acaba de setear.
-                                        perfil = PerfilRepo.cargar()
-                                    }
-                                    is ResultadoPerfil.Error -> { mensaje = r.mensaje; mensajeOk = false }
-                                }
-                            }
+                            // Si registra DNI por primera vez → confirmar (es irreversible).
+                            if (seteaDni) confirmarDni = true else ejecutarGuardado()
                         },
                         enabled = !guardando,
                         shape = RoundedCornerShape(Sania.shape.md.dp),
@@ -204,6 +213,32 @@ fun PantallaMas(nombre: String?, onCerrarSesion: () -> Unit) {
                 }
             }
         }
+    }
+
+    // Popup de confirmación del DNI (irreversible).
+    if (confirmarDni) {
+        AlertDialog(
+            onDismissRequest = { confirmarDni = false },
+            title = { Text("Confirma tu DNI") },
+            text = {
+                Text(
+                    "Vas a registrar el DNI $dni. Una vez guardado, NO se podrá cambiar. " +
+                        "¿Es correcto?",
+                    color = c.texto, fontSize = Sania.txt.cuerpo,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmarDni = false; ejecutarGuardado() }) {
+                    Text("Sí, es correcto", color = c.navy, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmarDni = false }) {
+                    Text("Revisar", color = c.textoSuave)
+                }
+            },
+            containerColor = c.superficie,
+        )
     }
 }
 

@@ -74,6 +74,8 @@ fun PantallaFormularioReserva(clinica: ClinicaDir, onAtras: () -> Unit) {
     var hora by remember { mutableStateOf("") }        // HH:mm
     var motivo by remember { mutableStateOf("") }
     var profesional by remember { mutableStateOf<ProfReserva?>(null) }
+    // Si el paciente ya tiene DNI registrado, viene prellenado y bloqueado.
+    var dniFijo by remember { mutableStateOf(false) }
 
     var mostrarFecha by remember { mutableStateOf(false) }
     var mostrarHora by remember { mutableStateOf(false) }
@@ -84,6 +86,12 @@ fun PantallaFormularioReserva(clinica: ClinicaDir, onAtras: () -> Unit) {
 
     androidx.compose.runtime.LaunchedEffect(clinica.slug) {
         try { info = ReservaRepo.infoClinica(clinica.slug) } catch (_: Exception) {}
+        // Prepoblar DNI y teléfono con lo que ya tenemos del perfil del paciente.
+        try {
+            val p = pe.saniape.app.data.PerfilRepo.cargar()
+            if (!p?.dni.isNullOrBlank()) { dni = p!!.dni!!; dniFijo = true }
+            if (!p?.telefono.isNullOrBlank()) telefono = p!!.telefono!!
+        } catch (_: Exception) {}
         cargando = false
     }
 
@@ -181,7 +189,25 @@ fun PantallaFormularioReserva(clinica: ClinicaDir, onAtras: () -> Unit) {
                 // HORA (picker nativo)
                 CampoSelector("Hora", if (hora.isBlank()) "Elegir hora" else hora) { mostrarHora = true }
 
-                Campo("DNI", dni, { dni = it.filter { ch -> ch.isDigit() }.take(8) }, KeyboardType.Number, "12345678")
+                if (dniFijo) {
+                    // DNI ya registrado: fijo (no se cambia desde la reserva).
+                    Column(Modifier.fillMaxWidth().padding(bottom = Sania.dim.sm)) {
+                        Text("DNI", color = c.textoSuave, fontSize = Sania.txt.pequeno, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(4.dp))
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .padding(horizontal = 14.dp, vertical = 14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(dni, color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
+                            Text("🔒", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                        }
+                    }
+                } else {
+                    Campo("DNI", dni, { dni = it.filter { ch -> ch.isDigit() }.take(8) }, KeyboardType.Number, "12345678")
+                }
                 Campo("Teléfono", telefono, { telefono = it }, KeyboardType.Phone, "999 999 999")
                 Campo("Motivo (opcional)", motivo, { motivo = it }, KeyboardType.Text, "¿Qué te trae?")
 
