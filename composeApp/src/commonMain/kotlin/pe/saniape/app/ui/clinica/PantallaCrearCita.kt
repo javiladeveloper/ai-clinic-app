@@ -160,7 +160,12 @@ fun PantallaCrearCita(
                 paciente = pf.pacienteId?.let { id ->
                     pacientes.find { it.id == id } ?: pf.pacienteNombre?.let { RefNombre(id, it) }
                 }
-                terapeuta = pf.terapeutaId?.let { id -> terapeutas.find { it.id == id } }
+                val ter = pf.terapeutaId?.let { id -> terapeutas.find { it.id == id } }
+                terapeuta = ter
+                // Auto-rellenar la especialidad del profesional prefijado (si tiene una sola).
+                ter?.especialidadIds?.singleOrNull()?.let { espId ->
+                    especialidad = especialidadesClinica.find { it.id == espId }
+                }
             }
         } catch (_: Exception) {}
     }
@@ -332,7 +337,17 @@ fun PantallaCrearCita(
                 } else {
                     SelectorLista(
                         items = terapeutasFiltrados, elegido = terapeuta, etiqueta = { it.nombre },
-                        onElegir = { terapeuta = it }, placeholder = "Sin asignar",
+                        onElegir = { t ->
+                            terapeuta = t
+                            // Al elegir profesional, auto-rellenar su especialidad si tiene UNA sola
+                            // (igual que la web). Así no queda en "Todas" cuando ya hay profesional.
+                            if (especialidad == null) {
+                                t.especialidadIds.singleOrNull()?.let { espId ->
+                                    especialidad = especialidadesClinica.find { it.id == espId }
+                                }
+                            }
+                        },
+                        placeholder = "Sin asignar",
                     )
                 }
 
