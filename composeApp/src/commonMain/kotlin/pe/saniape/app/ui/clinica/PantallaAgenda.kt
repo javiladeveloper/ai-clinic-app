@@ -45,6 +45,7 @@ import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.data.staff.AgendaRepo
 import pe.saniape.app.data.staff.CitaStaff
 import pe.saniape.app.data.staff.ContextoStaff
+import pe.saniape.app.data.staff.EspecialidadRef
 import pe.saniape.app.ui.theme.Sania
 
 /**
@@ -60,8 +61,13 @@ fun PantallaAgenda(ctx: ContextoStaff) {
     var fechaSel by remember { mutableStateOf(hoy) }
     var cargando by remember { mutableStateOf(true) }
     var citas by remember { mutableStateOf<List<CitaStaff>>(emptyList()) }
+    var especialidades by remember { mutableStateOf<List<EspecialidadRef>>(emptyList()) }
     var accionando by remember { mutableStateOf(false) }
     var mensaje by remember { mutableStateOf<String?>(null) }
+
+    // Diálogos
+    var completarCita by remember { mutableStateOf<CitaStaff?>(null) }    // modal completar (por tipo)
+    var confirmarCita by remember { mutableStateOf<Pair<CitaStaff, String>?>(null) } // (cita, accion) cancelar/revertir
 
     suspend fun recargar() {
         cargando = true
@@ -71,6 +77,26 @@ fun PantallaAgenda(ctx: ContextoStaff) {
     }
 
     LaunchedEffect(fechaSel) { recargar() }
+    LaunchedEffect(Unit) {
+        try { especialidades = AgendaRepo.especialidades() } catch (_: Exception) {}
+    }
+
+    suspend fun ejecutar(
+        accion: String, cita: CitaStaff,
+        observaciones: String? = null, diagnostico: String? = null, derivarEspId: String? = null,
+    ) {
+        accionando = true; mensaje = null
+        val ok = when (accion) {
+            "confirmar" -> AgendaRepo.confirmar(cita.id)
+            "completar" -> AgendaRepo.completar(cita.id, observaciones, diagnostico, derivarEspId)
+            "revertir" -> AgendaRepo.revertir(cita.id)
+            "cancelar" -> AgendaRepo.cancelar(cita.id)
+            else -> false
+        }
+        mensaje = if (ok) "✓ Listo" else "⚠ No se pudo, intenta de nuevo"
+        recargar()
+        accionando = false
+    }
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -80,13 +106,13 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                 Text("Agenda", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
             }
 
-            // Tira de días (7 días desde hoy)
+            // Tira de días: desde 2 días atrás hasta +12 (igual que la web).
             LazyRow(
                 Modifier.fillMaxWidth().padding(vertical = Sania.dim.sm),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Sania.dim.lg),
             ) {
-                items(diasDesde(hoy, 14)) { dia ->
+                items(diasDesde(hoy, -2, 15)) { dia ->
                     val activo = dia.iso == fechaSel
                     Column(
                         Modifier.size(width = 52.dp, height = 64.dp)
@@ -126,18 +152,13 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                             accionando = accionando,
                             onAccion = { accion ->
                                 if (accionando) return@TarjetaCitaStaff
-                                accionando = true; mensaje = null
-                                scope.launch {
-                                    val ok = when (accion) {
-                                        "confirmar" -> AgendaRepo.confirmar(cita.id)
-                                        "completar" -> AgendaRepo.completar(cita.id)
-                                        "revertir" -> AgendaRepo.revertir(cita.id)
-                                        "cancelar" -> AgendaRepo.cancelar(cita.id)
-                                        else -> false
-                                    }
-                                    mensaje = if (ok) "✓ Listo" else "⚠ No se pudo, intenta de nuevo"
-                                    recargar()
-                                    accionando = false
+                                when (accion) {
+                                    "confirmar" -> scope.launch { ejecutar("confirmar", cita) }
+                                    "completar" ->
+                                        if (cita.tipo == "Evaluación" || cita.tipo == "Sesión") completarCita = cita
+                                        else scope.launch { ejecutar("completar", cita) }
+                                    "cancelar" -> confirmarCita = cita to "cancelar"
+                                    "revertir" -> confirmarCita = cita to "revertir"
                                 }
                             },
                         )
@@ -145,6 +166,52 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                 }
             }
         }
+    }
+
+    // ── Modal: completar Evaluación/Sesión ──
+    completarCita?.let { cita ->
+        ModalCompletar(
+            cita = cita,
+            especialidades = especialidades,
+            onCancelar = { completarCita = null },
+            onConfirmar = { observaciones, diagnostico, derivarEspId ->
+                completarCita = null
+                scope.launch { ejecutar("completar", cita, observaciones, diagnostico, derivarEspId) }
+            },
+        )
+    }
+
+    // ── Confirmación: cancelar / revertir ──
+    confirmarCita?.let { (cita, accion) ->
+        val esCancelar = accion == "cancelar"
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmarCita = null },
+            title = { Text(if (esCancelar) "¿Cancelar esta cita?" else "¿Revertir esta cita?") },
+            text = {
+                Text(
+                    if (esCancelar) {
+                        if (cita.tipo == "Sesión") "Se eliminará la sesión vinculada."
+                        else "La cita quedará como cancelada."
+                    } else "Volverá a confirmada y se deshará el cobro/registro asociado.",
+                    color = c.texto, fontSize = Sania.txt.cuerpo,
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    confirmarCita = null
+                    scope.launch { ejecutar(accion, cita) }
+                }) {
+                    Text(if (esCancelar) "Sí, cancelar" else "Sí, revertir",
+                        color = if (esCancelar) c.error else c.pend, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmarCita = null }) {
+                    Text("No", color = c.textoSuave)
+                }
+            },
+            containerColor = c.superficie,
+        )
     }
 }
 
@@ -217,6 +284,86 @@ private fun accionesPara(estado: String): List<Triple<String, String, Color>> {
     }
 }
 
+/**
+ * Modal de completar según tipo:
+ *  - Evaluación: diagnóstico + opción de derivar a especialidad.
+ *  - Sesión: observaciones (procedimientos realizados).
+ */
+@Composable
+private fun ModalCompletar(
+    cita: CitaStaff,
+    especialidades: List<EspecialidadRef>,
+    onCancelar: () -> Unit,
+    onConfirmar: (observaciones: String?, diagnostico: String?, derivarEspId: String?) -> Unit,
+) {
+    val c = Sania.colors
+    val esEvaluacion = cita.tipo == "Evaluación"
+    var texto by remember { mutableStateOf("") }
+    var derivar by remember { mutableStateOf(false) }
+    var espElegida by remember { mutableStateOf<EspecialidadRef?>(null) }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onCancelar,
+        title = { Text(if (esEvaluacion) "✓ Completar evaluación" else "✓ Completar sesión") },
+        text = {
+            Column {
+                androidx.compose.material3.OutlinedTextField(
+                    value = texto,
+                    onValueChange = { texto = it },
+                    label = { Text(if (esEvaluacion) "Diagnóstico" else "Procedimientos realizados") },
+                    placeholder = {
+                        Text(
+                            if (esEvaluacion) "Ej. Lumbalgia mecánica…" else "¿Qué se hizo en la sesión?",
+                            color = c.textoSuave,
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                )
+                if (esEvaluacion && especialidades.size > 1) {
+                    Spacer(Modifier.height(Sania.dim.md))
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { derivar = !derivar }) {
+                        Text(if (derivar) "☑" else "☐", fontSize = 18.sp, color = c.navy)
+                        Spacer(Modifier.width(6.dp))
+                        Text("↗ Derivar a otra especialidad", color = c.texto, fontSize = Sania.txt.cuerpo)
+                    }
+                    if (derivar) {
+                        Spacer(Modifier.height(Sania.dim.sm))
+                        especialidades.forEach { esp ->
+                            val activa = espElegida?.id == esp.id
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                                    .clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                    .background(if (activa) c.chipBg else c.superficie)
+                                    .border(1.dp, if (activa) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                    .clickable { espElegida = if (activa) null else esp }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                            ) {
+                                Text(esp.nombre, color = if (activa) c.navy else c.texto, fontSize = Sania.txt.pequeno,
+                                    fontWeight = if (activa) FontWeight.Bold else FontWeight.Normal)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = {
+                onConfirmar(
+                    texto.trim().ifBlank { null },
+                    if (esEvaluacion) texto.trim().ifBlank { null } else null,
+                    if (esEvaluacion && derivar) espElegida?.id else null,
+                )
+            }) { Text("Guardar y completar", color = c.navy, fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) }
+        },
+        containerColor = c.superficie,
+    )
+}
+
 // ── Helpers de fecha ──
 private data class DiaTira(val iso: String, val diaSemana: String, val diaMes: String)
 
@@ -228,9 +375,10 @@ private fun hoyIso(): String {
     return "${d.year}-${d.monthNumber.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}"
 }
 
-private fun diasDesde(isoInicio: String, n: Int): List<DiaTira> {
+private fun diasDesde(isoInicio: String, offset: Int, n: Int): List<DiaTira> {
     val partes = isoInicio.split("-")
     var fecha = kotlinx.datetime.LocalDate(partes[0].toInt(), partes[1].toInt(), partes[2].toInt())
+        .plus(DatePeriod(days = offset))
     val lista = mutableListOf<DiaTira>()
     repeat(n) {
         lista.add(DiaTira(

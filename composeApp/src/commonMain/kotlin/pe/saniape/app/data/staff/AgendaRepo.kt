@@ -105,13 +105,20 @@ object AgendaRepo {
     } catch (_: Exception) { false }
 
     // ── Acciones complejas vía endpoints (kardex/comisión/contador) ──
-    private suspend fun postAccion(ruta: String, citaId: String, observaciones: String? = null): Boolean {
+    suspend fun completar(
+        citaId: String,
+        observaciones: String? = null,
+        diagnostico: String? = null,
+        derivarEspecialidadId: String? = null,
+    ): Boolean {
         val tk = token() ?: return false
         val cuerpo = buildJsonObject {
             put("citaId", citaId)
             if (observaciones != null) put("observaciones", observaciones)
+            if (!diagnostico.isNullOrBlank()) put("diagnostico", diagnostico)
+            if (!derivarEspecialidadId.isNullOrBlank()) put("derivarEspecialidadId", derivarEspecialidadId)
         }
-        val resp = http.post("${Supabase.SITE_URL}/api/staff/cita/$ruta") {
+        val resp = http.post("${Supabase.SITE_URL}/api/staff/cita/completar") {
             header("Authorization", "Bearer $tk")
             contentType(ContentType.Application.Json)
             setBody(cuerpo.toString())
@@ -119,7 +126,32 @@ object AgendaRepo {
         return resp.status == HttpStatusCode.OK
     }
 
-    suspend fun completar(citaId: String, observaciones: String? = null) = postAccion("completar", citaId, observaciones)
-    suspend fun revertir(citaId: String) = postAccion("revertir", citaId)
-    suspend fun cancelar(citaId: String) = postAccion("cancelar", citaId)
+    private suspend fun postSimple(ruta: String, citaId: String): Boolean {
+        val tk = token() ?: return false
+        val resp = http.post("${Supabase.SITE_URL}/api/staff/cita/$ruta") {
+            header("Authorization", "Bearer $tk")
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject { put("citaId", citaId) }.toString())
+        }
+        return resp.status == HttpStatusCode.OK
+    }
+
+    suspend fun revertir(citaId: String) = postSimple("revertir", citaId)
+    suspend fun cancelar(citaId: String) = postSimple("cancelar", citaId)
+
+    /** Especialidades activas de la clínica (para el selector de derivación). */
+    suspend fun especialidades(): List<EspecialidadRef> {
+        val filas = Supabase.client.postgrest["especialidades"]
+            .select(Columns.list("id, nombre")) {
+                filter { eq("estado", "Activa") }
+                order("nombre", Order.ASCENDING)
+            }
+            .decodeList<JsonObject>()
+        return filas.mapNotNull {
+            val id = it.str("id") ?: return@mapNotNull null
+            EspecialidadRef(id, it.str("nombre") ?: "")
+        }
+    }
 }
+
+data class EspecialidadRef(val id: String, val nombre: String)
