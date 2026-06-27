@@ -33,14 +33,33 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     val hoy: String = hoyIso()
     var fechaSel by mutableStateOf(hoy); private set
     var cargando by mutableStateOf(true); private set
-    var citas by mutableStateOf<List<CitaStaff>>(emptyList()); private set
+    var citas by mutableStateOf<List<CitaStaff>>(emptyList()); private set   // crudas del día
     var especialidades by mutableStateOf<List<EspecialidadRef>>(emptyList()); private set
     var banners by mutableStateOf<BannersAgenda?>(null); private set
     var accionando by mutableStateOf(false); private set
     var mensaje by mutableStateOf<String?>(null); private set
 
+    // ── Filtros ──
+    var busqueda by mutableStateOf(""); private set
+    var filtroEstado by mutableStateOf<String?>(null); private set
+    var filtroTipo by mutableStateOf<String?>(null); private set
+
     val miTerapeutaId: String? get() = ctx.miTerapeutaId
     val esGestor: Boolean get() = ctx.esGestor
+
+    /** Citas tras aplicar los filtros (lo que la pantalla pinta). */
+    val citasFiltradas: List<CitaStaff>
+        get() = citas.filter { c ->
+            (busqueda.isBlank() ||
+                (c.pacienteNombre?.contains(busqueda, ignoreCase = true) == true) ||
+                (c.procedimiento?.contains(busqueda, ignoreCase = true) == true)) &&
+                (filtroEstado == null || c.estado == filtroEstado) &&
+                (filtroTipo == null || c.tipo == filtroTipo)
+        }
+
+    fun cambiarBusqueda(v: String) { busqueda = v }
+    fun cambiarFiltroEstado(v: String?) { filtroEstado = v }
+    fun cambiarFiltroTipo(v: String?) { filtroTipo = v }
 
     init {
         cargarDia(fechaSel)

@@ -33,6 +33,7 @@ import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.ui.clinica.agenda.AccionCita
 import pe.saniape.app.ui.clinica.agenda.AgendaViewModel
 import pe.saniape.app.ui.clinica.agenda.componentes.AccionTarjeta
+import pe.saniape.app.ui.clinica.agenda.componentes.FiltrosAgenda
 import pe.saniape.app.ui.clinica.agenda.componentes.TarjetaCita
 import pe.saniape.app.ui.clinica.agenda.componentes.TiraDias
 import pe.saniape.app.ui.clinica.agenda.modales.ConfirmacionAccion
@@ -88,6 +89,12 @@ fun PantallaAgenda(ctx: ContextoStaff) {
 
             TiraDias(hoy = vm.hoy, seleccionado = vm.fechaSel, onSeleccionar = { vm.seleccionarDia(it) })
 
+            FiltrosAgenda(
+                busqueda = vm.busqueda, onBusqueda = { vm.cambiarBusqueda(it) },
+                filtroEstado = vm.filtroEstado, onEstado = { vm.cambiarFiltroEstado(it) },
+                filtroTipo = vm.filtroTipo, onTipo = { vm.cambiarFiltroTipo(it) },
+            )
+
             vm.mensaje?.let {
                 Text(it, color = c.navy, fontSize = Sania.txt.pequeno,
                     modifier = Modifier.padding(horizontal = Sania.dim.lg, vertical = 4.dp))
@@ -121,12 +128,16 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                             CircularProgressIndicator(color = c.navy)
                         }
                     }
-                    vm.citas.isEmpty() -> item {
+                    vm.citasFiltradas.isEmpty() -> item {
                         Box(Modifier.fillMaxWidth().padding(Sania.dim.xxl), Alignment.Center) {
-                            Text("No hay citas para este día.", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                            Text(
+                                if (vm.citas.isEmpty()) "No hay citas para este día."
+                                else "No hay citas con esos filtros.",
+                                color = c.textoSuave, fontSize = Sania.txt.cuerpo,
+                            )
                         }
                     }
-                    else -> items(vm.citas, key = { it.id }) { cita ->
+                    else -> items(vm.citasFiltradas, key = { it.id }) { cita ->
                         Box(Modifier.padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm / 2)) {
                             TarjetaCita(
                                 cita = cita,
