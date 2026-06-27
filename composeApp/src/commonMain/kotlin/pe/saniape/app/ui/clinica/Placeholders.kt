@@ -22,9 +22,6 @@ import pe.saniape.app.ui.theme.Sania
 // siguientes pasos (Agenda, Pacientes).
 
 @Composable
-fun PantallaAgenda(ctx: ContextoStaff) = PlaceholderClinica("📅", "Agenda", "Tus citas del día aparecerán aquí.")
-
-@Composable
 fun PantallaPacientesStaff(ctx: ContextoStaff) =
     PlaceholderClinica("👥", "Pacientes", "Tu lista de pacientes aparecerá aquí.")
 
