@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Manifest SOLO de debug: habilita tráfico en claro hacia el Next.js local
+  (vía network_security_config). Se fusiona con el manifest principal solo en
+  builds debug; release no lo incluye.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:networkSecurityConfig="@xml/network_security_config" />
+
+</manifest>

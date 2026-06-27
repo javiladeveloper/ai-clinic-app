@@ -75,9 +75,18 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    buildFeatures {
+        buildConfig = true
+    }
     buildTypes {
+        getByName("debug") {
+            // En debug, los endpoints /api apuntan al Next.js local (npm run dev).
+            // 10.0.2.2 = localhost del PC visto desde el emulador.
+            buildConfigField("String", "SITE_URL", "\"http://10.0.2.2:3000\"")
+        }
         getByName("release") {
             isMinifyEnabled = false
+            buildConfigField("String", "SITE_URL", "\"https://www.saniape.com\"")
         }
     }
     compileOptions {

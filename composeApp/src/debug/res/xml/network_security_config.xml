@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Solo en builds de DEBUG: permite tráfico HTTP en claro hacia el Next.js local
+  (10.0.2.2 = localhost del PC visto desde el emulador). Producción sigue siendo
+  HTTPS; este archivo no se incluye en release.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

@@ -16,7 +16,9 @@ object Supabase {
 
     // Base del sitio web (para llamar a los endpoints /api que reutilizan la lógica
     // segura: reservar con verificación de DNI, rate-limit, etc.).
-    const val SITE_URL = "https://www.saniape.com"
+    // En debug apunta al Next.js local (10.0.2.2:3000); en release a producción.
+    // Lo resuelve cada plataforma vía BuildConfig (ver siteUrlPlataforma).
+    val SITE_URL: String get() = siteUrlPlataforma()
 
     // anon key (pública) — idéntica a la de la web. RLS protege los datos.
     const val ANON_KEY =
@@ -32,3 +34,9 @@ object Supabase {
         }
     }
 }
+
+/**
+ * Base del sitio web según la plataforma/variante de build.
+ * Android: debug → http://10.0.2.2:3000 (Next.js local), release → producción.
+ */
+expect fun siteUrlPlataforma(): String
