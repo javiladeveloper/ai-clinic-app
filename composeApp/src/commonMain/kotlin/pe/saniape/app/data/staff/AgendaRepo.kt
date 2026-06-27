@@ -186,17 +186,24 @@ object AgendaRepo {
         }
     }
 
-    /** Terapeutas activos para el selector de profesional. */
-    suspend fun terapeutasActivos(): List<RefNombre> {
+    /** Terapeutas activos con sus especialidades (para filtrar por especialidad). */
+    suspend fun terapeutasActivos(): List<TerapeutaRef> {
         val filas = Supabase.client.postgrest["terapeutas"]
-            .select(Columns.list("id, nombre, estado")) {
+            .select(Columns.raw(
+                "id, nombre, estado, " +
+                    "especialidades:terapeuta_especialidades(especialidad:especialidades(id, nombre))"
+            )) {
                 filter { eq("estado", "Activo") }
                 order("nombre", Order.ASCENDING)
             }
             .decodeList<JsonObject>()
-        return filas.mapNotNull {
-            val id = it.str("id") ?: return@mapNotNull null
-            RefNombre(id, it.str("nombre") ?: "Profesional")
+        return filas.mapNotNull { o ->
+            val id = o.str("id") ?: return@mapNotNull null
+            val espIds = (o["especialidades"] as? kotlinx.serialization.json.JsonArray ?: emptyList())
+                .mapNotNull { rel ->
+                    ((rel as? JsonObject)?.get("especialidad") as? JsonObject)?.str("id")
+                }
+            TerapeutaRef(id, o.str("nombre") ?: "Profesional", espIds)
         }
     }
 
@@ -238,6 +245,38 @@ object AgendaRepo {
     }
 
     /**
+     * Disponibilidad de TODOS los profesionales (activos) para una fecha/hora, para el
+     * modal "ver horarios". Reusa DisponibilidadRepo (misma regla que la web). Si se pasa
+     * [especialidadIds] (filtro), solo evalúa los profesionales de esa especialidad.
+     */
+    suspend fun disponibilidadProfesionales(
+        fecha: String, hora: String, duracion: Int,
+        soloTerapeutaIds: List<String>? = null,
+    ): List<EstadoProfesional> {
+        val activos = terapeutasActivos()
+        val filtrados = if (soloTerapeutaIds != null) activos.filter { it.id in soloTerapeutaIds } else activos
+        return filtrados.map { ter ->
+            val d = runCatching {
+                DisponibilidadRepo.verificar(ter.id, fecha, hora, duracion)
+            }.getOrNull()
+            val libre = d?.disponible == true && d.esAdvertencia == false
+            EstadoProfesional(
+                terapeutaId = ter.id,
+                nombre = ter.nombre,
+                libre = libre,
+                etiqueta = when {
+                    d == null -> "—"
+                    !d.disponible -> d.motivo ?: "No disponible"
+                    d.motivo != null -> d.motivo
+                    else -> "Libre a las ${hora.take(5)}"
+                },
+                rangos = "",
+                citasDia = "",
+            )
+        }
+    }
+
+    /**
      * Pasa una Consulta a Evaluación (igual que la web): completa la consulta origen
      * (si está Pendiente/Confirmada) y crea la cita de Evaluación con sus datos.
      */
@@ -261,6 +300,7 @@ object AgendaRepo {
     suspend fun crearCita(
         pacienteId: String, tipo: String, fecha: String, hora: String,
         terapeutaId: String?, tratamientoId: String?, costo: Double, duracion: Int, notas: String?,
+        especialidadId: String? = null, diagnostico: String? = null,
     ): Boolean {
         val tk = token() ?: return false
         val cuerpo = buildJsonObject {
@@ -270,6 +310,8 @@ object AgendaRepo {
             put("hora", hora)
             if (terapeutaId != null) put("terapeutaId", terapeutaId)
             if (tratamientoId != null) put("tratamientoId", tratamientoId)
+            if (especialidadId != null) put("especialidadId", especialidadId)
+            if (!diagnostico.isNullOrBlank()) put("diagnostico", diagnostico)
             put("costo", costo)
             put("duracion", duracion)
             if (!notas.isNullOrBlank()) put("notas", notas)
@@ -285,6 +327,8 @@ object AgendaRepo {
 
 data class EspecialidadRef(val id: String, val nombre: String)
 data class RefNombre(val id: String, val nombre: String)
+/** Terapeuta con sus especialidades (para filtrar por especialidad en el form). */
+data class TerapeutaRef(val id: String, val nombre: String, val especialidadIds: List<String>)
 data class TratamientoRef(val id: String, val procedimiento: String, val modalidad: String, val terapeutaId: String?)
 
 /** Una derivación pendiente (un médico derivó a un paciente; recepción decide). */

@@ -50,7 +50,10 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.data.staff.AgendaRepo
 import pe.saniape.app.data.staff.ContextoStaff
+import pe.saniape.app.data.staff.EspecialidadRef
+import pe.saniape.app.data.staff.EstadoProfesional
 import pe.saniape.app.data.staff.RefNombre
+import pe.saniape.app.data.staff.TerapeutaRef
 import pe.saniape.app.data.staff.TratamientoRef
 import pe.saniape.app.ui.theme.Sania
 
@@ -68,7 +71,8 @@ fun PantallaCrearCita(ctx: ContextoStaff, fechaInicial: String, onListo: () -> U
     val scope = rememberCoroutineScope()
 
     var pacientes by remember { mutableStateOf<List<RefNombre>>(emptyList()) }
-    var terapeutas by remember { mutableStateOf<List<RefNombre>>(emptyList()) }
+    var terapeutas by remember { mutableStateOf<List<TerapeutaRef>>(emptyList()) }
+    var especialidadesClinica by remember { mutableStateOf<List<EspecialidadRef>>(emptyList()) }
     var tratamientos by remember { mutableStateOf<List<TratamientoRef>>(emptyList()) }
     var precioConsulta by remember { mutableStateOf(0.0) }
     var precioEvaluacion by remember { mutableStateOf(40.0) }
@@ -76,7 +80,8 @@ fun PantallaCrearCita(ctx: ContextoStaff, fechaInicial: String, onListo: () -> U
     var tipo by remember { mutableStateOf("Consulta") }
     var paciente by remember { mutableStateOf<RefNombre?>(null) }
     var tratamiento by remember { mutableStateOf<TratamientoRef?>(null) }
-    var terapeuta by remember { mutableStateOf<RefNombre?>(null) }
+    var terapeuta by remember { mutableStateOf<TerapeutaRef?>(null) }
+    var especialidad by remember { mutableStateOf<EspecialidadRef?>(null) }
     var fecha by remember { mutableStateOf(fechaInicial) }
     var hora by remember { mutableStateOf("09:00") }
     var costo by remember { mutableStateOf("0") }
@@ -86,8 +91,16 @@ fun PantallaCrearCita(ctx: ContextoStaff, fechaInicial: String, onListo: () -> U
 
     var mostrarFecha by remember { mutableStateOf(false) }
     var mostrarHora by remember { mutableStateOf(false) }
+    var mostrarHorarios by remember { mutableStateOf(false) }    // modal "ver horarios" de todos
     var guardando by remember { mutableStateOf(false) }
     var mensaje by remember { mutableStateOf<String?>(null) }
+
+    // Clínica multi-especialidad → mostrar selector que filtra los profesionales.
+    val multiEspecialidad = especialidadesClinica.size > 1
+    // Profesionales filtrados por la especialidad elegida (o todos si no se eligió).
+    val terapeutasFiltrados = especialidad?.let { e ->
+        terapeutas.filter { e.id in it.especialidadIds }
+    } ?: terapeutas
 
     // Disponibilidad en vivo (igual que la web): bloquea si no disponible (futura),
     // advierte si hay solapamiento. Se recalcula al cambiar profesional/fecha/hora.
@@ -107,6 +120,7 @@ fun PantallaCrearCita(ctx: ContextoStaff, fechaInicial: String, onListo: () -> U
         try {
             pacientes = AgendaRepo.pacientesParaSelector()
             terapeutas = AgendaRepo.terapeutasActivos()
+            especialidadesClinica = runCatching { AgendaRepo.especialidades() }.getOrDefault(emptyList())
             val (pc, pe) = AgendaRepo.precios()
             precioConsulta = pc; precioEvaluacion = pe
             costo = pc.toString()
@@ -158,6 +172,17 @@ fun PantallaCrearCita(ctx: ContextoStaff, fechaInicial: String, onListo: () -> U
             },
             dismissButton = { TextButton(onClick = { mostrarHora = false }) { Text("Cancelar", color = c.textoSuave) } },
         ) { Box(Modifier.fillMaxWidth().padding(Sania.dim.lg), Alignment.Center) { TimePicker(state = estado) } }
+    }
+
+    // Modal "ver horarios": disponibilidad de todos los profesionales para fecha/hora.
+    if (mostrarHorarios) {
+        ModalVerHorarios(
+            fecha = fecha, hora = hora,
+            duracion = if (tipo == "Consulta") 15 else 60,
+            soloTerapeutaIds = especialidad?.let { e -> terapeutas.filter { e.id in it.especialidadIds }.map { it.id } },
+            onElegir = { id -> terapeuta = terapeutas.find { it.id == id }; mostrarHorarios = false },
+            onCerrar = { mostrarHorarios = false },
+        )
     }
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
@@ -236,15 +261,36 @@ fun PantallaCrearCita(ctx: ContextoStaff, fechaInicial: String, onListo: () -> U
                     Text("Esta cita ya ocurrió (la registro después)", color = c.textoSuave, fontSize = 12.sp)
                 }
 
+                // Especialidad (solo si la clínica tiene más de una). Filtra los profesionales.
+                if (multiEspecialidad && ctx.miTerapeutaId == null) {
+                    Spacer(Modifier.height(Sania.dim.md))
+                    Etiqueta("Especialidad")
+                    SelectorLista(
+                        items = especialidadesClinica, elegido = especialidad, etiqueta = { it.nombre },
+                        onElegir = { esp ->
+                            especialidad = esp
+                            // Si el profesional elegido ya no pertenece a la especialidad, lo quitamos.
+                            terapeuta?.let { t -> if (esp.id !in t.especialidadIds) terapeuta = null }
+                        },
+                        placeholder = "Todas las especialidades",
+                    )
+                }
+
                 Spacer(Modifier.height(Sania.dim.md))
                 // Profesional (fijado si es profesional vinculado)
-                Etiqueta("Profesional")
+                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                    Etiqueta("Profesional")
+                    if (ctx.miTerapeutaId == null) {
+                        Text("Ver horarios", color = c.navy, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable { mostrarHorarios = true })
+                    }
+                }
                 if (ctx.miTerapeutaId != null) {
                     val miNombre = terapeutas.find { it.id == ctx.miTerapeutaId }?.nombre ?: "Tú"
                     SelectorBoton("$miNombre (tú)", bloqueado = true) {}
                 } else {
                     SelectorLista(
-                        items = terapeutas, elegido = terapeuta, etiqueta = { it.nombre },
+                        items = terapeutasFiltrados, elegido = terapeuta, etiqueta = { it.nombre },
                         onElegir = { terapeuta = it }, placeholder = "Sin asignar",
                     )
                 }
@@ -304,12 +350,17 @@ fun PantallaCrearCita(ctx: ContextoStaff, fechaInicial: String, onListo: () -> U
                         guardando = true
                         scope.launch {
                             val terId = if (ctx.miTerapeutaId != null) ctx.miTerapeutaId else terapeuta?.id
+                            // Especialidad: la elegida, o la del profesional si solo tiene una.
+                            val espId = especialidad?.id
+                                ?: terapeuta?.especialidadIds?.singleOrNull()
                             val ok = AgendaRepo.crearCita(
                                 pacienteId = p.id, tipo = tipo, fecha = fecha, hora = hora,
                                 terapeutaId = terId, tratamientoId = tratamiento?.id,
                                 costo = costo.toDoubleOrNull() ?: 0.0,
                                 duracion = if (tipo == "Consulta") 15 else 60,
                                 notas = notas.ifBlank { null },
+                                especialidadId = espId,
+                                diagnostico = if (tipo == "Evaluación") diagnostico.ifBlank { null } else null,
                             )
                             guardando = false
                             if (ok) onListo() else mensaje = "No se pudo agendar. Intenta de nuevo."
@@ -393,4 +444,69 @@ private fun <T> SelectorLista(
 private fun millisISO(millis: Long): String {
     val d = Instant.fromEpochMilliseconds(millis).toLocalDateTime(TimeZone.UTC).date
     return "${d.year}-${d.monthNumber.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}"
+}
+
+/**
+ * Modal que muestra la disponibilidad de TODOS los profesionales para una fecha/hora.
+ * Reusa la misma regla de la web (DisponibilidadRepo). Tocar uno lo selecciona.
+ */
+@Composable
+private fun ModalVerHorarios(
+    fecha: String, hora: String, duracion: Int,
+    soloTerapeutaIds: List<String>?,
+    onElegir: (String) -> Unit, onCerrar: () -> Unit,
+) {
+    val c = Sania.colors
+    var estado by remember { mutableStateOf<List<EstadoProfesional>?>(null) }
+    LaunchedEffect(fecha, hora, duracion) {
+        estado = runCatching {
+            AgendaRepo.disponibilidadProfesionales(fecha, hora, duracion, soloTerapeutaIds)
+        }.getOrDefault(emptyList())
+    }
+
+    Box(
+        Modifier.fillMaxSize().background(c.navyDark.copy(alpha = 0.45f)).clickable { onCerrar() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier.fillMaxWidth(0.92f).clip(RoundedCornerShape(Sania.shape.lg.dp))
+                .background(c.superficie).clickable(enabled = false) {}.padding(Sania.dim.xl),
+        ) {
+            Text("Disponibilidad — ${hora.take(5)}", color = c.texto,
+                fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
+            Text(fecha, color = c.textoSuave, fontSize = Sania.txt.pequeno,
+                modifier = Modifier.padding(bottom = Sania.dim.md))
+
+            when {
+                estado == null -> Box(Modifier.fillMaxWidth().padding(Sania.dim.lg), Alignment.Center) {
+                    CircularProgressIndicator(color = c.navy, strokeWidth = 2.dp)
+                }
+                estado!!.isEmpty() -> Text("No hay profesionales para mostrar.",
+                    color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                else -> Column {
+                    estado!!.forEach { p ->
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { onElegir(p.terapeutaId) }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(if (p.libre) "🟢" else "🟡", fontSize = 14.sp)
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(p.nombre, color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
+                                Text(p.etiqueta, color = c.textoSuave, fontSize = 12.sp)
+                            }
+                            Text("Elegir →", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(Sania.dim.md))
+            Text("Cerrar", color = c.textoSuave, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold,
+                modifier = Modifier.fillMaxWidth().clickable { onCerrar() }.padding(vertical = 8.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        }
+    }
 }
