@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -27,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.BannersAgenda
 import pe.saniape.app.data.staff.CitaStaff
 import pe.saniape.app.data.staff.Derivacion
+import pe.saniape.app.data.staff.NivelRiesgo
 import pe.saniape.app.ui.theme.Sania
 
 /**
@@ -101,7 +103,9 @@ fun BannersAgendaUI(
                 colorFg = c.info, colorBg = c.infoBg, colorBorde = c.info,
                 abiertoInicial = false,
             ) {
-                banners.manana.forEach { cita ->
+                banners.manana.forEach { item ->
+                    val cita = item.cita
+                    val riesgoAlto = item.riesgo.nivel == NivelRiesgo.Alto && !cita.confirmadaPorPaciente
                     Row(
                         Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onVerCitaManana(cita) },
                         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
@@ -109,13 +113,27 @@ fun BannersAgendaUI(
                         Text(cita.hora.take(5), color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.width(8.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(cita.pacienteNombre ?: "Paciente", color = c.texto, fontSize = 12.sp)
-                            cita.terapeutaNombre?.let { Text(it, color = c.textoSuave, fontSize = 11.sp) }
+                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                Text(cita.pacienteNombre ?: "Paciente", color = c.texto, fontSize = 12.sp)
+                                if (riesgoAlto) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Box(
+                                        Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+                                            .background(c.errorBg).padding(horizontal = 6.dp, vertical = 2.dp),
+                                    ) { Text("⚠ riesgo de falta", color = c.error, fontSize = 9.sp, fontWeight = FontWeight.Bold) }
+                                }
+                            }
+                            // Motivos del riesgo (si es alto), o profesional.
+                            if (riesgoAlto && item.riesgo.motivos.isNotEmpty()) {
+                                Text(item.riesgo.motivos.joinToString(" · "), color = c.textoSuave, fontSize = 10.sp)
+                            } else {
+                                cita.terapeutaNombre?.let { Text(it, color = c.textoSuave, fontSize = 11.sp) }
+                            }
                         }
-                        if (cita.estado == "Pendiente") {
+                        if (cita.confirmadaPorPaciente) {
+                            Text("✓ Confirmó", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        } else if (cita.estado == "Pendiente") {
                             Text("📞 Sin confirmar", color = c.pend, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        } else if (cita.estado == "Confirmada") {
-                            Text("✓ Confirmada", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

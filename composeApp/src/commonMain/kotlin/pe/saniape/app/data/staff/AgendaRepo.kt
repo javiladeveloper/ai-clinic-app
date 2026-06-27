@@ -290,9 +290,12 @@ data class TratamientoRef(val id: String, val procedimiento: String, val modalid
 /** Una derivación pendiente (un médico derivó a un paciente; recepción decide). */
 data class Derivacion(val id: String, val pacienteId: String?, val pacienteNombre: String?, val especialidadDestino: String?)
 
+/** Una cita de mañana con su riesgo de no-show calculado. */
+data class CitaManana(val cita: CitaStaff, val riesgo: ResultadoRiesgo)
+
 /** Banners de la agenda. */
 data class BannersAgenda(
-    val manana: List<CitaStaff>,
+    val manana: List<CitaManana>,
     val vencidas: List<CitaStaff>,
     val derivaciones: List<Derivacion>,
 )
@@ -356,7 +359,48 @@ object AgendaBanners {
                 }
         } else emptyList()
 
-        return BannersAgenda(mananaCitas, vencidas, derivaciones)
+        // Riesgo de no-show por cada cita de mañana: necesita el historial de citas
+        // pasadas del paciente (faltas vs total). Igual que la web.
+        val mananaConRiesgo = calcularRiesgos(mananaCitas, hoy).sortedByDescending { it.riesgo.score }
+
+        return BannersAgenda(mananaConRiesgo, vencidas, derivaciones)
+    }
+
+    /** Calcula el riesgo de no-show de cada cita de mañana usando su historial. */
+    private suspend fun calcularRiesgos(citas: List<CitaStaff>, hoy: String): List<CitaManana> {
+        if (citas.isEmpty()) return emptyList()
+        val pacIds = citas.mapNotNull { it.pacienteId }.distinct()
+        // Historial: citas pasadas de esos pacientes (estado + para contar faltas).
+        val historial = if (pacIds.isEmpty()) emptyList() else
+            Supabase.client.postgrest["citas"]
+                .select(Columns.list("paciente_id, estado, fecha")) {
+                    filter { isIn("paciente_id", pacIds); lt("fecha", hoy) }
+                }
+                .decodeList<JsonObject>()
+        // Acumular faltas/total por paciente (falta = Cancelada/Pendiente/Confirmada con fecha pasada).
+        data class Acc(var faltas: Int = 0, var total: Int = 0)
+        val acc = mutableMapOf<String, Acc>()
+        for (h in historial) {
+            val pid = h.str("paciente_id") ?: continue
+            val a = acc.getOrPut(pid) { Acc() }
+            a.total++
+            val est = h.str("estado")
+            if (est == "Cancelada" || est == "Pendiente" || est == "Confirmada") a.faltas++
+        }
+        return citas.map { cita ->
+            val a = cita.pacienteId?.let { acc[it] } ?: Acc()
+            val riesgo = calcularRiesgoNoShow(
+                SenalesNoShow(
+                    faltasPrevias = a.faltas,
+                    citasPrevias = a.total,
+                    confirmadaPorPaciente = cita.confirmadaPorPaciente,
+                    pendiente = cita.estado == "Pendiente",
+                    esOnline = cita.origen == "online",
+                    sinTelefono = cita.pacienteTelefono.isNullOrBlank(),
+                )
+            )
+            CitaManana(cita, riesgo)
+        }
     }
 
     /** Marca una derivación como procesada. */

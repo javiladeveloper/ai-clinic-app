@@ -65,15 +65,21 @@ fun ModalCompletar(
         title = { Text(if (esEvaluacion) "✓ Completar evaluación" else "✓ Completar sesión") },
         text = {
             Column {
-                OutlinedTextField(
-                    value = texto, onValueChange = { texto = it },
-                    label = { Text(if (esEvaluacion) "Diagnóstico" else "Procedimientos realizados") },
-                    placeholder = {
-                        Text(if (esEvaluacion) "Ej. Lumbalgia mecánica…" else "¿Qué se hizo en la sesión?",
-                            color = c.textoSuave)
-                    },
-                    modifier = Modifier.fillMaxWidth(), minLines = 2,
-                )
+                if (esEvaluacion) {
+                    OutlinedTextField(
+                        value = texto, onValueChange = { texto = it },
+                        label = { Text("Diagnóstico") },
+                        placeholder = { Text("Ej. Lumbalgia mecánica…", color = c.textoSuave) },
+                        modifier = Modifier.fillMaxWidth(), minLines = 2,
+                    )
+                } else {
+                    // Sesión: autocomplete de procedimientos/técnicas (como la web).
+                    Text("Procedimientos realizados", color = c.textoSuave, fontSize = Sania.txt.mini,
+                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
+                    pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
+                        value = texto, onChange = { texto = it },
+                    )
+                }
                 if (esEvaluacion && especialidades.size > 1) {
                     Spacer(Modifier.height(Sania.dim.md))
                     Row(verticalAlignment = Alignment.CenterVertically,
