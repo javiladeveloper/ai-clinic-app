@@ -98,9 +98,8 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                 busqueda = vm.busqueda, onBusqueda = { vm.cambiarBusqueda(it) },
                 filtroEstado = vm.filtroEstado, onEstado = { vm.cambiarFiltroEstado(it) },
                 filtroTipo = vm.filtroTipo, onTipo = { vm.cambiarFiltroTipo(it) },
-                terapeutas = vm.terapeutas,
-                filtroTerapeuta = vm.filtroTerapeuta, onTerapeuta = { vm.cambiarFiltroTerapeuta(it) },
-                puedeFiltrarPorPersonal = vm.puedeFiltrarPorPersonal,
+                especialidades = vm.especialidades,
+                filtroEspecialidad = vm.filtroEspecialidad, onEspecialidad = { vm.cambiarFiltroEspecialidad(it) },
                 verHistorial = vm.verHistorial, onVerHistorial = { vm.alternarHistorial() },
             )
 

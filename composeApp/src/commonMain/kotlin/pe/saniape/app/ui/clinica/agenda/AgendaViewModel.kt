@@ -45,6 +45,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     var filtroEstado by mutableStateOf<String?>(null); private set
     var filtroTipo by mutableStateOf<String?>(null); private set
     var filtroTerapeuta by mutableStateOf<String?>(null); private set   // solo gestores
+    var filtroEspecialidad by mutableStateOf<String?>(null); private set
 
     // ── Vista historial + paginación (igual que la web) ──
     var verHistorial by mutableStateOf(false); private set
@@ -69,8 +70,14 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                 (c.procedimiento?.contains(busqueda, ignoreCase = true) == true)) &&
                 (filtroEstado == null || c.estado == filtroEstado) &&
                 (filtroTipo == null || c.tipo == filtroTipo) &&
-                (filtroTerapeuta == null || c.terapeutaId == filtroTerapeuta)
-        }
+                (filtroTerapeuta == null || c.terapeutaId == filtroTerapeuta) &&
+                (filtroEspecialidad == null || c.especialidadId == filtroEspecialidad)
+        }.sortedWith(
+            // Las activas (pendiente/confirmada) primero, por hora ascendente;
+            // las cerradas (completada/cancelada) al final.
+            compareBy<CitaStaff>({ if (it.estado == "Completada" || it.estado == "Cancelada") 1 else 0 })
+                .thenBy { it.hora }
+        )
 
     /** Citas del día sin profesional asignado (aviso "⚠ Asignar"). */
     val citasSinProfesional: List<CitaStaff>
@@ -80,6 +87,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     fun cambiarFiltroEstado(v: String?) { filtroEstado = v }
     fun cambiarFiltroTipo(v: String?) { filtroTipo = v }
     fun cambiarFiltroTerapeuta(v: String?) { filtroTerapeuta = v }
+    fun cambiarFiltroEspecialidad(v: String?) { filtroEspecialidad = v }
 
     init {
         cargarDia(fechaSel)

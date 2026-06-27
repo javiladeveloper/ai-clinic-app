@@ -38,6 +38,7 @@ data class CitaStaff(
     val pacienteTelefono: String?,
     val tratamientoId: String?,
     val procedimiento: String?,
+    val especialidadId: String?,  // para filtrar por especialidad
     val notaRecepcion: String?,   // recordatorio del tratamiento vinculado (📌)
 )
 
@@ -100,7 +101,7 @@ object AgendaRepo {
     /** Columnas comunes de una cita (con joins). Una sola fuente. */
     const val SELECT_CITA =
         "id, fecha, hora, estado, tipo, costo, duracion, origen, confirmada_por_paciente, " +
-            "terapeuta_id, paciente_id, tratamiento_id, " +
+            "terapeuta_id, paciente_id, tratamiento_id, especialidad_id, " +
             "paciente:pacientes(nombre, telefono), terapeuta:terapeutas(nombre), " +
             "tratamiento:tratamientos!citas_tratamiento_id_fkey(nota_recepcion, procedimiento:procedimientos(nombre)), " +
             "sesion:sesiones!citas_sesion_id_fkey(numero)"
@@ -127,6 +128,7 @@ object AgendaRepo {
                 tratamientoId = s("tratamiento_id"),
                 procedimiento = (obj("tratamiento")?.get("procedimiento") as? JsonObject)
                     ?.get("nombre")?.let { (it as? JsonPrimitive)?.content?.takeIf { v -> v != "null" } },
+                especialidadId = s("especialidad_id"),
                 notaRecepcion = (obj("tratamiento")?.get("nota_recepcion") as? JsonPrimitive)
                     ?.content?.takeIf { it != "null" && it.isNotBlank() },
             )

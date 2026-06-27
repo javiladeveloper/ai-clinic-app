@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -42,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -58,6 +60,14 @@ import pe.saniape.app.data.staff.TratamientoRef
 import pe.saniape.app.ui.theme.Sania
 
 private val TIPOS = listOf("Consulta", "Evaluación", "Sesión")
+
+/** Info visual de cada tipo de cita (icono + descripción), como las tarjetas de la web. */
+private data class TipoInfo(val valor: String, val icono: String, val desc: String)
+private val TIPOS_INFO = listOf(
+    TipoInfo("Consulta", "💬", "El paciente explica su caso"),
+    TipoInfo("Evaluación", "🔍", "Se evalúa y diagnostica"),
+    TipoInfo("Sesión", "🏃", "Sesión de tratamiento"),
+)
 
 /**
  * Pre-llenado del formulario (para "→ Evaluación"): tipo, paciente, fecha/hora y
@@ -240,11 +250,14 @@ fun PantallaCrearCita(
                     Spacer(Modifier.height(Sania.dim.sm))
                 }
 
-                // Tipo
+                // Tipo de cita — tarjetas con icono + descripción (más llamativas)
                 Etiqueta("Tipo de cita")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TIPOS.forEach { t ->
-                        ChipSel(t, tipo == t, Modifier.weight(1f)) { tipo = t }
+                    TIPOS_INFO.forEach { ti ->
+                        TarjetaTipo(
+                            info = ti, activo = tipo == ti.valor,
+                            modifier = Modifier.weight(1f),
+                        ) { tipo = ti.valor }
                     }
                 }
                 Spacer(Modifier.height(Sania.dim.md))
@@ -421,17 +434,26 @@ private fun Etiqueta(t: String) {
 }
 
 @Composable
-private fun ChipSel(texto: String, activo: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun TarjetaTipo(info: TipoInfo, activo: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val c = Sania.colors
-    Box(
-        modifier.clip(RoundedCornerShape(Sania.shape.sm.dp))
-            .background(if (activo) c.navy else c.superficie)
-            .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-            .clickable { onClick() }.padding(vertical = 10.dp),
-        contentAlignment = Alignment.Center,
+    val acento = when (info.valor) {
+        "Evaluación" -> c.info
+        "Sesión" -> c.ok
+        else -> c.navy
+    }
+    Column(
+        modifier.clip(RoundedCornerShape(Sania.shape.md.dp))
+            .background(if (activo) acento.copy(alpha = 0.12f) else c.superficie)
+            .border(if (activo) 2.dp else 1.dp, if (activo) acento else c.borde, RoundedCornerShape(Sania.shape.md.dp))
+            .clickable { onClick() }.padding(vertical = 12.dp, horizontal = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(texto, color = if (activo) c.sobreNavy else c.texto, fontSize = 13.sp,
-            fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal)
+        Text(info.icono, fontSize = 22.sp)
+        Spacer(Modifier.height(4.dp))
+        Text(info.valor, color = if (activo) acento else c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(info.desc, color = c.textoSuave, fontSize = 9.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.padding(top = 2.dp))
     }
 }
 
@@ -497,13 +519,11 @@ private fun ModalVerHorarios(
         }.getOrDefault(emptyList())
     }
 
-    Box(
-        Modifier.fillMaxSize().background(c.navyDark.copy(alpha = 0.45f)).clickable { onCerrar() },
-        contentAlignment = Alignment.Center,
-    ) {
+    // Diálogo real (ventana propia) — así sí queda por encima del formulario.
+    Dialog(onDismissRequest = onCerrar) {
         Column(
-            Modifier.fillMaxWidth(0.92f).clip(RoundedCornerShape(Sania.shape.lg.dp))
-                .background(c.superficie).clickable(enabled = false) {}.padding(Sania.dim.xl),
+            Modifier.fillMaxWidth().heightIn(max = 520.dp).clip(RoundedCornerShape(Sania.shape.lg.dp))
+                .background(c.superficie).verticalScroll(rememberScrollState()).padding(Sania.dim.xl),
         ) {
             Text("Disponibilidad — ${hora.take(5)}", color = c.texto,
                 fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)

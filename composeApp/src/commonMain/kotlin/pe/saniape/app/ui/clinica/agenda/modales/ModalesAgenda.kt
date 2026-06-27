@@ -242,7 +242,7 @@ fun ModalPasarEvaluacion(cita: CitaStaff, onCancelar: () -> Unit, onElegir: (fec
 
     AlertDialog(
         onDismissRequest = onCancelar,
-        title = { Text("🔍 Pasar a Evaluación") },
+        title = { Text("🔍 Pasar a Evaluación", fontWeight = FontWeight.Bold) },
         text = {
             Column {
                 Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
@@ -253,34 +253,48 @@ fun ModalPasarEvaluacion(cita: CitaStaff, onCancelar: () -> Unit, onElegir: (fec
                 Spacer(Modifier.height(Sania.dim.md))
                 Text("¿La evaluación será en el mismo horario o en una nueva hora?",
                     color = c.texto, fontSize = Sania.txt.cuerpo)
+
                 if (eligiendoNueva) {
+                    // Paso 2: elegir nueva fecha/hora.
                     Spacer(Modifier.height(Sania.dim.md))
                     SelectorBotonModal("Fecha", fecha) { mostrarFecha = true }
                     Spacer(Modifier.height(Sania.dim.sm))
                     SelectorBotonModal("Hora", hora) { mostrarHora = true }
+                    Spacer(Modifier.height(Sania.dim.lg))
+                    BotonModal("✓ Agendar evaluación", c.navy, c.sobreNavy, lleno = true) { onElegir(fecha, hora) }
+                    Spacer(Modifier.height(Sania.dim.sm))
+                    BotonModal("Cancelar", c.textoSuave, c.textoSuave, lleno = false) { onCancelar() }
+                } else {
+                    // Paso 1: dos opciones grandes, apiladas (como la web).
+                    Spacer(Modifier.height(Sania.dim.lg))
+                    BotonModal("✓ Mismo horario (${cita.hora.take(5)})", c.ok, c.sobreNavy, lleno = true) {
+                        onElegir(cita.fecha, cita.hora.take(5))
+                    }
+                    Spacer(Modifier.height(Sania.dim.sm))
+                    BotonModal("📅 Agendar nueva hora", c.navy, c.navy, lleno = false) { eligiendoNueva = true }
+                    Spacer(Modifier.height(Sania.dim.sm))
+                    BotonModal("Cancelar", c.textoSuave, c.textoSuave, lleno = false) { onCancelar() }
                 }
             }
         },
-        confirmButton = {
-            if (eligiendoNueva) {
-                TextButton(onClick = { onElegir(fecha, hora) }) {
-                    Text("Agendar", color = c.navy, fontWeight = FontWeight.Bold)
-                }
-            } else {
-                TextButton(onClick = { onElegir(cita.fecha, cita.hora.take(5)) }) {
-                    Text("✓ Mismo horario", color = c.ok, fontWeight = FontWeight.Bold)
-                }
-            }
-        },
-        dismissButton = {
-            if (!eligiendoNueva) {
-                TextButton(onClick = { eligiendoNueva = true }) { Text("📅 Nueva hora", color = c.navy) }
-            } else {
-                TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) }
-            }
-        },
+        confirmButton = {},   // botones dentro del cuerpo, full-width, sin amontonar
         containerColor = c.superficie,
     )
+}
+
+/** Botón de modal a ancho completo: relleno (lleno=true) o de borde (lleno=false). */
+@Composable
+private fun BotonModal(texto: String, color: androidx.compose.ui.graphics.Color, fg: androidx.compose.ui.graphics.Color, lleno: Boolean, onClick: () -> Unit) {
+    val c = Sania.colors
+    Box(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+            .background(if (lleno) color else c.superficie)
+            .let { if (!lleno) it.border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)) else it }
+            .clickable { onClick() }.padding(vertical = 13.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(texto, color = if (lleno) fg else fg, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    }
 }
 
 @Composable

@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -51,77 +53,92 @@ fun TarjetaCita(
         else -> c.navy
     }
 
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
-            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(Sania.dim.tarjeta),
+    // Atenuar las cerradas (completada/cancelada) para que las activas resalten.
+    val cerrada = cita.estado == "Completada" || cita.estado == "Cancelada"
+
+    Row(
+        Modifier.fillMaxWidth().height(IntrinsicSize.Min)
+            .clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
+            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)),
     ) {
-        // Cabecera: punto tipo + hora + badge estado
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(8.dp).clip(CircleShape).background(colorTipo))
-            Spacer(Modifier.width(8.dp))
-            Text(cita.hora.take(5), color = c.navy, fontSize = Sania.txt.seccion, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.weight(1f))
-            BadgeEstadoCita(cita.estado, cita.confirmadaPorPaciente)
-        }
-        Spacer(Modifier.height(6.dp))
+        // Barra de color por tipo (acento lateral, más nativo que el puntito).
+        Box(Modifier.width(4.dp).fillMaxHeight().background(if (cerrada) c.borde else colorTipo))
 
-        // Paciente + teléfono/contacto
-        Text(cita.pacienteNombre ?: "Paciente", color = c.texto,
-            fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
-
-        // Línea de info: tipo (+ Sesión #N) · procedimiento · profesional
-        val infoTipo = buildString {
-            append(cita.tipo ?: "Cita")
-            if (cita.tipo == "Sesión" && cita.numeroSesion != null) append(" #${cita.numeroSesion}")
-        }
-        Text(
-            listOfNotNull(infoTipo, cita.procedimiento, cita.terapeutaNombre?.let { "con $it" })
-                .joinToString(" · "),
-            color = c.textoSuave, fontSize = 12.sp,
-        )
-
-        // Nota de recepción (recordatorio del tratamiento) — 📌
-        cita.notaRecepcion?.let { nota ->
-            Spacer(Modifier.height(4.dp))
-            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                .background(c.pendBg).padding(horizontal = 8.dp, vertical = 5.dp)) {
-                Text("📌 $nota", color = c.pend, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-            }
-        }
-
-        // Chips: costo, Web, asignar
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
-            if (puedeVerCosto) {
-                val costoTxt = when {
-                    (cita.costo ?: 0.0) > 0 -> "S/ ${formato2(cita.costo!!)}"
-                    cita.tipo == "Consulta" -> "Gratis"
-                    else -> null
+        Column(Modifier.fillMaxWidth().padding(Sania.dim.tarjeta)) {
+            // Línea 1: hora + tipo (+ Sesión #N) ····· estado
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(cita.hora.take(5), color = if (cerrada) c.textoSuave else c.navy,
+                    fontSize = Sania.txt.seccion, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(8.dp))
+                val infoTipo = buildString {
+                    append(cita.tipo ?: "Cita")
+                    if (cita.tipo == "Sesión" && cita.numeroSesion != null) append(" #${cita.numeroSesion}")
                 }
-                costoTxt?.let { Chip(it, c.teal, c.tealBg) }
+                Text(infoTipo, color = colorTipo, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                BadgeEstadoCita(cita.estado, cita.confirmadaPorPaciente)
             }
-            if (cita.origen == "online") Chip("🌐 Web", c.purple, c.purpleBg)
-            if (cita.terapeutaId == null && cita.origen == "online") Chip("⚠ Asignar", c.pend, c.pendBg)
-        }
 
-        // Botones de contacto (si hay teléfono)
-        cita.pacienteTelefono?.takeIf { it.isNotBlank() }?.let { tel ->
-            Spacer(Modifier.height(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                MiniAccion("📞 Llamar", c.navy) { acciones.abrirUrl("tel:${tel.filter { ch -> ch.isDigit() }}") }
-                MiniAccion("💬 WhatsApp", Color(0xFF25D366)) {
-                    val n = tel.filter { ch -> ch.isDigit() }.let { if (it.length <= 9) "51$it" else it }
-                    acciones.abrirUrl("https://wa.me/$n")
+            Spacer(Modifier.height(8.dp))
+
+            // Línea 2: nombre del paciente + iconos de contacto a la derecha
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(cita.pacienteNombre ?: "Paciente", color = c.texto,
+                    fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f))
+                cita.pacienteTelefono?.takeIf { it.isNotBlank() }?.let { tel ->
+                    IconoContacto("📞", c.navy) { acciones.abrirUrl("tel:${tel.filter { ch -> ch.isDigit() }}") }
+                    Spacer(Modifier.width(6.dp))
+                    IconoContacto("💬", Color(0xFF25D366)) {
+                        val n = tel.filter { ch -> ch.isDigit() }.let { if (it.length <= 9) "51$it" else it }
+                        acciones.abrirUrl("https://wa.me/$n")
+                    }
                 }
             }
-        }
 
-        // Acciones según estado
-        val acc = accionesPara(cita.estado, cita.tipo)
-        if (acc.isNotEmpty()) {
-            Spacer(Modifier.height(Sania.dim.md))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                acc.forEach { (label, accion, color) ->
-                    BotonAccion(label, color, !accionando) { onAccion(accion) }
+            // Línea 3: procedimiento · profesional (sutil)
+            val sub = listOfNotNull(cita.procedimiento, cita.terapeutaNombre?.let { "con $it" })
+                .joinToString(" · ")
+            if (sub.isNotBlank()) {
+                Text(sub, color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+            }
+
+            // Chips: costo, Web, Asignar (discretos, en una línea)
+            val chips = buildList {
+                if (puedeVerCosto) {
+                    when {
+                        (cita.costo ?: 0.0) > 0 -> add(Triple("S/ ${formato2(cita.costo!!)}", c.teal, c.tealBg))
+                        cita.tipo == "Consulta" -> add(Triple("Gratis", c.teal, c.tealBg))
+                    }
+                }
+                if (cita.origen == "online") add(Triple("🌐 Web", c.purple, c.purpleBg))
+                if (cita.terapeutaId == null && cita.origen == "online") add(Triple("⚠ Asignar", c.pend, c.pendBg))
+            }
+            if (chips.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 8.dp)) {
+                    chips.forEach { (t, fg, bg) -> Chip(t, fg, bg) }
+                }
+            }
+
+            // Nota de recepción (recordatorio del tratamiento) — 📌
+            cita.notaRecepcion?.let { nota ->
+                Spacer(Modifier.height(8.dp))
+                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .background(c.pendBg).padding(horizontal = 8.dp, vertical = 6.dp)) {
+                    Text("📌 $nota", color = c.pend, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+
+            // Acciones según estado (separadas por un divisor sutil)
+            val acc = accionesPara(cita.estado, cita.tipo)
+            if (acc.isNotEmpty()) {
+                Spacer(Modifier.height(Sania.dim.md))
+                Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
+                Spacer(Modifier.height(Sania.dim.md))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    acc.forEach { (label, accion, color) ->
+                        BotonAccion(label, color, !accionando) { onAccion(accion) }
+                    }
                 }
             }
         }
@@ -158,13 +175,14 @@ private fun BotonAccion(label: String, color: Color, habilitado: Boolean, onClic
     ) { Text(label, color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
 }
 
+/** Icono de contacto compacto (📞/💬) — botón redondo discreto junto al nombre. */
 @Composable
-private fun MiniAccion(label: String, color: Color, onClick: () -> Unit) {
+private fun IconoContacto(emoji: String, color: Color, onClick: () -> Unit) {
     Box(
-        Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp))
-            .border(1.dp, color.copy(alpha = 0.5f), RoundedCornerShape(Sania.shape.sm.dp))
-            .clickable { onClick() }.padding(horizontal = 10.dp, vertical = 5.dp),
-    ) { Text(label, color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+        Modifier.size(34.dp).clip(CircleShape).background(color.copy(alpha = 0.12f))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) { Text(emoji, fontSize = 15.sp) }
 }
 
 @Composable

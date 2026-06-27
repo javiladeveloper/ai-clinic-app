@@ -29,7 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import pe.saniape.app.data.staff.TerapeutaRef
+import pe.saniape.app.data.staff.EspecialidadRef
 import pe.saniape.app.ui.theme.Sania
 
 private val ESTADOS = listOf("Pendiente", "Confirmada", "Completada", "Cancelada")
@@ -45,10 +45,10 @@ fun FiltrosAgenda(
     busqueda: String, onBusqueda: (String) -> Unit,
     filtroEstado: String?, onEstado: (String?) -> Unit,
     filtroTipo: String?, onTipo: (String?) -> Unit,
-    // Filtro por profesional (solo gestores sin scope propio).
-    terapeutas: List<TerapeutaRef> = emptyList(),
-    filtroTerapeuta: String? = null, onTerapeuta: (String?) -> Unit = {},
-    puedeFiltrarPorPersonal: Boolean = false,
+    // Filtro por especialidad (si la clínica tiene varias) — reemplaza al de profesional,
+    // que era redundante (con la especialidad basta para buscar rápido).
+    especialidades: List<EspecialidadRef> = emptyList(),
+    filtroEspecialidad: String? = null, onEspecialidad: (String?) -> Unit = {},
     // Ver historial (citas pasadas) — toggle.
     verHistorial: Boolean = false, onVerHistorial: () -> Unit = {},
 ) {
@@ -56,7 +56,7 @@ fun FiltrosAgenda(
     var abierto by remember { mutableStateOf(false) }
 
     // Cuántos filtros hay activos (para el contador del botón).
-    val activos = listOf(filtroEstado, filtroTipo, filtroTerapeuta).count { it != null }
+    val activos = listOf(filtroEstado, filtroTipo, filtroEspecialidad).count { it != null }
 
     Column(Modifier.fillMaxWidth().padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm)) {
         // Fila: búsqueda + botón Filtros
@@ -89,15 +89,15 @@ fun FiltrosAgenda(
                     TIPOS.map { it as String? to it },
                 onElegir = onTipo,
             )
-            // Profesional (solo gestores)
-            if (puedeFiltrarPorPersonal && terapeutas.isNotEmpty()) {
+            // Especialidad (si la clínica tiene más de una)
+            if (especialidades.size > 1) {
                 Spacer(Modifier.height(6.dp))
                 DropdownFiltro(
-                    etiqueta = "Profesional",
-                    valor = terapeutas.find { it.id == filtroTerapeuta }?.nombre,
-                    opciones = listOf<Pair<String?, String>>(null to "👥 Todo el personal") +
-                        terapeutas.map { it.id as String? to it.nombre },
-                    onElegir = onTerapeuta,
+                    etiqueta = "Especialidad",
+                    valor = especialidades.find { it.id == filtroEspecialidad }?.nombre,
+                    opciones = listOf<Pair<String?, String>>(null to "Todas las especialidades") +
+                        especialidades.map { it.id as String? to it.nombre },
+                    onElegir = onEspecialidad,
                 )
             }
             Spacer(Modifier.height(Sania.dim.sm))
