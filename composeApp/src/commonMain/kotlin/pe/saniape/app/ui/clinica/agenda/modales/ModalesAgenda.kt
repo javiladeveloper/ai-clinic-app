@@ -63,46 +63,72 @@ fun ModalCompletar(
 
     AlertDialog(
         onDismissRequest = onCancelar,
-        title = { Text(if (esEvaluacion) "✓ Completar evaluación" else "✓ Completar sesión") },
+        title = {
+            Column {
+                Text(if (esEvaluacion) "🔍 Completar evaluación" else "🏃 Completar sesión",
+                    fontWeight = FontWeight.Bold)
+                cita.pacienteNombre?.let {
+                    Text(it, color = c.textoSuave, fontSize = Sania.txt.pequeno,
+                        modifier = Modifier.padding(top = 2.dp))
+                }
+            }
+        },
         text = {
             Column {
                 if (esEvaluacion) {
+                    Text("Diagnóstico / Motivo", color = c.textoSuave, fontSize = Sania.txt.mini,
+                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
                     OutlinedTextField(
                         value = texto, onValueChange = { texto = it },
-                        label = { Text("Diagnóstico") },
                         placeholder = { Text("Ej. Lumbalgia mecánica…", color = c.textoSuave) },
-                        modifier = Modifier.fillMaxWidth(), minLines = 2,
+                        modifier = Modifier.fillMaxWidth(), minLines = 3,
+                        shape = RoundedCornerShape(Sania.shape.sm.dp),
                     )
+                    Text("Se guardará en la ficha del paciente.", color = c.textoSuave,
+                        fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
                 } else {
-                    // Sesión: autocomplete de procedimientos/técnicas (como la web).
                     Text("Procedimientos realizados", color = c.textoSuave, fontSize = Sania.txt.mini,
-                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
+                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
                     pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
                         value = texto, onChange = { texto = it },
                     )
                 }
                 if (esEvaluacion && especialidades.size > 1) {
-                    Spacer(Modifier.height(Sania.dim.md))
-                    Row(verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable { derivar = !derivar }) {
-                        Text(if (derivar) "☑" else "☐", fontSize = 18.sp, color = c.navy)
-                        Spacer(Modifier.width(6.dp))
-                        Text("↗ Derivar a otra especialidad", color = c.texto, fontSize = Sania.txt.cuerpo)
-                    }
-                    if (derivar) {
-                        Spacer(Modifier.height(Sania.dim.sm))
-                        especialidades.forEach { esp ->
-                            val activa = espElegida?.id == esp.id
-                            Row(
-                                Modifier.fillMaxWidth().padding(vertical = 2.dp)
-                                    .clip(RoundedCornerShape(Sania.shape.sm.dp))
-                                    .background(if (activa) c.chipBg else c.superficie)
-                                    .border(1.dp, if (activa) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                                    .clickable { espElegida = if (activa) null else esp }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                            ) {
-                                Text(esp.nombre, color = if (activa) c.navy else c.texto, fontSize = Sania.txt.pequeno,
-                                    fontWeight = if (activa) FontWeight.Bold else FontWeight.Normal)
+                    Spacer(Modifier.height(Sania.dim.lg))
+                    // Tarjeta de derivación (más clara que el checkbox suelto).
+                    Column(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                            .background(if (derivar) c.purpleBg else c.chipBg)
+                            .border(1.dp, if (derivar) c.purple else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                            .padding(Sania.dim.md),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().clickable { derivar = !derivar }) {
+                            Text(if (derivar) "☑" else "☐", fontSize = 18.sp,
+                                color = if (derivar) c.purple else c.textoSuave)
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("↗ Derivar a otra especialidad", color = c.texto,
+                                    fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
+                                Text("Recepción agendará con el especialista", color = c.textoSuave, fontSize = 11.sp)
+                            }
+                        }
+                        if (derivar) {
+                            Spacer(Modifier.height(Sania.dim.sm))
+                            especialidades.forEach { esp ->
+                                val activa = espElegida?.id == esp.id
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 3.dp)
+                                        .clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                        .background(if (activa) c.purple else c.superficie)
+                                        .border(1.dp, if (activa) c.purple else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                        .clickable { espElegida = if (activa) null else esp }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                ) {
+                                    Text(esp.nombre, color = if (activa) c.sobreNavy else c.texto,
+                                        fontSize = Sania.txt.pequeno,
+                                        fontWeight = if (activa) FontWeight.Bold else FontWeight.Normal)
+                                }
                             }
                         }
                     }
@@ -110,16 +136,21 @@ fun ModalCompletar(
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                onConfirmar(
-                    texto.trim().ifBlank { null },
-                    if (esEvaluacion) texto.trim().ifBlank { null } else null,
-                    if (esEvaluacion && derivar) espElegida?.id else null,
-                )
-            }) { Text("Guardar y completar", color = c.navy, fontWeight = FontWeight.Bold) }
+            // Botón principal grande (full-width via padding del AlertDialog).
+            Box(
+                Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
+                    .clickable {
+                        onConfirmar(
+                            texto.trim().ifBlank { null },
+                            if (esEvaluacion) texto.trim().ifBlank { null } else null,
+                            if (esEvaluacion && derivar) espElegida?.id else null,
+                        )
+                    }.padding(horizontal = 20.dp, vertical = 11.dp),
+            ) { Text("✓ Guardar y completar", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
         },
         dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
         containerColor = c.superficie,
+        shape = RoundedCornerShape(Sania.shape.lg.dp),
     )
 }
 

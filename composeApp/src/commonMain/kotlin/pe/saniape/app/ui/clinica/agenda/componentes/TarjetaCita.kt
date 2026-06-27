@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.CitaStaff
 import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.recordarAcciones
+import pe.saniape.app.ui.theme.EstadosColor
 import pe.saniape.app.ui.theme.Sania
 
 /**
@@ -48,11 +49,8 @@ fun TarjetaCita(
 ) {
     val c = Sania.colors
     val acciones = recordarAcciones()
-    val colorTipo = when (cita.tipo) {
-        "Evaluación" -> c.info
-        "Sesión" -> c.ok
-        else -> c.navy
-    }
+    // Color del tipo desde la config global (reutilizable en toda la app).
+    val tipoColor = EstadosColor.tipo(cita.tipo)
 
     // Atenuar las cerradas (completada/cancelada) para que las activas resalten.
     val cerrada = cita.estado == "Completada" || cita.estado == "Cancelada"
@@ -62,27 +60,26 @@ fun TarjetaCita(
             .clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
             .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)),
     ) {
-        // Barra de color por tipo (acento lateral, más nativo que el puntito).
-        Box(Modifier.width(4.dp).fillMaxHeight().background(if (cerrada) c.borde else colorTipo))
+        // Barra de color por tipo (acento lateral más grueso, marca el tipo de un vistazo).
+        Box(Modifier.width(6.dp).fillMaxHeight().background(if (cerrada) c.borde else tipoColor.fg))
 
         Column(Modifier.fillMaxWidth().padding(Sania.dim.tarjeta)) {
-            // Línea 1: hora + tipo (+ Sesión #N) ····· estado
+            // Línea 1: CHIP de tipo prominente ····· badge de estado
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(hora12(cita.hora), color = if (cerrada) c.textoSuave else c.navy,
-                    fontSize = Sania.txt.seccion, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(8.dp))
-                val infoTipo = buildString {
-                    append(cita.tipo ?: "Cita")
-                    if (cita.tipo == "Sesión" && cita.numeroSesion != null) append(" #${cita.numeroSesion}")
-                }
-                Text(infoTipo, color = colorTipo, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                ChipTipo(cita.tipo, cita.numeroSesion, atenuado = cerrada)
                 Spacer(Modifier.weight(1f))
                 BadgeEstadoCita(cita.estado, cita.confirmadaPorPaciente)
             }
 
             Spacer(Modifier.height(8.dp))
 
-            // Línea 2: nombre del paciente + iconos de contacto a la derecha
+            // Hora grande (referencia rápida del día)
+            Text(hora12(cita.hora), color = if (cerrada) c.textoSuave else c.navy,
+                fontSize = Sania.txt.seccion, fontWeight = FontWeight.Bold)
+
+            Spacer(Modifier.height(6.dp))
+
+            // Línea: nombre del paciente + iconos de contacto a la derecha
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(cita.pacienteNombre ?: "Paciente", color = c.texto,
                     fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold,
@@ -194,20 +191,33 @@ private fun Chip(texto: String, fg: Color, bg: Color) {
     }
 }
 
+/** Chip prominente del TIPO de cita (icono + nombre en mayúsculas + color global). */
+@Composable
+private fun ChipTipo(tipo: String?, numeroSesion: Int?, atenuado: Boolean) {
+    val color = EstadosColor.tipo(tipo)
+    val fg = if (atenuado) Sania.colors.textoSuave else color.fg
+    val bg = if (atenuado) Sania.colors.chipBg else color.bg
+    val etiqueta = buildString {
+        append((tipo ?: "Cita").uppercase())
+        if (tipo == "Sesión" && numeroSesion != null) append(" #$numeroSesion")
+    }
+    Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(bg)
+        .padding(horizontal = 10.dp, vertical = 5.dp)) {
+        Text("${EstadosColor.iconoTipo(tipo)} $etiqueta", color = fg,
+            fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
 @Composable
 fun BadgeEstadoCita(estado: String, confirmadaPaciente: Boolean = false) {
     val c = Sania.colors
-    val etiqueta = if (estado == "Pendiente") "Sin confirmar" else estado
-    val (fg, bg) = when (estado) {
-        "Confirmada", "Completada" -> c.ok to c.okBg
-        "Pendiente" -> c.pend to c.pendBg
-        "Cancelada" -> c.error to c.errorBg
-        else -> c.navy to c.chipBg
-    }
+    // Colores desde la config global (Confirmada=verde, Completada=azul, etc.).
+    val color = EstadosColor.cita(estado)
+    val etiqueta = EstadosColor.etiquetaCita(estado)
     Column(horizontalAlignment = Alignment.End) {
-        Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(bg)
+        Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(color.bg)
             .padding(horizontal = 10.dp, vertical = 4.dp)) {
-            Text(etiqueta, color = fg, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text(etiqueta, color = color.fg, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
         if (confirmadaPaciente) {
             Text("✓ Confirmó el paciente", color = c.ok, fontSize = 9.sp, fontWeight = FontWeight.Bold,

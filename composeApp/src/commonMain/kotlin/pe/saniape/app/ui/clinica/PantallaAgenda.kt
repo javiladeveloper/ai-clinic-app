@@ -125,6 +125,7 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                                     else vm.ejecutar(AccionCita.Completar, cita)
                                 } else vm.ejecutar(AccionCita.Cancelar, cita)
                             },
+                            onReagendarVencida = { editar = it },   // abre el modal de fecha/hora
                             onAgendarDerivacion = { creandoCita = true },
                             onMarcarDerivacion = { vm.marcarDerivacion(it.id) },
                         )

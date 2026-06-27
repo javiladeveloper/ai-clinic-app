@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -29,6 +30,7 @@ import pe.saniape.app.data.staff.BannersAgenda
 import pe.saniape.app.data.staff.CitaStaff
 import pe.saniape.app.data.staff.Derivacion
 import pe.saniape.app.ui.hora12
+import pe.saniape.app.ui.recordarAcciones
 import pe.saniape.app.data.staff.NivelRiesgo
 import pe.saniape.app.ui.theme.Sania
 
@@ -41,10 +43,12 @@ fun BannersAgendaUI(
     banners: BannersAgenda,
     onVerCitaManana: (CitaStaff) -> Unit,
     onCerrarVencida: (CitaStaff, vino: Boolean) -> Unit,
+    onReagendarVencida: (CitaStaff) -> Unit,
     onAgendarDerivacion: (Derivacion) -> Unit,
     onMarcarDerivacion: (Derivacion) -> Unit,
 ) {
     val c = Sania.colors
+    val acciones = recordarAcciones()
     Column(Modifier.fillMaxWidth().padding(horizontal = Sania.dim.lg)) {
         // ── Derivaciones pendientes (morado) ──
         if (banners.derivaciones.isNotEmpty()) {
@@ -82,13 +86,26 @@ fun BannersAgendaUI(
                 abiertoInicial = false,
             ) {
                 banners.vencidas.forEach { cita ->
-                    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                        Text("${cita.fecha} · ${hora12(cita.hora)} · ${cita.tipo ?: ""}",
-                            color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        Text(cita.pacienteNombre ?: "Paciente", color = c.textoSuave, fontSize = 12.sp)
-                        Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("${cita.fecha} · ${hora12(cita.hora)} · ${cita.tipo ?: ""}",
+                                    color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text(cita.pacienteNombre ?: "Paciente", color = c.textoSuave, fontSize = 12.sp)
+                            }
+                            cita.pacienteTelefono?.takeIf { it.isNotBlank() }?.let { tel ->
+                                IconoMini("📞", c.navy) { acciones.abrirUrl("tel:${tel.filter { ch -> ch.isDigit() }}") }
+                                Spacer(Modifier.width(6.dp))
+                                IconoMini("💬", androidx.compose.ui.graphics.Color(0xFF25D366)) {
+                                    val n = tel.filter { ch -> ch.isDigit() }.let { if (it.length <= 9) "51$it" else it }
+                                    acciones.abrirUrl("https://wa.me/$n")
+                                }
+                            }
+                        }
+                        Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             MiniBoton("✓ Sí vino", c.ok) { onCerrarVencida(cita, true) }
                             MiniBoton("✗ No vino", c.error) { onCerrarVencida(cita, false) }
+                            MiniBoton("📅 Reagendar", c.navy) { onReagendarVencida(cita) }
                         }
                     }
                 }
@@ -131,10 +148,18 @@ fun BannersAgendaUI(
                                 cita.terapeutaNombre?.let { Text(it, color = c.textoSuave, fontSize = 11.sp) }
                             }
                         }
+                        // Estado de confirmación + contacto para empezar recordatorios.
                         if (cita.confirmadaPorPaciente) {
                             Text("✓ Confirmó", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        } else if (cita.estado == "Pendiente") {
-                            Text("📞 Sin confirmar", color = c.pend, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        cita.pacienteTelefono?.takeIf { it.isNotBlank() }?.let { tel ->
+                            Spacer(Modifier.width(6.dp))
+                            IconoMini("📞", c.navy) { acciones.abrirUrl("tel:${tel.filter { ch -> ch.isDigit() }}") }
+                            Spacer(Modifier.width(6.dp))
+                            IconoMini("💬", androidx.compose.ui.graphics.Color(0xFF25D366)) {
+                                val n = tel.filter { ch -> ch.isDigit() }.let { if (it.length <= 9) "51$it" else it }
+                                acciones.abrirUrl("https://wa.me/$n")
+                            }
                         }
                     }
                 }
@@ -186,4 +211,14 @@ private fun MiniBoton(texto: String, color: androidx.compose.ui.graphics.Color, 
             .border(1.dp, color, RoundedCornerShape(Sania.shape.sm.dp))
             .clickable { onClick() }.padding(horizontal = 10.dp, vertical = 6.dp),
     ) { Text(texto, color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+}
+
+/** Icono de contacto compacto (📞/💬) para los banners. */
+@Composable
+private fun IconoMini(emoji: String, color: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+    androidx.compose.foundation.layout.Box(
+        Modifier.size(30.dp).clip(androidx.compose.foundation.shape.CircleShape)
+            .background(color.copy(alpha = 0.12f)).clickable { onClick() },
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+    ) { Text(emoji, fontSize = 13.sp) }
 }
