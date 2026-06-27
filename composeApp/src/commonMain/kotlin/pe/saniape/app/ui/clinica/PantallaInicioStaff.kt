@@ -35,6 +35,7 @@ import pe.saniape.app.data.staff.CitaAgenda
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.DashboardRepo
 import pe.saniape.app.data.staff.StatsDashboard
+import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.theme.Sania
 
 /**
@@ -165,7 +166,7 @@ private fun FilaAgenda(cita: CitaAgenda) {
             .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)).padding(Sania.dim.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(cita.hora, color = c.navy, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
+        Text(hora12(cita.hora), color = c.navy, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
         Spacer(Modifier.padding(horizontal = 6.dp))
         Column(Modifier.weight(1f)) {
             Text(cita.paciente, color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)

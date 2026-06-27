@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.BannersAgenda
 import pe.saniape.app.data.staff.CitaStaff
 import pe.saniape.app.data.staff.Derivacion
+import pe.saniape.app.ui.hora12
 import pe.saniape.app.data.staff.NivelRiesgo
 import pe.saniape.app.ui.theme.Sania
 
@@ -82,7 +83,7 @@ fun BannersAgendaUI(
             ) {
                 banners.vencidas.forEach { cita ->
                     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                        Text("${cita.fecha} · ${cita.hora.take(5)} · ${cita.tipo ?: ""}",
+                        Text("${cita.fecha} · ${hora12(cita.hora)} · ${cita.tipo ?: ""}",
                             color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         Text(cita.pacienteNombre ?: "Paciente", color = c.textoSuave, fontSize = 12.sp)
                         Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -110,7 +111,7 @@ fun BannersAgendaUI(
                         Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onVerCitaManana(cita) },
                         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                     ) {
-                        Text(cita.hora.take(5), color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(hora12(cita.hora), color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.width(8.dp))
                         Column(Modifier.weight(1f)) {
                             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {

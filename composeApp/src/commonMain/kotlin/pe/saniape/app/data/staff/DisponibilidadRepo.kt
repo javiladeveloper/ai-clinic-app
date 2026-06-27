@@ -48,20 +48,27 @@ object DisponibilidadRepo {
         val esFlexible = esFlexible(terapeutaId)
         val newStart = min(hora); val newEnd = newStart + duracion
         var overflow: String? = null
+        // Avisos de horario: NO bloquean (recepción puede coordinar fuera del turno;
+        // el profesional pudo venir a propósito). Solo se informan como advertencia.
+        var avisoHorario: String? = null
 
         if (!esFlexible) {
             val horarios = horariosDelDia(terapeutaId, diaDe(fecha))
-            if (horarios.isEmpty()) return Disponibilidad(false, "El profesional no trabaja los ${diaDe(fecha)}", false)
-            var startsWithin = false; var fullyWithin = false
-            for (h in horarios) {
-                val ini = min(h.first); val fin = min(h.second)
-                if (newStart in ini until fin) { startsWithin = true; if (newEnd <= fin) { fullyWithin = true; break } }
+            if (horarios.isEmpty()) {
+                avisoHorario = "El profesional no trabaja los ${diaDe(fecha)}"
+            } else {
+                var startsWithin = false; var fullyWithin = false
+                for (h in horarios) {
+                    val ini = min(h.first); val fin = min(h.second)
+                    if (newStart in ini until fin) { startsWithin = true; if (newEnd <= fin) { fullyWithin = true; break } }
+                }
+                if (!startsWithin) {
+                    val rangos = horarios.joinToString(", ") { "${it.first}-${it.second}" }
+                    avisoHorario = "Fuera de su horario. Atiende: $rangos"
+                } else if (!fullyWithin) {
+                    overflow = "Ojo: la cita termina después del turno del profesional ($duracion min)."
+                }
             }
-            if (!startsWithin) {
-                val rangos = horarios.joinToString(", ") { "${it.first}-${it.second}" }
-                return Disponibilidad(false, "Fuera de horario. Disponible: $rangos", false)
-            }
-            if (!fullyWithin) overflow = "Ojo: la cita termina después del turno del profesional ($duracion min)."
         }
 
         // Solapamiento del profesional (advertencia, no bloquea).
@@ -74,7 +81,8 @@ object DisponibilidadRepo {
             citasDe("paciente_id", pacienteId, fecha, excludeCitaId), newStart, newEnd
         )?.let { "El paciente ya tiene otra cita a las $it ese día" } else null
 
-        val aviso = solapeProf ?: solapePac ?: overflow
+        // Prioridad del aviso: fuera de horario > solapamientos > overflow. Nunca bloquea.
+        val aviso = avisoHorario ?: solapeProf ?: solapePac ?: overflow
         return Disponibilidad(true, aviso, aviso != null)
     }
 

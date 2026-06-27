@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.CitaStaff
 import pe.saniape.app.data.staff.ContextoStaff
+import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.clinica.agenda.AccionCita
 import pe.saniape.app.ui.clinica.agenda.AgendaViewModel
 import pe.saniape.app.ui.clinica.agenda.componentes.AccionTarjeta
@@ -264,7 +265,7 @@ private fun BannerSinProfesional(citas: List<CitaStaff>, onAsignar: (CitaStaff) 
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("${cita.hora.take(5)} · ${cita.pacienteNombre ?: "Paciente"} · ${cita.tipo ?: ""}",
+                Text("${hora12(cita.hora)} · ${cita.pacienteNombre ?: "Paciente"} · ${cita.tipo ?: ""}",
                     color = c.texto, fontSize = 12.sp, modifier = Modifier.weight(1f))
                 Box(
                     Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.pend)

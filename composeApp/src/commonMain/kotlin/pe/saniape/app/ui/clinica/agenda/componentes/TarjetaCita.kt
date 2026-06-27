@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.CitaStaff
+import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.recordarAcciones
 import pe.saniape.app.ui.theme.Sania
 
@@ -67,7 +68,7 @@ fun TarjetaCita(
         Column(Modifier.fillMaxWidth().padding(Sania.dim.tarjeta)) {
             // Línea 1: hora + tipo (+ Sesión #N) ····· estado
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(cita.hora.take(5), color = if (cerrada) c.textoSuave else c.navy,
+                Text(hora12(cita.hora), color = if (cerrada) c.textoSuave else c.navy,
                     fontSize = Sania.txt.seccion, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(8.dp))
                 val infoTipo = buildString {

@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -57,6 +59,7 @@ import pe.saniape.app.data.staff.EstadoProfesional
 import pe.saniape.app.data.staff.RefNombre
 import pe.saniape.app.data.staff.TerapeutaRef
 import pe.saniape.app.data.staff.TratamientoRef
+import pe.saniape.app.ui.ManejarAtras
 import pe.saniape.app.ui.theme.Sania
 
 private val TIPOS = listOf("Consulta", "Evaluación", "Sesión")
@@ -100,6 +103,9 @@ fun PantallaCrearCita(
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
+
+    // El botón/gesto "Atrás" del sistema cierra el formulario (app nativa).
+    ManejarAtras(activo = true, onAtras = onCancelar)
 
     var pacientes by remember { mutableStateOf<List<RefNombre>>(emptyList()) }
     var terapeutas by remember { mutableStateOf<List<TerapeutaRef>>(emptyList()) }
@@ -203,7 +209,7 @@ fun PantallaCrearCita(
         val estado = rememberTimePickerState(
             initialHour = partes.getOrNull(0)?.toIntOrNull() ?: 9,
             initialMinute = partes.getOrNull(1)?.toIntOrNull() ?: 0,
-            is24Hour = true,
+            is24Hour = false,   // selector en formato 12h (AM/PM); se guarda igual en 24h
         )
         DatePickerDialog(
             onDismissRequest = { mostrarHora = false },
@@ -230,12 +236,21 @@ fun PantallaCrearCita(
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxWidth().background(c.navyDark)
-                .padding(horizontal = Sania.dim.xl, vertical = Sania.dim.lg)) {
-                Text("← Volver", color = c.sobreNavy, fontSize = Sania.txt.pequeno,
-                    fontWeight = FontWeight.Bold, modifier = Modifier.clickable { onCancelar() })
-                Spacer(Modifier.height(Sania.dim.sm))
-                Text("Nueva cita", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
+            // Toolbar nativa: flecha ← circular + título (en vez del texto "Volver" suelto).
+            Row(
+                Modifier.fillMaxWidth().background(c.navyDark)
+                    .padding(horizontal = Sania.dim.lg, vertical = Sania.dim.lg),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier.size(38.dp).clip(CircleShape)
+                        .background(c.sobreNavy.copy(alpha = 0.15f))
+                        .clickable { onCancelar() },
+                    contentAlignment = Alignment.Center,
+                ) { Text("←", color = c.sobreNavy, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+                Spacer(Modifier.width(Sania.dim.md))
+                Text(if (prefill != null) "Nueva evaluación" else "Nueva cita",
+                    color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
             }
 
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Sania.dim.xl)) {

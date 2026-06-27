@@ -40,6 +40,7 @@ import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.data.staff.CitaStaff
 import pe.saniape.app.data.staff.EspecialidadRef
 import pe.saniape.app.ui.clinica.agenda.AccionCita
+import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.theme.Sania
 
 /**
@@ -173,7 +174,7 @@ fun ModalEditarCita(cita: CitaStaff, onCancelar: () -> Unit, onGuardar: (fecha: 
     }
     if (mostrarHora) {
         val p = hora.split(":")
-        val estado = rememberTimePickerState(p.getOrNull(0)?.toIntOrNull() ?: 9, p.getOrNull(1)?.toIntOrNull() ?: 0, true)
+        val estado = rememberTimePickerState(p.getOrNull(0)?.toIntOrNull() ?: 9, p.getOrNull(1)?.toIntOrNull() ?: 0, false)
         DatePickerDialog(
             onDismissRequest = { mostrarHora = false },
             confirmButton = {
@@ -198,7 +199,7 @@ fun ModalEditarCita(cita: CitaStaff, onCancelar: () -> Unit, onGuardar: (fecha: 
                 Spacer(Modifier.height(Sania.dim.md))
                 SelectorBotonModal("Fecha", fecha) { mostrarFecha = true }
                 Spacer(Modifier.height(Sania.dim.sm))
-                SelectorBotonModal("Hora", hora) { mostrarHora = true }
+                SelectorBotonModal("Hora", hora12(hora)) { mostrarHora = true }
             }
         },
         confirmButton = {
@@ -232,7 +233,7 @@ fun ModalPasarEvaluacion(cita: CitaStaff, onCancelar: () -> Unit, onElegir: (fec
     }
     if (mostrarHora) {
         val p = hora.split(":")
-        val estado = rememberTimePickerState(p.getOrNull(0)?.toIntOrNull() ?: 9, p.getOrNull(1)?.toIntOrNull() ?: 0, true)
+        val estado = rememberTimePickerState(p.getOrNull(0)?.toIntOrNull() ?: 9, p.getOrNull(1)?.toIntOrNull() ?: 0, false)
         DatePickerDialog(
             onDismissRequest = { mostrarHora = false },
             confirmButton = { TextButton(onClick = { hora = "${estado.hour.toString().padStart(2, '0')}:${estado.minute.toString().padStart(2, '0')}"; mostrarHora = false }) { Text("Aceptar", color = c.navy) } },
@@ -247,7 +248,7 @@ fun ModalPasarEvaluacion(cita: CitaStaff, onCancelar: () -> Unit, onElegir: (fec
             Column {
                 Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
                     .background(c.errorBg).padding(Sania.dim.md)) {
-                    Text("⚠ El horario ${cita.fecha} ${cita.hora.take(5)} ya está separado para la consulta de ${cita.pacienteNombre ?: "el paciente"}.",
+                    Text("⚠ El horario ${cita.fecha} ${hora12(cita.hora)} ya está separado para la consulta de ${cita.pacienteNombre ?: "el paciente"}.",
                         color = c.error, fontSize = 12.sp)
                 }
                 Spacer(Modifier.height(Sania.dim.md))
@@ -259,7 +260,7 @@ fun ModalPasarEvaluacion(cita: CitaStaff, onCancelar: () -> Unit, onElegir: (fec
                     Spacer(Modifier.height(Sania.dim.md))
                     SelectorBotonModal("Fecha", fecha) { mostrarFecha = true }
                     Spacer(Modifier.height(Sania.dim.sm))
-                    SelectorBotonModal("Hora", hora) { mostrarHora = true }
+                    SelectorBotonModal("Hora", hora12(hora)) { mostrarHora = true }
                     Spacer(Modifier.height(Sania.dim.lg))
                     BotonModal("✓ Agendar evaluación", c.navy, c.sobreNavy, lleno = true) { onElegir(fecha, hora) }
                     Spacer(Modifier.height(Sania.dim.sm))
@@ -267,7 +268,7 @@ fun ModalPasarEvaluacion(cita: CitaStaff, onCancelar: () -> Unit, onElegir: (fec
                 } else {
                     // Paso 1: dos opciones grandes, apiladas (como la web).
                     Spacer(Modifier.height(Sania.dim.lg))
-                    BotonModal("✓ Mismo horario (${cita.hora.take(5)})", c.ok, c.sobreNavy, lleno = true) {
+                    BotonModal("✓ Mismo horario (${hora12(cita.hora)})", c.ok, c.sobreNavy, lleno = true) {
                         onElegir(cita.fecha, cita.hora.take(5))
                     }
                     Spacer(Modifier.height(Sania.dim.sm))
