@@ -14,6 +14,8 @@ import kotlinx.serialization.json.jsonObject
 data class ClinicaDir(
     val nombre: String,
     val slug: String,
+    val logoUrl: String?,
+    val colorPrincipal: String?,
     val ciudad: String?,
     val distrito: String?,
     val direccion: String?,
@@ -57,6 +59,8 @@ object DirectorioRepo {
             ClinicaDir(
                 nombre = o.str("nombre") ?: "Clínica",
                 slug = slug,
+                logoUrl = o.str("logo_url"),
+                colorPrincipal = o.str("color_principal"),
                 ciudad = o.str("ciudad"),
                 distrito = o.str("distrito"),
                 direccion = o.str("direccion"),

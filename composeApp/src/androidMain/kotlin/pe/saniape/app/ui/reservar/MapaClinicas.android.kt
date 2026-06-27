@@ -51,14 +51,20 @@ actual fun MapaClinicas(
         }
 
         // ── Pines de clínicas ──
-        // Primer tap: muestra el globo (nombre + dirección). Tap de nuevo en el
-        // mismo pin (globo ya abierto): abre la landing. Igual que la web.
+        // Pin = círculo con el color de la clínica + su inicial (como los avatares).
+        // Primer tap: muestra el globo (nombre + dirección + referencia).
+        // Tap de nuevo en el mismo pin: abre la landing. Igual que la web.
         clinicas.filter { it.lat != null && it.lng != null }.forEach { cl ->
             val m = Marker(map).apply {
                 position = GeoPoint(cl.lat!!, cl.lng!!)
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                icon = pinClinica(context, cl.nombre.firstOrNull()?.uppercase() ?: "C", cl.colorPrincipal)
                 title = cl.nombre
-                subDescription = cl.direccion ?: ""
+                // Globo con dirección + referencia (cada clínica pone ambas).
+                subDescription = listOfNotNull(
+                    cl.direccion?.let { "📍 $it" },
+                    cl.referencia?.let { "🧭 $it" },
+                ).joinToString("\n").ifBlank { "Toca de nuevo para ver más" }
                 setOnMarkerClickListener { marker, _ ->
                     if (marker.isInfoWindowShown) {
                         marker.closeInfoWindow()
@@ -93,6 +99,63 @@ actual fun MapaClinicas(
             }
         }
     }
+}
+
+/**
+ * Pin de clínica: gota con el color de la clínica + un círculo blanco con la
+ * inicial. Coherente con los avatares de la landing (sin descargar el logo).
+ */
+private fun pinClinica(
+    context: android.content.Context,
+    inicial: String,
+    colorHex: String?,
+): android.graphics.drawable.Drawable {
+    val d = context.resources.displayMetrics.density
+    val w = (40 * d).toInt()
+    val h = (52 * d).toInt()
+    val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bmp)
+
+    val color = parseColorAndroid(colorHex) ?: android.graphics.Color.parseColor("#2c3e7a")
+    val cx = w / 2f
+    val cy = w / 2f
+    val r = w / 2f
+
+    val pColor = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { this.color = color }
+    // Cola de la gota
+    val path = android.graphics.Path().apply {
+        moveTo(cx - r * 0.5f, cy + r * 0.55f)
+        lineTo(cx, h - 3 * d)
+        lineTo(cx + r * 0.5f, cy + r * 0.55f)
+        close()
+    }
+    canvas.drawPath(path, pColor)
+    // Círculo de color
+    canvas.drawCircle(cx, cy, r, pColor)
+    // Borde blanco
+    val pBorde = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = android.graphics.Color.WHITE
+        style = android.graphics.Paint.Style.STROKE
+        strokeWidth = 2.5f * d
+    }
+    canvas.drawCircle(cx, cy, r - 1.2f * d, pBorde)
+    // Inicial en blanco
+    val pTexto = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = android.graphics.Color.WHITE
+        textSize = 18 * d
+        textAlign = android.graphics.Paint.Align.CENTER
+        isFakeBoldText = true
+    }
+    val ty = cy - (pTexto.descent() + pTexto.ascent()) / 2
+    canvas.drawText(inicial, cx, ty, pTexto)
+
+    return android.graphics.drawable.BitmapDrawable(context.resources, bmp)
+}
+
+private fun parseColorAndroid(hex: String?): Int? {
+    if (hex.isNullOrBlank()) return null
+    return try { android.graphics.Color.parseColor(if (hex.startsWith("#")) hex else "#$hex") }
+    catch (e: Exception) { null }
 }
 
 /** Punto azul tipo "mi ubicación" (círculo relleno con borde blanco). */
