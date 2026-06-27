@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -79,12 +80,28 @@ fun PantallaCrearCita(ctx: ContextoStaff, fechaInicial: String, onListo: () -> U
     var fecha by remember { mutableStateOf(fechaInicial) }
     var hora by remember { mutableStateOf("09:00") }
     var costo by remember { mutableStateOf("0") }
+    var diagnostico by remember { mutableStateOf("") }
     var notas by remember { mutableStateOf("") }
+    var esRegularizacion by remember { mutableStateOf(false) }   // "la cita ya ocurrió"
 
     var mostrarFecha by remember { mutableStateOf(false) }
     var mostrarHora by remember { mutableStateOf(false) }
     var guardando by remember { mutableStateOf(false) }
     var mensaje by remember { mutableStateOf<String?>(null) }
+
+    // Disponibilidad en vivo (igual que la web): bloquea si no disponible (futura),
+    // advierte si hay solapamiento. Se recalcula al cambiar profesional/fecha/hora.
+    var disponibilidad by remember { mutableStateOf<pe.saniape.app.data.staff.Disponibilidad?>(null) }
+    LaunchedEffect(terapeuta?.id, fecha, hora, tipo) {
+        val terId = terapeuta?.id ?: ctx.miTerapeutaId
+        disponibilidad = if (terId != null) {
+            runCatching {
+                pe.saniape.app.data.staff.DisponibilidadRepo.verificar(
+                    terId, fecha, hora, if (tipo == "Consulta") 15 else 60, pacienteId = paciente?.id,
+                )
+            }.getOrNull()
+        } else null
+    }
 
     LaunchedEffect(Unit) {
         try {
@@ -159,6 +176,17 @@ fun PantallaCrearCita(ctx: ContextoStaff, fechaInicial: String, onListo: () -> U
                         modifier = Modifier.fillMaxWidth().padding(bottom = Sania.dim.md))
                 }
 
+                // Aviso de disponibilidad (bloqueante en rojo / advertencia en ámbar).
+                disponibilidad?.takeIf { it.motivo != null }?.let { d ->
+                    val color = if (!d.disponible) c.error else c.pend
+                    val bg = if (!d.disponible) c.errorBg else c.pendBg
+                    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .background(bg).padding(Sania.dim.md).padding(bottom = 0.dp)) {
+                        Text("${if (!d.disponible) "⛔" else "⚠"} ${d.motivo}", color = color, fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.height(Sania.dim.sm))
+                }
+
                 // Tipo
                 Etiqueta("Tipo de cita")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -200,6 +228,13 @@ fun PantallaCrearCita(ctx: ContextoStaff, fechaInicial: String, onListo: () -> U
                         SelectorBoton(hora) { mostrarHora = true }
                     }
                 }
+                // Regularización: "esta cita ya ocurrió" (salta validación de disponibilidad)
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = Sania.dim.sm).clickable { esRegularizacion = !esRegularizacion }) {
+                    Text(if (esRegularizacion) "☑" else "☐", fontSize = 18.sp, color = c.navy)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Esta cita ya ocurrió (la registro después)", color = c.textoSuave, fontSize = 12.sp)
+                }
 
                 Spacer(Modifier.height(Sania.dim.md))
                 // Profesional (fijado si es profesional vinculado)
@@ -215,9 +250,27 @@ fun PantallaCrearCita(ctx: ContextoStaff, fechaInicial: String, onListo: () -> U
                 }
 
                 // Costo (si tiene permiso pagos)
-                if (ctx.puede("pagos") && tipo != "Sesión") {
+                // Diagnóstico (Evaluación) — opcional al agendar.
+                if (tipo == "Evaluación") {
                     Spacer(Modifier.height(Sania.dim.md))
-                    Etiqueta("Costo (S/)")
+                    Etiqueta("Diagnóstico / Motivo (opcional)")
+                    OutlinedTextField(
+                        value = diagnostico, onValueChange = { diagnostico = it },
+                        placeholder = { Text("Se puede completar luego", color = c.textoSuave) },
+                        modifier = Modifier.fillMaxWidth(), minLines = 2,
+                    )
+                }
+
+                if (ctx.puede("pagos") && tipo != "Sesión") {
+                    val precioBase = if (tipo == "Evaluación") precioEvaluacion else precioConsulta
+                    Spacer(Modifier.height(Sania.dim.md))
+                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                        Etiqueta("Costo (S/)")
+                        if ((costo.toDoubleOrNull() ?: 0.0) != precioBase) {
+                            Text("Restablecer", color = c.navy, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clickable { costo = precioBase.toString() })
+                        }
+                    }
                     OutlinedTextField(
                         value = costo, onValueChange = { costo = it.filter { ch -> ch.isDigit() || ch == '.' } },
                         singleLine = true,
@@ -242,6 +295,11 @@ fun PantallaCrearCita(ctx: ContextoStaff, fechaInicial: String, onListo: () -> U
                         val p = paciente ?: run { mensaje = "Elige un paciente"; return@Button }
                         if (tipo == "Sesión" && tratamiento == null && tratamientos.isNotEmpty()) {
                             mensaje = "Elige el tratamiento"; return@Button
+                        }
+                        // Disponibilidad bloquea solo si NO es regularización (igual que la web).
+                        val d = disponibilidad
+                        if (d != null && !d.disponible && !esRegularizacion) {
+                            mensaje = d.motivo ?: "El horario no está disponible"; return@Button
                         }
                         guardando = true
                         scope.launch {
