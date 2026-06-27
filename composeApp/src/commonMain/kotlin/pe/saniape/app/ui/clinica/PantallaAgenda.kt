@@ -42,9 +42,12 @@ import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
+import pe.saniape.app.data.staff.AgendaBanners
 import pe.saniape.app.data.staff.AgendaRepo
+import pe.saniape.app.data.staff.BannersAgenda
 import pe.saniape.app.data.staff.CitaStaff
 import pe.saniape.app.data.staff.ContextoStaff
+import pe.saniape.app.data.staff.Derivacion
 import pe.saniape.app.data.staff.EspecialidadRef
 import pe.saniape.app.ui.theme.Sania
 
@@ -62,6 +65,7 @@ fun PantallaAgenda(ctx: ContextoStaff) {
     var cargando by remember { mutableStateOf(true) }
     var citas by remember { mutableStateOf<List<CitaStaff>>(emptyList()) }
     var especialidades by remember { mutableStateOf<List<EspecialidadRef>>(emptyList()) }
+    var banners by remember { mutableStateOf<BannersAgenda?>(null) }
     var accionando by remember { mutableStateOf(false) }
     var mensaje by remember { mutableStateOf<String?>(null) }
 
@@ -80,6 +84,9 @@ fun PantallaAgenda(ctx: ContextoStaff) {
     LaunchedEffect(fechaSel) { recargar() }
     LaunchedEffect(Unit) {
         try { especialidades = AgendaRepo.especialidades() } catch (_: Exception) {}
+        try {
+            banners = AgendaBanners.cargar(hoy, mananaIso(hoy), ctx.miTerapeutaId, ctx.esGestor)
+        } catch (_: Exception) {}
     }
 
     suspend fun ejecutar(
@@ -155,6 +162,31 @@ fun PantallaAgenda(ctx: ContextoStaff) {
             mensaje?.let {
                 Text(it, color = c.navy, fontSize = Sania.txt.pequeno,
                     modifier = Modifier.padding(horizontal = Sania.dim.lg, vertical = 4.dp))
+            }
+
+            // ── Banners (mañana / vencidas / derivaciones) ──
+            banners?.let { b ->
+                BannersAgendaUI(
+                    banners = b,
+                    onVerCitaManana = { c2 -> fechaSel = c2.fecha },
+                    onCerrarVencida = { c2, vino ->
+                        scope.launch {
+                            if (vino) {
+                                if (c2.tipo == "Evaluación" || c2.tipo == "Sesión") completarCita = c2
+                                else ejecutar("completar", c2)
+                            } else ejecutar("cancelar", c2)
+                            try { banners = AgendaBanners.cargar(hoy, mananaIso(hoy), ctx.miTerapeutaId, ctx.esGestor) } catch (_: Exception) {}
+                        }
+                    },
+                    onAgendarDerivacion = { creandoCita = true },
+                    onMarcarDerivacion = { d ->
+                        scope.launch {
+                            if (AgendaBanners.marcarDerivacion(d.id)) {
+                                banners = banners?.copy(derivaciones = banners!!.derivaciones.filter { it.id != d.id })
+                            }
+                        }
+                    },
+                )
             }
 
             when {
@@ -393,6 +425,12 @@ private val DIAS_ES = listOf("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom")
 
 private fun hoyIso(): String {
     val d = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+    return "${d.year}-${d.monthNumber.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}"
+}
+
+private fun mananaIso(hoy: String): String {
+    val p = hoy.split("-")
+    val d = kotlinx.datetime.LocalDate(p[0].toInt(), p[1].toInt(), p[2].toInt()).plus(DatePeriod(days = 1))
     return "${d.year}-${d.monthNumber.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}"
 }
 

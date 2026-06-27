@@ -27,10 +27,15 @@ data class CitaStaff(
     val estado: String,
     val tipo: String?,
     val costo: Double?,
+    val duracion: Int?,
+    val origen: String?,
+    val confirmadaPorPaciente: Boolean,
+    val numeroSesion: Int?,
     val terapeutaId: String?,
     val terapeutaNombre: String?,
     val pacienteId: String?,
     val pacienteNombre: String?,
+    val pacienteTelefono: String?,
     val tratamientoId: String?,
     val procedimiento: String?,
 )
@@ -55,13 +60,7 @@ object AgendaRepo {
     /** Citas de un día (yyyy-MM-dd). Si miTerapeutaId != null, solo las suyas (scope). */
     suspend fun citasDelDia(fecha: String, miTerapeutaId: String?): List<CitaStaff> {
         val filas = Supabase.client.postgrest["citas"]
-            .select(
-                Columns.raw(
-                    "id, fecha, hora, estado, tipo, costo, terapeuta_id, paciente_id, tratamiento_id, " +
-                        "paciente:pacientes(nombre), terapeuta:terapeutas(nombre), " +
-                        "tratamiento:tratamientos!citas_tratamiento_id_fkey(procedimiento:procedimientos(nombre))"
-                )
-            ) {
+            .select(Columns.raw(SELECT_CITA)) {
                 filter {
                     eq("fecha", fecha)
                     if (miTerapeutaId != null) eq("terapeuta_id", miTerapeutaId)
@@ -69,23 +68,40 @@ object AgendaRepo {
                 order("hora", Order.ASCENDING)
             }
             .decodeList<JsonObject>()
+        return filas.map { mapearCita(it) }
+    }
 
-        return filas.map { o ->
-            CitaStaff(
-                id = o.str("id") ?: "",
-                fecha = o.str("fecha") ?: "",
-                hora = o.str("hora") ?: "",
-                estado = o.str("estado") ?: "",
-                tipo = o.str("tipo"),
-                costo = o.dbl("costo"),
-                terapeutaId = o.str("terapeuta_id"),
-                terapeutaNombre = o.nested("terapeuta")?.str("nombre"),
-                pacienteId = o.str("paciente_id"),
-                pacienteNombre = o.nested("paciente")?.str("nombre"),
-                tratamientoId = o.str("tratamiento_id"),
-                procedimiento = o.nested("tratamiento")?.nested("procedimiento")?.str("nombre"),
+    /** Columnas comunes de una cita (con joins). Una sola fuente. */
+    const val SELECT_CITA =
+        "id, fecha, hora, estado, tipo, costo, duracion, origen, confirmada_por_paciente, " +
+            "terapeuta_id, paciente_id, tratamiento_id, " +
+            "paciente:pacientes(nombre, telefono), terapeuta:terapeutas(nombre), " +
+            "tratamiento:tratamientos!citas_tratamiento_id_fkey(procedimiento:procedimientos(nombre)), " +
+            "sesion:sesiones!citas_sesion_id_fkey(numero)"
+
+    fun mapearCita(o: JsonObject): CitaStaff {
+            fun s(k: String) = (o[k] as? JsonPrimitive)?.content?.takeIf { it != "null" }
+            fun obj(k: String) = o[k] as? JsonObject
+            return CitaStaff(
+                id = s("id") ?: "",
+                fecha = s("fecha") ?: "",
+                hora = s("hora") ?: "",
+                estado = s("estado") ?: "",
+                tipo = s("tipo"),
+                costo = s("costo")?.toDoubleOrNull(),
+                duracion = s("duracion")?.toIntOrNull(),
+                origen = s("origen"),
+                confirmadaPorPaciente = s("confirmada_por_paciente") == "true",
+                numeroSesion = (obj("sesion")?.get("numero") as? JsonPrimitive)?.content?.toIntOrNull(),
+                terapeutaId = s("terapeuta_id"),
+                terapeutaNombre = (obj("terapeuta")?.get("nombre") as? JsonPrimitive)?.content?.takeIf { it != "null" },
+                pacienteId = s("paciente_id"),
+                pacienteNombre = (obj("paciente")?.get("nombre") as? JsonPrimitive)?.content?.takeIf { it != "null" },
+                pacienteTelefono = (obj("paciente")?.get("telefono") as? JsonPrimitive)?.content?.takeIf { it != "null" },
+                tratamientoId = s("tratamiento_id"),
+                procedimiento = (obj("tratamiento")?.get("procedimiento") as? JsonObject)
+                    ?.get("nombre")?.let { (it as? JsonPrimitive)?.content?.takeIf { v -> v != "null" } },
             )
-        }
     }
 
     /** Confirmar (escritura simple, sin efectos colaterales) → directo a Supabase. */
@@ -221,6 +237,26 @@ object AgendaRepo {
         return consulta to evaluacion
     }
 
+    /**
+     * Pasa una Consulta a Evaluación (igual que la web): completa la consulta origen
+     * (si está Pendiente/Confirmada) y crea la cita de Evaluación con sus datos.
+     */
+    suspend fun pasarAEvaluacion(
+        citaOrigen: CitaStaff, fecha: String, hora: String, costo: Double, notas: String?,
+    ): Boolean {
+        // 1) Completar la consulta origen si aún no lo está.
+        if (citaOrigen.estado == "Pendiente" || citaOrigen.estado == "Confirmada") {
+            completar(citaOrigen.id)
+        }
+        // 2) Crear la evaluación con el mismo paciente/profesional.
+        return crearCita(
+            pacienteId = citaOrigen.pacienteId ?: return false,
+            tipo = "Evaluación", fecha = fecha, hora = hora,
+            terapeutaId = citaOrigen.terapeutaId, tratamientoId = null,
+            costo = costo, duracion = 60, notas = notas,
+        )
+    }
+
     /** Crea una cita vía endpoint (maneja sesión vinculada + notificación). */
     suspend fun crearCita(
         pacienteId: String, tipo: String, fecha: String, hora: String,
@@ -250,3 +286,84 @@ object AgendaRepo {
 data class EspecialidadRef(val id: String, val nombre: String)
 data class RefNombre(val id: String, val nombre: String)
 data class TratamientoRef(val id: String, val procedimiento: String, val modalidad: String, val terapeutaId: String?)
+
+/** Una derivación pendiente (un médico derivó a un paciente; recepción decide). */
+data class Derivacion(val id: String, val pacienteId: String?, val pacienteNombre: String?, val especialidadDestino: String?)
+
+/** Banners de la agenda. */
+data class BannersAgenda(
+    val manana: List<CitaStaff>,
+    val vencidas: List<CitaStaff>,
+    val derivaciones: List<Derivacion>,
+)
+
+/** Extiende AgendaRepo con las cargas de banners (mañana/vencidas/derivaciones). */
+object AgendaBanners {
+    private fun JsonObject.str(k: String): String? =
+        (this[k] as? JsonPrimitive)?.content?.takeIf { it != "null" }
+    private fun JsonObject.dbl(k: String): Double? =
+        (this[k] as? JsonPrimitive)?.content?.toDoubleOrNull()
+    private fun JsonObject.nested(k: String): JsonObject? = this[k] as? JsonObject
+
+    private fun mapCita(o: JsonObject) = AgendaRepo.mapearCita(o)
+
+    private const val SEL = AgendaRepo.SELECT_CITA
+
+    suspend fun cargar(hoy: String, manana: String, miTerapeutaId: String?, esGestor: Boolean): BannersAgenda {
+        // Mañana: citas de mañana no completadas.
+        val mananaCitas = Supabase.client.postgrest["citas"]
+            .select(Columns.raw(SEL)) {
+                filter {
+                    eq("fecha", manana)
+                    neq("estado", "Completada")
+                    neq("estado", "Cancelada")
+                    if (miTerapeutaId != null) eq("terapeuta_id", miTerapeutaId)
+                }
+                order("hora", Order.ASCENDING)
+            }
+            .decodeList<JsonObject>().map { mapCita(it) }
+
+        // Vencidas: fecha < hoy + estado Pendiente/Confirmada.
+        val vencidas = Supabase.client.postgrest["citas"]
+            .select(Columns.raw(SEL)) {
+                filter {
+                    lt("fecha", hoy)
+                    isIn("estado", listOf("Pendiente", "Confirmada"))
+                    if (miTerapeutaId != null) eq("terapeuta_id", miTerapeutaId)
+                }
+                order("fecha", Order.DESCENDING)
+                limit(50)
+            }
+            .decodeList<JsonObject>().map { mapCita(it) }
+
+        // Derivaciones pendientes (solo gestor/recepción).
+        val derivaciones = if (esGestor) {
+            Supabase.client.postgrest["solicitudes"]
+                .select(Columns.raw(
+                    "id, paciente_id, descripcion, paciente:pacientes(nombre), " +
+                        "especialidad_destino:especialidades!solicitudes_especialidad_destino_id_fkey(nombre)"
+                )) {
+                    filter { eq("tipo", "Derivacion"); eq("estado", "Pendiente") }
+                    order("created_at", Order.DESCENDING)
+                }
+                .decodeList<JsonObject>().mapNotNull {
+                    Derivacion(
+                        id = it.str("id") ?: return@mapNotNull null,
+                        pacienteId = it.str("paciente_id"),
+                        pacienteNombre = it.nested("paciente")?.str("nombre"),
+                        especialidadDestino = it.nested("especialidad_destino")?.str("nombre"),
+                    )
+                }
+        } else emptyList()
+
+        return BannersAgenda(mananaCitas, vencidas, derivaciones)
+    }
+
+    /** Marca una derivación como procesada. */
+    suspend fun marcarDerivacion(id: String): Boolean = try {
+        Supabase.client.postgrest["solicitudes"].update({ set("estado", "Completada") }) {
+            filter { eq("id", id) }
+        }
+        true
+    } catch (_: Exception) { false }
+}

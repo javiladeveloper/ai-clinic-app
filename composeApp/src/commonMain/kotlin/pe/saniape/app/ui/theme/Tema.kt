@@ -33,6 +33,8 @@ data class SaniaColors(
     val pend: Color, val pendBg: Color,
     val error: Color, val errorBg: Color,
     val info: Color, val infoBg: Color,
+    val teal: Color, val tealBg: Color,
+    val purple: Color, val purpleBg: Color,
     val chipBg: Color,        // fondo de chip/selección suave (navy50)
 )
 
@@ -51,6 +53,8 @@ private val ColoresClaro = SaniaColors(
     pend = Paleta.Amber, pendBg = Paleta.AmberBg,
     error = Paleta.Red, errorBg = Paleta.RedBg,
     info = Paleta.Blue, infoBg = Paleta.BlueBg,
+    teal = Paleta.Teal, tealBg = Paleta.TealBg,
+    purple = Paleta.Purple, purpleBg = Paleta.PurpleBg,
     chipBg = Paleta.Navy50,
 )
 
