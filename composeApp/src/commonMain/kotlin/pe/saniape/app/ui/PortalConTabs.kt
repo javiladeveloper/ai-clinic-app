@@ -39,7 +39,12 @@ private enum class Tab(val titulo: String, val icono: ImageVector) {
  * Cada tab muestra una pantalla; comparten el estado del portal.
  */
 @Composable
-fun PortalConTabs(nombre: String?, onCerrarSesion: () -> Unit) {
+fun PortalConTabs(
+    nombre: String?,
+    puedeIrAClinica: Boolean = false,
+    onIrAClinica: () -> Unit = {},
+    onCerrarSesion: () -> Unit,
+) {
     var tab by remember { mutableStateOf(Tab.Inicio) }
 
     // Botón Atrás en una tab que no es Inicio → vuelve a Inicio (no cierra la app).
@@ -73,7 +78,12 @@ fun PortalConTabs(nombre: String?, onCerrarSesion: () -> Unit) {
                 Tab.Inicio -> PantallaPortal(nombre = nombre, onCerrarSesion = onCerrarSesion)
                 Tab.Reservar -> pe.saniape.app.ui.reservar.FlujoReservar()
                 Tab.Tratamiento -> PantallaSalud()
-                Tab.Mas -> PantallaMas(nombre = nombre, onCerrarSesion = onCerrarSesion)
+                Tab.Mas -> PantallaMas(
+                    nombre = nombre,
+                    puedeIrAClinica = puedeIrAClinica,
+                    onIrAClinica = onIrAClinica,
+                    onCerrarSesion = onCerrarSesion,
+                )
             }
         }
     }

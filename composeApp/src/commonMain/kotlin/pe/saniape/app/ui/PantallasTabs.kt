@@ -50,7 +50,12 @@ import pe.saniape.app.ui.theme.Sania
  * una sola vez; teléfono editable) + cerrar sesión.
  */
 @Composable
-fun PantallaMas(nombre: String?, onCerrarSesion: () -> Unit) {
+fun PantallaMas(
+    nombre: String?,
+    puedeIrAClinica: Boolean = false,
+    onIrAClinica: () -> Unit = {},
+    onCerrarSesion: () -> Unit,
+) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
 
@@ -198,6 +203,20 @@ fun PantallaMas(nombre: String?, onCerrarSesion: () -> Unit) {
                     }
 
                     Spacer(Modifier.height(Sania.dim.xxl))
+
+                    // ── Ir a mi clínica (si la cuenta también es staff) ──
+                    if (puedeIrAClinica) {
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(c.chipBg).border(1.dp, c.navy, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { onIrAClinica() }.padding(Sania.dim.lg),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text("🏥 Ir a mi clínica", color = c.navy, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
+                            Text("→", color = c.navy, fontSize = Sania.txt.cuerpo)
+                        }
+                        Spacer(Modifier.height(Sania.dim.md))
+                    }
 
                     // ── Cerrar sesión ──
                     Row(
