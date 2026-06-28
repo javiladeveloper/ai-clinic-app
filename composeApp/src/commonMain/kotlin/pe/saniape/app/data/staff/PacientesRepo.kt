@@ -446,13 +446,18 @@ object PacientesRepo {
     suspend fun crearSesion(
         pacienteId: String, tratamientoId: String, terapeutaId: String?,
         fecha: String, hora: String,
+        duracion: Int = 45, estado: String = "Planificada",
+        costo: Double? = null, notas: String? = null,
     ): Boolean {
         val tk = token() ?: return false
         val cuerpo = buildJsonObject {
             put("pacienteId", pacienteId); put("tipo", "Sesión")
             put("tratamientoId", tratamientoId); put("fecha", fecha); put("hora", hora)
             if (terapeutaId != null) put("terapeutaId", terapeutaId)
-            put("duracion", 45)
+            put("duracion", duracion)
+            put("estadoSesion", estado)
+            if (costo != null) put("costo", costo)
+            if (!notas.isNullOrBlank()) put("notas", notas)
         }
         val resp = http.post("${Supabase.SITE_URL}/api/staff/cita/crear") {
             header("Authorization", "Bearer $tk")

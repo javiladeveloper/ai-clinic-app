@@ -42,7 +42,9 @@ import pe.saniape.app.data.staff.SesionFicha
 import pe.saniape.app.data.staff.TecnicasRepo
 import pe.saniape.app.data.staff.TratamientoPaciente
 import pe.saniape.app.ui.ManejarAtras
+import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.recordarAcciones
+import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.ui.theme.EstadosColor
 import pe.saniape.app.ui.theme.Sania
 
@@ -246,14 +248,20 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         )
     }
 
-    // Modal crear sesión (fecha/hora) para un tratamiento
+    // Modal crear sesión para un tratamiento (esencial de la web).
     crearSesionEn?.let { t ->
         ModalCrearSesion(
+            t = t,
+            miTerapeutaId = ctx.miTerapeutaId,
+            puedePagos = ctx.puede("pagos"),
             onCancelar = { crearSesionEn = null },
-            onGuardar = { fecha, hora ->
+            onGuardar = { fecha, hora, dur, terapeutaId, estado, costo, notas ->
                 crearSesionEn = null
                 scope.launch {
-                    PacientesRepo.crearSesion(paciente.id, t.id, t.terapeutaId, fecha, hora)
+                    PacientesRepo.crearSesion(
+                        paciente.id, t.id, terapeutaId, fecha, hora,
+                        duracion = dur, estado = estado, costo = costo, notas = notas,
+                    )
                     recargar()
                 }
             },
@@ -402,32 +410,246 @@ private fun ModalCompletarSesion(
     )
 }
 
+/**
+ * Crear una sesión para un tratamiento (esencial de la web):
+ *  - fecha/hora con pickers nativos + duración; avisa si la fecha/hora ya pasó.
+ *  - profesional de la(s) misma(s) especialidad(es) del tratamiento (o fijo si vinculado).
+ *  - número de sesión informativo (no editable).
+ *  - estado (Planificada / En progreso / Completada).
+ *  - costo: Sesión suelta = editable; Paquete = informativo (incluida en el paquete).
+ *  - notas clínicas. El pago se registra aparte (en la sección Pagos).
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun ModalCrearSesion(onCancelar: () -> Unit, onGuardar: (fecha: String, hora: String) -> Unit) {
+private fun ModalCrearSesion(
+    t: TratamientoPaciente,
+    miTerapeutaId: String?,
+    puedePagos: Boolean,
+    onCancelar: () -> Unit,
+    onGuardar: (fecha: String, hora: String, duracion: Int, terapeutaId: String?, estado: String, costo: Double?, notas: String?) -> Unit,
+) {
     val c = Sania.colors
-    var fecha by remember { mutableStateOf("") }
+    val esPaquete = t.modalidad == "Paquete"
+    var fecha by remember { mutableStateOf(pe.saniape.app.ui.clinica.agenda.hoyIso()) }
     var hora by remember { mutableStateOf("09:00") }
+    var duracion by remember { mutableStateOf(45) }
+    var estado by remember { mutableStateOf("Planificada") }
+    // En suelta el costo se pre-llena con el precio por sesión; en paquete es informativo (0).
+    var costo by remember { mutableStateOf(if (esPaquete) "" else (t.precioPorSesion?.toString() ?: "")) }
+    var notas by remember { mutableStateOf("") }
+    var terapeutaId by remember { mutableStateOf(miTerapeutaId ?: t.terapeutaId) }
+    var mostrarFecha by remember { mutableStateOf(false) }
+    var mostrarHora by remember { mutableStateOf(false) }
+
+    // Profesionales de la(s) especialidad(es) del tratamiento + número de sesión informativo.
+    var terapeutas by remember { mutableStateOf<List<pe.saniape.app.data.staff.TerapeutaConEsp>>(emptyList()) }
+    var numeroInfo by remember { mutableStateOf(t.sesionesCompletadas + 1) }
+    LaunchedEffect(t.id) {
+        terapeutas = runCatching { PacientesRepo.terapeutasConEspecialidad() }.getOrDefault(emptyList())
+        val ses = runCatching { PacientesRepo.sesionesDe(t.id) }.getOrDefault(emptyList())
+        numeroInfo = (ses.maxOfOrNull { it.numero } ?: t.sesionesCompletadas).coerceAtLeast(t.sesionesCompletadas) + 1
+    }
+    // Especialidades del profesional actual del tratamiento → filtra colegas de la misma especialidad.
+    val espsDelTrat = terapeutas.find { it.id == t.terapeutaId }?.especialidadIds ?: emptyList()
+    val colegas = if (espsDelTrat.isEmpty()) terapeutas
+        else terapeutas.filter { ter -> ter.especialidadIds.any { it in espsDelTrat } }
+
+    // Aviso si la fecha/hora elegida ya pasó (solo advertencia, igual que la web).
+    val hoy = pe.saniape.app.ui.clinica.agenda.hoyIso()
+    val fechaPasada = fecha < hoy
+
+    if (mostrarFecha) {
+        val estadoP = androidx.compose.material3.rememberDatePickerState()
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { mostrarFecha = false },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    estadoP.selectedDateMillis?.let { ms ->
+                        val d = kotlinx.datetime.Instant.fromEpochMilliseconds(ms)
+                            .toLocalDateTime(kotlinx.datetime.TimeZone.UTC).date
+                        fecha = "${d.year}-${d.monthNumber.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}"
+                    }
+                    mostrarFecha = false
+                }) { Text("Aceptar", color = c.navy) }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { mostrarFecha = false }) { Text("Cancelar", color = c.textoSuave) } },
+        ) { androidx.compose.material3.DatePicker(state = estadoP) }
+    }
+    if (mostrarHora) {
+        val partes = hora.split(":")
+        val estadoP = androidx.compose.material3.rememberTimePickerState(
+            initialHour = partes.getOrNull(0)?.toIntOrNull() ?: 9,
+            initialMinute = partes.getOrNull(1)?.toIntOrNull() ?: 0,
+            is24Hour = false,
+        )
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { mostrarHora = false },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    hora = "${estadoP.hour.toString().padStart(2, '0')}:${estadoP.minute.toString().padStart(2, '0')}"
+                    mostrarHora = false
+                }) { Text("Aceptar", color = c.navy) }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { mostrarHora = false }) { Text("Cancelar", color = c.textoSuave) } },
+        ) { Box(Modifier.fillMaxWidth().padding(Sania.dim.lg), Alignment.Center) { androidx.compose.material3.TimePicker(state = estadoP) } }
+    }
+
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onCancelar,
-        title = { Text("📅 Nueva sesión", fontWeight = FontWeight.Bold) },
+        title = { Text("📅 Nueva sesión #$numeroInfo", fontWeight = FontWeight.Bold) },
         text = {
-            Column {
-                CampoFicha("Fecha (AAAA-MM-DD)", fecha) { fecha = it }
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                // Fecha + Hora (pickers) + Duración
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        EtqMini("Fecha")
+                        SelectorBoxFicha(fecha) { mostrarFecha = true }
+                    }
+                    Column(Modifier.weight(1f)) {
+                        EtqMini("Hora")
+                        SelectorBoxFicha(hora12(hora)) { mostrarHora = true }
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
-                CampoFicha("Hora (HH:MM)", hora) { hora = it }
+                EtqMini("Duración")
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(30, 45, 60).forEach { d ->
+                        val activo = duracion == d
+                        Box(
+                            Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(if (activo) c.navy else c.superficie)
+                                .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { duracion = d }.padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center,
+                        ) { Text("$d min", color = if (activo) c.sobreNavy else c.texto, fontSize = 12.sp,
+                            fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal) }
+                    }
+                }
+                if (fechaPasada) {
+                    Spacer(Modifier.height(8.dp))
+                    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .background(c.pendBg).padding(10.dp)) {
+                        Text("⚠ La fecha elegida ya pasó. Si la sesión ya ocurrió, está bien registrarla.",
+                            color = c.pend, fontSize = 11.sp)
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+                // Profesional (colegas de la misma especialidad; fijo si vinculado)
+                EtqMini("Profesional")
+                if (miTerapeutaId != null) {
+                    SelectorBoxFicha("${colegas.find { it.id == miTerapeutaId }?.nombre ?: "Tú"} (tú)", bloqueado = true) {}
+                } else {
+                    SelectorListaFicha(colegas, colegas.find { it.id == terapeutaId },
+                        { it.nombre }, "Sin asignar") { terapeutaId = it.id }
+                }
+
+                Spacer(Modifier.height(10.dp))
+                // Estado
+                EtqMini("Estado")
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("Planificada", "En progreso", "Completada").forEach { e ->
+                        val activo = estado == e
+                        Box(
+                            Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(if (activo) c.navy else c.superficie)
+                                .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { estado = e }.padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center,
+                        ) { Text(e, color = if (activo) c.sobreNavy else c.texto, fontSize = 11.sp,
+                            fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal, maxLines = 1) }
+                    }
+                }
+
+                // Costo: suelta editable / paquete informativo
+                if (puedePagos) {
+                    Spacer(Modifier.height(10.dp))
+                    if (esPaquete) {
+                        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                            .background(c.purpleBg).padding(10.dp)) {
+                            Column {
+                                Text("📦 Sesión incluida en el paquete", color = c.purple,
+                                    fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("El paquete se cobra aparte (puede pagarse en partes). Registra los abonos en Pagos.",
+                                    color = c.texto, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
+                            }
+                        }
+                    } else {
+                        EtqMini("Costo de la sesión (S/)")
+                        CampoFicha("", costo, soloNumero = true) { costo = it }
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+                EtqMini("Notas clínicas")
+                CampoFicha("", notas, multilinea = true) { notas = it }
             }
         },
         confirmButton = {
             Box(Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
                 .clickable {
-                    if (fecha.isNotBlank() && hora.isNotBlank()) onGuardar(fecha.trim(), hora.trim())
+                    if (fecha.isNotBlank() && hora.isNotBlank()) {
+                        onGuardar(
+                            fecha.trim(), hora.trim(), duracion, terapeutaId, estado,
+                            // En paquete el costo de sesión no aplica (el cobro es del paquete).
+                            if (esPaquete) null else costo.toDoubleOrNull(),
+                            notas.trim().ifBlank { null },
+                        )
+                    }
                 }.padding(horizontal = 18.dp, vertical = 10.dp)) {
-                Text("Agendar", color = c.sobreNavy, fontWeight = FontWeight.Bold)
+                Text("Agendar sesión", color = c.sobreNavy, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
         containerColor = c.superficie,
     )
+}
+
+@Composable
+private fun EtqMini(t: String) {
+    Text(t.uppercase(), color = Sania.colors.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(bottom = 4.dp))
+}
+
+@Composable
+private fun SelectorBoxFicha(valor: String, bloqueado: Boolean = false, onClick: () -> Unit) {
+    val c = Sania.colors
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+            .background(if (bloqueado) c.chipBg else c.superficie)
+            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+            .clickable(enabled = !bloqueado) { onClick() }.padding(horizontal = 12.dp, vertical = 11.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(valor, color = c.texto, fontSize = Sania.txt.cuerpo)
+        Text(if (bloqueado) "🔒" else "▾", color = c.navy, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun <T> SelectorListaFicha(items: List<T>, elegido: T?, etiqueta: (T) -> String, placeholder: String, onElegir: (T) -> Unit) {
+    val c = Sania.colors
+    var abierto by remember { mutableStateOf(false) }
+    Column {
+        SelectorBoxFicha(elegido?.let(etiqueta) ?: placeholder) { abierto = !abierto }
+        if (abierto) {
+            Column(
+                Modifier.fillMaxWidth().padding(top = 4.dp)
+                    .clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.superficie)
+                    .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
+            ) {
+                if (items.isEmpty()) {
+                    Text("(Sin opciones)", color = c.textoSuave, fontSize = Sania.txt.pequeno,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp))
+                }
+                items.forEach { item ->
+                    Text(etiqueta(item), color = c.texto, fontSize = Sania.txt.cuerpo,
+                        modifier = Modifier.fillMaxWidth().clickable { onElegir(item); abierto = false }
+                            .padding(horizontal = 12.dp, vertical = 11.dp))
+                }
+            }
+        }
+    }
 }
 
 @Composable
