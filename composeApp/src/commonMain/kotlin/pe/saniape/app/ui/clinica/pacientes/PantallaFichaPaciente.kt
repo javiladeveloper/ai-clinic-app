@@ -74,7 +74,6 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     var recargarToken by remember { mutableStateOf(0) }   // fuerza recarga de las tarjetas
     var tab by remember { mutableStateOf("atenciones") }
     var hitos by remember { mutableStateOf<pe.saniape.app.data.staff.HitosPaciente?>(null) }
-    var crearCita by remember { mutableStateOf<pe.saniape.app.ui.clinica.PrefillCita?>(null) }
     var editarCitaHito by remember { mutableStateOf<pe.saniape.app.data.staff.CitaHito?>(null) }
     LaunchedEffect(pacienteInicial.id, recargarToken) {
         paciente = runCatching { PacientesRepo.porId(pacienteInicial.id) }.getOrNull() ?: pacienteInicial
@@ -82,16 +81,6 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         cargando = false
     }
     fun recargar() { recargarToken++ }
-
-    // Crear cita (Consulta/Evaluación) desde el "Nuevo ciclo" — pantalla completa.
-    crearCita?.let { prefill ->
-        pe.saniape.app.ui.clinica.PantallaCrearCita(
-            ctx = ctx, fechaInicial = prefill.fecha, prefill = prefill,
-            onListo = { crearCita = null; recargar() },
-            onCancelar = { crearCita = null },
-        )
-        return
-    }
 
     val verContacto = ctx.esGestor && !ctx.modoClinico
     val flagColor = when (paciente.flag) {
@@ -246,8 +235,6 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         onCambiarEstadoTrat = { tId, est -> scope.launch { PacientesRepo.cambiarEstadoTratamiento(tId, est); recargar() } },
                         onCrearSesion = { crearSesionEn = it },
                         onNuevoTratamiento = { creandoTratamiento = true },
-                        onNuevaConsulta = { crearCita = prefillCitaFicha("Consulta", paciente) },
-                        onNuevaEvaluacion = { crearCita = prefillCitaFicha("Evaluación", paciente) },
                         onEditarCita = { editarCitaHito = it },
                     )
                     "examenes" -> Text("Exámenes y derivaciones — próximamente en la app.",
@@ -901,8 +888,6 @@ private fun ContenidoAtenciones(
     onCambiarEstadoTrat: (String, String) -> Unit,
     onCrearSesion: (TratamientoPaciente) -> Unit,
     onNuevoTratamiento: () -> Unit,
-    onNuevaConsulta: () -> Unit,
-    onNuevaEvaluacion: () -> Unit,
     onEditarCita: (pe.saniape.app.data.staff.CitaHito) -> Unit,
 ) {
     val c = Sania.colors
@@ -938,15 +923,6 @@ private fun ContenidoAtenciones(
                 contentAlignment = Alignment.Center,
             ) { Text("➕ Nuevo tratamiento", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
         }
-
-        // Nuevo ciclo de atención (acciones para iniciar otro flujo) — al final.
-        Spacer(Modifier.height(Sania.dim.lg))
-        val tieneActivos = paciente.tratamientos.any { it.estado == "Activo" || it.estado == "Completado" }
-        NuevoCicloAtencion(
-            paciente = paciente, tieneActivos = tieneActivos, puedeCitas = ctx.puede("citas"),
-            onNuevaConsulta = onNuevaConsulta, onNuevaEvaluacion = onNuevaEvaluacion,
-            onNuevoTratamiento = onNuevoTratamiento,
-        )
     }
 }
 
@@ -974,9 +950,3 @@ private fun ContenidoResumen(paciente: PacienteStaff) {
     }
 }
 
-/** Prefill para crear una Consulta/Evaluación desde la ficha (fecha = hoy). */
-private fun prefillCitaFicha(tipo: String, paciente: PacienteStaff): pe.saniape.app.ui.clinica.PrefillCita =
-    pe.saniape.app.ui.clinica.PrefillCita(
-        tipo = tipo, pacienteId = paciente.id, pacienteNombre = paciente.nombre,
-        fecha = pe.saniape.app.ui.clinica.agenda.hoyIso(), hora = "09:00", terapeutaId = null,
-    )

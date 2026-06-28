@@ -23,60 +23,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
 import pe.saniape.app.data.staff.CitaHito
-import pe.saniape.app.data.staff.PacienteStaff
 import pe.saniape.app.data.staff.TratamientoPaciente
 import pe.saniape.app.ui.theme.Sania
 
 /** Un paso del recorrido (bolita + label). */
 private data class Paso(val label: String, val done: Boolean, val activo: Boolean)
-
-/**
- * Bloque "Nuevo ciclo de atención" (acciones para iniciar un nuevo flujo).
- * El recorrido POR tratamiento vive dentro de cada TarjetaTratamiento (BarraRecorrido),
- * para no duplicar: un tratamiento = una sola tarjeta con su barra + sesiones + pagos.
- */
-@Composable
-fun NuevoCicloAtencion(
-    paciente: PacienteStaff,
-    tieneActivos: Boolean,
-    puedeCitas: Boolean,
-    onNuevaConsulta: () -> Unit,
-    onNuevaEvaluacion: () -> Unit,
-    onNuevoTratamiento: () -> Unit,
-) {
-    val c = Sania.colors
-    if (paciente.estado == "Inactivo") return
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
-            .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp))
-            .padding(14.dp),
-    ) {
-        Text(if (tieneActivos) "NUEVO CICLO DE ATENCIÓN" else "ACCIONES RÁPIDAS",
-            color = c.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
-
-        when {
-            paciente.estado == "Nuevo" -> Hint("💬", "Paciente nuevo", "Empieza con una consulta o evaluación", c.chipBg, c.texto)
-            paciente.estado == "Evaluado" && !tieneActivos ->
-                Hint("💊", "Evaluación completada", "Crea un tratamiento para iniciar", c.pendBg, c.pend)
-        }
-
-        Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (puedeCitas) {
-                BtnCiclo("💬 Consulta", Modifier.weight(1f), onNuevaConsulta)
-                BtnCiclo("🔍 Evaluación", Modifier.weight(1f), onNuevaEvaluacion)
-            }
-            BtnCiclo("💊 Tratamiento", Modifier.weight(1f), onNuevoTratamiento)
-        }
-    }
-}
 
 /**
  * Barra de recorrido ADAPTATIVA por tipo, para incrustar en la cabecera de cada
@@ -183,32 +140,4 @@ private fun FilaRef(etq: String, valor: String) {
         Text("$etq:", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.width(70.dp))
         Text(valor, color = c.texto, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
-}
-
-@Composable
-private fun Hint(icono: String, titulo: String, sub: String, bg: Color, fg: Color) {
-    val c = Sania.colors
-    Spacer(Modifier.height(8.dp))
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(bg).padding(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(icono, fontSize = 16.sp)
-        Spacer(Modifier.width(8.dp))
-        Column {
-            Text(titulo, color = fg, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Text(sub, color = c.textoSuave, fontSize = 10.sp)
-        }
-    }
-}
-
-@Composable
-private fun BtnCiclo(texto: String, modifier: Modifier, onClick: () -> Unit) {
-    val c = Sania.colors
-    Box(
-        modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.superficie)
-            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-            .clickable { onClick() }.padding(vertical = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) { Text(texto, color = c.texto, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1) }
 }
