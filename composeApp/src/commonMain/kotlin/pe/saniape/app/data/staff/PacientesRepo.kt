@@ -217,6 +217,37 @@ object PacientesRepo {
         return resp.status == HttpStatusCode.OK
     }
 
+    /** Edita un pago (solo Admin): ajusta pago + movimiento + recalcula. */
+    suspend fun editarPago(
+        pagoId: String, monto: Double, metodo: String, notas: String? = null, fecha: String? = null,
+    ): Boolean {
+        val tk = token() ?: return false
+        val cuerpo = buildJsonObject {
+            put("pagoId", pagoId)
+            put("monto", monto)
+            put("metodo", metodo)
+            if (!notas.isNullOrBlank()) put("notas", notas)
+            if (!fecha.isNullOrBlank()) put("fecha", fecha)
+        }
+        val resp = http.post("${Supabase.SITE_URL}/api/staff/pago/editar") {
+            header("Authorization", "Bearer $tk")
+            contentType(ContentType.Application.Json)
+            setBody(cuerpo.toString())
+        }
+        return resp.status == HttpStatusCode.OK
+    }
+
+    /** Borra un pago (solo Admin): elimina movimiento + pago + recalcula. */
+    suspend fun borrarPago(pagoId: String): Boolean {
+        val tk = token() ?: return false
+        val resp = http.post("${Supabase.SITE_URL}/api/staff/pago/borrar") {
+            header("Authorization", "Bearer $tk")
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject { put("pagoId", pagoId) }.toString())
+        }
+        return resp.status == HttpStatusCode.OK
+    }
+
     /** Da de alta un tratamiento (paciente pasa a Alta si no le quedan otros en curso). */
     suspend fun darDeAlta(tratamientoId: String): Boolean {
         val tk = token() ?: return false

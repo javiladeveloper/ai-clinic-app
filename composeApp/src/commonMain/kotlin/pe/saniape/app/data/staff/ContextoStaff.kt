@@ -52,6 +52,9 @@ data class ContextoStaff(
     /** ¿Es gestor? (ve lista de pacientes con contacto). */
     val esGestor: Boolean get() = permisos.pacientes
 
+    /** ¿Es Admin? (puede editar/borrar pagos; recepción solo registra). */
+    val esAdmin: Boolean get() = rol == "Admin"
+
     /** Vista clínica: sin permiso de pacientes pero con sesiones/citas. */
     val modoClinico: Boolean get() = !permisos.pacientes && (permisos.sesiones || permisos.citas)
 

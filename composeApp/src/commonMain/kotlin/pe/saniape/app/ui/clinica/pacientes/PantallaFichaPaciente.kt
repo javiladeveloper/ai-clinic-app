@@ -150,6 +150,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         TarjetaTratamiento(
                             t = t,
                             verPagos = ctx.puede("pagos"),
+                            esAdmin = ctx.esAdmin,
                             puedeSesiones = ctx.puede("sesiones"),
                             onCompletarSesion = { completarSesion = it },
                             onCambioRealizado = { recargar() },

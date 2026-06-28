@@ -52,6 +52,7 @@ private val ESTADOS_SESION = listOf("Reprogramada", "No asistió", "Cancelada", 
 fun TarjetaTratamiento(
     t: TratamientoPaciente,
     verPagos: Boolean,
+    esAdmin: Boolean,
     puedeSesiones: Boolean,
     onCompletarSesion: (SesionFicha) -> Unit,   // abre modal observaciones
     onCambioRealizado: () -> Unit,               // refrescar ficha tras acción
@@ -161,10 +162,10 @@ fun TarjetaTratamiento(
                         }
                     }
 
-                    // Pagos (solo con permiso): acordado/pagado/saldo + registrar.
+                    // Pagos (solo con permiso): acordado/pagado/saldo + registrar/editar/borrar.
                     if (verPagos) {
                         Spacer(Modifier.height(Sania.dim.md))
-                        SeccionPagos(t = t, onCambio = { recargarSesiones() })
+                        SeccionPagos(t = t, esAdmin = esAdmin, onCambio = { recargarSesiones() })
                     }
 
                     // Dar de alta (si el tratamiento sigue en curso y puede sesiones)
@@ -251,7 +252,7 @@ private val METODOS_PAGO = listOf("Efectivo", "Yape", "BCP", "Transferencia", "O
 /** Sección de pagos del tratamiento: resumen + lista + registrar (reusa endpoint). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SeccionPagos(t: TratamientoPaciente, onCambio: () -> Unit) {
+private fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, onCambio: () -> Unit) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     var pagos by remember { mutableStateOf<List<pe.saniape.app.data.staff.PagoFicha>?>(null) }
@@ -259,6 +260,12 @@ private fun SeccionPagos(t: TratamientoPaciente, onCambio: () -> Unit) {
     var guardando by remember { mutableStateOf(false) }
     var monto by remember { mutableStateOf("") }
     var metodo by remember { mutableStateOf("Efectivo") }
+    var editando by remember { mutableStateOf<String?>(null) }   // id del pago en edición
+    var editMonto by remember { mutableStateOf("") }
+    var editMetodo by remember { mutableStateOf("Efectivo") }
+    var borrarId by remember { mutableStateOf<String?>(null) }   // confirmación de borrado
+
+    suspend fun recargar() { pagos = runCatching { PacientesRepo.pagosDe(t.id) }.getOrDefault(pagos ?: emptyList()) }
 
     LaunchedEffect(t.id) {
         pagos = runCatching { PacientesRepo.pagosDe(t.id) }.getOrDefault(emptyList())
@@ -289,14 +296,71 @@ private fun SeccionPagos(t: TratamientoPaciente, onCambio: () -> Unit) {
     pagos?.takeIf { it.isNotEmpty() }?.let { lista ->
         Spacer(Modifier.height(8.dp))
         lista.forEach { p ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.chipBg)
-                    .padding(horizontal = 8.dp, vertical = 2.dp)) {
-                    Text(p.metodo, color = c.navy, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            if (editando == p.id) {
+                // Edición inline (solo Admin)
+                Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = editMonto, onValueChange = { editMonto = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                        placeholder = { Text("Monto", color = c.textoSuave) }, singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        METODOS_PAGO.forEach { m -> ChipMetodo(m, editMetodo == m) { editMetodo = m } }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        MiniBtn("Guardar", c.ok, !guardando) {
+                            val m = editMonto.toDoubleOrNull()
+                            if (m == null || m <= 0 || guardando) return@MiniBtn
+                            guardando = true
+                            scope.launch {
+                                val ok = PacientesRepo.editarPago(p.id, m, editMetodo)
+                                guardando = false
+                                if (ok) { editando = null; recargar(); onCambio() }
+                            }
+                        }
+                        MiniBtn("Cancelar", c.textoSuave, !guardando) { editando = null }
+                    }
                 }
-                Spacer(Modifier.width(8.dp))
-                Text(p.fecha, color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.weight(1f))
-                Text("S/ ${formato2(p.monto)}", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            } else {
+                Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.chipBg)
+                        .padding(horizontal = 8.dp, vertical = 2.dp)) {
+                        Text(p.metodo, color = c.navy, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(p.fecha, color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                    Text("S/ ${formato2(p.monto)}", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    // Editar / borrar (solo Admin)
+                    if (esAdmin) {
+                        Spacer(Modifier.width(8.dp))
+                        Text("✏", fontSize = 14.sp, modifier = Modifier.clickable {
+                            editando = p.id; editMonto = formato2(p.monto); editMetodo = p.metodo; borrarId = null
+                        })
+                        Spacer(Modifier.width(10.dp))
+                        Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable { borrarId = p.id })
+                    }
+                }
+                // Confirmación de borrado
+                if (borrarId == p.id) {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("¿Borrar este pago?", color = c.error, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                        MiniBtn("Sí, borrar", c.error, !guardando) {
+                            if (guardando) return@MiniBtn
+                            guardando = true
+                            scope.launch {
+                                val ok = PacientesRepo.borrarPago(p.id)
+                                guardando = false
+                                if (ok) { borrarId = null; recargar(); onCambio() }
+                            }
+                        }
+                        MiniBtn("No", c.textoSuave, !guardando) { borrarId = null }
+                    }
+                }
             }
         }
     }
@@ -316,16 +380,7 @@ private fun SeccionPagos(t: TratamientoPaciente, onCambio: () -> Unit) {
         )
         Spacer(Modifier.height(6.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            METODOS_PAGO.forEach { m ->
-                val activo = metodo == m
-                Box(
-                    Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
-                        .background(if (activo) c.navy else c.superficie)
-                        .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
-                        .clickable { metodo = m }.padding(horizontal = 10.dp, vertical = 5.dp),
-                ) { Text(m, color = if (activo) c.sobreNavy else c.texto, fontSize = 11.sp,
-                    fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal) }
-            }
+            METODOS_PAGO.forEach { m -> ChipMetodo(m, metodo == m) { metodo = m } }
         }
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -346,6 +401,18 @@ private fun SeccionPagos(t: TratamientoPaciente, onCambio: () -> Unit) {
             MiniBtn("Cancelar", c.textoSuave, !guardando) { agregando = false; monto = "" }
         }
     }
+}
+
+@Composable
+private fun ChipMetodo(m: String, activo: Boolean, onClick: () -> Unit) {
+    val c = Sania.colors
+    Box(
+        Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+            .background(if (activo) c.navy else c.superficie)
+            .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
+            .clickable { onClick() }.padding(horizontal = 10.dp, vertical = 5.dp),
+    ) { Text(m, color = if (activo) c.sobreNavy else c.texto, fontSize = 11.sp,
+        fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal) }
 }
 
 @Composable
