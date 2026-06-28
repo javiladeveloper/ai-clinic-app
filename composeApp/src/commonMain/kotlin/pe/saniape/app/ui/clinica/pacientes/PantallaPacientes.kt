@@ -145,8 +145,9 @@ private fun TarjetaPaciente(p: PacienteStaff, verContacto: Boolean, onClick: () 
                     Text(contacto, color = c.textoSuave, fontSize = 11.sp)
                 }
             }
-            // Progreso del tratamiento activo (si es por sesiones)
-            activo?.takeIf { it.modalidad != "Consulta" && it.totalSesiones > 0 }?.let { t ->
+            // Progreso del tratamiento activo (solo especialidades por sesiones; las
+            // Consultas no tienen contador, aunque tengan datos de paquete heredados).
+            activo?.takeIf { it.usaSesiones && it.totalSesiones > 0 }?.let { t ->
                 Spacer(Modifier.height(4.dp))
                 BarraProgreso(t.sesionesCompletadas, t.totalSesiones)
             }
