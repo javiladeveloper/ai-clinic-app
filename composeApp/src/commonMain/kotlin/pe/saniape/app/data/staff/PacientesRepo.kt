@@ -34,6 +34,11 @@ data class TratamientoPaciente(
     val precioAcordado: Double?,
     /** La especialidad del procedimiento usa sesiones (fisio…) o es Consulta (medicina…). */
     val usaSesiones: Boolean,
+    // Datos clínicos de una Consulta (especialidad sin sesiones).
+    val diagnostico: String?,
+    val medicacion: String?,
+    val proximoControl: String?,
+    val especialidadNombre: String?,
 ) {
     /** Monto total acordado del tratamiento (igual que la web). */
     val montoAcordado: Double
@@ -140,7 +145,8 @@ object PacientesRepo {
         tratamientos:tratamientos(
             id, modalidad, estado, estado_pago, total_sesiones, sesiones_completadas,
             precio_paquete, precio_por_sesion, precio_acordado, terapeuta_id,
-            procedimiento:procedimientos(nombre, especialidad:especialidades(usa_sesiones)),
+            diagnostico, medicacion, proximo_control,
+            procedimiento:procedimientos(nombre, especialidad:especialidades(nombre, usa_sesiones)),
             terapeuta:terapeutas(id, nombre)
         )
     """
@@ -559,8 +565,9 @@ object PacientesRepo {
             val t = rel as? JsonObject ?: return@mapNotNull null
             val procObj = t["procedimiento"] as? JsonObject
             val proc = procObj?.str("nombre")
+            val espObj = procObj?.get("especialidad") as? JsonObject
             // usa_sesiones de la especialidad del procedimiento (default true si no viene).
-            val usaSes = ((procObj?.get("especialidad") as? JsonObject)?.get("usa_sesiones") as? JsonPrimitive)
+            val usaSes = (espObj?.get("usa_sesiones") as? JsonPrimitive)
                 ?.content?.let { it != "false" } ?: true
             val ter = t["terapeuta"] as? JsonObject
             TratamientoPaciente(
@@ -577,6 +584,10 @@ object PacientesRepo {
                 precioPorSesion = t.dbl("precio_por_sesion"),
                 precioAcordado = t.dbl("precio_acordado"),
                 usaSesiones = usaSes,
+                diagnostico = t.str("diagnostico"),
+                medicacion = t.str("medicacion"),
+                proximoControl = t.str("proximo_control"),
+                especialidadNombre = espObj?.str("nombre"),
             )
         }
         return PacienteStaff(

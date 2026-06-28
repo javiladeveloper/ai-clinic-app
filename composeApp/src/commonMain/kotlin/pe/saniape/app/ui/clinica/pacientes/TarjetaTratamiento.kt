@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -94,18 +96,31 @@ fun TarjetaTratamiento(
         }
     }
 
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
-            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(Sania.dim.tarjeta),
+    // Acento de color por tipo: sesiones = teal, consulta = morado (multi-especialidad).
+    val acento = if (t.esConsulta) c.purple else c.teal
+    val cerrado = t.estado == "Alta" || t.estado == "Cancelado" || t.estado == "Suspendido"
+
+    Row(
+        Modifier.fillMaxWidth().height(IntrinsicSize.Min)
+            .clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
+            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)),
     ) {
-        // Cabecera (tocable para expandir)
+        // Barra de acento lateral (tipo de tratamiento)
+        Box(Modifier.width(5.dp).fillMaxHeight().background(if (cerrado) c.borde else acento))
+
+      Column(Modifier.fillMaxWidth().padding(Sania.dim.tarjeta)) {
+        // Cabecera (tocable para expandir): icono + nombre + estado
         Row(
             Modifier.fillMaxWidth().clickable { expandido = !expandido },
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("${modalidadIcono(t.modalidad)} ${t.procedimiento ?: "Tratamiento"}",
-                color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f))
+            Column(Modifier.weight(1f)) {
+                Text("${if (t.esConsulta) "🩺" else "📦"} ${t.procedimiento ?: "Tratamiento"}",
+                    color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
+                // Especialidad + profesional en una línea sutil
+                val sub = listOfNotNull(t.especialidadNombre, t.terapeutaNombre?.let { "con $it" }).joinToString(" · ")
+                if (sub.isNotBlank()) Text(sub, color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 1.dp))
+            }
             Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(estado.bg)
                 .padding(horizontal = 8.dp, vertical = 3.dp)) {
                 Text(t.estado ?: "—", color = estado.fg, fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -113,8 +128,19 @@ fun TarjetaTratamiento(
             Spacer(Modifier.width(6.dp))
             Text(if (expandido) "▴" else "▾", color = c.navy)
         }
-        t.terapeutaNombre?.let {
-            Text("con $it", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+
+        // ── Cuerpo adaptado al tipo ──
+        if (t.esConsulta) {
+            // CONSULTA (medicina/nutrición): diagnóstico + medicación + próximo control
+            t.diagnostico?.takeIf { it.isNotBlank() }?.let {
+                Spacer(Modifier.height(6.dp)); ChipInfo("📋", it, c.info, c.infoBg)
+            }
+            t.medicacion?.takeIf { it.isNotBlank() }?.let {
+                Spacer(Modifier.height(4.dp)); ChipInfo("💊", it, c.purple, c.purpleBg)
+            }
+            t.proximoControl?.takeIf { it.isNotBlank() }?.let {
+                Spacer(Modifier.height(4.dp)); ChipInfo("📅 Próximo control", it, c.navy, c.chipBg)
+            }
         }
 
         // Acciones del tratamiento (⋯): editar / ampliar / suspender / cancelar / reactivar.
@@ -249,7 +275,8 @@ fun TarjetaTratamiento(
                 }
             }
         }
-    }
+      } // cierre Column del contenido
+    } // cierre Row de la tarjeta (acento + contenido)
 
     // ── Modales de acciones de sesión ──
     editarSesion?.let { ses ->
@@ -397,6 +424,15 @@ private fun DetalleSesion(label: String, valor: String, colorValor: Color) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
         Text("$label:", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.width(96.dp))
         Text(valor, color = colorValor, fontSize = 11.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+    }
+}
+
+/** Chip de info clínica (diagnóstico/medicación/control) — para las Consultas. */
+@Composable
+private fun ChipInfo(icono: String, texto: String, fg: Color, bg: Color) {
+    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(bg)
+        .padding(horizontal = 10.dp, vertical = 6.dp)) {
+        Text("$icono $texto", color = fg, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }
 
