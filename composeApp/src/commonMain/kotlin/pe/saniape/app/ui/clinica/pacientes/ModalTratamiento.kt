@@ -394,51 +394,77 @@ fun ModalEditarTratamiento(
     // No se puede bajar el N° de sesiones por debajo de las ya completadas.
     val nuevoTotal = totalSesiones.toIntOrNull() ?: 0
     val errorSesiones = !t.esConsulta && nuevoTotal < t.sesionesCompletadas
-    AlertDialog(
-        onDismissRequest = onCancelar,
-        title = { Text("✏ Editar tratamiento", fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                // Estado actual: lo realizado/pagado no se pierde al editar.
+
+    Dialog(onDismissRequest = onCancelar, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(max = 720.dp)
+                .clip(RoundedCornerShape(Sania.shape.lg.dp)).background(c.fondo),
+        ) {
+            // Header navy (mismo formato que crear)
+            Column(Modifier.fillMaxWidth().background(c.navyDark).padding(horizontal = 18.dp, vertical = 16.dp)) {
+                Text("Editar tratamiento", color = c.sobreNavy, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                Text(t.procedimiento ?: "Tratamiento", color = c.sobreNavy.copy(alpha = 0.7f),
+                    fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+            }
+
+            Column(
+                Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+            ) {
+                // Estado actual (lo realizado no se pierde)
                 if (t.sesionesCompletadas > 0) {
                     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.chipBg)
                         .padding(Sania.dim.md)) {
                         Text("Ya realizadas: ${t.sesionesCompletadas} sesión(es). El total no puede ser menor.",
                             color = c.texto, fontSize = 11.sp)
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(12.dp))
                 }
+
                 if (!t.esConsulta) {
-                    Etq("N° de sesiones"); CampoNum(totalSesiones) { totalSesiones = it }
-                    if (errorSesiones) Text("⚠ No puede ser menor a ${t.sesionesCompletadas} (ya completadas).",
-                        color = c.error, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
-                    Spacer(Modifier.height(8.dp))
-                    if (esPaquete) { Etq("Precio del paquete"); CampoNum(precioPaquete) { precioPaquete = it } }
-                    else { Etq("Precio por sesión"); CampoNum(precioPorSesion) { precioPorSesion = it } }
-                    Spacer(Modifier.height(8.dp))
-                    Etq("Precio acordado (S/) — opcional"); CampoNum(precioAcordado) { precioAcordado = it }
+                    Tarjeta(titulo = "Plan por sesiones", icono = if (esPaquete) "📦" else "🎫") {
+                        Etq("N° de sesiones"); CampoNum(totalSesiones) { totalSesiones = it }
+                        if (errorSesiones) Text("⚠ No puede ser menor a ${t.sesionesCompletadas} (ya completadas).",
+                            color = c.error, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
+                        Spacer(Modifier.height(10.dp))
+                        if (esPaquete) { Etq("Precio del paquete"); CampoNum(precioPaquete) { precioPaquete = it } }
+                        else { Etq("Precio por sesión"); CampoNum(precioPorSesion) { precioPorSesion = it } }
+                        Spacer(Modifier.height(10.dp))
+                        Etq("Precio acordado (S/) — opcional"); CampoNum(precioAcordado) { precioAcordado = it }
+                        Text("Solo si se negoció un precio distinto al base.", color = c.textoSuave, fontSize = 10.sp)
+                    }
                 } else {
-                    Etq("Costo de la consulta"); CampoNum(precioAcordado) { precioAcordado = it }
+                    Tarjeta(titulo = "Consulta", icono = "📋") {
+                        Etq("Costo de la consulta (S/)"); CampoNum(precioAcordado) { precioAcordado = it }
+                    }
                 }
             }
-        },
-        confirmButton = {
-            Box(Modifier.clip(RoundedCornerShape(Sania.shape.md.dp))
-                .background(if (errorSesiones) c.borde else c.navy)
-                .clickable(enabled = !errorSesiones) {
-                    onGuardar(
-                        if (t.esConsulta) null else totalSesiones.toIntOrNull(),
-                        if (esPaquete) precioPaquete.toDoubleOrNull() else null,
-                        if (!esPaquete && !t.esConsulta) precioPorSesion.toDoubleOrNull() else null,
-                        precioAcordado.toDoubleOrNull(),
-                    )
-                }.padding(horizontal = 18.dp, vertical = 10.dp)) {
-                Text("Guardar", color = c.sobreNavy, fontWeight = FontWeight.Bold)
+
+            Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
+            Row(
+                Modifier.fillMaxWidth().background(c.superficie).padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave, fontWeight = FontWeight.Bold) }
+                Box(
+                    Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.md.dp))
+                        .background(if (errorSesiones) c.borde else c.navy)
+                        .clickable(enabled = !errorSesiones) {
+                            onGuardar(
+                                if (t.esConsulta) null else totalSesiones.toIntOrNull(),
+                                if (esPaquete) precioPaquete.toDoubleOrNull() else null,
+                                if (!esPaquete && !t.esConsulta) precioPorSesion.toDoubleOrNull() else null,
+                                precioAcordado.toDoubleOrNull(),
+                            )
+                        }.padding(vertical = 13.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("Guardar cambios", color = if (errorSesiones) c.textoSuave else c.sobreNavy,
+                        fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
             }
-        },
-        dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
-        containerColor = c.superficie,
-    )
+        }
+    }
 }
 
 @Composable
