@@ -57,6 +57,8 @@ fun TarjetaTratamiento(
     verPagos: Boolean,
     esAdmin: Boolean,
     puedeSesiones: Boolean,
+    consultaDone: Boolean = false,   // para la barra de recorrido (de los hitos del paciente)
+    evalDone: Boolean = false,
     onCompletarSesion: (SesionFicha, anterior: SesionFicha?) -> Unit,   // abre modal (con sesión previa de referencia)
     onCambioRealizado: () -> Unit,               // refrescar ficha tras acción
     onEditar: (TratamientoPaciente) -> Unit = {},
@@ -129,6 +131,12 @@ fun TarjetaTratamiento(
             Text(if (expandido) "▴" else "▾", color = c.navy)
         }
 
+        // Barra de recorrido del tratamiento (adaptativa por tipo). Solo si está vivo.
+        if (t.estado == "Activo" || t.estado == "Completado" || t.estado == "Alta") {
+            Spacer(Modifier.height(10.dp))
+            BarraRecorrido(trat = t, consultaDone = consultaDone, evalDone = evalDone)
+        }
+
         // ── Cuerpo adaptado al tipo ──
         if (t.esConsulta) {
             // CONSULTA (medicina/nutrición): diagnóstico + medicación + próximo control
@@ -171,16 +179,12 @@ fun TarjetaTratamiento(
             }
         }
 
-        // Progreso (solo especialidades por sesiones; las Consultas no tienen contador)
+        // Barra de progreso fina (el conteo N/M ya lo muestra el paso de la barra de recorrido).
         if (!t.esConsulta && t.totalSesiones > 0) {
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             val frac = (t.sesionesCompletadas.toFloat() / t.totalSesiones).coerceIn(0f, 1f)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.chipBg)) {
-                    Box(Modifier.fillMaxWidth(frac).height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.ok))
-                }
-                Spacer(Modifier.width(8.dp))
-                Text("${t.sesionesCompletadas}/${t.totalSesiones} ses.", color = c.textoSuave, fontSize = 11.sp)
+            Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.chipBg)) {
+                Box(Modifier.fillMaxWidth(frac).height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.ok))
             }
         }
 

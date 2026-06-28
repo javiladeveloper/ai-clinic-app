@@ -810,16 +810,10 @@ private fun ContenidoAtenciones(
     onNuevaEvaluacion: () -> Unit,
 ) {
     val c = Sania.colors
+    val consultaDone = hitos?.consultaDone == true
+    val evalDone = hitos?.evaluacionDone == true
     Column {
-        // Recorrido del paciente (adaptativo por tipo) + nuevo ciclo
-        FlujoGuiado(
-            paciente = paciente, hitos = hitos,
-            puedeSesiones = ctx.puede("sesiones"), puedeCitas = ctx.puede("citas"),
-            onNuevaConsulta = onNuevaConsulta, onNuevaEvaluacion = onNuevaEvaluacion,
-            onNuevoTratamiento = onNuevoTratamiento, onCrearSesion = onCrearSesion,
-        )
-
-        Spacer(Modifier.height(Sania.dim.lg))
+        // Tratamientos: cada tarjeta lleva SU barra de recorrido (sin duplicar arriba).
         Etiqueta("Tratamientos")
         if (paciente.tratamientos.isEmpty()) {
             Text("Sin tratamientos registrados.", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
@@ -829,6 +823,7 @@ private fun ContenidoAtenciones(
                 TarjetaTratamiento(
                     t = t, verPagos = ctx.puede("pagos"), esAdmin = ctx.esAdmin,
                     puedeSesiones = ctx.puede("sesiones"),
+                    consultaDone = consultaDone, evalDone = evalDone,
                     onCompletarSesion = onCompletarSesion,
                     onCambioRealizado = onRecargar,
                     onEditar = onEditarTrat, onAmpliar = onAmpliarTrat,
@@ -845,6 +840,15 @@ private fun ContenidoAtenciones(
                 contentAlignment = Alignment.Center,
             ) { Text("➕ Nuevo tratamiento", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
         }
+
+        // Nuevo ciclo de atención (acciones para iniciar otro flujo) — al final.
+        Spacer(Modifier.height(Sania.dim.lg))
+        val tieneActivos = paciente.tratamientos.any { it.estado == "Activo" || it.estado == "Completado" }
+        NuevoCicloAtencion(
+            paciente = paciente, tieneActivos = tieneActivos, puedeCitas = ctx.puede("citas"),
+            onNuevaConsulta = onNuevaConsulta, onNuevaEvaluacion = onNuevaEvaluacion,
+            onNuevoTratamiento = onNuevoTratamiento,
+        )
     }
 }
 
