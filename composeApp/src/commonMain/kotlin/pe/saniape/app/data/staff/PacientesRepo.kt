@@ -74,6 +74,16 @@ data class PagoFicha(
     val numeroSesion: Int?,   // si el pago nació de una sesión (cobro), su número
 )
 
+/** Un procedimiento/servicio para crear un tratamiento. */
+data class ProcedimientoRef(
+    val id: String,
+    val nombre: String,
+    val precio: Double,
+    val precioPaquete: Double?,
+    val especialidadId: String?,
+    val usaSesiones: Boolean,
+)
+
 /** Un paciente para la lista del staff (con sus tratamientos anidados). */
 data class PacienteStaff(
     val id: String,
@@ -353,6 +363,99 @@ object PacientesRepo {
             }
             .decodeList<JsonObject>()
         return filas.mapNotNull { RefNombre(it.str("id") ?: return@mapNotNull null, it.str("nombre") ?: "Profesional") }
+    }
+
+    // ── Acciones de tratamiento (crear/editar/ampliar/estado) vía endpoint accion ──
+    private suspend fun accionTratamiento(cuerpo: JsonObject): Boolean {
+        val tk = token() ?: return false
+        val resp = http.post("${Supabase.SITE_URL}/api/staff/tratamiento/accion") {
+            header("Authorization", "Bearer $tk")
+            contentType(ContentType.Application.Json)
+            setBody(cuerpo.toString())
+        }
+        return resp.status == HttpStatusCode.OK
+    }
+
+    suspend fun crearTratamiento(
+        pacienteId: String, procedimientoId: String, terapeutaId: String?, modalidad: String,
+        totalSesiones: Int?, precioPaquete: Double?, precioPorSesion: Double?, precioAcordado: Double?,
+        diagnostico: String?,
+    ): Boolean = accionTratamiento(buildJsonObject {
+        put("accion", "crear"); put("pacienteId", pacienteId); put("procedimientoId", procedimientoId)
+        if (terapeutaId != null) put("terapeutaId", terapeutaId)
+        put("modalidad", modalidad)
+        if (totalSesiones != null) put("totalSesiones", totalSesiones)
+        if (precioPaquete != null) put("precioPaquete", precioPaquete)
+        if (precioPorSesion != null) put("precioPorSesion", precioPorSesion)
+        if (precioAcordado != null) put("precioAcordado", precioAcordado)
+        if (!diagnostico.isNullOrBlank()) put("diagnostico", diagnostico)
+    })
+
+    suspend fun editarTratamiento(
+        tratamientoId: String, totalSesiones: Int?, precioPaquete: Double?,
+        precioPorSesion: Double?, precioAcordado: Double?,
+    ): Boolean = accionTratamiento(buildJsonObject {
+        put("accion", "editar"); put("tratamientoId", tratamientoId)
+        if (totalSesiones != null) put("totalSesiones", totalSesiones)
+        if (precioPaquete != null) put("precioPaquete", precioPaquete)
+        if (precioPorSesion != null) put("precioPorSesion", precioPorSesion)
+        if (precioAcordado != null) put("precioAcordado", precioAcordado)
+    })
+
+    suspend fun cambiarEstadoTratamiento(tratamientoId: String, estado: String): Boolean =
+        accionTratamiento(buildJsonObject {
+            put("accion", "estado"); put("tratamientoId", tratamientoId); put("estado", estado)
+        })
+
+    suspend fun ampliarTratamiento(tratamientoId: String, sesionesExtra: Int, montoExtra: Double, nota: String?): Boolean =
+        accionTratamiento(buildJsonObject {
+            put("accion", "ampliar"); put("tratamientoId", tratamientoId)
+            put("sesionesExtra", sesionesExtra); put("montoExtra", montoExtra)
+            if (!nota.isNullOrBlank()) put("nota", nota)
+        })
+
+    /** Crear una sesión para un tratamiento (reusa el endpoint de crear cita tipo Sesión). */
+    suspend fun crearSesion(
+        pacienteId: String, tratamientoId: String, terapeutaId: String?,
+        fecha: String, hora: String,
+    ): Boolean {
+        val tk = token() ?: return false
+        val cuerpo = buildJsonObject {
+            put("pacienteId", pacienteId); put("tipo", "Sesión")
+            put("tratamientoId", tratamientoId); put("fecha", fecha); put("hora", hora)
+            if (terapeutaId != null) put("terapeutaId", terapeutaId)
+            put("duracion", 45)
+        }
+        val resp = http.post("${Supabase.SITE_URL}/api/staff/cita/crear") {
+            header("Authorization", "Bearer $tk")
+            contentType(ContentType.Application.Json)
+            setBody(cuerpo.toString())
+        }
+        return resp.status == HttpStatusCode.OK
+    }
+
+    /** Procedimientos activos (con especialidad + usa_sesiones + precios) para crear tratamiento. */
+    suspend fun procedimientos(): List<ProcedimientoRef> {
+        val filas = Supabase.client.postgrest["procedimientos"]
+            .select(Columns.raw(
+                "id, nombre, precio, precio_paquete, especialidad_id, " +
+                    "especialidad:especialidades(usa_sesiones)"
+            )) {
+                filter { eq("estado", "Activo") }
+                order("nombre", Order.ASCENDING)
+            }
+            .decodeList<JsonObject>()
+        return filas.mapNotNull { o ->
+            ProcedimientoRef(
+                id = o.str("id") ?: return@mapNotNull null,
+                nombre = o.str("nombre") ?: "Servicio",
+                precio = o.dbl("precio") ?: 0.0,
+                precioPaquete = o.dbl("precio_paquete"),
+                especialidadId = o.str("especialidad_id"),
+                usaSesiones = ((o["especialidad"] as? JsonObject)?.get("usa_sesiones") as? JsonPrimitive)
+                    ?.content?.let { it != "false" } ?: true,
+            )
+        }
     }
 
     /** Da de alta un tratamiento (paciente pasa a Alta si no le quedan otros en curso). */

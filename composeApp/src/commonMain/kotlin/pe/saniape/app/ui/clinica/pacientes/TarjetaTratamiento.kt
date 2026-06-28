@@ -57,6 +57,9 @@ fun TarjetaTratamiento(
     puedeSesiones: Boolean,
     onCompletarSesion: (SesionFicha) -> Unit,   // abre modal observaciones
     onCambioRealizado: () -> Unit,               // refrescar ficha tras acción
+    onEditar: (TratamientoPaciente) -> Unit = {},
+    onAmpliar: (TratamientoPaciente) -> Unit = {},
+    onCambiarEstadoTrat: (tratamientoId: String, estado: String) -> Unit = { _, _ -> },
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -65,6 +68,7 @@ fun TarjetaTratamiento(
     var accionando by remember { mutableStateOf(false) }
     var menuDe by remember { mutableStateOf<SesionFicha?>(null) }   // sesión con menú ⋯ abierto
     var cambioToken by remember { mutableStateOf(0) }   // recarga la sección de pagos tras cobros
+    var menuTrat by remember { mutableStateOf(false) }   // menú ⋯ del tratamiento
     // Sesiones objetivo de cada modal (o null).
     var editarSesion by remember { mutableStateOf<SesionFicha?>(null) }
     var borrarSesion by remember { mutableStateOf<SesionFicha?>(null) }
@@ -110,6 +114,33 @@ fun TarjetaTratamiento(
         }
         t.terapeutaNombre?.let {
             Text("con $it", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+        }
+
+        // Acciones del tratamiento (⋯): editar / ampliar / suspender / cancelar / reactivar.
+        if (puedeSesiones) {
+            Spacer(Modifier.height(6.dp))
+            Box(Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                .clickable { menuTrat = !menuTrat }.padding(horizontal = 10.dp, vertical = 5.dp)) {
+                Text("⋯ Opciones del tratamiento", color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+            if (menuTrat) {
+                Spacer(Modifier.height(4.dp))
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
+                ) {
+                    ItemMenu("✏ Editar tratamiento", c.texto) { menuTrat = false; onEditar(t) }
+                    if (!t.esConsulta) ItemMenu("➕ Ampliar (más sesiones)", c.navy) { menuTrat = false; onAmpliar(t) }
+                    when (t.estado) {
+                        "Activo" -> {
+                            ItemMenu("⏸ Suspender", c.pend) { menuTrat = false; onCambiarEstadoTrat(t.id, "Suspendido") }
+                            ItemMenu("✗ Cancelar", c.error) { menuTrat = false; onCambiarEstadoTrat(t.id, "Cancelado") }
+                        }
+                        "Suspendido", "Cancelado" ->
+                            ItemMenu("↻ Reactivar", c.ok) { menuTrat = false; onCambiarEstadoTrat(t.id, "Activo") }
+                    }
+                }
+            }
         }
 
         // Progreso (solo especialidades por sesiones; las Consultas no tienen contador)

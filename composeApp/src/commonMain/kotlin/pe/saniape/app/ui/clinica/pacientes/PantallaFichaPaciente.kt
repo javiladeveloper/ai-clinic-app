@@ -61,6 +61,9 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     var cargando by remember { mutableStateOf(true) }
     var completarSesion by remember { mutableStateOf<SesionFicha?>(null) }
     var editandoPaciente by remember { mutableStateOf(false) }
+    var creandoTratamiento by remember { mutableStateOf(false) }
+    var ampliarTratamiento by remember { mutableStateOf<TratamientoPaciente?>(null) }
+    var editarTratamiento by remember { mutableStateOf<TratamientoPaciente?>(null) }
     var recargarToken by remember { mutableStateOf(0) }   // fuerza recarga de las tarjetas
     LaunchedEffect(pacienteInicial.id, recargarToken) {
         paciente = runCatching { PacientesRepo.porId(pacienteInicial.id) }.getOrNull() ?: pacienteInicial
@@ -164,13 +167,76 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                             puedeSesiones = ctx.puede("sesiones"),
                             onCompletarSesion = { completarSesion = it },
                             onCambioRealizado = { recargar() },
+                            onEditar = { editarTratamiento = it },
+                            onAmpliar = { ampliarTratamiento = it },
+                            onCambiarEstadoTrat = { tId, est ->
+                                scope.launch { PacientesRepo.cambiarEstadoTratamiento(tId, est); recargar() }
+                            },
                         )
                     }
+                }
+
+                // + Nuevo tratamiento (con permiso de sesiones o pacientes).
+                if (ctx.puede("sesiones") || ctx.puede("pacientes")) {
+                    Spacer(Modifier.height(Sania.dim.md))
+                    Box(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+                            .background(c.navy).clickable { creandoTratamiento = true }
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { Text("➕ Nuevo tratamiento", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
                 }
 
                 Spacer(Modifier.height(Sania.dim.xxl))
             }
         }
+    }
+
+    // Modal crear tratamiento
+    if (creandoTratamiento) {
+        ModalCrearTratamiento(
+            miTerapeutaId = ctx.miTerapeutaId,
+            onCancelar = { creandoTratamiento = false },
+            onGuardar = { nuevo ->
+                creandoTratamiento = false
+                scope.launch {
+                    PacientesRepo.crearTratamiento(
+                        pacienteId = paciente.id, procedimientoId = nuevo.procedimientoId,
+                        terapeutaId = nuevo.terapeutaId, modalidad = nuevo.modalidad,
+                        totalSesiones = nuevo.totalSesiones, precioPaquete = nuevo.precioPaquete,
+                        precioPorSesion = nuevo.precioPorSesion, precioAcordado = nuevo.precioAcordado,
+                        diagnostico = null,
+                    )
+                    recargar()
+                }
+            },
+        )
+    }
+
+    // Modal ampliar tratamiento
+    ampliarTratamiento?.let { t ->
+        ModalAmpliarTratamiento(
+            t = t,
+            onCancelar = { ampliarTratamiento = null },
+            onConfirmar = { sesionesExtra, montoExtra, nota ->
+                ampliarTratamiento = null
+                scope.launch { PacientesRepo.ampliarTratamiento(t.id, sesionesExtra, montoExtra, nota); recargar() }
+            },
+        )
+    }
+
+    // Modal editar tratamiento (precio/sesiones)
+    editarTratamiento?.let { t ->
+        ModalEditarTratamiento(
+            t = t,
+            onCancelar = { editarTratamiento = null },
+            onGuardar = { totalSes, precioPaq, precioSes, precioAcord ->
+                editarTratamiento = null
+                scope.launch {
+                    PacientesRepo.editarTratamiento(t.id, totalSes, precioPaq, precioSes, precioAcord); recargar()
+                }
+            },
+        )
     }
 
     // Modal "Editar paciente" (gestor): datos esenciales + semáforo.
