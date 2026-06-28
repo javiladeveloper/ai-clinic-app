@@ -38,9 +38,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import pe.saniape.app.data.staff.EvaluacionRef
 import pe.saniape.app.data.staff.PacientesRepo
 import pe.saniape.app.data.staff.ProcedimientoRef
-import pe.saniape.app.data.staff.RefNombre
+import pe.saniape.app.data.staff.TarifarioRef
+import pe.saniape.app.data.staff.TerapeutaConEsp
 import pe.saniape.app.ui.theme.Sania
 
 /** Resultado del form de tratamiento (lo que se envía al endpoint crear). */
@@ -52,6 +54,10 @@ data class TratamientoNuevo(
     val precioPaquete: Double?,
     val precioPorSesion: Double?,
     val precioAcordado: Double?,
+    val diagnostico: String?,
+    val citaOrigenId: String?,
+    val medicacion: String?,
+    val proximoControl: String?,
 )
 
 /**
@@ -63,32 +69,54 @@ data class TratamientoNuevo(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ModalCrearTratamiento(
+    pacienteId: String,
     miTerapeutaId: String?,
+    diagnosticoPrevio: String?,   // del paciente/evaluación, para precargar
     onCancelar: () -> Unit,
     onGuardar: (TratamientoNuevo) -> Unit,
 ) {
     val c = Sania.colors
     var procedimientos by remember { mutableStateOf<List<ProcedimientoRef>>(emptyList()) }
-    var terapeutas by remember { mutableStateOf<List<RefNombre>>(emptyList()) }
+    var terapeutas by remember { mutableStateOf<List<TerapeutaConEsp>>(emptyList()) }
+    var evaluaciones by remember { mutableStateOf<List<EvaluacionRef>>(emptyList()) }
     var proc by remember { mutableStateOf<ProcedimientoRef?>(null) }
-    var terapeuta by remember { mutableStateOf<RefNombre?>(null) }
+    var terapeuta by remember { mutableStateOf<TerapeutaConEsp?>(null) }
+    var evaluacion by remember { mutableStateOf<EvaluacionRef?>(null) }
     var modalidad by remember { mutableStateOf("Paquete") }
     var totalSesiones by remember { mutableStateOf("10") }
     var precioPaquete by remember { mutableStateOf("") }
     var precioPorSesion by remember { mutableStateOf("") }
     var precioAcordado by remember { mutableStateOf("") }
+    var diagnostico by remember { mutableStateOf(diagnosticoPrevio ?: "") }
+    var medicacion by remember { mutableStateOf("") }
+    var proximoControl by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         procedimientos = runCatching { PacientesRepo.procedimientos() }.getOrDefault(emptyList())
-        terapeutas = runCatching { PacientesRepo.terapeutasActivos() }.getOrDefault(emptyList())
+        terapeutas = runCatching { PacientesRepo.terapeutasConEspecialidad() }.getOrDefault(emptyList())
+        evaluaciones = runCatching { PacientesRepo.evaluacionesDe(pacienteId) }.getOrDefault(emptyList())
         if (miTerapeutaId != null) terapeuta = terapeutas.find { it.id == miTerapeutaId }
     }
 
-    // Al elegir servicio, autocompletar precios.
+    // Servicios filtrados por la especialidad del profesional elegido (igual que la web).
+    val terId = if (miTerapeutaId != null) miTerapeutaId else terapeuta?.id
+    val espsDelProf = terapeutas.find { it.id == terId }?.especialidadIds ?: emptyList()
+    val procsVisibles = procedimientos.filter { p ->
+        terId == null || p.especialidadId == null || p.especialidadId in espsDelProf
+    }
+
+    // Al elegir servicio: autocompletar precios + tarifario (si hay).
     LaunchedEffect(proc?.id) {
         proc?.let { p ->
             precioPorSesion = p.precio.toString()
-            precioPaquete = p.precioPaquete?.toString() ?: ""
+            val tar10 = p.tarifarios.firstOrNull { it.cantidadSesiones == 10 } ?: p.tarifarios.firstOrNull()
+            if (tar10 != null) {
+                totalSesiones = tar10.cantidadSesiones.toString()
+                precioPaquete = tar10.precioTotal.toString()
+            } else {
+                precioPaquete = p.precioPaquete?.toString() ?: ""
+                totalSesiones = "10"
+            }
         }
     }
 
@@ -100,18 +128,39 @@ fun ModalCrearTratamiento(
         title = { Text("➕ Nuevo tratamiento", fontWeight = FontWeight.Bold) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
+                // Diagnóstico (precargado de la evaluación)
+                Etq("Diagnóstico")
+                OutlinedTextField(value = diagnostico, onValueChange = { diagnostico = it },
+                    placeholder = { Text("Diagnóstico que motiva este tratamiento", color = c.textoSuave) },
+                    minLines = 2, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+
                 // Profesional (fijo si vinculado)
-                Etq("Profesional")
+                Etq("Profesional que atenderá")
                 if (miTerapeutaId != null) {
                     SelectorBox("${terapeuta?.nombre ?: "Tú"} (tú)", bloqueado = true) {}
                 } else {
-                    SelectorLista(terapeutas, terapeuta, { it.nombre }, "Sin asignar") { terapeuta = it }
+                    SelectorLista(terapeutas, terapeuta, { it.nombre }, "Sin asignar") { t ->
+                        terapeuta = t
+                        // Si el servicio ya no pertenece a la nueva especialidad, limpiarlo.
+                        proc?.let { p -> if (p.especialidadId != null && p.especialidadId !in t.especialidadIds) proc = null }
+                    }
                 }
                 Spacer(Modifier.height(8.dp))
 
-                // Servicio
+                // Servicio (filtrado por profesional)
                 Etq("Servicio")
-                SelectorLista(procedimientos, proc, { it.nombre }, "Elegir servicio") { proc = it }
+                SelectorLista(procsVisibles, proc, { it.nombre },
+                    if (terId == null) "Elige profesional primero" else "Seleccionar…") { proc = it }
+
+                // ¿Nació de una evaluación? (opcional)
+                if (evaluaciones.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Etq("¿Nació de una evaluación? (opcional)")
+                    SelectorLista(evaluaciones, evaluacion,
+                        { "Evaluación ${it.fecha}" + (it.terapeutaNombre?.let { n -> " · $n" } ?: "") },
+                        "Sin evaluación previa") { evaluacion = it }
+                }
 
                 if (usaSesiones) {
                     Spacer(Modifier.height(10.dp))
@@ -122,16 +171,39 @@ fun ModalCrearTratamiento(
                     }
                     Spacer(Modifier.height(8.dp))
                     if (modalidad == "Paquete") {
+                        // Tarifario (si el servicio tiene paquetes predefinidos)
+                        val tarifs = proc?.tarifarios ?: emptyList()
+                        if (tarifs.isNotEmpty()) {
+                            Etq("Elegir paquete del tarifario")
+                            SelectorLista(tarifs, null as TarifarioRef?,
+                                { "${it.cantidadSesiones} sesiones — S/ ${it.precioTotal}" },
+                                "Personalizado o manual…") { t -> totalSesiones = t.cantidadSesiones.toString(); precioPaquete = t.precioTotal.toString() }
+                            Spacer(Modifier.height(6.dp))
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Column(Modifier.weight(1f)) { Etq("N° sesiones"); CampoNum(totalSesiones) { totalSesiones = it } }
                             Column(Modifier.weight(1f)) { Etq("Precio paquete"); CampoNum(precioPaquete) { precioPaquete = it } }
                         }
+                        Text("Puedes ajustar sesiones y precio; el tarifario solo los pre-llena.",
+                            color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
                     } else {
                         Etq("Precio por sesión")
                         CampoNum(precioPorSesion) { precioPorSesion = it }
+                        Text("Se cobra por cada sesión realizada.", color = c.textoSuave, fontSize = 10.sp)
                     }
                 } else if (esConsulta) {
+                    // Especialidad sin sesiones (medicina, nutrición): consulta
                     Spacer(Modifier.height(10.dp))
+                    Etq("Medicación / receta (opcional)")
+                    OutlinedTextField(value = medicacion, onValueChange = { medicacion = it },
+                        placeholder = { Text("Indicaciones, receta…", color = c.textoSuave) },
+                        minLines = 2, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
+                    Etq("Próximo control (AAAA-MM-DD, opcional)")
+                    OutlinedTextField(value = proximoControl, onValueChange = { proximoControl = it },
+                        placeholder = { Text("2026-07-15", color = c.textoSuave) }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
                     Etq("Costo de la consulta (S/) — opcional")
                     CampoNum(precioAcordado) { precioAcordado = it }
                     Text("Déjalo vacío si es gratis.", color = c.textoSuave, fontSize = 10.sp)
@@ -153,6 +225,10 @@ fun ModalCrearTratamiento(
                                 precioPaquete = if (usaSesiones && modalidad == "Paquete") precioPaquete.toDoubleOrNull() else null,
                                 precioPorSesion = if (usaSesiones && modalidad == "Sesión suelta") precioPorSesion.toDoubleOrNull() else null,
                                 precioAcordado = if (esConsulta) precioAcordado.toDoubleOrNull() else null,
+                                diagnostico = diagnostico.trim().ifBlank { null },
+                                citaOrigenId = evaluacion?.id,
+                                medicacion = if (esConsulta) medicacion.trim().ifBlank { null } else null,
+                                proximoControl = if (esConsulta) proximoControl.trim().ifBlank { null } else null,
                             )
                         )
                     }.padding(horizontal = 18.dp, vertical = 10.dp),

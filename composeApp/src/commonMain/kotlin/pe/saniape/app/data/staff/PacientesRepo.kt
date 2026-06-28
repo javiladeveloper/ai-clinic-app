@@ -74,6 +74,9 @@ data class PagoFicha(
     val numeroSesion: Int?,   // si el pago nació de una sesión (cobro), su número
 )
 
+/** Un paquete del tarifario de un procedimiento (N sesiones por un precio fijo). */
+data class TarifarioRef(val id: String, val cantidadSesiones: Int, val precioTotal: Double)
+
 /** Un procedimiento/servicio para crear un tratamiento. */
 data class ProcedimientoRef(
     val id: String,
@@ -82,7 +85,14 @@ data class ProcedimientoRef(
     val precioPaquete: Double?,
     val especialidadId: String?,
     val usaSesiones: Boolean,
+    val tarifarios: List<TarifarioRef>,
 )
+
+/** Un profesional con sus especialidades (para filtrar servicios). */
+data class TerapeutaConEsp(val id: String, val nombre: String, val especialidadIds: List<String>)
+
+/** Una evaluación completada del paciente (origen de un tratamiento). */
+data class EvaluacionRef(val id: String, val fecha: String, val terapeutaNombre: String?)
 
 /** Un paciente para la lista del staff (con sus tratamientos anidados). */
 data class PacienteStaff(
@@ -379,7 +389,7 @@ object PacientesRepo {
     suspend fun crearTratamiento(
         pacienteId: String, procedimientoId: String, terapeutaId: String?, modalidad: String,
         totalSesiones: Int?, precioPaquete: Double?, precioPorSesion: Double?, precioAcordado: Double?,
-        diagnostico: String?,
+        diagnostico: String?, citaOrigenId: String? = null, medicacion: String? = null, proximoControl: String? = null,
     ): Boolean = accionTratamiento(buildJsonObject {
         put("accion", "crear"); put("pacienteId", pacienteId); put("procedimientoId", procedimientoId)
         if (terapeutaId != null) put("terapeutaId", terapeutaId)
@@ -389,6 +399,9 @@ object PacientesRepo {
         if (precioPorSesion != null) put("precioPorSesion", precioPorSesion)
         if (precioAcordado != null) put("precioAcordado", precioAcordado)
         if (!diagnostico.isNullOrBlank()) put("diagnostico", diagnostico)
+        if (!citaOrigenId.isNullOrBlank()) put("citaOrigenId", citaOrigenId)
+        if (!medicacion.isNullOrBlank()) put("medicacion", medicacion)
+        if (!proximoControl.isNullOrBlank()) put("proximoControl", proximoControl)
     })
 
     suspend fun editarTratamiento(
@@ -434,18 +447,28 @@ object PacientesRepo {
         return resp.status == HttpStatusCode.OK
     }
 
-    /** Procedimientos activos (con especialidad + usa_sesiones + precios) para crear tratamiento. */
+    /** Procedimientos activos (con especialidad + usa_sesiones + precios + tarifarios). */
     suspend fun procedimientos(): List<ProcedimientoRef> {
         val filas = Supabase.client.postgrest["procedimientos"]
             .select(Columns.raw(
                 "id, nombre, precio, precio_paquete, especialidad_id, " +
-                    "especialidad:especialidades(usa_sesiones)"
+                    "especialidad:especialidades(usa_sesiones), " +
+                    "tarifarios:tarifario_paquetes(id, cantidad_sesiones, precio_total, estado)"
             )) {
                 filter { eq("estado", "Activo") }
                 order("nombre", Order.ASCENDING)
             }
             .decodeList<JsonObject>()
         return filas.mapNotNull { o ->
+            val tarifs = (o["tarifarios"] as? JsonArray ?: emptyList()).mapNotNull { rel ->
+                val t = rel as? JsonObject ?: return@mapNotNull null
+                if (t.str("estado") == "Inactivo") return@mapNotNull null
+                TarifarioRef(
+                    id = t.str("id") ?: return@mapNotNull null,
+                    cantidadSesiones = t.int("cantidad_sesiones") ?: 0,
+                    precioTotal = t.dbl("precio_total") ?: 0.0,
+                )
+            }
             ProcedimientoRef(
                 id = o.str("id") ?: return@mapNotNull null,
                 nombre = o.str("nombre") ?: "Servicio",
@@ -454,6 +477,43 @@ object PacientesRepo {
                 especialidadId = o.str("especialidad_id"),
                 usaSesiones = ((o["especialidad"] as? JsonObject)?.get("usa_sesiones") as? JsonPrimitive)
                     ?.content?.let { it != "false" } ?: true,
+                tarifarios = tarifs,
+            )
+        }
+    }
+
+    /** Profesionales activos con sus especialidades (para filtrar servicios). */
+    suspend fun terapeutasConEspecialidad(): List<TerapeutaConEsp> {
+        val filas = Supabase.client.postgrest["terapeutas"]
+            .select(Columns.raw(
+                "id, nombre, estado, " +
+                    "especialidades:terapeuta_especialidades(especialidad:especialidades(id))"
+            )) {
+                filter { eq("estado", "Activo") }
+                order("nombre", Order.ASCENDING)
+            }
+            .decodeList<JsonObject>()
+        return filas.mapNotNull { o ->
+            val espIds = (o["especialidades"] as? JsonArray ?: emptyList()).mapNotNull { rel ->
+                ((rel as? JsonObject)?.get("especialidad") as? JsonObject)?.str("id")
+            }
+            TerapeutaConEsp(o.str("id") ?: return@mapNotNull null, o.str("nombre") ?: "Profesional", espIds)
+        }
+    }
+
+    /** Evaluaciones completadas del paciente (para "¿Nació de una evaluación?"). */
+    suspend fun evaluacionesDe(pacienteId: String): List<EvaluacionRef> {
+        val filas = Supabase.client.postgrest["citas"]
+            .select(Columns.raw("id, fecha, terapeuta:terapeutas(nombre)")) {
+                filter { eq("paciente_id", pacienteId); eq("tipo", "Evaluación"); eq("estado", "Completada") }
+                order("fecha", Order.DESCENDING)
+            }
+            .decodeList<JsonObject>()
+        return filas.mapNotNull { o ->
+            EvaluacionRef(
+                id = o.str("id") ?: return@mapNotNull null,
+                fecha = o.str("fecha") ?: "",
+                terapeutaNombre = (o["terapeuta"] as? JsonObject)?.str("nombre"),
             )
         }
     }

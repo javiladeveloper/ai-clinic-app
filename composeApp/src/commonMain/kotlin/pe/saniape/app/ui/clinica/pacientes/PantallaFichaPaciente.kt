@@ -195,7 +195,9 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     // Modal crear tratamiento
     if (creandoTratamiento) {
         ModalCrearTratamiento(
+            pacienteId = paciente.id,
             miTerapeutaId = ctx.miTerapeutaId,
+            diagnosticoPrevio = paciente.diagnostico,
             onCancelar = { creandoTratamiento = false },
             onGuardar = { nuevo ->
                 creandoTratamiento = false
@@ -205,7 +207,8 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         terapeutaId = nuevo.terapeutaId, modalidad = nuevo.modalidad,
                         totalSesiones = nuevo.totalSesiones, precioPaquete = nuevo.precioPaquete,
                         precioPorSesion = nuevo.precioPorSesion, precioAcordado = nuevo.precioAcordado,
-                        diagnostico = null,
+                        diagnostico = nuevo.diagnostico, citaOrigenId = nuevo.citaOrigenId,
+                        medicacion = nuevo.medicacion, proximoControl = nuevo.proximoControl,
                     )
                     recargar()
                 }
