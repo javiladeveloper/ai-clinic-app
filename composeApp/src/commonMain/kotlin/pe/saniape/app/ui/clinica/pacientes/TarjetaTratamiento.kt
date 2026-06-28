@@ -340,9 +340,9 @@ fun TarjetaTratamiento(
     cobrarSesion?.let { ses ->
         ModalCobrar(ses, onCancelar = { cobrarSesion = null }, onConfirmar = { monto, metodo, obs ->
             cobrarSesion = null
-            // La nota incluye "Sesión #N" + observación, para que se vea el origen y el detalle.
-            val nota = "Cobro Sesión #${ses.numero}" + (obs?.let { " · $it" } ?: "")
-            scope.launch { PacientesRepo.cobrarSesion(t.id, ses.id, monto, metodo, nota); recargarSesiones() }
+            // La nota es SOLO la observación del cajero. El origen "Sesión #N" ya lo muestra
+            // el chip (vía sesion_id), así que no se antepone para no duplicar.
+            scope.launch { PacientesRepo.cobrarSesion(t.id, ses.id, monto, metodo, obs?.trim()?.ifBlank { null }); recargarSesiones() }
         })
     }
     borrarSesion?.let { ses ->
