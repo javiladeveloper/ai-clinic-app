@@ -29,7 +29,16 @@ data class TratamientoPaciente(
     val estadoPago: String?,
     val totalSesiones: Int,
     val sesionesCompletadas: Int,
-)
+    val precioPaquete: Double?,
+    val precioPorSesion: Double?,
+    val precioAcordado: Double?,
+) {
+    /** Monto total acordado del tratamiento (igual que la web). */
+    val montoAcordado: Double
+        get() = precioAcordado
+            ?: if (modalidad == "Paquete") (precioPaquete ?: 0.0)
+            else (precioPorSesion ?: 0.0) * totalSesiones
+}
 
 /** Una sesión de un tratamiento (para la ficha). */
 data class SesionFicha(
@@ -45,6 +54,15 @@ data class SesionFicha(
     val pendiente: Boolean
         get() = estado == "Planificada" || estado == "En progreso" || estado == "Reprogramada"
 }
+
+/** Un pago de un tratamiento (para la PagoCard de la ficha). */
+data class PagoFicha(
+    val id: String,
+    val monto: Double,
+    val metodo: String,
+    val notas: String?,
+    val fecha: String,
+)
 
 /** Un paciente para la lista del staff (con sus tratamientos anidados). */
 data class PacienteStaff(
@@ -85,7 +103,7 @@ object PacientesRepo {
         id, nombre, dni, edad, telefono, ocupacion, diagnostico, estado, flag,
         tratamientos:tratamientos(
             id, modalidad, estado, estado_pago, total_sesiones, sesiones_completadas,
-            terapeuta_id,
+            precio_paquete, precio_por_sesion, precio_acordado, terapeuta_id,
             procedimiento:procedimientos(nombre),
             terapeuta:terapeutas(id, nombre)
         )
@@ -159,6 +177,46 @@ object PacientesRepo {
         return resp.status == HttpStatusCode.OK
     }
 
+    /** Pagos registrados de un tratamiento (para la PagoCard de la ficha). */
+    suspend fun pagosDe(tratamientoId: String): List<PagoFicha> {
+        val filas = Supabase.client.postgrest["pagos_tratamiento"]
+            .select(Columns.list("id, monto, metodo, notas, fecha")) {
+                filter { eq("tratamiento_id", tratamientoId) }
+                order("fecha", Order.DESCENDING)
+            }
+            .decodeList<JsonObject>()
+        return filas.mapNotNull { o ->
+            PagoFicha(
+                id = o.str("id") ?: return@mapNotNull null,
+                monto = o.dbl("monto") ?: 0.0,
+                metodo = o.str("metodo") ?: "Efectivo",
+                notas = o.str("notas"),
+                fecha = o.str("fecha") ?: "",
+            )
+        }
+    }
+
+    /** Registra un pago vía endpoint (inserta pago + ingreso en caja + recalcula estado). */
+    suspend fun registrarPago(
+        tratamientoId: String, monto: Double, metodo: String,
+        notas: String? = null, recordar: Boolean = false,
+    ): Boolean {
+        val tk = token() ?: return false
+        val cuerpo = buildJsonObject {
+            put("tratamientoId", tratamientoId)
+            put("monto", monto)
+            put("metodo", metodo)
+            if (!notas.isNullOrBlank()) put("notas", notas)
+            if (recordar) put("recordar", true)
+        }
+        val resp = http.post("${Supabase.SITE_URL}/api/staff/pago/registrar") {
+            header("Authorization", "Bearer $tk")
+            contentType(ContentType.Application.Json)
+            setBody(cuerpo.toString())
+        }
+        return resp.status == HttpStatusCode.OK
+    }
+
     /** Da de alta un tratamiento (paciente pasa a Alta si no le quedan otros en curso). */
     suspend fun darDeAlta(tratamientoId: String): Boolean {
         val tk = token() ?: return false
@@ -185,6 +243,9 @@ object PacientesRepo {
                 estadoPago = t.str("estado_pago"),
                 totalSesiones = t.int("total_sesiones") ?: 0,
                 sesionesCompletadas = t.int("sesiones_completadas") ?: 0,
+                precioPaquete = t.dbl("precio_paquete"),
+                precioPorSesion = t.dbl("precio_por_sesion"),
+                precioAcordado = t.dbl("precio_acordado"),
             )
         }
         return PacienteStaff(

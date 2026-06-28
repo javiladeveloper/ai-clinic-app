@@ -161,6 +161,12 @@ fun TarjetaTratamiento(
                         }
                     }
 
+                    // Pagos (solo con permiso): acordado/pagado/saldo + registrar.
+                    if (verPagos) {
+                        Spacer(Modifier.height(Sania.dim.md))
+                        SeccionPagos(t = t, onCambio = { recargarSesiones() })
+                    }
+
                     // Dar de alta (si el tratamiento sigue en curso y puede sesiones)
                     if (!terminado && puedeSesiones) {
                         Spacer(Modifier.height(Sania.dim.sm))
@@ -236,6 +242,118 @@ private fun FilaSesion(
                 }
             }
         }
+    }
+}
+
+/** Métodos de pago (igual que la web). */
+private val METODOS_PAGO = listOf("Efectivo", "Yape", "BCP", "Transferencia", "Otro")
+
+/** Sección de pagos del tratamiento: resumen + lista + registrar (reusa endpoint). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SeccionPagos(t: TratamientoPaciente, onCambio: () -> Unit) {
+    val c = Sania.colors
+    val scope = rememberCoroutineScope()
+    var pagos by remember { mutableStateOf<List<pe.saniape.app.data.staff.PagoFicha>?>(null) }
+    var agregando by remember { mutableStateOf(false) }
+    var guardando by remember { mutableStateOf(false) }
+    var monto by remember { mutableStateOf("") }
+    var metodo by remember { mutableStateOf("Efectivo") }
+
+    LaunchedEffect(t.id) {
+        pagos = runCatching { PacientesRepo.pagosDe(t.id) }.getOrDefault(emptyList())
+    }
+
+    val acordado = t.montoAcordado
+    val pagado = pagos?.sumOf { it.monto } ?: 0.0
+    val saldo = acordado - pagado
+    val frac = if (acordado > 0) (pagado / acordado).coerceIn(0.0, 1.0).toFloat() else 0f
+
+    Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
+    Spacer(Modifier.height(Sania.dim.md))
+    Text("💰 Pagos", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
+    Spacer(Modifier.height(6.dp))
+
+    // Resumen acordado/pagado/saldo
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        ColMonto("Acordado", acordado, c.texto)
+        ColMonto("Pagado", pagado, c.ok)
+        ColMonto("Saldo", saldo, if (saldo > 0.005) c.error else c.ok)
+    }
+    Spacer(Modifier.height(6.dp))
+    Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.chipBg)) {
+        Box(Modifier.fillMaxWidth(frac).height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.ok))
+    }
+
+    // Lista de pagos
+    pagos?.takeIf { it.isNotEmpty() }?.let { lista ->
+        Spacer(Modifier.height(8.dp))
+        lista.forEach { p ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.chipBg)
+                    .padding(horizontal = 8.dp, vertical = 2.dp)) {
+                    Text(p.metodo, color = c.navy, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(p.fecha, color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                Text("S/ ${formato2(p.monto)}", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+
+    // Registrar pago
+    Spacer(Modifier.height(8.dp))
+    if (!agregando) {
+        MiniBtn(if (saldo > 0.005) "+ Registrar pago" else "+ Pago adicional", c.navy, !guardando) { agregando = true }
+    } else {
+        androidx.compose.material3.OutlinedTextField(
+            value = monto, onValueChange = { monto = it.filter { ch -> ch.isDigit() || ch == '.' } },
+            placeholder = { Text("Monto", color = c.textoSuave) },
+            singleLine = true,
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(6.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            METODOS_PAGO.forEach { m ->
+                val activo = metodo == m
+                Box(
+                    Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+                        .background(if (activo) c.navy else c.superficie)
+                        .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
+                        .clickable { metodo = m }.padding(horizontal = 10.dp, vertical = 5.dp),
+                ) { Text(m, color = if (activo) c.sobreNavy else c.texto, fontSize = 11.sp,
+                    fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal) }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MiniBtn("Guardar pago", c.ok, !guardando) {
+                val m = monto.toDoubleOrNull()
+                if (m == null || m <= 0 || guardando) return@MiniBtn
+                guardando = true
+                scope.launch {
+                    val ok = PacientesRepo.registrarPago(t.id, m, metodo)
+                    guardando = false
+                    if (ok) {
+                        monto = ""; agregando = false
+                        pagos = runCatching { PacientesRepo.pagosDe(t.id) }.getOrDefault(pagos ?: emptyList())
+                        onCambio()
+                    }
+                }
+            }
+            MiniBtn("Cancelar", c.textoSuave, !guardando) { agregando = false; monto = "" }
+        }
+    }
+}
+
+@Composable
+private fun ColMonto(label: String, monto: Double, color: Color) {
+    val c = Sania.colors
+    Column(horizontalAlignment = Alignment.Start) {
+        Text(label, color = c.textoSuave, fontSize = 10.sp)
+        Text("S/ ${formato2(monto)}", color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 
