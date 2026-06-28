@@ -74,10 +74,13 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     var recargarToken by remember { mutableStateOf(0) }   // fuerza recarga de las tarjetas
     var tab by remember { mutableStateOf("atenciones") }
     var hitos by remember { mutableStateOf<pe.saniape.app.data.staff.HitosPaciente?>(null) }
+    var saldoPendiente by remember { mutableStateOf<Double?>(null) }
     var editarCitaHito by remember { mutableStateOf<pe.saniape.app.data.staff.CitaHito?>(null) }
     LaunchedEffect(pacienteInicial.id, recargarToken) {
         paciente = runCatching { PacientesRepo.porId(pacienteInicial.id) }.getOrNull() ?: pacienteInicial
         hitos = runCatching { PacientesRepo.hitosDe(pacienteInicial.id) }.getOrNull()
+        // Saldo general (todos los tratamientos del paciente): acordado − pagado.
+        saldoPendiente = runCatching { PacientesRepo.saldoPendienteDe(paciente.tratamientos) }.getOrNull()
         cargando = false
     }
     fun recargar() { recargarToken++ }
@@ -179,13 +182,19 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 Spacer(Modifier.height(Sania.dim.lg))
 
                 // ── Stat cards: Estado · Saldo · Próxima cita · Última atención ──
-                val saldoPend = paciente.tratamientos.sumOf { t ->
-                    if (t.estadoPago == "Pendiente" || t.estadoPago == "Parcial") t.montoAcordado else 0.0
-                }
+                // Saldo GENERAL del paciente (todos sus tratamientos): acordado − pagado.
+                val saldo = saldoPendiente
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     StatCard("ESTADO", paciente.estado ?: "—", estado.fg, Modifier.weight(1f))
-                    StatCard("SALDO", if (saldoPend > 0) "S/ ${saldoPend.toInt()}" else "S/ 0",
-                        if (saldoPend > 0) c.error else c.ok, Modifier.weight(1f))
+                    if (ctx.puede("pagos")) {
+                        StatCard(
+                            "SALDO PENDIENTE",
+                            when { saldo == null -> "…"; saldo > 0.005 -> "S/ ${formatoMonto(saldo)}"; else -> "S/ 0.00" },
+                            if (saldo != null && saldo > 0.005) c.error else c.ok, Modifier.weight(1f),
+                        )
+                    } else {
+                        Spacer(Modifier.weight(1f))
+                    }
                 }
                 if (ctx.puede("citas")) {
                     Spacer(Modifier.height(8.dp))
@@ -859,6 +868,12 @@ private fun BotonContacto(label: String, color: androidx.compose.ui.graphics.Col
             .border(1.dp, color.copy(alpha = 0.5f), RoundedCornerShape(Sania.shape.sm.dp))
             .clickable { onClick() }.padding(horizontal = 12.dp, vertical = 7.dp),
     ) { Text(label, color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+}
+
+/** Formatea un monto a 2 decimales (sin depender de String.format, no disponible en common). */
+private fun formatoMonto(n: Double): String {
+    val cent = (n * 100).toLong()
+    return "${cent / 100}.${(cent % 100).toString().padStart(2, '0')}"
 }
 
 /** Tarjeta de estadística (Estado / Saldo / Próxima cita / Última atención). */

@@ -508,7 +508,7 @@ private fun ItemMenu(texto: String, color: Color, onClick: () -> Unit) {
 }
 
 /** Métodos de pago (igual que la web). */
-private val METODOS_PAGO = listOf("Efectivo", "Yape", "BCP", "Transferencia", "Otro")
+private val METODOS_PAGO = listOf("Efectivo", "Yape", "Plin", "BCP", "Transferencia", "Otro")
 
 /** Sección de pagos del tratamiento: resumen + lista + registrar (reusa endpoint). */
 @OptIn(ExperimentalLayoutApi::class)
