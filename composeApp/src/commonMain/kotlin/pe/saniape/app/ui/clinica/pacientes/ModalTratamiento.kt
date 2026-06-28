@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import pe.saniape.app.data.staff.EspecialidadClinica
 import pe.saniape.app.data.staff.EvaluacionRef
 import pe.saniape.app.data.staff.PacientesRepo
 import pe.saniape.app.data.staff.ProcedimientoRef
@@ -78,7 +79,9 @@ fun ModalCrearTratamiento(
     val c = Sania.colors
     var procedimientos by remember { mutableStateOf<List<ProcedimientoRef>>(emptyList()) }
     var terapeutas by remember { mutableStateOf<List<TerapeutaConEsp>>(emptyList()) }
+    var especialidades by remember { mutableStateOf<List<EspecialidadClinica>>(emptyList()) }
     var evaluaciones by remember { mutableStateOf<List<EvaluacionRef>>(emptyList()) }
+    var especialidad by remember { mutableStateOf<EspecialidadClinica?>(null) }
     var proc by remember { mutableStateOf<ProcedimientoRef?>(null) }
     var terapeuta by remember { mutableStateOf<TerapeutaConEsp?>(null) }
     var evaluacion by remember { mutableStateOf<EvaluacionRef?>(null) }
@@ -91,18 +94,40 @@ fun ModalCrearTratamiento(
     var medicacion by remember { mutableStateOf("") }
     var proximoControl by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(pacienteId) {
         procedimientos = runCatching { PacientesRepo.procedimientos() }.getOrDefault(emptyList())
         terapeutas = runCatching { PacientesRepo.terapeutasConEspecialidad() }.getOrDefault(emptyList())
+        val esps = runCatching { PacientesRepo.especialidadesClinica() }.getOrDefault(emptyList())
+        val ters = runCatching { PacientesRepo.terapeutasConEspecialidad() }.getOrDefault(terapeutas)
+        especialidades = esps
+        terapeutas = ters
         evaluaciones = runCatching { PacientesRepo.evaluacionesDe(pacienteId) }.getOrDefault(emptyList())
-        if (miTerapeutaId != null) terapeuta = terapeutas.find { it.id == miTerapeutaId }
+        // Si la clínica tiene 1 sola especialidad, se autoselecciona.
+        if (especialidad == null && esps.size == 1) especialidad = esps.first()
+        // Profesional vinculado: fijar su(s) especialidad(es) si tiene una sola.
+        if (miTerapeutaId != null) {
+            val miTer = ters.find { it.id == miTerapeutaId }
+            terapeuta = miTer
+            miTer?.especialidadIds?.singleOrNull()?.let { espId ->
+                especialidad = esps.find { it.id == espId } ?: especialidad
+            }
+        }
     }
 
-    // Servicios filtrados por la especialidad del profesional elegido (igual que la web).
+    // Profesionales de la especialidad elegida (o todos si no hay especialidad).
+    val terapeutasFiltrados = especialidad?.let { e ->
+        terapeutas.filter { e.id in it.especialidadIds }
+    } ?: terapeutas
+    // Servicios de la especialidad elegida (o del profesional, o todos).
+    val espId = especialidad?.id
     val terId = if (miTerapeutaId != null) miTerapeutaId else terapeuta?.id
     val espsDelProf = terapeutas.find { it.id == terId }?.especialidadIds ?: emptyList()
     val procsVisibles = procedimientos.filter { p ->
-        terId == null || p.especialidadId == null || p.especialidadId in espsDelProf
+        when {
+            espId != null -> p.especialidadId == null || p.especialidadId == espId
+            terId != null -> p.especialidadId == null || p.especialidadId in espsDelProf
+            else -> true
+        }
     }
 
     // Al elegir servicio: autocompletar precios + tarifario (si hay).
@@ -128,6 +153,20 @@ fun ModalCrearTratamiento(
         title = { Text("➕ Nuevo tratamiento", fontWeight = FontWeight.Bold) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
+                // ¿Nació de una evaluación? (primero — autocompleta especialidad y médico)
+                if (evaluaciones.isNotEmpty()) {
+                    Etq("¿Nació de una evaluación? (opcional)")
+                    SelectorLista(evaluaciones, evaluacion,
+                        { "Evaluación ${it.fecha}" + (it.terapeutaNombre?.let { n -> " · $n" } ?: "") },
+                        "Sin evaluación previa") { ev ->
+                        evaluacion = ev
+                        // Autocompletar especialidad + profesional de la evaluación.
+                        ev.especialidadId?.let { espId -> especialidad = especialidades.find { it.id == espId } ?: especialidad }
+                        ev.terapeutaId?.let { tId -> terapeuta = terapeutas.find { it.id == tId } ?: terapeuta }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+
                 // Diagnóstico (precargado de la evaluación)
                 Etq("Diagnóstico")
                 OutlinedTextField(value = diagnostico, onValueChange = { diagnostico = it },
@@ -135,32 +174,34 @@ fun ModalCrearTratamiento(
                     minLines = 2, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
 
-                // Profesional (fijo si vinculado)
+                // Especialidad PRIMERO (si la clínica tiene >1; con 1 se autoselecciona).
+                if (especialidades.size > 1 && miTerapeutaId == null) {
+                    Etq("Especialidad")
+                    SelectorLista(especialidades, especialidad, { it.nombre }, "Elegir especialidad") { e ->
+                        especialidad = e
+                        // Limpiar profesional/servicio que ya no pertenezcan a la especialidad.
+                        terapeuta?.let { t -> if (e.id !in t.especialidadIds) terapeuta = null }
+                        proc?.let { p -> if (p.especialidadId != null && p.especialidadId != e.id) proc = null }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                // Profesional (de la especialidad; fijo si vinculado)
                 Etq("Profesional que atenderá")
                 if (miTerapeutaId != null) {
                     SelectorBox("${terapeuta?.nombre ?: "Tú"} (tú)", bloqueado = true) {}
                 } else {
-                    SelectorLista(terapeutas, terapeuta, { it.nombre }, "Sin asignar") { t ->
+                    SelectorLista(terapeutasFiltrados, terapeuta, { it.nombre }, "Sin asignar") { t ->
                         terapeuta = t
-                        // Si el servicio ya no pertenece a la nueva especialidad, limpiarlo.
                         proc?.let { p -> if (p.especialidadId != null && p.especialidadId !in t.especialidadIds) proc = null }
                     }
                 }
                 Spacer(Modifier.height(8.dp))
 
-                // Servicio (filtrado por profesional)
+                // Servicio (de la especialidad / profesional)
                 Etq("Servicio")
                 SelectorLista(procsVisibles, proc, { it.nombre },
-                    if (terId == null) "Elige profesional primero" else "Seleccionar…") { proc = it }
-
-                // ¿Nació de una evaluación? (opcional)
-                if (evaluaciones.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    Etq("¿Nació de una evaluación? (opcional)")
-                    SelectorLista(evaluaciones, evaluacion,
-                        { "Evaluación ${it.fecha}" + (it.terapeutaNombre?.let { n -> " · $n" } ?: "") },
-                        "Sin evaluación previa") { evaluacion = it }
-                }
+                    if (especialidad == null && terId == null) "Elige especialidad o profesional" else "Seleccionar…") { proc = it }
 
                 if (usaSesiones) {
                     Spacer(Modifier.height(10.dp))
@@ -376,12 +417,18 @@ private fun <T> SelectorLista(items: List<T>, elegido: T?, etiqueta: (T) -> Stri
     Column {
         SelectorBox(elegido?.let(etiqueta) ?: placeholder) { abierto = !abierto }
         if (abierto) {
-            LazyColumn(
-                Modifier.fillMaxWidth().padding(top = 4.dp).heightIn(max = 220.dp)
+            // Column normal (no LazyColumn): un LazyColumn dentro de un Column con
+            // verticalScroll colapsa a altura 0 y "no se despliega". Las listas son cortas.
+            Column(
+                Modifier.fillMaxWidth().padding(top = 4.dp)
                     .clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.superficie)
                     .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
             ) {
-                items(items) { item ->
+                if (items.isEmpty()) {
+                    Text("(Sin opciones)", color = c.textoSuave, fontSize = Sania.txt.pequeno,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp))
+                }
+                items.forEach { item ->
                     Text(etiqueta(item), color = c.texto, fontSize = Sania.txt.cuerpo,
                         modifier = Modifier.fillMaxWidth().clickable { onElegir(item); abierto = false }
                             .padding(horizontal = 12.dp, vertical = 11.dp))

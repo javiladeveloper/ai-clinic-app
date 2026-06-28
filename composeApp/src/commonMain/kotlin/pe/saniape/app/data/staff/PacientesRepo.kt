@@ -91,8 +91,14 @@ data class ProcedimientoRef(
 /** Un profesional con sus especialidades (para filtrar servicios). */
 data class TerapeutaConEsp(val id: String, val nombre: String, val especialidadIds: List<String>)
 
+/** Una especialidad de la clínica. */
+data class EspecialidadClinica(val id: String, val nombre: String, val usaSesiones: Boolean)
+
 /** Una evaluación completada del paciente (origen de un tratamiento). */
-data class EvaluacionRef(val id: String, val fecha: String, val terapeutaNombre: String?)
+data class EvaluacionRef(
+    val id: String, val fecha: String, val terapeutaNombre: String?,
+    val terapeutaId: String?, val especialidadId: String?,   // para autocompletar al venir de evaluación
+)
 
 /** Un paciente para la lista del staff (con sus tratamientos anidados). */
 data class PacienteStaff(
@@ -501,10 +507,27 @@ object PacientesRepo {
         }
     }
 
+    /** Especialidades activas de la clínica (para elegir antes que profesional). */
+    suspend fun especialidadesClinica(): List<EspecialidadClinica> {
+        val filas = Supabase.client.postgrest["especialidades"]
+            .select(Columns.list("id, nombre, usa_sesiones")) {
+                filter { eq("estado", "Activa") }
+                order("nombre", Order.ASCENDING)
+            }
+            .decodeList<JsonObject>()
+        return filas.mapNotNull { o ->
+            EspecialidadClinica(
+                id = o.str("id") ?: return@mapNotNull null,
+                nombre = o.str("nombre") ?: "Especialidad",
+                usaSesiones = (o["usa_sesiones"] as? JsonPrimitive)?.content?.let { it != "false" } ?: true,
+            )
+        }
+    }
+
     /** Evaluaciones completadas del paciente (para "¿Nació de una evaluación?"). */
     suspend fun evaluacionesDe(pacienteId: String): List<EvaluacionRef> {
         val filas = Supabase.client.postgrest["citas"]
-            .select(Columns.raw("id, fecha, terapeuta:terapeutas(nombre)")) {
+            .select(Columns.raw("id, fecha, terapeuta_id, especialidad_id, terapeuta:terapeutas(nombre)")) {
                 filter { eq("paciente_id", pacienteId); eq("tipo", "Evaluación"); eq("estado", "Completada") }
                 order("fecha", Order.DESCENDING)
             }
@@ -514,6 +537,8 @@ object PacientesRepo {
                 id = o.str("id") ?: return@mapNotNull null,
                 fecha = o.str("fecha") ?: "",
                 terapeutaNombre = (o["terapeuta"] as? JsonObject)?.str("nombre"),
+                terapeutaId = o.str("terapeuta_id"),
+                especialidadId = o.str("especialidad_id"),
             )
         }
     }
