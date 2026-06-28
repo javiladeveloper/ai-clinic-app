@@ -25,8 +25,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.PacienteStaff
 import pe.saniape.app.data.staff.PacientesRepo
+import pe.saniape.app.data.staff.SesionFicha
 import pe.saniape.app.data.staff.TratamientoPaciente
 import pe.saniape.app.ui.ManejarAtras
 import pe.saniape.app.ui.recordarAcciones
@@ -52,13 +55,17 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     val acciones = recordarAcciones()
     ManejarAtras(activo = true, onAtras = onCerrar)
 
+    val scope = rememberCoroutineScope()
     // Recarga fresca por id (el inicial viene de la lista; aquí traemos lo último).
     var paciente by remember { mutableStateOf(pacienteInicial) }
     var cargando by remember { mutableStateOf(true) }
-    LaunchedEffect(pacienteInicial.id) {
+    var completarSesion by remember { mutableStateOf<SesionFicha?>(null) }
+    var recargarToken by remember { mutableStateOf(0) }   // fuerza recarga de las tarjetas
+    LaunchedEffect(pacienteInicial.id, recargarToken) {
         paciente = runCatching { PacientesRepo.porId(pacienteInicial.id) }.getOrNull() ?: pacienteInicial
         cargando = false
     }
+    fun recargar() { recargarToken++ }
 
     val verContacto = ctx.esGestor && !ctx.modoClinico
     val flagColor = when (paciente.flag) {
@@ -140,7 +147,13 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 } else {
                     paciente.tratamientos.forEach { t ->
                         Spacer(Modifier.height(Sania.dim.sm))
-                        TarjetaTratamiento(t, verPagos = ctx.puede("pagos"))
+                        TarjetaTratamiento(
+                            t = t,
+                            verPagos = ctx.puede("pagos"),
+                            puedeSesiones = ctx.puede("sesiones"),
+                            onCompletarSesion = { completarSesion = it },
+                            onCambioRealizado = { recargar() },
+                        )
                     }
                 }
 
@@ -148,57 +161,53 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             }
         }
     }
-}
 
-@Composable
-private fun TarjetaTratamiento(t: TratamientoPaciente, verPagos: Boolean) {
-    val c = Sania.colors
-    val estado = EstadosColor.cita(t.estado)   // Activo/Completado… (reusa colores)
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
-            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(Sania.dim.tarjeta),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("${modalidadIcono(t.modalidad)} ${t.procedimiento ?: "Tratamiento"}",
-                color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f))
-            Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(estado.bg)
-                .padding(horizontal = 8.dp, vertical = 3.dp)) {
-                Text(t.estado ?: "—", color = estado.fg, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-        t.terapeutaNombre?.let {
-            Text("con $it", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
-        }
-        // Progreso (si es por sesiones)
-        if (t.modalidad != "Consulta" && t.totalSesiones > 0) {
-            Spacer(Modifier.height(6.dp))
-            val frac = (t.sesionesCompletadas.toFloat() / t.totalSesiones).coerceIn(0f, 1f)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.chipBg)) {
-                    Box(Modifier.fillMaxWidth(frac).height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.ok))
+    // Modal "Completar sesión": observaciones (procedimientos realizados).
+    completarSesion?.let { ses ->
+        ModalCompletarSesion(
+            ses = ses,
+            onCancelar = { completarSesion = null },
+            onConfirmar = { obs ->
+                completarSesion = null
+                scope.launch {
+                    PacientesRepo.cambiarEstadoSesion(ses.id, "Completada", notas = obs)
+                    recargar()
                 }
-                Spacer(Modifier.width(8.dp))
-                Text("${t.sesionesCompletadas}/${t.totalSesiones} ses.", color = c.textoSuave, fontSize = 11.sp)
-            }
-        }
-        // Estado de pago (si tiene permiso)
-        if (verPagos && t.estadoPago != null) {
-            val pago = EstadosColor.cita(if (t.estadoPago == "Pagado") "Confirmada" else if (t.estadoPago == "Parcial") "Pendiente" else "Cancelada")
-            Spacer(Modifier.height(6.dp))
-            Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(pago.bg)
-                .padding(horizontal = 8.dp, vertical = 3.dp)) {
-                Text("Pago: ${t.estadoPago}", color = pago.fg, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            }
-        }
+            },
+        )
     }
 }
 
-private fun modalidadIcono(m: String?): String = when (m) {
-    "Paquete" -> "📦"
-    "Sesión suelta" -> "🎫"
-    "Consulta" -> "🩺"
-    else -> "•"
+@Composable
+private fun ModalCompletarSesion(ses: SesionFicha, onCancelar: () -> Unit, onConfirmar: (String?) -> Unit) {
+    val c = Sania.colors
+    var texto by remember { mutableStateOf(ses.notas ?: "") }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onCancelar,
+        title = { Text("✓ Completar sesión #${ses.numero}", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text("Procedimientos realizados", color = c.textoSuave, fontSize = Sania.txt.mini,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
+                androidx.compose.material3.OutlinedTextField(
+                    value = texto, onValueChange = { texto = it },
+                    placeholder = { Text("Qué se hizo en la sesión…", color = c.textoSuave) },
+                    modifier = Modifier.fillMaxWidth(), minLines = 3,
+                )
+            }
+        },
+        confirmButton = {
+            Box(
+                Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
+                    .clickable { onConfirmar(texto.trim().ifBlank { null }) }
+                    .padding(horizontal = 20.dp, vertical = 11.dp),
+            ) { Text("✓ Completar", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) }
+        },
+        containerColor = c.superficie,
+    )
 }
 
 @Composable

@@ -1,6 +1,9 @@
 package pe.saniape.app.ui.clinica
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -58,8 +61,10 @@ fun ClinicaConTabs(
     var ctx by remember { mutableStateOf<ContextoStaff?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var tab by remember { mutableStateOf(TabClinica.Inicio) }
+    var intento by remember { mutableStateOf(0) }   // para "Reintentar"
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(intento) {
+        cargando = true; error = null
         when (val r = StaffContextoRepo.cargar()) {
             is StaffContextoRepo.Resultado.Ok -> ctx = r.contexto
             is StaffContextoRepo.Resultado.NoEsClinica -> error = "Esta cuenta no es de una clínica."
@@ -84,7 +89,14 @@ fun ClinicaConTabs(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("⚠", fontSize = 40.sp)
                     Text(error ?: "No se pudo cargar tu clínica.", color = c.error,
-                        fontSize = Sania.txt.cuerpo, textAlign = TextAlign.Center)
+                        fontSize = Sania.txt.cuerpo, textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(bottom = Sania.dim.lg))
+                    Box(
+                        Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(Sania.shape.md.dp))
+                            .background(c.navy)
+                            .clickable { intento++ }
+                            .padding(horizontal = 24.dp, vertical = 12.dp),
+                    ) { Text("Reintentar", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
                 }
             }
         }
