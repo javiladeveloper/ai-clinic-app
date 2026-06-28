@@ -86,16 +86,21 @@ fun TarjetaTratamiento(
     val estado = EstadosColor.cita(t.estado)
     val terminado = t.estado == "Alta" || t.estado == "Cancelado" || t.estado == "Suspendido"
 
-    // Cargar sesiones al expandir (una vez).
+    // Cargar sesiones al expandir (una vez). cargaFallo distingue "error de red" de "vacío real".
+    var cargaFallo by remember { mutableStateOf(false) }
     LaunchedEffect(expandido) {
         if (expandido && sesiones == null) {
-            sesiones = runCatching { PacientesRepo.sesionesDe(t.id) }.getOrDefault(emptyList())
+            runCatching { PacientesRepo.sesionesDe(t.id) }
+                .onSuccess { sesiones = it; cargaFallo = false }
+                .onFailure { cargaFallo = true }
         }
     }
 
     fun recargarSesiones() {
         scope.launch {
-            sesiones = runCatching { PacientesRepo.sesionesDe(t.id) }.getOrDefault(sesiones ?: emptyList())
+            runCatching { PacientesRepo.sesionesDe(t.id) }
+                .onSuccess { sesiones = it; cargaFallo = false }
+                .onFailure { cargaFallo = true }
             cambioToken++          // fuerza que la sección de pagos se recargue
             onCambioRealizado()
         }
@@ -237,12 +242,21 @@ fun TarjetaTratamiento(
                     Spacer(Modifier.height(Sania.dim.md))
                     SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() })
                 }
+            } else if (cargaFallo) {
+                // La carga falló (timeout/red). NO decir "sin sesiones": ofrecer reintentar.
+                BloqueReintentar("No se pudieron cargar las sesiones.") { sesiones = null; recargarSesiones() }
             } else when (val s = sesiones) {
                 null -> Box(Modifier.fillMaxWidth().padding(Sania.dim.md), Alignment.Center) {
                     CircularProgressIndicator(color = c.navy, strokeWidth = 2.dp)
                 }
                 else -> {
-                    if (s.isEmpty()) {
+                    if (s.isEmpty() && t.sesionesCompletadas > 0) {
+                        // Inconsistencia: el contador dice que hay sesiones pero la lista vino vacía
+                        // (casi siempre un fallo de carga). Ofrecer reintentar en vez de mentir.
+                        BloqueReintentar("El contador indica ${t.sesionesCompletadas} sesión(es), pero no se listaron.") {
+                            sesiones = null; recargarSesiones()
+                        }
+                    } else if (s.isEmpty()) {
                         Text("Sin sesiones registradas.", color = c.textoSuave, fontSize = 12.sp)
                     } else {
                         s.forEach { ses ->
@@ -465,6 +479,24 @@ private fun ChipInfo(icono: String, texto: String, fg: Color, bg: Color) {
     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(bg)
         .padding(horizontal = 10.dp, vertical = 6.dp)) {
         Text("$icono $texto", color = fg, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+/** Aviso de carga fallida con botón Reintentar (no confundir con "lista vacía"). */
+@Composable
+private fun BloqueReintentar(mensaje: String, onReintentar: () -> Unit) {
+    val c = Sania.colors
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+            .background(c.pendBg).padding(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("⚠ $mensaje", color = c.pend, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.height(8.dp))
+        Box(
+            Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.navy)
+                .clickable { onReintentar() }.padding(horizontal = 16.dp, vertical = 7.dp),
+        ) { Text("↻ Reintentar", color = c.sobreNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
     }
 }
 
