@@ -111,43 +111,57 @@ fun TarjetaTratamiento(
         Box(Modifier.width(5.dp).fillMaxHeight().background(if (cerrado) c.borde else acento))
 
       Column(Modifier.fillMaxWidth().padding(Sania.dim.tarjeta)) {
-        // Cabecera (tocable para expandir): icono + nombre + estado
-        Row(
-            Modifier.fillMaxWidth().clickable { expandido = !expandido },
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("${if (t.esConsulta) "🩺" else "📦"} ${t.procedimiento ?: "Tratamiento"}",
-                    color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
-                // Especialidad + profesional en una línea sutil
-                val sub = listOfNotNull(t.especialidadNombre, t.terapeutaNombre?.let { "con $it" }).joinToString(" · ")
-                if (sub.isNotBlank()) Text(sub, color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 1.dp))
+        // Zona-resumen tocable (toda esta área expande/colapsa): cabecera + recorrido +
+        // chips de consulta + progreso. La flechita es solo un indicador, no el único target.
+        Column(Modifier.fillMaxWidth().clickable { expandido = !expandido }) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("${if (t.esConsulta) "🩺" else "📦"} ${t.procedimiento ?: "Tratamiento"}",
+                        color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
+                    val sub = listOfNotNull(t.especialidadNombre, t.terapeutaNombre?.let { "con $it" }).joinToString(" · ")
+                    if (sub.isNotBlank()) Text(sub, color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 1.dp))
+                }
+                Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(estado.bg)
+                    .padding(horizontal = 8.dp, vertical = 3.dp)) {
+                    Text(t.estado ?: "—", color = estado.fg, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(6.dp))
+                Text(if (expandido) "▴" else "▾", color = c.navy)
             }
-            Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(estado.bg)
-                .padding(horizontal = 8.dp, vertical = 3.dp)) {
-                Text(t.estado ?: "—", color = estado.fg, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+
+            // Barra de recorrido del tratamiento (adaptativa por tipo). Solo si está vivo.
+            if (t.estado == "Activo" || t.estado == "Completado" || t.estado == "Alta") {
+                Spacer(Modifier.height(10.dp))
+                BarraRecorrido(trat = t, consultaDone = consultaDone, evalDone = evalDone)
             }
-            Spacer(Modifier.width(6.dp))
-            Text(if (expandido) "▴" else "▾", color = c.navy)
-        }
 
-        // Barra de recorrido del tratamiento (adaptativa por tipo). Solo si está vivo.
-        if (t.estado == "Activo" || t.estado == "Completado" || t.estado == "Alta") {
-            Spacer(Modifier.height(10.dp))
-            BarraRecorrido(trat = t, consultaDone = consultaDone, evalDone = evalDone)
-        }
-
-        // ── Cuerpo adaptado al tipo ──
-        if (t.esConsulta) {
             // CONSULTA (medicina/nutrición): diagnóstico + medicación + próximo control
-            t.diagnostico?.takeIf { it.isNotBlank() }?.let {
-                Spacer(Modifier.height(6.dp)); ChipInfo("📋", it, c.info, c.infoBg)
+            if (t.esConsulta) {
+                t.diagnostico?.takeIf { it.isNotBlank() }?.let {
+                    Spacer(Modifier.height(6.dp)); ChipInfo("📋", it, c.info, c.infoBg)
+                }
+                t.medicacion?.takeIf { it.isNotBlank() }?.let {
+                    Spacer(Modifier.height(4.dp)); ChipInfo("💊", it, c.purple, c.purpleBg)
+                }
+                t.proximoControl?.takeIf { it.isNotBlank() }?.let {
+                    Spacer(Modifier.height(4.dp)); ChipInfo("📅 Próximo control", it, c.navy, c.chipBg)
+                }
             }
-            t.medicacion?.takeIf { it.isNotBlank() }?.let {
-                Spacer(Modifier.height(4.dp)); ChipInfo("💊", it, c.purple, c.purpleBg)
+
+            // Barra de progreso fina (el conteo N/M ya lo muestra el paso de la barra de recorrido).
+            if (!t.esConsulta && t.totalSesiones > 0) {
+                Spacer(Modifier.height(8.dp))
+                val frac = (t.sesionesCompletadas.toFloat() / t.totalSesiones).coerceIn(0f, 1f)
+                Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.chipBg)) {
+                    Box(Modifier.fillMaxWidth(frac).height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.ok))
+                }
             }
-            t.proximoControl?.takeIf { it.isNotBlank() }?.let {
-                Spacer(Modifier.height(4.dp)); ChipInfo("📅 Próximo control", it, c.navy, c.chipBg)
+
+            // Pista sutil para invitar a tocar (solo si hay algo que mostrar al expandir).
+            if (!expandido) {
+                Spacer(Modifier.height(8.dp))
+                Text(if (t.esConsulta) "Toca para ver detalle y pagos" else "Toca para ver sesiones y pagos",
+                    color = c.textoSuave, fontSize = 10.sp)
             }
         }
 
@@ -176,15 +190,6 @@ fun TarjetaTratamiento(
                             ItemMenu("↻ Reactivar", c.ok) { menuTrat = false; onCambiarEstadoTrat(t.id, "Activo") }
                     }
                 }
-            }
-        }
-
-        // Barra de progreso fina (el conteo N/M ya lo muestra el paso de la barra de recorrido).
-        if (!t.esConsulta && t.totalSesiones > 0) {
-            Spacer(Modifier.height(8.dp))
-            val frac = (t.sesionesCompletadas.toFloat() / t.totalSesiones).coerceIn(0f, 1f)
-            Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.chipBg)) {
-                Box(Modifier.fillMaxWidth(frac).height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.ok))
             }
         }
 
