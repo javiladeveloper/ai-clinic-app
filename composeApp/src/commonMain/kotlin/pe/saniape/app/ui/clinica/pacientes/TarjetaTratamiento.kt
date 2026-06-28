@@ -156,9 +156,7 @@ fun TarjetaTratamiento(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
                         .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
                 ) {
-                    // Crear sesión (solo tratamientos por sesiones y activos).
-                    if (!t.esConsulta && t.estado == "Activo")
-                        ItemMenu("📅 Agendar nueva sesión", c.navy) { menuTrat = false; onCrearSesion(t) }
+                    // (Agendar sesión está como botón visible arriba, no se repite aquí.)
                     ItemMenu("✏ Editar tratamiento", c.texto) { menuTrat = false; onEditar(t) }
                     if (!t.esConsulta) ItemMenu("➕ Ampliar (más sesiones)", c.navy) { menuTrat = false; onAmpliar(t) }
                     when (t.estado) {
@@ -183,6 +181,20 @@ fun TarjetaTratamiento(
                 }
                 Spacer(Modifier.width(8.dp))
                 Text("${t.sesionesCompletadas}/${t.totalSesiones} ses.", color = c.textoSuave, fontSize = 11.sp)
+            }
+        }
+
+        // Acción más usada a la vista: agendar sesión (tratamientos por sesiones activos).
+        if (!t.esConsulta && t.estado == "Activo" && puedeSesiones) {
+            Spacer(Modifier.height(8.dp))
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .background(c.navy.copy(alpha = 0.10f))
+                    .border(1.dp, c.navy, RoundedCornerShape(Sania.shape.sm.dp))
+                    .clickable { onCrearSesion(t) }.padding(vertical = 9.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("📅 + Agendar sesión", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
 
