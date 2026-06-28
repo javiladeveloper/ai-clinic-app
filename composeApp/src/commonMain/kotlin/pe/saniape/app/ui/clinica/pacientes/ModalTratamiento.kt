@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,8 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -36,8 +33,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import pe.saniape.app.data.staff.EspecialidadClinica
 import pe.saniape.app.data.staff.EvaluacionRef
 import pe.saniape.app.data.staff.PacientesRepo
@@ -147,146 +147,194 @@ fun ModalCrearTratamiento(
 
     val esConsulta = proc?.usaSesiones == false
     val usaSesiones = proc != null && !esConsulta
+    val puedeCrear = proc != null
 
-    AlertDialog(
-        onDismissRequest = onCancelar,
-        title = { Text("➕ Nuevo tratamiento", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                // ¿Nació de una evaluación? (primero — autocompleta especialidad y médico)
-                if (evaluaciones.isNotEmpty()) {
-                    Etq("¿Nació de una evaluación? (opcional)")
-                    SelectorLista(evaluaciones, evaluacion,
-                        { "Evaluación ${it.fecha}" + (it.terapeutaNombre?.let { n -> " · $n" } ?: "") },
-                        "Sin evaluación previa") { ev ->
-                        evaluacion = ev
-                        // Autocompletar especialidad + profesional de la evaluación.
-                        ev.especialidadId?.let { espId -> especialidad = especialidades.find { it.id == espId } ?: especialidad }
-                        ev.terapeutaId?.let { tId -> terapeuta = terapeutas.find { it.id == tId } ?: terapeuta }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
+    Dialog(onDismissRequest = onCancelar, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(max = 720.dp)
+                .clip(RoundedCornerShape(Sania.shape.lg.dp)).background(c.fondo),
+        ) {
+            // ── Header navy (el "negro" de la marca) ──────────────────────
+            Column(Modifier.fillMaxWidth().background(c.navyDark).padding(horizontal = 18.dp, vertical = 16.dp)) {
+                Text("Nuevo tratamiento", color = c.sobreNavy, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    when {
+                        esConsulta -> "Consulta médica · sin sesiones"
+                        usaSesiones -> "Plan por sesiones"
+                        else -> "Elige el servicio para empezar"
+                    },
+                    color = c.sobreNavy.copy(alpha = 0.7f), fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp),
+                )
+            }
 
-                // Diagnóstico (precargado de la evaluación)
-                Etq("Diagnóstico")
-                OutlinedTextField(value = diagnostico, onValueChange = { diagnostico = it },
-                    placeholder = { Text("Diagnóstico que motiva este tratamiento", color = c.textoSuave) },
-                    minLines = 2, modifier = Modifier.fillMaxWidth())
-                if (!diagnosticoPrevio.isNullOrBlank() || evaluacion != null) {
-                    Text("🔍 Tomado de la evaluación — puedes ajustarlo", color = c.textoSuave, fontSize = 10.sp,
-                        modifier = Modifier.padding(top = 2.dp))
-                }
-                Spacer(Modifier.height(8.dp))
-
-                // Especialidad PRIMERO (si la clínica tiene >1; con 1 se autoselecciona).
-                if (especialidades.size > 1 && miTerapeutaId == null) {
-                    Etq("Especialidad")
-                    SelectorLista(especialidades, especialidad, { it.nombre }, "Elegir especialidad") { e ->
-                        especialidad = e
-                        // Limpiar profesional/servicio que ya no pertenezcan a la especialidad.
-                        terapeuta?.let { t -> if (e.id !in t.especialidadIds) terapeuta = null }
-                        proc?.let { p -> if (p.especialidadId != null && p.especialidadId != e.id) proc = null }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-
-                // Profesional (de la especialidad; fijo si vinculado)
-                Etq("Profesional que atenderá")
-                if (miTerapeutaId != null) {
-                    SelectorBox("${terapeuta?.nombre ?: "Tú"} (tú)", bloqueado = true) {}
-                } else {
-                    SelectorLista(terapeutasFiltrados, terapeuta, { it.nombre }, "Sin asignar") { t ->
-                        terapeuta = t
-                        proc?.let { p -> if (p.especialidadId != null && p.especialidadId !in t.especialidadIds) proc = null }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-
-                // Servicio (de la especialidad / profesional)
-                Etq("Servicio")
-                SelectorLista(procsVisibles, proc, { it.nombre },
-                    if (especialidad == null && terId == null) "Elige especialidad o profesional" else "Seleccionar…") { proc = it }
-
-                if (usaSesiones) {
-                    Spacer(Modifier.height(10.dp))
-                    Etq("Modalidad de pago")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ChipMod("📦", "Paquete", "Precio fijo por N sesiones", modalidad == "Paquete", Modifier.weight(1f)) { modalidad = "Paquete" }
-                        ChipMod("🎫", "Suelta", "Se cobra por sesión", modalidad == "Sesión suelta", Modifier.weight(1f)) { modalidad = "Sesión suelta" }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    if (modalidad == "Paquete") {
-                        // Tarifario (si el servicio tiene paquetes predefinidos)
-                        val tarifs = proc?.tarifarios ?: emptyList()
-                        if (tarifs.isNotEmpty()) {
-                            Etq("Elegir paquete del tarifario")
-                            SelectorLista(tarifs, null as TarifarioRef?,
-                                { "${it.cantidadSesiones} sesiones — S/ ${it.precioTotal}" },
-                                "Personalizado o manual…") { t -> totalSesiones = t.cantidadSesiones.toString(); precioPaquete = t.precioTotal.toString() }
-                            Spacer(Modifier.height(6.dp))
+            // ── Cuerpo scroll ─────────────────────────────────────────────
+            Column(
+                Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+            ) {
+                // Bloque 1 · ATENCIÓN ─────────────────────────────────────
+                Tarjeta(titulo = "Atención", icono = "🩺") {
+                    // ¿Nació de una evaluación? (primero — autocompleta especialidad y médico)
+                    if (evaluaciones.isNotEmpty()) {
+                        Etq("¿Nació de una evaluación? (opcional)")
+                        SelectorLista(evaluaciones, evaluacion,
+                            { "Evaluación ${it.fecha}" + (it.terapeutaNombre?.let { n -> " · $n" } ?: "") },
+                            "Sin evaluación previa") { ev ->
+                            evaluacion = ev
+                            ev.especialidadId?.let { espId -> especialidad = especialidades.find { it.id == espId } ?: especialidad }
+                            ev.terapeutaId?.let { tId -> terapeuta = terapeutas.find { it.id == tId } ?: terapeuta }
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Column(Modifier.weight(1f)) { Etq("N° sesiones"); CampoNum(totalSesiones) { totalSesiones = it } }
-                            Column(Modifier.weight(1f)) { Etq("Precio paquete"); CampoNum(precioPaquete) { precioPaquete = it } }
-                        }
-                        Text("Puedes ajustar sesiones y precio; el tarifario solo los pre-llena.",
-                            color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
-                    } else {
-                        Etq("Precio por sesión")
-                        CampoNum(precioPorSesion) { precioPorSesion = it }
-                        Text("Se cobra por cada sesión realizada.", color = c.textoSuave, fontSize = 10.sp)
+                        Spacer(Modifier.height(10.dp))
                     }
-                    // Precio acordado (negociado) — sobrescribe el precio base si se llena.
-                    Spacer(Modifier.height(8.dp))
-                    Etq("Precio acordado (S/) — opcional")
-                    CampoNum(precioAcordado) { precioAcordado = it }
-                    Text("Solo si se negoció un precio distinto al base.", color = c.textoSuave, fontSize = 10.sp)
-                } else if (esConsulta) {
-                    // Especialidad sin sesiones (medicina, nutrición): consulta
-                    Spacer(Modifier.height(10.dp))
-                    Etq("Medicación / receta (opcional)")
-                    OutlinedTextField(value = medicacion, onValueChange = { medicacion = it },
-                        placeholder = { Text("Indicaciones, receta…", color = c.textoSuave) },
+
+                    Etq("Diagnóstico")
+                    OutlinedTextField(value = diagnostico, onValueChange = { diagnostico = it },
+                        placeholder = { Text("Diagnóstico que motiva este tratamiento", color = c.textoSuave) },
                         minLines = 2, modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(8.dp))
-                    Etq("Próximo control (AAAA-MM-DD, opcional)")
-                    OutlinedTextField(value = proximoControl, onValueChange = { proximoControl = it },
-                        placeholder = { Text("2026-07-15", color = c.textoSuave) }, singleLine = true,
-                        modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(8.dp))
-                    Etq("Costo de la consulta (S/) — opcional")
-                    CampoNum(precioAcordado) { precioAcordado = it }
-                    Text("Déjalo vacío si es gratis.", color = c.textoSuave, fontSize = 10.sp)
+                    if (!diagnosticoPrevio.isNullOrBlank() || evaluacion != null) {
+                        Text("🔍 Tomado de la evaluación — puedes ajustarlo", color = c.textoSuave, fontSize = 10.sp,
+                            modifier = Modifier.padding(top = 2.dp))
+                    }
+                    Spacer(Modifier.height(10.dp))
+
+                    if (especialidades.size > 1 && miTerapeutaId == null) {
+                        Etq("Especialidad")
+                        SelectorLista(especialidades, especialidad, { it.nombre }, "Elegir especialidad") { e ->
+                            especialidad = e
+                            terapeuta?.let { t -> if (e.id !in t.especialidadIds) terapeuta = null }
+                            proc?.let { p -> if (p.especialidadId != null && p.especialidadId != e.id) proc = null }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                    }
+
+                    Etq("Profesional que atenderá")
+                    if (miTerapeutaId != null) {
+                        SelectorBox("${terapeuta?.nombre ?: "Tú"} (tú)", bloqueado = true) {}
+                    } else {
+                        SelectorLista(terapeutasFiltrados, terapeuta, { it.nombre }, "Sin asignar") { t ->
+                            terapeuta = t
+                            proc?.let { p -> if (p.especialidadId != null && p.especialidadId !in t.especialidadIds) proc = null }
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+
+                    Etq("Servicio")
+                    SelectorLista(procsVisibles, proc, { it.nombre },
+                        if (especialidad == null && terId == null) "Elige especialidad o profesional" else "Seleccionar…") { proc = it }
+                }
+
+                // Bloque 2 · adaptado al tipo de servicio ─────────────────
+                if (usaSesiones) {
+                    Spacer(Modifier.height(12.dp))
+                    Tarjeta(titulo = "Pago del plan", icono = "💳") {
+                        Etq("Modalidad de pago")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ChipMod("📦", "Paquete", "Precio fijo por N sesiones", modalidad == "Paquete", Modifier.weight(1f)) { modalidad = "Paquete" }
+                            ChipMod("🎫", "Suelta", "Se cobra por sesión", modalidad == "Sesión suelta", Modifier.weight(1f)) { modalidad = "Sesión suelta" }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        if (modalidad == "Paquete") {
+                            val tarifs = proc?.tarifarios ?: emptyList()
+                            if (tarifs.isNotEmpty()) {
+                                Etq("Elegir paquete del tarifario")
+                                SelectorLista(tarifs, null as TarifarioRef?,
+                                    { "${it.cantidadSesiones} sesiones — S/ ${it.precioTotal}" },
+                                    "Personalizado o manual…") { t -> totalSesiones = t.cantidadSesiones.toString(); precioPaquete = t.precioTotal.toString() }
+                                Spacer(Modifier.height(8.dp))
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Column(Modifier.weight(1f)) { Etq("N° sesiones"); CampoNum(totalSesiones) { totalSesiones = it } }
+                                Column(Modifier.weight(1f)) { Etq("Precio paquete"); CampoNum(precioPaquete) { precioPaquete = it } }
+                            }
+                            Text("Puedes ajustar sesiones y precio; el tarifario solo los pre-llena.",
+                                color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
+                        } else {
+                            Etq("Precio por sesión")
+                            CampoNum(precioPorSesion) { precioPorSesion = it }
+                            Text("Se cobra por cada sesión realizada.", color = c.textoSuave, fontSize = 10.sp)
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Etq("Precio acordado (S/) — opcional")
+                        CampoNum(precioAcordado) { precioAcordado = it }
+                        Text("Solo si se negoció un precio distinto al base.", color = c.textoSuave, fontSize = 10.sp)
+                    }
+                } else if (esConsulta) {
+                    Spacer(Modifier.height(12.dp))
+                    Tarjeta(titulo = "Consulta", icono = "📋") {
+                        Etq("Medicación / receta (opcional)")
+                        OutlinedTextField(value = medicacion, onValueChange = { medicacion = it },
+                            placeholder = { Text("Indicaciones, receta…", color = c.textoSuave) },
+                            minLines = 2, modifier = Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(10.dp))
+                        Etq("Próximo control (AAAA-MM-DD, opcional)")
+                        OutlinedTextField(value = proximoControl, onValueChange = { proximoControl = it },
+                            placeholder = { Text("2026-07-15", color = c.textoSuave) }, singleLine = true,
+                            modifier = Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(10.dp))
+                        Etq("Costo de la consulta (S/) — opcional")
+                        CampoNum(precioAcordado) { precioAcordado = it }
+                        Text("Déjalo vacío si es gratis.", color = c.textoSuave, fontSize = 10.sp)
+                    }
                 }
             }
-        },
-        confirmButton = {
-            Box(
-                Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
-                    .clickable {
-                        val p = proc ?: return@clickable
-                        onGuardar(
-                            TratamientoNuevo(
-                                procedimientoId = p.id,
-                                terapeutaId = if (miTerapeutaId != null) miTerapeutaId else terapeuta?.id,
-                                modalidad = if (esConsulta) "Consulta" else modalidad,
-                                totalSesiones = if (usaSesiones && modalidad == "Paquete") totalSesiones.toIntOrNull() ?: 10
-                                    else if (usaSesiones) 1 else null,
-                                precioPaquete = if (usaSesiones && modalidad == "Paquete") precioPaquete.toDoubleOrNull() else null,
-                                precioPorSesion = if (usaSesiones && modalidad == "Sesión suelta") precioPorSesion.toDoubleOrNull() else null,
-                                precioAcordado = precioAcordado.toDoubleOrNull(),   // negociado (o costo consulta)
-                                diagnostico = diagnostico.trim().ifBlank { null },
-                                citaOrigenId = evaluacion?.id,
-                                medicacion = if (esConsulta) medicacion.trim().ifBlank { null } else null,
-                                proximoControl = if (esConsulta) proximoControl.trim().ifBlank { null } else null,
+
+            // ── Footer fijo: Cancelar + Crear a ancho completo ────────────
+            Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
+            Row(
+                Modifier.fillMaxWidth().background(c.superficie)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave, fontWeight = FontWeight.Bold) }
+                Box(
+                    Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.md.dp))
+                        .background(if (puedeCrear) c.navy else c.borde)
+                        .clickable(enabled = puedeCrear) {
+                            val p = proc ?: return@clickable
+                            onGuardar(
+                                TratamientoNuevo(
+                                    procedimientoId = p.id,
+                                    terapeutaId = if (miTerapeutaId != null) miTerapeutaId else terapeuta?.id,
+                                    modalidad = if (esConsulta) "Consulta" else modalidad,
+                                    totalSesiones = if (usaSesiones && modalidad == "Paquete") totalSesiones.toIntOrNull() ?: 10
+                                        else if (usaSesiones) 1 else null,
+                                    precioPaquete = if (usaSesiones && modalidad == "Paquete") precioPaquete.toDoubleOrNull() else null,
+                                    precioPorSesion = if (usaSesiones && modalidad == "Sesión suelta") precioPorSesion.toDoubleOrNull() else null,
+                                    precioAcordado = precioAcordado.toDoubleOrNull(),
+                                    diagnostico = diagnostico.trim().ifBlank { null },
+                                    citaOrigenId = evaluacion?.id,
+                                    medicacion = if (esConsulta) medicacion.trim().ifBlank { null } else null,
+                                    proximoControl = if (esConsulta) proximoControl.trim().ifBlank { null } else null,
+                                )
                             )
-                        )
-                    }.padding(horizontal = 18.dp, vertical = 10.dp),
-            ) { Text("Crear", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
-        },
-        dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
-        containerColor = c.superficie,
-    )
+                        }.padding(vertical = 13.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(if (esConsulta) "Crear consulta" else "Crear tratamiento",
+                        color = if (puedeCrear) c.sobreNavy else c.textoSuave, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+            }
+        }
+    }
+}
+
+/** Tarjeta de sección con título e ícono — agrupa campos relacionados. */
+@Composable
+private fun Tarjeta(titulo: String, icono: String, contenido: @Composable () -> Unit) {
+    val c = Sania.colors
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+            .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp))
+            .padding(14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 12.dp)) {
+            Text(icono, fontSize = 15.sp)
+            Spacer(Modifier.width(7.dp))
+            Text(titulo, color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        }
+        contenido()
+    }
 }
 
 /** Ampliar tratamiento: +sesiones, +monto opcional, nota. */
@@ -422,7 +470,7 @@ private fun ChipMod(icono: String, titulo: String, desc: String, activo: Boolean
         Spacer(Modifier.height(3.dp))
         Text(titulo, color = if (activo) c.navy else c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         Text(desc, color = c.textoSuave, fontSize = 9.sp,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(top = 1.dp))
+            textAlign = TextAlign.Center, modifier = Modifier.padding(top = 1.dp))
     }
 }
 
