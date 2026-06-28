@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -109,8 +110,8 @@ fun TarjetaTratamiento(
             Text("con $it", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
         }
 
-        // Progreso (si es por sesiones)
-        if (t.modalidad != "Consulta" && t.totalSesiones > 0) {
+        // Progreso (solo especialidades por sesiones; las Consultas no tienen contador)
+        if (!t.esConsulta && t.totalSesiones > 0) {
             Spacer(Modifier.height(6.dp))
             val frac = (t.sesionesCompletadas.toFloat() / t.totalSesiones).coerceIn(0f, 1f)
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -138,7 +139,14 @@ fun TarjetaTratamiento(
             Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
             Spacer(Modifier.height(Sania.dim.md))
 
-            when (val s = sesiones) {
+            // Las Consultas (especialidad sin sesiones) no listan sesiones; solo pagos.
+            if (t.esConsulta) {
+                Text("Consulta médica — sin sesiones.", color = c.textoSuave, fontSize = 12.sp)
+                if (verPagos) {
+                    Spacer(Modifier.height(Sania.dim.md))
+                    SeccionPagos(t = t, esAdmin = esAdmin, onCambio = { recargarSesiones() })
+                }
+            } else when (val s = sesiones) {
                 null -> Box(Modifier.fillMaxWidth().padding(Sania.dim.md), Alignment.Center) {
                     CircularProgressIndicator(color = c.navy, strokeWidth = 2.dp)
                 }
@@ -277,32 +285,50 @@ private fun FilaSesion(
         }
 
         if (puedeSesiones) {
-            Spacer(Modifier.height(6.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (ses.pendiente) {
-                    MiniBtn("✓ Completar", c.navy, !accionando) { onCompletar() }
-                    MiniBtn("✏ Editar", c.textoSuave, !accionando) { onEditar() }
-                    MiniBtn("⋯ Estado", c.textoSuave, !accionando) { onToggleMenu() }
+            Spacer(Modifier.height(8.dp))
+            // Fila limpia: 1 acción principal + ✏ editar + ⋯ menú (resto). Como la web.
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                when {
+                    ses.pendiente -> MiniBtn("✓ Completar", c.navy, !accionando) { onCompletar() }
+                    completada && puedePagos -> MiniBtn("💳 Cobrar", c.teal, !accionando) { onCobrar() }
                 }
-                if (completada) {
-                    MiniBtn("↩ Revertir", c.pend, !accionando) { onRevertir() }
-                    // Cobrar: si se puede pagos y aún no tiene costo cobrado.
-                    if (puedePagos) MiniBtn("💳 Cobrar", c.teal, !accionando) { onCobrar() }
-                }
-                // Borrar/reasignar: disponibles siempre (con permiso).
-                MiniBtn("👤 Reasignar", c.textoSuave, !accionando) { onReasignar() }
-                MiniBtn("🗑 Borrar", c.error, !accionando) { onBorrar() }
+                if (ses.pendiente) IconoBtn("✏", !accionando) { onEditar() }
+                IconoBtn("⋯", !accionando) { onToggleMenu() }
             }
+            // Menú desplegable: estados (si pendiente) + revertir (si completada) + reasignar + borrar.
             if (menuAbierto) {
-                Spacer(Modifier.height(4.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ESTADOS_SESION.forEach { e ->
-                        MiniBtn(e, c.pend, !accionando) { onEstado(e) }
-                    }
+                Spacer(Modifier.height(6.dp))
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
+                ) {
+                    if (ses.pendiente) ESTADOS_SESION.forEach { e -> ItemMenu(e, c.texto) { onEstado(e) } }
+                    if (completada) ItemMenu("↩ Revertir", c.pend) { onRevertir() }
+                    ItemMenu("👤 Reasignar profesional", c.texto) { onReasignar() }
+                    ItemMenu("🗑 Borrar sesión", c.error) { onBorrar() }
                 }
             }
         }
     }
+}
+
+/** Botón de icono compacto (✏ / ⋯) discreto. */
+@Composable
+private fun IconoBtn(icono: String, habilitado: Boolean, onClick: () -> Unit) {
+    val c = Sania.colors
+    Box(
+        Modifier.size(34.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+            .clickable(enabled = habilitado) { onClick() },
+        contentAlignment = Alignment.Center,
+    ) { Text(icono, color = c.textoSuave, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
+}
+
+/** Fila de un menú desplegable. */
+@Composable
+private fun ItemMenu(texto: String, color: Color, onClick: () -> Unit) {
+    Text(texto, color = color, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+        modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 12.dp, vertical = 10.dp))
 }
 
 /** Métodos de pago (igual que la web). */

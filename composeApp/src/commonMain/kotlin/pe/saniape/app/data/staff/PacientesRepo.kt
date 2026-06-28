@@ -32,12 +32,17 @@ data class TratamientoPaciente(
     val precioPaquete: Double?,
     val precioPorSesion: Double?,
     val precioAcordado: Double?,
+    /** La especialidad del procedimiento usa sesiones (fisio…) o es Consulta (medicina…). */
+    val usaSesiones: Boolean,
 ) {
     /** Monto total acordado del tratamiento (igual que la web). */
     val montoAcordado: Double
         get() = precioAcordado
             ?: if (modalidad == "Paquete") (precioPaquete ?: 0.0)
             else (precioPorSesion ?: 0.0) * totalSesiones
+
+    /** Es una Consulta (especialidad sin sesiones): no muestra contador/acciones de sesión. */
+    val esConsulta: Boolean get() = !usaSesiones
 }
 
 /** Una sesión de un tratamiento (para la ficha). */
@@ -104,7 +109,7 @@ object PacientesRepo {
         tratamientos:tratamientos(
             id, modalidad, estado, estado_pago, total_sesiones, sesiones_completadas,
             precio_paquete, precio_por_sesion, precio_acordado, terapeuta_id,
-            procedimiento:procedimientos(nombre),
+            procedimiento:procedimientos(nombre, especialidad:especialidades(usa_sesiones)),
             terapeuta:terapeutas(id, nombre)
         )
     """
@@ -326,7 +331,11 @@ object PacientesRepo {
     private fun mapear(o: JsonObject): PacienteStaff {
         val trats = (o["tratamientos"] as? JsonArray ?: emptyList()).mapNotNull { rel ->
             val t = rel as? JsonObject ?: return@mapNotNull null
-            val proc = (t["procedimiento"] as? JsonObject)?.str("nombre")
+            val procObj = t["procedimiento"] as? JsonObject
+            val proc = procObj?.str("nombre")
+            // usa_sesiones de la especialidad del procedimiento (default true si no viene).
+            val usaSes = ((procObj?.get("especialidad") as? JsonObject)?.get("usa_sesiones") as? JsonPrimitive)
+                ?.content?.let { it != "false" } ?: true
             val ter = t["terapeuta"] as? JsonObject
             TratamientoPaciente(
                 id = t.str("id") ?: return@mapNotNull null,
@@ -341,6 +350,7 @@ object PacientesRepo {
                 precioPaquete = t.dbl("precio_paquete"),
                 precioPorSesion = t.dbl("precio_por_sesion"),
                 precioAcordado = t.dbl("precio_acordado"),
+                usaSesiones = usaSes,
             )
         }
         return PacienteStaff(
