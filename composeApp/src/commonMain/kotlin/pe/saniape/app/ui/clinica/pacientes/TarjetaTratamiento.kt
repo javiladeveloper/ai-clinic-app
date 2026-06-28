@@ -425,6 +425,13 @@ private fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken:
                         .padding(horizontal = 8.dp, vertical = 2.dp)) {
                         Text(p.metodo, color = c.navy, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
+                    // Origen del pago: amarrado a una sesión vs pago libre del tratamiento.
+                    Spacer(Modifier.width(6.dp))
+                    Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.tealBg)
+                        .padding(horizontal = 8.dp, vertical = 2.dp)) {
+                        Text(p.numeroSesion?.let { "Sesión #$it" } ?: "Pago libre",
+                            color = c.teal, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
                     Spacer(Modifier.width(8.dp))
                     Text(p.fecha, color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.weight(1f))
                     Text("S/ ${formato2(p.monto)}", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)

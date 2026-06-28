@@ -68,6 +68,7 @@ data class PagoFicha(
     val metodo: String,
     val notas: String?,
     val fecha: String,
+    val numeroSesion: Int?,   // si el pago nació de una sesión (cobro), su número
 )
 
 /** Un paciente para la lista del staff (con sus tratamientos anidados). */
@@ -213,18 +214,20 @@ object PacientesRepo {
     /** Pagos registrados de un tratamiento (para la PagoCard de la ficha). */
     suspend fun pagosDe(tratamientoId: String): List<PagoFicha> {
         val filas = Supabase.client.postgrest["pagos_tratamiento"]
-            .select(Columns.list("id, monto, metodo, notas, fecha")) {
+            .select(Columns.raw("id, monto, metodo, notas, fecha, sesion:sesiones(numero)")) {
                 filter { eq("tratamiento_id", tratamientoId) }
                 order("fecha", Order.DESCENDING)
             }
             .decodeList<JsonObject>()
         return filas.mapNotNull { o ->
+            val numSes = ((o["sesion"] as? JsonObject)?.get("numero") as? JsonPrimitive)?.content?.toIntOrNull()
             PagoFicha(
                 id = o.str("id") ?: return@mapNotNull null,
                 monto = o.dbl("monto") ?: 0.0,
                 metodo = o.str("metodo") ?: "Efectivo",
                 notas = o.str("notas"),
                 fecha = o.str("fecha") ?: "",
+                numeroSesion = numSes,
             )
         }
     }
