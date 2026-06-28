@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -71,11 +72,25 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     var ampliarTratamiento by remember { mutableStateOf<TratamientoPaciente?>(null) }
     var editarTratamiento by remember { mutableStateOf<TratamientoPaciente?>(null) }
     var recargarToken by remember { mutableStateOf(0) }   // fuerza recarga de las tarjetas
+    var tab by remember { mutableStateOf("atenciones") }
+    var hitos by remember { mutableStateOf<pe.saniape.app.data.staff.HitosPaciente?>(null) }
+    var crearCita by remember { mutableStateOf<pe.saniape.app.ui.clinica.PrefillCita?>(null) }
     LaunchedEffect(pacienteInicial.id, recargarToken) {
         paciente = runCatching { PacientesRepo.porId(pacienteInicial.id) }.getOrNull() ?: pacienteInicial
+        hitos = runCatching { PacientesRepo.hitosDe(pacienteInicial.id) }.getOrNull()
         cargando = false
     }
     fun recargar() { recargarToken++ }
+
+    // Crear cita (Consulta/Evaluación) desde el "Nuevo ciclo" — pantalla completa.
+    crearCita?.let { prefill ->
+        pe.saniape.app.ui.clinica.PantallaCrearCita(
+            ctx = ctx, fechaInicial = prefill.fecha, prefill = prefill,
+            onListo = { crearCita = null; recargar() },
+            onCancelar = { crearCita = null },
+        )
+        return
+    }
 
     val verContacto = ctx.esGestor && !ctx.modoClinico
     val flagColor = when (paciente.flag) {
@@ -171,52 +186,73 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     }
                 }
 
-                // Motivo / diagnóstico
-                paciente.diagnostico?.takeIf { it.isNotBlank() }?.let {
-                    Spacer(Modifier.height(Sania.dim.md))
-                    Etiqueta("Motivo / Diagnóstico")
-                    Text(it, color = c.texto, fontSize = Sania.txt.cuerpo)
+                Spacer(Modifier.height(Sania.dim.lg))
+
+                // ── Stat cards: Estado · Saldo · Próxima cita · Última atención ──
+                val saldoPend = paciente.tratamientos.sumOf { t ->
+                    if (t.estadoPago == "Pendiente" || t.estadoPago == "Parcial") t.montoAcordado else 0.0
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatCard("ESTADO", paciente.estado ?: "—", estado.fg, Modifier.weight(1f))
+                    StatCard("SALDO", if (saldoPend > 0) "S/ ${saldoPend.toInt()}" else "S/ 0",
+                        if (saldoPend > 0) c.error else c.ok, Modifier.weight(1f))
+                }
+                if (ctx.puede("citas")) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StatCard("PRÓXIMA CITA",
+                            hitos?.proximaCitaFecha?.let { "$it ${hitos?.proximaCitaHora ?: ""}".trim() } ?: "Sin citas",
+                            c.navy, Modifier.weight(1f))
+                        StatCard("ÚLTIMA ATENCIÓN", hitos?.ultimaAtencionFecha ?: "—", c.textoSuave, Modifier.weight(1f))
+                    }
                 }
 
                 Spacer(Modifier.height(Sania.dim.lg))
 
-                // ── Tratamientos ──
-                Etiqueta("Atenciones / Tratamientos")
+                // ── Tabs: Atenciones · Exámenes · Pagos(perm) · Resumen ──
+                val tabs = buildList {
+                    add("atenciones" to "🩺 Atenciones")
+                    add("examenes" to "🔬 Exámenes")
+                    if (ctx.puede("pagos")) add("pagos" to "💰 Pagos")
+                    add("resumen" to "📋 Resumen")
+                }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    tabs.forEach { (key, label) ->
+                        val activo = tab == key
+                        Box(
+                            Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+                                .background(if (activo) c.navy else c.superficie)
+                                .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
+                                .clickable { tab = key }.padding(horizontal = 14.dp, vertical = 8.dp),
+                        ) { Text(label, color = if (activo) c.sobreNavy else c.texto, fontSize = 12.sp,
+                            fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal, maxLines = 1) }
+                    }
+                }
+                Spacer(Modifier.height(Sania.dim.md))
+
                 if (cargando) {
                     Box(Modifier.fillMaxWidth().padding(Sania.dim.lg), Alignment.Center) {
                         CircularProgressIndicator(color = c.navy, strokeWidth = 2.dp)
                     }
-                } else if (paciente.tratamientos.isEmpty()) {
-                    Text("Sin tratamientos registrados.", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
-                } else {
-                    paciente.tratamientos.forEach { t ->
-                        Spacer(Modifier.height(Sania.dim.sm))
-                        TarjetaTratamiento(
-                            t = t,
-                            verPagos = ctx.puede("pagos"),
-                            esAdmin = ctx.esAdmin,
-                            puedeSesiones = ctx.puede("sesiones"),
-                            onCompletarSesion = { ses, anterior -> completarSesion = ses to anterior },
-                            onCambioRealizado = { recargar() },
-                            onEditar = { editarTratamiento = it },
-                            onAmpliar = { ampliarTratamiento = it },
-                            onCambiarEstadoTrat = { tId, est ->
-                                scope.launch { PacientesRepo.cambiarEstadoTratamiento(tId, est); recargar() }
-                            },
-                            onCrearSesion = { crearSesionEn = it },
-                        )
-                    }
-                }
-
-                // + Nuevo tratamiento (con permiso de sesiones o pacientes).
-                if (ctx.puede("sesiones") || ctx.puede("pacientes")) {
-                    Spacer(Modifier.height(Sania.dim.md))
-                    Box(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
-                            .background(c.navy).clickable { creandoTratamiento = true }
-                            .padding(vertical = 12.dp),
-                        contentAlignment = Alignment.Center,
-                    ) { Text("➕ Nuevo tratamiento", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
+                } else when (tab) {
+                    "atenciones" -> ContenidoAtenciones(
+                        ctx = ctx, paciente = paciente, hitos = hitos,
+                        onCompletarSesion = { ses, anterior -> completarSesion = ses to anterior },
+                        onRecargar = { recargar() },
+                        onEditarTrat = { editarTratamiento = it },
+                        onAmpliarTrat = { ampliarTratamiento = it },
+                        onCambiarEstadoTrat = { tId, est -> scope.launch { PacientesRepo.cambiarEstadoTratamiento(tId, est); recargar() } },
+                        onCrearSesion = { crearSesionEn = it },
+                        onNuevoTratamiento = { creandoTratamiento = true },
+                        onNuevaConsulta = { crearCita = prefillCitaFicha("Consulta", paciente) },
+                        onNuevaEvaluacion = { crearCita = prefillCitaFicha("Evaluación", paciente) },
+                    )
+                    "examenes" -> Text("Exámenes y derivaciones — próximamente en la app.",
+                        color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                    "pagos" -> Text("Los pagos se gestionan dentro de cada tratamiento (pestaña Atenciones).",
+                        color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                    "resumen" -> ContenidoResumen(paciente)
                 }
 
                 Spacer(Modifier.height(Sania.dim.xxl))
@@ -742,3 +778,103 @@ private fun BotonContacto(label: String, color: androidx.compose.ui.graphics.Col
             .clickable { onClick() }.padding(horizontal = 12.dp, vertical = 7.dp),
     ) { Text(label, color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
 }
+
+/** Tarjeta de estadística (Estado / Saldo / Próxima cita / Última atención). */
+@Composable
+private fun StatCard(label: String, valor: String, valorColor: androidx.compose.ui.graphics.Color, modifier: Modifier) {
+    val c = Sania.colors
+    Column(
+        modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
+            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(12.dp),
+    ) {
+        Text(label, color = c.textoSuave, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+        Spacer(Modifier.height(4.dp))
+        Text(valor, color = valorColor, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+    }
+}
+
+/** Pestaña Atenciones: Recorrido (FlujoGuiado) + tarjetas de tratamiento + nuevo tratamiento. */
+@Composable
+private fun ContenidoAtenciones(
+    ctx: ContextoStaff,
+    paciente: PacienteStaff,
+    hitos: pe.saniape.app.data.staff.HitosPaciente?,
+    onCompletarSesion: (SesionFicha, SesionFicha?) -> Unit,
+    onRecargar: () -> Unit,
+    onEditarTrat: (TratamientoPaciente) -> Unit,
+    onAmpliarTrat: (TratamientoPaciente) -> Unit,
+    onCambiarEstadoTrat: (String, String) -> Unit,
+    onCrearSesion: (TratamientoPaciente) -> Unit,
+    onNuevoTratamiento: () -> Unit,
+    onNuevaConsulta: () -> Unit,
+    onNuevaEvaluacion: () -> Unit,
+) {
+    val c = Sania.colors
+    Column {
+        // Recorrido del paciente (adaptativo por tipo) + nuevo ciclo
+        FlujoGuiado(
+            paciente = paciente, hitos = hitos,
+            puedeSesiones = ctx.puede("sesiones"), puedeCitas = ctx.puede("citas"),
+            onNuevaConsulta = onNuevaConsulta, onNuevaEvaluacion = onNuevaEvaluacion,
+            onNuevoTratamiento = onNuevoTratamiento, onCrearSesion = onCrearSesion,
+        )
+
+        Spacer(Modifier.height(Sania.dim.lg))
+        Etiqueta("Tratamientos")
+        if (paciente.tratamientos.isEmpty()) {
+            Text("Sin tratamientos registrados.", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+        } else {
+            paciente.tratamientos.forEach { t ->
+                Spacer(Modifier.height(Sania.dim.sm))
+                TarjetaTratamiento(
+                    t = t, verPagos = ctx.puede("pagos"), esAdmin = ctx.esAdmin,
+                    puedeSesiones = ctx.puede("sesiones"),
+                    onCompletarSesion = onCompletarSesion,
+                    onCambioRealizado = onRecargar,
+                    onEditar = onEditarTrat, onAmpliar = onAmpliarTrat,
+                    onCambiarEstadoTrat = onCambiarEstadoTrat,
+                    onCrearSesion = onCrearSesion,
+                )
+            }
+        }
+        if (ctx.puede("sesiones") || ctx.puede("pacientes")) {
+            Spacer(Modifier.height(Sania.dim.md))
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+                    .background(c.navy).clickable { onNuevoTratamiento() }.padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) { Text("➕ Nuevo tratamiento", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
+        }
+    }
+}
+
+/** Pestaña Resumen: datos clínicos del paciente (lectura). La IA se agrega luego. */
+@Composable
+private fun ContenidoResumen(paciente: PacienteStaff) {
+    val c = Sania.colors
+    Column {
+        paciente.diagnostico?.takeIf { it.isNotBlank() }?.let {
+            Etiqueta("Motivo / Diagnóstico")
+            Text(it, color = c.texto, fontSize = Sania.txt.cuerpo)
+            Spacer(Modifier.height(Sania.dim.md))
+        }
+        Etiqueta("Datos")
+        val datos = listOfNotNull(
+            paciente.dni?.let { "DNI: $it" },
+            paciente.edad?.let { "Edad: $it" },
+            paciente.ocupacion?.let { "Ocupación: $it" },
+        )
+        if (datos.isEmpty()) Text("Sin datos adicionales.", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+        else datos.forEach { Text(it, color = c.texto, fontSize = Sania.txt.cuerpo, modifier = Modifier.padding(vertical = 1.dp)) }
+        Spacer(Modifier.height(Sania.dim.md))
+        Text("✨ El resumen clínico con IA estará disponible próximamente.",
+            color = c.textoSuave, fontSize = Sania.txt.pequeno)
+    }
+}
+
+/** Prefill para crear una Consulta/Evaluación desde la ficha (fecha = hoy). */
+private fun prefillCitaFicha(tipo: String, paciente: PacienteStaff): pe.saniape.app.ui.clinica.PrefillCita =
+    pe.saniape.app.ui.clinica.PrefillCita(
+        tipo = tipo, pacienteId = paciente.id, pacienteNombre = paciente.nombre,
+        fecha = pe.saniape.app.ui.clinica.agenda.hoyIso(), hora = "09:00", terapeutaId = null,
+    )

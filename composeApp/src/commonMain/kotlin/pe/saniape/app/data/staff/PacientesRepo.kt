@@ -99,6 +99,15 @@ data class TerapeutaConEsp(val id: String, val nombre: String, val especialidadI
 /** Una especialidad de la clínica. */
 data class EspecialidadClinica(val id: String, val nombre: String, val usaSesiones: Boolean)
 
+/** Hitos del recorrido del paciente (Consulta/Evaluación hechas, próxima cita, última atención). */
+data class HitosPaciente(
+    val consultaDone: Boolean,
+    val evaluacionDone: Boolean,
+    val proximaCitaFecha: String?,
+    val proximaCitaHora: String?,
+    val ultimaAtencionFecha: String?,
+)
+
 /** Una evaluación completada del paciente (origen de un tratamiento). */
 data class EvaluacionRef(
     val id: String, val fecha: String, val terapeutaNombre: String?,
@@ -555,6 +564,35 @@ object PacientesRepo {
                 especialidadId = o.str("especialidad_id"),
             )
         }
+    }
+
+    /** Hitos del recorrido del paciente (para el FlujoGuiado y las stat cards de la ficha). */
+    suspend fun hitosDe(pacienteId: String): HitosPaciente {
+        val filas = runCatching {
+            Supabase.client.postgrest["citas"]
+                .select(Columns.raw("fecha, hora, tipo, estado")) {
+                    filter { eq("paciente_id", pacienteId) }
+                    order("fecha", Order.DESCENDING)
+                }
+                .decodeList<JsonObject>()
+        }.getOrDefault(emptyList())
+
+        val hoy = pe.saniape.app.ui.clinica.agenda.hoyIso()
+        val consultaDone = filas.any { it.str("tipo") == "Consulta" && it.str("estado") == "Completada" }
+        val evalDone = filas.any { it.str("tipo") == "Evaluación" && it.str("estado") == "Completada" }
+        // Próxima cita: la más cercana en el futuro que no esté cancelada/completada.
+        val proxima = filas
+            .filter { (it.str("fecha") ?: "") >= hoy && it.str("estado") !in listOf("Cancelada", "Completada") }
+            .minByOrNull { (it.str("fecha") ?: "") + (it.str("hora") ?: "") }
+        // Última atención: la cita completada más reciente.
+        val ultima = filas.firstOrNull { it.str("estado") == "Completada" }
+        return HitosPaciente(
+            consultaDone = consultaDone,
+            evaluacionDone = evalDone,
+            proximaCitaFecha = proxima?.str("fecha"),
+            proximaCitaHora = proxima?.str("hora")?.take(5),
+            ultimaAtencionFecha = ultima?.str("fecha"),
+        )
     }
 
     /** Da de alta un tratamiento (paciente pasa a Alta si no le quedan otros en curso). */
