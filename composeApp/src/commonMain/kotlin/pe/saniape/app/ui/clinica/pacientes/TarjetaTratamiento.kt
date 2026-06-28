@@ -617,7 +617,7 @@ private fun ModalEditarSesion(
         },
         confirmButton = {
             BotonModalP("Guardar") {
-                onGuardar(fecha.trim(), hora.trim().ifBlank { null }, 45, costo.toDoubleOrNull(), notas.trim().ifBlank { null })
+                onGuardar(fecha.trim(), hora.trim().ifBlank { null }, ses.duracion ?: 45, costo.toDoubleOrNull(), notas.trim().ifBlank { null })
             }
         },
         dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
