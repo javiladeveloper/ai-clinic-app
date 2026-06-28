@@ -1,0 +1,196 @@
+package pe.saniape.app.ui.clinica.pacientes
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import pe.saniape.app.data.staff.ContextoStaff
+import pe.saniape.app.data.staff.PacienteStaff
+import pe.saniape.app.ui.theme.EstadosColor
+import pe.saniape.app.ui.theme.Sania
+
+private val ESTADOS = listOf("Nuevo", "Consultado", "Evaluado", "En tratamiento", "Alta")
+
+/**
+ * Lista de pacientes del staff. Búsqueda + filtro de estado, semáforo (flag),
+ * progreso de tratamiento y contacto (DNI/teléfono solo si es gestor). Tocar abre
+ * la ficha. Respeta scope del profesional vinculado.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun PantallaPacientes(ctx: ContextoStaff, onAbrirFicha: (PacienteStaff) -> Unit) {
+    val c = Sania.colors
+    val vm: PacientesViewModel = viewModel(key = ctx.clinicaId) { PacientesViewModel(ctx) }
+
+    Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            // Barra de marca
+            Row(
+                Modifier.fillMaxWidth().background(c.navyDark)
+                    .padding(horizontal = Sania.dim.xl, vertical = Sania.dim.lg),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Pacientes", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
+            }
+
+            // Búsqueda + filtros de estado
+            Column(Modifier.fillMaxWidth().padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm)) {
+                OutlinedTextField(
+                    value = vm.busqueda, onValueChange = { vm.cambiarBusqueda(it) },
+                    placeholder = { Text("🔍 Buscar paciente…", color = c.textoSuave) },
+                    singleLine = true, modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(Sania.dim.sm))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ChipFiltro("Todos", vm.filtroEstado == null) { vm.cambiarFiltroEstado(null) }
+                    ESTADOS.forEach { e ->
+                        ChipFiltro(e, vm.filtroEstado == e) {
+                            vm.cambiarFiltroEstado(if (vm.filtroEstado == e) null else e)
+                        }
+                    }
+                }
+            }
+
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = Sania.dim.xl)) {
+                when {
+                    vm.cargando -> item {
+                        Box(Modifier.fillMaxWidth().padding(Sania.dim.xxl), Alignment.Center) {
+                            CircularProgressIndicator(color = c.navy)
+                        }
+                    }
+                    vm.filtrados.isEmpty() -> item {
+                        Box(Modifier.fillMaxWidth().padding(Sania.dim.xxl), Alignment.Center) {
+                            Text(
+                                if (vm.pacientes.isEmpty()) "Aún no hay pacientes." else "No hay pacientes con esos filtros.",
+                                color = c.textoSuave, fontSize = Sania.txt.cuerpo,
+                            )
+                        }
+                    }
+                    else -> items(vm.filtrados, key = { it.id }) { p ->
+                        Box(Modifier.padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm / 2)) {
+                            TarjetaPaciente(p, verContacto = vm.verContacto) { onAbrirFicha(p) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TarjetaPaciente(p: PacienteStaff, verContacto: Boolean, onClick: () -> Unit) {
+    val c = Sania.colors
+    val flagColor = when (p.flag) {
+        "rojo" -> c.error
+        "amarillo" -> c.pend
+        else -> c.ok
+    }
+    val estado = EstadosColor.paciente(p.estado)
+    val activo = p.tratamientosActivos.firstOrNull()
+
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
+            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp))
+            .clickable { onClick() }.padding(Sania.dim.tarjeta),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Semáforo (flag)
+        Box(Modifier.size(10.dp).clip(CircleShape).background(flagColor))
+        Spacer(Modifier.width(Sania.dim.md))
+
+        Column(Modifier.weight(1f)) {
+            Text(p.nombre, color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
+            // Línea: motivo / procedimiento del tratamiento activo
+            val sub = p.diagnostico ?: activo?.procedimiento
+            if (!sub.isNullOrBlank()) {
+                Text(sub, color = c.textoSuave, fontSize = 12.sp, maxLines = 1)
+            }
+            // Contacto (solo gestor): DNI · teléfono
+            if (verContacto) {
+                val contacto = listOfNotNull(
+                    p.dni?.let { "DNI $it" },
+                    p.telefono,
+                ).joinToString(" · ")
+                if (contacto.isNotBlank()) {
+                    Text(contacto, color = c.textoSuave, fontSize = 11.sp)
+                }
+            }
+            // Progreso del tratamiento activo (si es por sesiones)
+            activo?.takeIf { it.modalidad != "Consulta" && it.totalSesiones > 0 }?.let { t ->
+                Spacer(Modifier.height(4.dp))
+                BarraProgreso(t.sesionesCompletadas, t.totalSesiones)
+            }
+        }
+
+        Spacer(Modifier.width(Sania.dim.sm))
+        Column(horizontalAlignment = Alignment.End) {
+            Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(estado.bg)
+                .padding(horizontal = 10.dp, vertical = 4.dp)) {
+                Text(p.estado ?: "—", color = estado.fg, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
+            if (p.tratamientosActivos.isNotEmpty()) {
+                Text("${p.tratamientosActivos.size} activo${if (p.tratamientosActivos.size == 1) "" else "s"}",
+                    color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun BarraProgreso(hechas: Int, total: Int) {
+    val c = Sania.colors
+    val frac = if (total > 0) (hechas.toFloat() / total).coerceIn(0f, 1f) else 0f
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier.weight(1f).height(5.dp).clip(RoundedCornerShape(3.dp)).background(c.chipBg),
+        ) {
+            Box(Modifier.fillMaxWidth(frac).height(5.dp).clip(RoundedCornerShape(3.dp)).background(c.ok))
+        }
+        Spacer(Modifier.width(6.dp))
+        Text("$hechas/$total", color = c.textoSuave, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun ChipFiltro(texto: String, activo: Boolean, onClick: () -> Unit) {
+    val c = Sania.colors
+    Box(
+        Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+            .background(if (activo) c.navy else c.superficie)
+            .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
+            .clickable { onClick() }.padding(horizontal = 12.dp, vertical = 5.dp),
+    ) {
+        Text(texto, color = if (activo) c.sobreNavy else c.texto, fontSize = 11.sp,
+            fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal)
+    }
+}

@@ -21,6 +21,7 @@ data class PerfilPaciente(
     val dni: String?,
     val telefono: String?,
     val email: String?,
+    val ocupacion: String?,
 )
 
 sealed class ResultadoPerfil {
@@ -45,14 +46,15 @@ object PerfilRepo {
         }
         if (resp.status != HttpStatusCode.OK) return null
         val o = json.parseToJsonElement(resp.bodyAsText()) as? JsonObject ?: return null
-        return PerfilPaciente(o.str("nombre"), o.str("dni"), o.str("telefono"), o.str("email"))
+        return PerfilPaciente(o.str("nombre"), o.str("dni"), o.str("telefono"), o.str("email"), o.str("ocupacion"))
     }
 
-    /** Guarda teléfono y/o DNI (el DNI solo si aún no tenía). */
-    suspend fun guardar(telefono: String?, dni: String?): ResultadoPerfil {
+    /** Guarda teléfono, ocupación y/o DNI (el DNI solo si aún no tenía). */
+    suspend fun guardar(telefono: String?, dni: String?, ocupacion: String? = null): ResultadoPerfil {
         val tk = token() ?: return ResultadoPerfil.Error("Sesión expirada. Vuelve a entrar.")
         val cuerpo = buildJsonObject {
             if (telefono != null) put("telefono", telefono)
+            if (ocupacion != null) put("ocupacion", ocupacion)
             if (!dni.isNullOrBlank()) put("dni", dni)
         }
         val resp = http.patch("${Supabase.SITE_URL}/api/paciente/perfil") {

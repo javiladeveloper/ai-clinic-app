@@ -70,6 +70,16 @@ object StaffContextoRepo {
 
     suspend fun cargar(): Resultado {
         val tk = token() ?: return Resultado.Error("Sesión expirada")
+        // Toda la llamada de red va protegida: si el servidor no responde (offline,
+        // conexión rechazada, timeout) devolvemos Error en vez de crashear la app.
+        return try {
+            cargarInterno(tk)
+        } catch (e: Exception) {
+            Resultado.Error("No se pudo conectar con el servidor. Revisa tu conexión.")
+        }
+    }
+
+    private suspend fun cargarInterno(tk: String): Resultado {
         val resp = http.get("${Supabase.SITE_URL}/api/staff/contexto") {
             header("Authorization", "Bearer $tk")
         }

@@ -1,0 +1,217 @@
+package pe.saniape.app.ui.clinica.pacientes
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import pe.saniape.app.data.staff.ContextoStaff
+import pe.saniape.app.data.staff.PacienteStaff
+import pe.saniape.app.data.staff.PacientesRepo
+import pe.saniape.app.data.staff.TratamientoPaciente
+import pe.saniape.app.ui.ManejarAtras
+import pe.saniape.app.ui.recordarAcciones
+import pe.saniape.app.ui.theme.EstadosColor
+import pe.saniape.app.ui.theme.Sania
+
+/**
+ * Ficha del paciente (staff). Resumen + tratamientos con su progreso. Acciones de
+ * sesiones/pagos se agregan en el siguiente paso (reusan endpoints de la web).
+ */
+@Composable
+fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, onCerrar: () -> Unit) {
+    val c = Sania.colors
+    val acciones = recordarAcciones()
+    ManejarAtras(activo = true, onAtras = onCerrar)
+
+    // Recarga fresca por id (el inicial viene de la lista; aquí traemos lo último).
+    var paciente by remember { mutableStateOf(pacienteInicial) }
+    var cargando by remember { mutableStateOf(true) }
+    LaunchedEffect(pacienteInicial.id) {
+        paciente = runCatching { PacientesRepo.porId(pacienteInicial.id) }.getOrNull() ?: pacienteInicial
+        cargando = false
+    }
+
+    val verContacto = ctx.esGestor && !ctx.modoClinico
+    val flagColor = when (paciente.flag) {
+        "rojo" -> c.error; "amarillo" -> c.pend; else -> c.ok
+    }
+    val estado = EstadosColor.paciente(paciente.estado)
+
+    Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            // Toolbar nativa
+            Row(
+                Modifier.fillMaxWidth().background(c.navyDark)
+                    .padding(horizontal = Sania.dim.lg, vertical = Sania.dim.lg),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier.size(38.dp).clip(CircleShape).background(c.sobreNavy.copy(alpha = 0.15f))
+                        .clickable { onCerrar() },
+                    contentAlignment = Alignment.Center,
+                ) { Text("←", color = c.sobreNavy, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+                Spacer(Modifier.width(Sania.dim.md))
+                Text("Ficha del paciente", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
+            }
+
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Sania.dim.xl)) {
+                // ── Cabecera: nombre + semáforo + estado ──
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(12.dp).clip(CircleShape).background(flagColor))
+                    Spacer(Modifier.width(Sania.dim.sm))
+                    Text(paciente.nombre, color = c.texto, fontSize = Sania.txt.titulo, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f))
+                    Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(estado.bg)
+                        .padding(horizontal = 10.dp, vertical = 4.dp)) {
+                        Text(paciente.estado ?: "—", color = estado.fg, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // Datos: edad · ocupación
+                val datos = listOfNotNull(
+                    paciente.edad?.let { "$it años" },
+                    paciente.ocupacion,
+                ).joinToString(" · ")
+                if (datos.isNotBlank()) {
+                    Text(datos, color = c.textoSuave, fontSize = Sania.txt.cuerpo,
+                        modifier = Modifier.padding(top = 4.dp))
+                }
+
+                // Contacto (gestor): teléfono con 📞/💬
+                if (verContacto) {
+                    paciente.telefono?.takeIf { it.isNotBlank() }?.let { tel ->
+                        Spacer(Modifier.height(Sania.dim.sm))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            BotonContacto("📞 Llamar", c.navy) { acciones.abrirUrl("tel:${tel.filter { ch -> ch.isDigit() }}") }
+                            BotonContacto("💬 WhatsApp", androidx.compose.ui.graphics.Color(0xFF25D366)) {
+                                val n = tel.filter { ch -> ch.isDigit() }.let { if (it.length <= 9) "51$it" else it }
+                                acciones.abrirUrl("https://wa.me/$n")
+                            }
+                        }
+                    }
+                }
+
+                // Motivo / diagnóstico
+                paciente.diagnostico?.takeIf { it.isNotBlank() }?.let {
+                    Spacer(Modifier.height(Sania.dim.md))
+                    Etiqueta("Motivo / Diagnóstico")
+                    Text(it, color = c.texto, fontSize = Sania.txt.cuerpo)
+                }
+
+                Spacer(Modifier.height(Sania.dim.lg))
+
+                // ── Tratamientos ──
+                Etiqueta("Atenciones / Tratamientos")
+                if (cargando) {
+                    Box(Modifier.fillMaxWidth().padding(Sania.dim.lg), Alignment.Center) {
+                        CircularProgressIndicator(color = c.navy, strokeWidth = 2.dp)
+                    }
+                } else if (paciente.tratamientos.isEmpty()) {
+                    Text("Sin tratamientos registrados.", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                } else {
+                    paciente.tratamientos.forEach { t ->
+                        Spacer(Modifier.height(Sania.dim.sm))
+                        TarjetaTratamiento(t, verPagos = ctx.puede("pagos"))
+                    }
+                }
+
+                Spacer(Modifier.height(Sania.dim.xxl))
+            }
+        }
+    }
+}
+
+@Composable
+private fun TarjetaTratamiento(t: TratamientoPaciente, verPagos: Boolean) {
+    val c = Sania.colors
+    val estado = EstadosColor.cita(t.estado)   // Activo/Completado… (reusa colores)
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
+            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(Sania.dim.tarjeta),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("${modalidadIcono(t.modalidad)} ${t.procedimiento ?: "Tratamiento"}",
+                color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f))
+            Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(estado.bg)
+                .padding(horizontal = 8.dp, vertical = 3.dp)) {
+                Text(t.estado ?: "—", color = estado.fg, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        t.terapeutaNombre?.let {
+            Text("con $it", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+        }
+        // Progreso (si es por sesiones)
+        if (t.modalidad != "Consulta" && t.totalSesiones > 0) {
+            Spacer(Modifier.height(6.dp))
+            val frac = (t.sesionesCompletadas.toFloat() / t.totalSesiones).coerceIn(0f, 1f)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.chipBg)) {
+                    Box(Modifier.fillMaxWidth(frac).height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.ok))
+                }
+                Spacer(Modifier.width(8.dp))
+                Text("${t.sesionesCompletadas}/${t.totalSesiones} ses.", color = c.textoSuave, fontSize = 11.sp)
+            }
+        }
+        // Estado de pago (si tiene permiso)
+        if (verPagos && t.estadoPago != null) {
+            val pago = EstadosColor.cita(if (t.estadoPago == "Pagado") "Confirmada" else if (t.estadoPago == "Parcial") "Pendiente" else "Cancelada")
+            Spacer(Modifier.height(6.dp))
+            Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(pago.bg)
+                .padding(horizontal = 8.dp, vertical = 3.dp)) {
+                Text("Pago: ${t.estadoPago}", color = pago.fg, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+private fun modalidadIcono(m: String?): String = when (m) {
+    "Paquete" -> "📦"
+    "Sesión suelta" -> "🎫"
+    "Consulta" -> "🩺"
+    else -> "•"
+}
+
+@Composable
+private fun Etiqueta(t: String) {
+    Text(t, color = Sania.colors.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(bottom = 4.dp))
+}
+
+@Composable
+private fun BotonContacto(label: String, color: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+    Box(
+        Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).background(color.copy(alpha = 0.12f))
+            .border(1.dp, color.copy(alpha = 0.5f), RoundedCornerShape(Sania.shape.sm.dp))
+            .clickable { onClick() }.padding(horizontal = 12.dp, vertical = 7.dp),
+    ) { Text(label, color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+}

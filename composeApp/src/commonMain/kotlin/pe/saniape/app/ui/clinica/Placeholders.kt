@@ -18,12 +18,8 @@ import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.ui.theme.Sania
 
-// Placeholders temporales. Se reemplazan por las pantallas reales en los
-// siguientes pasos (Agenda, Pacientes).
-
-@Composable
-fun PantallaPacientesStaff(ctx: ContextoStaff) =
-    PlaceholderClinica("👥", "Pacientes", "Tu lista de pacientes aparecerá aquí.")
+// Pacientes ya tiene pantalla real (ui/clinica/pacientes/). Quedan helpers de
+// placeholder por si se necesitan en otros tabs futuros.
 
 @Composable
 private fun PlaceholderClinica(emoji: String, titulo: String, texto: String) {

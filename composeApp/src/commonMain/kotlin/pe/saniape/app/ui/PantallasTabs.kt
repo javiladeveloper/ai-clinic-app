@@ -63,6 +63,7 @@ fun PantallaMas(
     var perfil by remember { mutableStateOf<PerfilPaciente?>(null) }
     var telefono by remember { mutableStateOf("") }
     var dni by remember { mutableStateOf("") }
+    var ocupacion by remember { mutableStateOf("") }
     var guardando by remember { mutableStateOf(false) }
     var mensaje by remember { mutableStateOf<String?>(null) }
     var mensajeOk by remember { mutableStateOf(false) }
@@ -74,6 +75,7 @@ fun PantallaMas(
             perfil = p
             telefono = p?.telefono ?: ""
             dni = p?.dni ?: ""
+            ocupacion = p?.ocupacion ?: ""
         } catch (_: Exception) {}
         cargando = false
     }
@@ -88,6 +90,7 @@ fun PantallaMas(
             val r = PerfilRepo.guardar(
                 telefono = telefono,
                 dni = if (!dniBloqueado && dni.isNotBlank()) dni else null,
+                ocupacion = ocupacion.trim(),
             )
             guardando = false
             when (r) {
@@ -168,6 +171,20 @@ fun PantallaMas(
                         placeholder = { Text("Tu número de contacto", color = c.textoSuave) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    Spacer(Modifier.height(Sania.dim.lg))
+
+                    // ── Ocupación: editable ──
+                    Text("OCUPACIÓN", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = ocupacion,
+                        onValueChange = { ocupacion = it },
+                        placeholder = { Text("Ej. Profesor, oficinista, deportista…", color = c.textoSuave) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                         modifier = Modifier.fillMaxWidth(),
                     )
 

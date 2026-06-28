@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.StaffContextoRepo
 import pe.saniape.app.ui.ManejarAtras
+import pe.saniape.app.ui.clinica.pacientes.PantallaPacientesStaff
 import pe.saniape.app.ui.theme.Sania
 
 private enum class TabClinica(val titulo: String, val icono: ImageVector) {
