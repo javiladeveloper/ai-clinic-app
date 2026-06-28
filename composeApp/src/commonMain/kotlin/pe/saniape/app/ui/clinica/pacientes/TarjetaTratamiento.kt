@@ -305,7 +305,8 @@ private fun FilaSesion(
                     if (ses.pendiente) ESTADOS_SESION.forEach { e -> ItemMenu(e, c.texto) { onEstado(e) } }
                     if (completada) ItemMenu("↩ Revertir", c.pend) { onRevertir() }
                     ItemMenu("👤 Reasignar profesional", c.texto) { onReasignar() }
-                    ItemMenu("🗑 Borrar sesión", c.error) { onBorrar() }
+                    // Borrar es destructivo: solo Admin (igual criterio que borrar pagos).
+                    if (esAdmin) ItemMenu("🗑 Borrar sesión", c.error) { onBorrar() }
                 }
             }
         }

@@ -60,6 +60,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     var paciente by remember { mutableStateOf(pacienteInicial) }
     var cargando by remember { mutableStateOf(true) }
     var completarSesion by remember { mutableStateOf<SesionFicha?>(null) }
+    var editandoPaciente by remember { mutableStateOf(false) }
     var recargarToken by remember { mutableStateOf(0) }   // fuerza recarga de las tarjetas
     LaunchedEffect(pacienteInicial.id, recargarToken) {
         paciente = runCatching { PacientesRepo.porId(pacienteInicial.id) }.getOrNull() ?: pacienteInicial
@@ -87,7 +88,16 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     contentAlignment = Alignment.Center,
                 ) { Text("←", color = c.sobreNavy, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
                 Spacer(Modifier.width(Sania.dim.md))
-                Text("Ficha del paciente", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
+                Text("Ficha del paciente", color = c.sobreNavy, fontSize = Sania.txt.subtitulo,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                // Editar paciente: solo gestor (no en modoClinico, que es vista sin edición).
+                if (ctx.puede("pacientes")) {
+                    Box(
+                        Modifier.size(38.dp).clip(CircleShape).background(c.sobreNavy.copy(alpha = 0.15f))
+                            .clickable { editandoPaciente = true },
+                        contentAlignment = Alignment.Center,
+                    ) { Text("✏", color = c.sobreNavy, fontSize = 16.sp) }
+                }
             }
 
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Sania.dim.xl)) {
@@ -163,6 +173,21 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         }
     }
 
+    // Modal "Editar paciente" (gestor): datos esenciales + semáforo.
+    if (editandoPaciente) {
+        ModalEditarPaciente(
+            paciente = paciente,
+            onCancelar = { editandoPaciente = false },
+            onGuardar = { nombre, tel, ocup, edad, flag, diag ->
+                editandoPaciente = false
+                scope.launch {
+                    PacientesRepo.actualizarPaciente(paciente.id, nombre, tel, ocup, edad, flag, diag)
+                    recargar()
+                }
+            },
+        )
+    }
+
     // Modal "Completar sesión": observaciones (procedimientos realizados).
     completarSesion?.let { ses ->
         ModalCompletarSesion(
@@ -208,6 +233,82 @@ private fun ModalCompletarSesion(ses: SesionFicha, onCancelar: () -> Unit, onCon
             androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) }
         },
         containerColor = c.superficie,
+    )
+}
+
+@Composable
+private fun ModalEditarPaciente(
+    paciente: PacienteStaff,
+    onCancelar: () -> Unit,
+    onGuardar: (nombre: String, tel: String?, ocup: String?, edad: Int?, flag: String?, diag: String?) -> Unit,
+) {
+    val c = Sania.colors
+    var nombre by remember { mutableStateOf(paciente.nombre) }
+    var telefono by remember { mutableStateOf(paciente.telefono ?: "") }
+    var ocupacion by remember { mutableStateOf(paciente.ocupacion ?: "") }
+    var edad by remember { mutableStateOf(paciente.edad?.toString() ?: "") }
+    var diagnostico by remember { mutableStateOf(paciente.diagnostico ?: "") }
+    var flag by remember { mutableStateOf(paciente.flag ?: "verde") }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onCancelar,
+        title = { Text("✏ Editar paciente", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                CampoFicha("Nombre", nombre) { nombre = it }
+                Spacer(Modifier.height(8.dp))
+                CampoFicha("Teléfono", telefono) { telefono = it }
+                Spacer(Modifier.height(8.dp))
+                CampoFicha("Ocupación", ocupacion) { ocupacion = it }
+                Spacer(Modifier.height(8.dp))
+                CampoFicha("Edad", edad, soloNumero = true) { edad = it }
+                Spacer(Modifier.height(8.dp))
+                CampoFicha("Motivo / Diagnóstico", diagnostico, multilinea = true) { diagnostico = it }
+                Spacer(Modifier.height(10.dp))
+                Text("Comportamiento (semáforo)", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("verde" to c.ok, "amarillo" to c.pend, "rojo" to c.error).forEach { (f, col) ->
+                        val activo = flag == f
+                        Box(
+                            Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+                                .background(if (activo) col else c.superficie)
+                                .border(1.dp, col, RoundedCornerShape(Sania.shape.pill.dp))
+                                .clickable { flag = f }.padding(horizontal = 14.dp, vertical = 6.dp),
+                        ) { Text(f.replaceFirstChar { it.uppercase() }, color = if (activo) c.sobreNavy else col,
+                            fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Box(
+                Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
+                    .clickable {
+                        if (nombre.isBlank()) return@clickable
+                        onGuardar(nombre.trim(), telefono.trim().ifBlank { null }, ocupacion.trim().ifBlank { null },
+                            edad.toIntOrNull(), flag, diagnostico.trim().ifBlank { null })
+                    }.padding(horizontal = 18.dp, vertical = 10.dp),
+            ) { Text("Guardar", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
+        containerColor = c.superficie,
+    )
+}
+
+@Composable
+private fun CampoFicha(
+    label: String, value: String, soloNumero: Boolean = false, multilinea: Boolean = false, onChange: (String) -> Unit,
+) {
+    val c = Sania.colors
+    Text(label, color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
+    androidx.compose.material3.OutlinedTextField(
+        value = value,
+        onValueChange = { if (soloNumero) onChange(it.filter { ch -> ch.isDigit() }) else onChange(it) },
+        singleLine = !multilinea, minLines = if (multilinea) 2 else 1,
+        keyboardOptions = if (soloNumero) androidx.compose.foundation.text.KeyboardOptions(
+            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number) else androidx.compose.foundation.text.KeyboardOptions.Default,
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
     )
 }
 

@@ -138,6 +138,28 @@ object PacientesRepo {
         return mapear(o)
     }
 
+    /** Actualiza datos del paciente desde la ficha (RLS de staff acota a su clínica). */
+    suspend fun actualizarPaciente(
+        id: String, nombre: String, telefono: String?, ocupacion: String?,
+        edad: Int?, flag: String?, diagnostico: String?,
+    ): Boolean = try {
+        Supabase.client.postgrest["pacientes"].update({
+            set("nombre", nombre)
+            set("telefono", telefono)
+            set("ocupacion", ocupacion)
+            set("edad", edad)
+            if (flag != null) set("flag", flag)
+            set("diagnostico", diagnostico)
+        }) { filter { eq("id", id) } }
+        true
+    } catch (_: Exception) { false }
+
+    /** Cambia el estado del paciente (dar de baja / reactivar). */
+    suspend fun cambiarEstadoPaciente(id: String, estado: String): Boolean = try {
+        Supabase.client.postgrest["pacientes"].update({ set("estado", estado) }) { filter { eq("id", id) } }
+        true
+    } catch (_: Exception) { false }
+
     /** Sesiones de un tratamiento (para la ficha), ordenadas por número desc. */
     suspend fun sesionesDe(tratamientoId: String): List<SesionFicha> {
         val filas = Supabase.client.postgrest["sesiones"]
