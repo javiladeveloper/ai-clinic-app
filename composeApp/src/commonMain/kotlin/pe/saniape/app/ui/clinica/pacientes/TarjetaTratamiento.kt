@@ -230,9 +230,11 @@ fun TarjetaTratamiento(
         })
     }
     cobrarSesion?.let { ses ->
-        ModalCobrar(ses, onCancelar = { cobrarSesion = null }, onConfirmar = { monto, metodo ->
+        ModalCobrar(ses, onCancelar = { cobrarSesion = null }, onConfirmar = { monto, metodo, obs ->
             cobrarSesion = null
-            scope.launch { PacientesRepo.cobrarSesion(t.id, ses.id, monto, metodo); recargarSesiones() }
+            // La nota incluye "Sesión #N" + observación, para que se vea el origen y el detalle.
+            val nota = "Cobro Sesión #${ses.numero}" + (obs?.let { " · $it" } ?: "")
+            scope.launch { PacientesRepo.cobrarSesion(t.id, ses.id, monto, metodo, nota); recargarSesiones() }
         })
     }
     borrarSesion?.let { ses ->
@@ -265,11 +267,16 @@ private fun FilaSesion(
     val c = Sania.colors
     val estado = EstadosColor.sesion(ses.estado)
     val completada = ses.estado == "Completada"
+    var expandida by remember { mutableStateOf(false) }
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
             .background(c.fondo).padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // Cabecera tocable → expande el detalle (procedimientos, mejorías, etc.)
+        Row(
+            Modifier.fillMaxWidth().clickable { expandida = !expandida },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text("Sesión #${ses.numero}", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(8.dp))
             Text("${ses.fecha} ${ses.hora?.let { hora12(it) } ?: ""}".trim(), color = c.textoSuave, fontSize = 11.sp,
@@ -278,12 +285,27 @@ private fun FilaSesion(
                 .padding(horizontal = 8.dp, vertical = 2.dp)) {
                 Text(ses.estado, color = estado.fg, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
+            Spacer(Modifier.width(6.dp))
+            Text(if (expandida) "▴" else "▾", color = c.textoSuave, fontSize = 12.sp)
         }
-        if (verCosto && (ses.costo ?: 0.0) > 0) {
-            Text("S/ ${formato2(ses.costo!!)}", color = c.teal, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
-        }
-        ses.motivoEstado?.takeIf { it.isNotBlank() }?.let {
-            Text("Motivo: $it", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
+
+        // Detalle expandido (igual que la web): procedimientos, mejorías, etc.
+        if (expandida) {
+            Spacer(Modifier.height(6.dp))
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                    .padding(10.dp),
+            ) {
+                DetalleSesion("Estado", ses.estado, c.texto)
+                ses.duracion?.let { DetalleSesion("Duración", "$it min", c.texto) }
+                ses.terapeutaNombre?.let { DetalleSesion("Profesional", it, c.texto) }
+                if (verCosto) DetalleSesion("Pago sesión",
+                    if ((ses.costo ?: 0.0) > 0) "S/ ${formato2(ses.costo!!)}" else "Sin costo registrado", c.texto)
+                ses.motivoEstado?.takeIf { it.isNotBlank() }?.let { DetalleSesion("Motivo", it, c.pend) }
+                DetalleSesion("Procedimientos", ses.notas?.takeIf { it.isNotBlank() } ?: "Sin observaciones", c.texto)
+                ses.mejorias?.takeIf { it.isNotBlank() }?.let { DetalleSesion("Mejorías", it, c.ok) }
+            }
         }
 
         if (puedeSesiones) {
@@ -309,6 +331,7 @@ private fun FilaSesion(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
                         .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
                 ) {
+                    ItemMenu("✏ Editar sesión", c.texto) { onEditar() }
                     if (ses.pendiente) ESTADOS_SESION.forEach { e -> ItemMenu(e, c.texto) { onEstado(e) } }
                     if (completada) ItemMenu("↩ Revertir", c.pend) { onRevertir() }
                     ItemMenu("👤 Reasignar profesional", c.texto) { onReasignar() }
@@ -332,6 +355,16 @@ private fun IconoBtn(icono: String, habilitado: Boolean, onClick: () -> Unit) {
     ) { Text(icono, color = c.textoSuave, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
 }
 
+/** Fila label:valor del detalle de una sesión. */
+@Composable
+private fun DetalleSesion(label: String, valor: String, colorValor: Color) {
+    val c = Sania.colors
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        Text("$label:", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.width(96.dp))
+        Text(valor, color = colorValor, fontSize = 11.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+    }
+}
+
 /** Fila de un menú desplegable. */
 @Composable
 private fun ItemMenu(texto: String, color: Color, onClick: () -> Unit) {
@@ -353,6 +386,7 @@ private fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken:
     var guardando by remember { mutableStateOf(false) }
     var monto by remember { mutableStateOf("") }
     var metodo by remember { mutableStateOf("Efectivo") }
+    var notaPago by remember { mutableStateOf("") }
     var editando by remember { mutableStateOf<String?>(null) }   // id del pago en edición
     var editMonto by remember { mutableStateOf("") }
     var editMetodo by remember { mutableStateOf("Efectivo") }
@@ -445,6 +479,11 @@ private fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken:
                         Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable { borrarId = p.id })
                     }
                 }
+                // Observación del pago (la ve quien cobre la próxima vez).
+                p.notas?.takeIf { it.isNotBlank() }?.let {
+                    Text("📝 $it", color = c.textoSuave, fontSize = 10.sp,
+                        modifier = Modifier.fillMaxWidth().padding(start = 4.dp, bottom = 2.dp))
+                }
                 // Confirmación de borrado
                 if (borrarId == p.id) {
                     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -483,6 +522,12 @@ private fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken:
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             METODOS_PAGO.forEach { m -> ChipMetodo(m, metodo == m) { metodo = m } }
         }
+        Spacer(Modifier.height(6.dp))
+        androidx.compose.material3.OutlinedTextField(
+            value = notaPago, onValueChange = { notaPago = it },
+            placeholder = { Text("Observación (opcional)", color = c.textoSuave) },
+            minLines = 1, modifier = Modifier.fillMaxWidth(),
+        )
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MiniBtn("Guardar pago", c.ok, !guardando) {
@@ -490,16 +535,16 @@ private fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken:
                 if (m == null || m <= 0 || guardando) return@MiniBtn
                 guardando = true
                 scope.launch {
-                    val ok = PacientesRepo.registrarPago(t.id, m, metodo)
+                    val ok = PacientesRepo.registrarPago(t.id, m, metodo, notaPago.trim().ifBlank { null })
                     guardando = false
                     if (ok) {
-                        monto = ""; agregando = false
+                        monto = ""; notaPago = ""; agregando = false
                         pagos = runCatching { PacientesRepo.pagosDe(t.id) }.getOrDefault(pagos ?: emptyList())
                         onCambio()
                     }
                 }
             }
-            MiniBtn("Cancelar", c.textoSuave, !guardando) { agregando = false; monto = "" }
+            MiniBtn("Cancelar", c.textoSuave, !guardando) { agregando = false; monto = ""; notaPago = "" }
         }
     }
 }
@@ -609,10 +654,11 @@ private fun ModalReasignar(onCancelar: () -> Unit, onElegir: (String) -> Unit) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ModalCobrar(ses: SesionFicha, onCancelar: () -> Unit, onConfirmar: (Double, String) -> Unit) {
+private fun ModalCobrar(ses: SesionFicha, onCancelar: () -> Unit, onConfirmar: (Double, String, String?) -> Unit) {
     val c = Sania.colors
     var monto by remember { mutableStateOf(ses.costo?.let { formato2(it) } ?: "") }
     var metodo by remember { mutableStateOf("Efectivo") }
+    var obs by remember { mutableStateOf("") }
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onCancelar,
         title = { Text("💳 Cobrar sesión #${ses.numero}", fontWeight = FontWeight.Bold) },
@@ -623,10 +669,16 @@ private fun ModalCobrar(ses: SesionFicha, onCancelar: () -> Unit, onConfirmar: (
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     METODOS_PAGO.forEach { m -> ChipMetodo(m, metodo == m) { metodo = m } }
                 }
+                Spacer(Modifier.height(8.dp))
+                CampoTexto("Observación (opcional)", obs, multilinea = true) { obs = it }
+                Text("La verá quien cobre la próxima vez (ej. compromiso del paciente).",
+                    color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
             }
         },
         confirmButton = {
-            BotonModalP("Registrar pago") { monto.toDoubleOrNull()?.takeIf { it > 0 }?.let { onConfirmar(it, metodo) } }
+            BotonModalP("Registrar pago") {
+                monto.toDoubleOrNull()?.takeIf { it > 0 }?.let { onConfirmar(it, metodo, obs.trim().ifBlank { null }) }
+            }
         },
         dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
         containerColor = c.superficie,

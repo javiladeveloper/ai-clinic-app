@@ -53,7 +53,10 @@ data class SesionFicha(
     val hora: String?,
     val estado: String,
     val costo: Double?,
-    val notas: String?,
+    val notas: String?,        // procedimientos realizados en la sesión
+    val mejorias: String?,     // evolución/observaciones (desde la sesión #2)
+    val duracion: Int?,
+    val terapeutaNombre: String?,
     val motivoEstado: String?,
     val pagada: Boolean = false,   // tiene algún pago vinculado (sesion_id)
 ) {
@@ -166,8 +169,8 @@ object PacientesRepo {
     suspend fun sesionesDe(tratamientoId: String): List<SesionFicha> {
         val filas = Supabase.client.postgrest["sesiones"]
             .select(Columns.raw(
-                "id, numero, fecha, hora, estado, costo, notas, motivo_estado, terapeuta_id, " +
-                    "pagos:pagos_tratamiento(id)"   // para saber si la sesión ya tiene cobro
+                "id, numero, fecha, hora, estado, costo, notas, mejorias, duracion, motivo_estado, " +
+                    "terapeuta:terapeutas(nombre), pagos:pagos_tratamiento(id)"
             )) {
                 filter { eq("tratamiento_id", tratamientoId) }
                 order("numero", Order.DESCENDING)
@@ -175,6 +178,7 @@ object PacientesRepo {
             .decodeList<JsonObject>()
         return filas.mapNotNull { o ->
             val tienePago = (o["pagos"] as? kotlinx.serialization.json.JsonArray)?.isNotEmpty() == true
+            val terNombre = (o["terapeuta"] as? JsonObject)?.str("nombre")
             SesionFicha(
                 id = o.str("id") ?: return@mapNotNull null,
                 numero = o.int("numero") ?: 0,
@@ -183,6 +187,9 @@ object PacientesRepo {
                 estado = o.str("estado") ?: "Planificada",
                 costo = o.dbl("costo"),
                 notas = o.str("notas"),
+                mejorias = o.str("mejorias"),
+                duracion = o.int("duracion"),
+                terapeutaNombre = terNombre,
                 motivoEstado = o.str("motivo_estado"),
                 pagada = tienePago,
             )
