@@ -211,8 +211,8 @@ fun ModalCrearTratamiento(
                     Spacer(Modifier.height(10.dp))
                     Etq("Modalidad de pago")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ChipMod("📦 Paquete", modalidad == "Paquete", Modifier.weight(1f)) { modalidad = "Paquete" }
-                        ChipMod("🎫 Suelta", modalidad == "Sesión suelta", Modifier.weight(1f)) { modalidad = "Sesión suelta" }
+                        ChipMod("📦", "Paquete", "Precio fijo por N sesiones", modalidad == "Paquete", Modifier.weight(1f)) { modalidad = "Paquete" }
+                        ChipMod("🎫", "Suelta", "Se cobra por sesión", modalidad == "Sesión suelta", Modifier.weight(1f)) { modalidad = "Sesión suelta" }
                     }
                     Spacer(Modifier.height(8.dp))
                     if (modalidad == "Paquete") {
@@ -395,8 +395,8 @@ fun ModalEditarTratamiento(
 
 @Composable
 private fun Etq(t: String) {
-    Text(t, color = Sania.colors.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(bottom = 4.dp))
+    Text(t.uppercase(), color = Sania.colors.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+        letterSpacing = 0.5.sp, modifier = Modifier.padding(bottom = 5.dp))
 }
 
 @Composable
@@ -409,16 +409,21 @@ private fun CampoNum(value: String, onChange: (String) -> Unit) {
 }
 
 @Composable
-private fun ChipMod(texto: String, activo: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun ChipMod(icono: String, titulo: String, desc: String, activo: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val c = Sania.colors
-    Box(
-        modifier.clip(RoundedCornerShape(Sania.shape.sm.dp))
-            .background(if (activo) c.chipBg else c.superficie)
-            .border(if (activo) 2.dp else 1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-            .clickable { onClick() }.padding(vertical = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) { Text(texto, color = if (activo) c.navy else c.texto, fontSize = 12.sp,
-        fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal) }
+    Column(
+        modifier.clip(RoundedCornerShape(Sania.shape.md.dp))
+            .background(if (activo) c.navy.copy(alpha = 0.10f) else c.superficie)
+            .border(if (activo) 2.dp else 1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.md.dp))
+            .clickable { onClick() }.padding(vertical = 12.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(icono, fontSize = 20.sp)
+        Spacer(Modifier.height(3.dp))
+        Text(titulo, color = if (activo) c.navy else c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(desc, color = c.textoSuave, fontSize = 9.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(top = 1.dp))
+    }
 }
 
 @Composable
