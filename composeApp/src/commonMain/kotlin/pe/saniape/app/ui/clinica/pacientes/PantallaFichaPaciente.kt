@@ -39,6 +39,7 @@ import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.PacienteStaff
 import pe.saniape.app.data.staff.PacientesRepo
 import pe.saniape.app.data.staff.SesionFicha
+import pe.saniape.app.data.staff.TecnicasRepo
 import pe.saniape.app.data.staff.TratamientoPaciente
 import pe.saniape.app.ui.ManejarAtras
 import pe.saniape.app.ui.recordarAcciones
@@ -59,7 +60,8 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     // Recarga fresca por id (el inicial viene de la lista; aquí traemos lo último).
     var paciente by remember { mutableStateOf(pacienteInicial) }
     var cargando by remember { mutableStateOf(true) }
-    var completarSesion by remember { mutableStateOf<SesionFicha?>(null) }
+    // Sesión a completar + su anterior (referencia de evolución para mejorías).
+    var completarSesion by remember { mutableStateOf<Pair<SesionFicha, SesionFicha?>?>(null) }
     var editandoPaciente by remember { mutableStateOf(false) }
     var menuPaciente by remember { mutableStateOf(false) }
     var crearSesionEn by remember { mutableStateOf<TratamientoPaciente?>(null) }
@@ -192,7 +194,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                             verPagos = ctx.puede("pagos"),
                             esAdmin = ctx.esAdmin,
                             puedeSesiones = ctx.puede("sesiones"),
-                            onCompletarSesion = { completarSesion = it },
+                            onCompletarSesion = { ses, anterior -> completarSesion = ses to anterior },
                             onCambioRealizado = { recargar() },
                             onEditar = { editarTratamiento = it },
                             onAmpliar = { ampliarTratamiento = it },
@@ -299,15 +301,23 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         )
     }
 
-    // Modal "Completar sesión": observaciones (procedimientos realizados).
-    completarSesion?.let { ses ->
+    // Modal "Completar sesión": técnicas (autocomplete) + mejorías (desde la #2).
+    completarSesion?.let { (ses, anterior) ->
         ModalCompletarSesion(
             ses = ses,
+            anterior = anterior,
             onCancelar = { completarSesion = null },
-            onConfirmar = { obs ->
+            onConfirmar = { tecnicas, mejorias ->
                 completarSesion = null
                 scope.launch {
-                    PacientesRepo.cambiarEstadoSesion(ses.id, "Completada", notas = obs)
+                    PacientesRepo.cambiarEstadoSesion(
+                        ses.id, "Completada",
+                        notas = tecnicas,
+                        // mejorías solo desde la sesión #2 ("" limpia, null = no tocar)
+                        mejorias = if (ses.numero > 1) (mejorias ?: "") else null,
+                    )
+                    // Aprender las técnicas para sugerirlas la próxima vez (fire-and-forget).
+                    tecnicas?.let { TecnicasRepo.registrar(it) }
                     recargar()
                 }
             },
@@ -315,28 +325,73 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     }
 }
 
+/**
+ * Completar una sesión (igual que la web): "Procedimientos realizados" con chips +
+ * autocompletado (TecnicasInput) y, desde la sesión #2, "Mejorías / evolución".
+ * Muestra la sesión anterior como referencia.
+ */
 @Composable
-private fun ModalCompletarSesion(ses: SesionFicha, onCancelar: () -> Unit, onConfirmar: (String?) -> Unit) {
+private fun ModalCompletarSesion(
+    ses: SesionFicha,
+    anterior: SesionFicha?,
+    onCancelar: () -> Unit,
+    onConfirmar: (tecnicas: String?, mejorias: String?) -> Unit,
+) {
     val c = Sania.colors
-    var texto by remember { mutableStateOf(ses.notas ?: "") }
+    var tecnicas by remember { mutableStateOf(ses.notas ?: "") }
+    var mejorias by remember { mutableStateOf(ses.mejorias ?: "") }
+    val muestraMejorias = ses.numero > 1
+
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onCancelar,
-        title = { Text("✓ Completar sesión #${ses.numero}", fontWeight = FontWeight.Bold) },
+        title = {
+            Text("✓ Completar sesión #${ses.numero}", fontWeight = FontWeight.Bold)
+        },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                // Referencia: qué se hizo la sesión anterior (evolución).
+                if (muestraMejorias && anterior != null &&
+                    (!anterior.notas.isNullOrBlank() || !anterior.mejorias.isNullOrBlank())) {
+                    Column(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                            .background(c.chipBg).padding(10.dp),
+                    ) {
+                        Text("Sesión anterior (#${anterior.numero})", color = c.textoSuave,
+                            fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        anterior.notas?.takeIf { it.isNotBlank() }?.let {
+                            Text(it, color = c.texto, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp))
+                        }
+                        anterior.mejorias?.takeIf { it.isNotBlank() }?.let {
+                            Text("↗ $it", color = c.ok, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
+
                 Text("Procedimientos realizados", color = c.textoSuave, fontSize = Sania.txt.mini,
                     fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
-                androidx.compose.material3.OutlinedTextField(
-                    value = texto, onValueChange = { texto = it },
-                    placeholder = { Text("Qué se hizo en la sesión…", color = c.textoSuave) },
-                    modifier = Modifier.fillMaxWidth(), minLines = 3,
+                pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
+                    value = tecnicas, onChange = { tecnicas = it },
                 )
+
+                if (muestraMejorias) {
+                    Spacer(Modifier.height(14.dp))
+                    Text("Mejorías / evolución del paciente", color = c.textoSuave, fontSize = Sania.txt.mini,
+                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = mejorias, onValueChange = { mejorias = it },
+                        placeholder = { Text("Ej: Menos dolor al caminar, mayor rango…", color = c.textoSuave) },
+                        modifier = Modifier.fillMaxWidth(), minLines = 2,
+                    )
+                }
             }
         },
         confirmButton = {
             Box(
                 Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
-                    .clickable { onConfirmar(texto.trim().ifBlank { null }) }
+                    .clickable {
+                        onConfirmar(tecnicas.trim().ifBlank { null }, mejorias.trim().ifBlank { null })
+                    }
                     .padding(horizontal = 20.dp, vertical = 11.dp),
             ) { Text("✓ Completar", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
         },

@@ -57,7 +57,7 @@ fun TarjetaTratamiento(
     verPagos: Boolean,
     esAdmin: Boolean,
     puedeSesiones: Boolean,
-    onCompletarSesion: (SesionFicha) -> Unit,   // abre modal observaciones
+    onCompletarSesion: (SesionFicha, anterior: SesionFicha?) -> Unit,   // abre modal (con sesión previa de referencia)
     onCambioRealizado: () -> Unit,               // refrescar ficha tras acción
     onEditar: (TratamientoPaciente) -> Unit = {},
     onAmpliar: (TratamientoPaciente) -> Unit = {},
@@ -223,7 +223,11 @@ fun TarjetaTratamiento(
                                 puedePagos = verPagos, esAdmin = esAdmin, accionando = accionando,
                                 menuAbierto = menuDe?.id == ses.id,
                                 onToggleMenu = { menuDe = if (menuDe?.id == ses.id) null else ses },
-                                onCompletar = { onCompletarSesion(ses) },
+                                onCompletar = {
+                                    // Sesión anterior (numero-1) como referencia de evolución en el modal.
+                                    val anterior = s.filter { it.numero < ses.numero }.maxByOrNull { it.numero }
+                                    onCompletarSesion(ses, anterior)
+                                },
                                 onEstado = { nuevo ->
                                     menuDe = null
                                     if (accionando) return@FilaSesion

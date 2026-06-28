@@ -231,7 +231,8 @@ object PacientesRepo {
     /** Cambia el estado de una sesión vía endpoint (sync cita + comisión + contador). */
     suspend fun cambiarEstadoSesion(
         sesionId: String, estado: String,
-        motivo: String? = null, fecha: String? = null, hora: String? = null, notas: String? = null,
+        motivo: String? = null, fecha: String? = null, hora: String? = null,
+        notas: String? = null, mejorias: String? = null,
     ): Boolean {
         val tk = token() ?: return false
         val cuerpo = buildJsonObject {
@@ -241,6 +242,8 @@ object PacientesRepo {
             if (!fecha.isNullOrBlank()) put("fecha", fecha)
             if (!hora.isNullOrBlank()) put("hora", hora)
             if (!notas.isNullOrBlank()) put("notas", notas)
+            // mejorías: se manda siempre si no es null (cadena vacía = limpiar en el server)
+            if (mejorias != null) put("mejorias", mejorias)
         }
         val resp = http.post("${Supabase.SITE_URL}/api/staff/sesion/estado") {
             header("Authorization", "Bearer $tk")
