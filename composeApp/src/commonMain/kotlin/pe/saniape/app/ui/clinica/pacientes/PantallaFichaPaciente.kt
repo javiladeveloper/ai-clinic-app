@@ -75,6 +75,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     var tab by remember { mutableStateOf("atenciones") }
     var hitos by remember { mutableStateOf<pe.saniape.app.data.staff.HitosPaciente?>(null) }
     var crearCita by remember { mutableStateOf<pe.saniape.app.ui.clinica.PrefillCita?>(null) }
+    var editarCitaHito by remember { mutableStateOf<pe.saniape.app.data.staff.CitaHito?>(null) }
     LaunchedEffect(pacienteInicial.id, recargarToken) {
         paciente = runCatching { PacientesRepo.porId(pacienteInicial.id) }.getOrNull() ?: pacienteInicial
         hitos = runCatching { PacientesRepo.hitosDe(pacienteInicial.id) }.getOrNull()
@@ -247,6 +248,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         onNuevoTratamiento = { creandoTratamiento = true },
                         onNuevaConsulta = { crearCita = prefillCitaFicha("Consulta", paciente) },
                         onNuevaEvaluacion = { crearCita = prefillCitaFicha("Evaluación", paciente) },
+                        onEditarCita = { editarCitaHito = it },
                     )
                     "examenes" -> Text("Exámenes y derivaciones — próximamente en la app.",
                         color = c.textoSuave, fontSize = Sania.txt.cuerpo)
@@ -325,6 +327,20 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 editarTratamiento = null
                 scope.launch {
                     PacientesRepo.editarTratamiento(t.id, totalSes, precioPaq, precioSes, precioAcord); recargar()
+                }
+            },
+        )
+    }
+
+    // Modal editar cita-hito (Consulta/Evaluación realizada): fecha/hora/notas.
+    editarCitaHito?.let { cita ->
+        ModalEditarCitaHito(
+            cita = cita,
+            onCancelar = { editarCitaHito = null },
+            onGuardar = { fecha, hora, notas ->
+                editarCitaHito = null
+                scope.launch {
+                    PacientesRepo.editarCitaHito(cita.id, fecha, hora, notas); recargar()
                 }
             },
         )
@@ -641,6 +657,85 @@ private fun ModalCrearSesion(
     )
 }
 
+/** Editar una cita-hito ya realizada (Consulta/Evaluación): fecha/hora/notas (no toca costo). */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun ModalEditarCitaHito(
+    cita: pe.saniape.app.data.staff.CitaHito,
+    onCancelar: () -> Unit,
+    onGuardar: (fecha: String, hora: String, notas: String?) -> Unit,
+) {
+    val c = Sania.colors
+    var fecha by remember { mutableStateOf(cita.fecha) }
+    var hora by remember { mutableStateOf(cita.hora ?: "09:00") }
+    var notas by remember { mutableStateOf(cita.notas ?: "") }
+    var mostrarFecha by remember { mutableStateOf(false) }
+    var mostrarHora by remember { mutableStateOf(false) }
+
+    if (mostrarFecha) {
+        val estadoP = androidx.compose.material3.rememberDatePickerState()
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { mostrarFecha = false },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    estadoP.selectedDateMillis?.let { ms ->
+                        val d = kotlinx.datetime.Instant.fromEpochMilliseconds(ms)
+                            .toLocalDateTime(kotlinx.datetime.TimeZone.UTC).date
+                        fecha = "${d.year}-${d.monthNumber.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}"
+                    }
+                    mostrarFecha = false
+                }) { Text("Aceptar", color = c.navy) }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { mostrarFecha = false }) { Text("Cancelar", color = c.textoSuave) } },
+        ) { androidx.compose.material3.DatePicker(state = estadoP) }
+    }
+    if (mostrarHora) {
+        val partes = hora.split(":")
+        val estadoP = androidx.compose.material3.rememberTimePickerState(
+            initialHour = partes.getOrNull(0)?.toIntOrNull() ?: 9,
+            initialMinute = partes.getOrNull(1)?.toIntOrNull() ?: 0, is24Hour = false,
+        )
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { mostrarHora = false },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    hora = "${estadoP.hour.toString().padStart(2, '0')}:${estadoP.minute.toString().padStart(2, '0')}"
+                    mostrarHora = false
+                }) { Text("Aceptar", color = c.navy) }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { mostrarHora = false }) { Text("Cancelar", color = c.textoSuave) } },
+        ) { Box(Modifier.fillMaxWidth().padding(Sania.dim.lg), Alignment.Center) { androidx.compose.material3.TimePicker(state = estadoP) } }
+    }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onCancelar,
+        title = { Text("✏ Editar ${cita.tipo.lowercase()}", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.weight(1f)) { EtqMini("Fecha"); SelectorBoxFicha(fecha) { mostrarFecha = true } }
+                    Column(Modifier.weight(1f)) { EtqMini("Hora"); SelectorBoxFicha(hora12(hora)) { mostrarHora = true } }
+                }
+                Spacer(Modifier.height(10.dp))
+                EtqMini("Notas")
+                CampoFicha("", notas, multilinea = true) { notas = it }
+                Spacer(Modifier.height(4.dp))
+                Text("El precio/cobro no se edita aquí (afecta caja). Hazlo desde la web si es necesario.",
+                    color = c.textoSuave, fontSize = 10.sp)
+            }
+        },
+        confirmButton = {
+            Box(Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
+                .clickable { onGuardar(fecha.trim(), hora.trim(), notas.trim().ifBlank { null }) }
+                .padding(horizontal = 18.dp, vertical = 10.dp)) {
+                Text("Guardar", color = c.sobreNavy, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
+        containerColor = c.superficie,
+    )
+}
+
 @Composable
 private fun EtqMini(t: String) {
     Text(t.uppercase(), color = Sania.colors.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold,
@@ -808,6 +903,7 @@ private fun ContenidoAtenciones(
     onNuevoTratamiento: () -> Unit,
     onNuevaConsulta: () -> Unit,
     onNuevaEvaluacion: () -> Unit,
+    onEditarCita: (pe.saniape.app.data.staff.CitaHito) -> Unit,
 ) {
     val c = Sania.colors
     val consultaDone = hitos?.consultaDone == true
@@ -824,6 +920,8 @@ private fun ContenidoAtenciones(
                     t = t, verPagos = ctx.puede("pagos"), esAdmin = ctx.esAdmin,
                     puedeSesiones = ctx.puede("sesiones"),
                     consultaDone = consultaDone, evalDone = evalDone,
+                    citaConsulta = hitos?.citaConsulta, citaEvaluacion = hitos?.citaEvaluacion,
+                    onEditarCita = onEditarCita,
                     onCompletarSesion = onCompletarSesion,
                     onCambioRealizado = onRecargar,
                     onEditar = onEditarTrat, onAmpliar = onAmpliarTrat,

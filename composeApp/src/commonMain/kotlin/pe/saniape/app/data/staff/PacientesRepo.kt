@@ -99,6 +99,17 @@ data class TerapeutaConEsp(val id: String, val nombre: String, val especialidadI
 /** Una especialidad de la clínica. */
 data class EspecialidadClinica(val id: String, val nombre: String, val usaSesiones: Boolean)
 
+/** Detalle de una cita-hito (Consulta/Evaluación) para el tooltip de la bolita. */
+data class CitaHito(
+    val id: String,
+    val tipo: String,
+    val fecha: String,
+    val hora: String?,
+    val terapeutaNombre: String?,
+    val costo: Double?,
+    val notas: String?,
+)
+
 /** Hitos del recorrido del paciente (Consulta/Evaluación hechas, próxima cita, última atención). */
 data class HitosPaciente(
     val consultaDone: Boolean,
@@ -106,6 +117,8 @@ data class HitosPaciente(
     val proximaCitaFecha: String?,
     val proximaCitaHora: String?,
     val ultimaAtencionFecha: String?,
+    val citaConsulta: CitaHito? = null,   // la Consulta completada (para tooltip/editar)
+    val citaEvaluacion: CitaHito? = null, // la Evaluación completada
 )
 
 /** Una evaluación completada del paciente (origen de un tratamiento). */
@@ -570,16 +583,26 @@ object PacientesRepo {
     suspend fun hitosDe(pacienteId: String): HitosPaciente {
         val filas = runCatching {
             Supabase.client.postgrest["citas"]
-                .select(Columns.raw("fecha, hora, tipo, estado")) {
+                .select(Columns.raw("id, fecha, hora, tipo, estado, costo, notas, terapeuta:terapeutas(nombre)")) {
                     filter { eq("paciente_id", pacienteId) }
                     order("fecha", Order.DESCENDING)
                 }
                 .decodeList<JsonObject>()
         }.getOrDefault(emptyList())
 
+        fun toHito(o: JsonObject) = CitaHito(
+            id = o.str("id") ?: "",
+            tipo = o.str("tipo") ?: "",
+            fecha = o.str("fecha") ?: "",
+            hora = o.str("hora")?.take(5),
+            terapeutaNombre = (o["terapeuta"] as? JsonObject)?.str("nombre"),
+            costo = o.dbl("costo"),
+            notas = o.str("notas"),
+        )
+
         val hoy = pe.saniape.app.ui.clinica.agenda.hoyIso()
-        val consultaDone = filas.any { it.str("tipo") == "Consulta" && it.str("estado") == "Completada" }
-        val evalDone = filas.any { it.str("tipo") == "Evaluación" && it.str("estado") == "Completada" }
+        val consulta = filas.firstOrNull { it.str("tipo") == "Consulta" && it.str("estado") == "Completada" }
+        val evaluacion = filas.firstOrNull { it.str("tipo") == "Evaluación" && it.str("estado") == "Completada" }
         // Próxima cita: la más cercana en el futuro que no esté cancelada/completada.
         val proxima = filas
             .filter { (it.str("fecha") ?: "") >= hoy && it.str("estado") !in listOf("Cancelada", "Completada") }
@@ -587,13 +610,26 @@ object PacientesRepo {
         // Última atención: la cita completada más reciente.
         val ultima = filas.firstOrNull { it.str("estado") == "Completada" }
         return HitosPaciente(
-            consultaDone = consultaDone,
-            evaluacionDone = evalDone,
+            consultaDone = consulta != null,
+            evaluacionDone = evaluacion != null,
             proximaCitaFecha = proxima?.str("fecha"),
             proximaCitaHora = proxima?.str("hora")?.take(5),
             ultimaAtencionFecha = ultima?.str("fecha"),
+            citaConsulta = consulta?.let { toHito(it) },
+            citaEvaluacion = evaluacion?.let { toHito(it) },
         )
     }
+
+    /**
+     * Editar una cita-hito (Consulta/Evaluación) ya realizada: fecha/hora/notas.
+     * Escritura simple sin efectos en kardex (no toca costo) → directo a Supabase con la RLS de staff.
+     */
+    suspend fun editarCitaHito(citaId: String, fecha: String, hora: String, notas: String?): Boolean = try {
+        Supabase.client.postgrest["citas"].update({
+            set("fecha", fecha); set("hora", hora); set("notas", notas)
+        }) { filter { eq("id", citaId) } }
+        true
+    } catch (e: Exception) { false }
 
     /** Da de alta un tratamiento (paciente pasa a Alta si no le quedan otros en curso). */
     suspend fun darDeAlta(tratamientoId: String): Boolean {

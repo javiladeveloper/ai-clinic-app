@@ -16,6 +16,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
+import pe.saniape.app.data.staff.CitaHito
 import pe.saniape.app.data.staff.PacienteStaff
 import pe.saniape.app.data.staff.TratamientoPaciente
 import pe.saniape.app.ui.theme.Sania
@@ -84,6 +89,10 @@ fun BarraRecorrido(
     trat: TratamientoPaciente,
     consultaDone: Boolean,
     evalDone: Boolean,
+    citaConsulta: CitaHito? = null,
+    citaEvaluacion: CitaHito? = null,
+    puedePagos: Boolean = false,
+    onEditarCita: (CitaHito) -> Unit = {},
 ) {
     val c = Sania.colors
     val usaSesiones = !trat.esConsulta
@@ -91,6 +100,8 @@ fun BarraRecorrido(
     val sesTot = trat.totalSesiones
     val altaTrat = trat.estado == "Alta"
     val completo = trat.estado == "Completado" || (sesTot > 0 && sesComp >= sesTot)
+    // Bolita seleccionada (muestra su nube de referencia): "consulta" | "evaluacion" | null.
+    var hitoAbierto by remember { mutableStateOf<String?>(null) }
 
     val pasoTercero = when {
         usaSesiones -> {
@@ -105,15 +116,24 @@ fun BarraRecorrido(
         pasoTercero,
         Paso("Alta", done = altaTrat, activo = false),
     )
+    // Qué bolitas tienen detalle clickeable (Consulta/Evaluación completadas).
+    val claveDe = { i: Int -> if (i == 0) "consulta" else if (i == 1) "evaluacion" else null }
+    val hitoDe = { clave: String? -> if (clave == "consulta") citaConsulta else if (clave == "evaluacion") citaEvaluacion else null }
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         pasos.forEachIndexed { i, paso ->
+            val clave = claveDe(i)
+            val cita = hitoDe(clave)
+            val clickeable = cita != null && paso.done
             Column(Modifier.width(60.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                val abierta = hitoAbierto == clave
                 val bg = when { paso.done -> c.ok; paso.activo -> c.navy; else -> c.superficie }
                 val fg = when { paso.done || paso.activo -> c.sobreNavy; else -> c.textoSuave }
-                val borde = when { paso.done -> c.ok; paso.activo -> c.navy; else -> c.borde }
+                val borde = when { abierta -> c.navy; paso.done -> c.ok; paso.activo -> c.navy; else -> c.borde }
                 Box(
-                    Modifier.size(28.dp).clip(CircleShape).background(bg).border(2.dp, borde, CircleShape),
+                    Modifier.size(28.dp).clip(CircleShape).background(bg)
+                        .border(if (abierta) 3.dp else 2.dp, borde, CircleShape)
+                        .let { if (clickeable) it.clickable { hitoAbierto = if (abierta) null else clave } else it },
                     contentAlignment = Alignment.Center,
                 ) { Text(if (paso.done) "✓" else "${i + 1}", color = fg, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                 Text(
@@ -129,6 +149,39 @@ fun BarraRecorrido(
                 )
             }
         }
+    }
+
+    // Nube flotante de referencia de la bolita tocada (Consulta/Evaluación).
+    hitoDe(hitoAbierto)?.let { cita ->
+        Spacer(Modifier.height(8.dp))
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                .background(c.chipBg).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                .padding(10.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("${if (cita.tipo == "Consulta") "💬" else "🔍"} ${cita.tipo}",
+                    color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Box(
+                    Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.navy)
+                        .clickable { onEditarCita(cita) }.padding(horizontal = 10.dp, vertical = 4.dp),
+                ) { Text("✏ Editar", color = c.sobreNavy, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+            }
+            Spacer(Modifier.height(4.dp))
+            FilaRef("Fecha", "${cita.fecha}${cita.hora?.let { " · $it" } ?: ""}")
+            cita.terapeutaNombre?.let { FilaRef("Profesional", it) }
+            if (puedePagos && cita.costo != null) FilaRef("Precio", if (cita.costo > 0) "S/ ${cita.costo}" else "Gratuita")
+            cita.notas?.takeIf { it.isNotBlank() }?.let { FilaRef("Notas", it) }
+        }
+    }
+}
+
+@Composable
+private fun FilaRef(etq: String, valor: String) {
+    val c = Sania.colors
+    Row(Modifier.padding(vertical = 1.dp)) {
+        Text("$etq:", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.width(70.dp))
+        Text(valor, color = c.texto, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }
 

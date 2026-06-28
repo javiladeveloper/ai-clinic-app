@@ -59,6 +59,9 @@ fun TarjetaTratamiento(
     puedeSesiones: Boolean,
     consultaDone: Boolean = false,   // para la barra de recorrido (de los hitos del paciente)
     evalDone: Boolean = false,
+    citaConsulta: pe.saniape.app.data.staff.CitaHito? = null,   // detalle para la nube de la bolita
+    citaEvaluacion: pe.saniape.app.data.staff.CitaHito? = null,
+    onEditarCita: (pe.saniape.app.data.staff.CitaHito) -> Unit = {},
     onCompletarSesion: (SesionFicha, anterior: SesionFicha?) -> Unit,   // abre modal (con sesión previa de referencia)
     onCambioRealizado: () -> Unit,               // refrescar ficha tras acción
     onEditar: (TratamientoPaciente) -> Unit = {},
@@ -111,8 +114,8 @@ fun TarjetaTratamiento(
         Box(Modifier.width(5.dp).fillMaxHeight().background(if (cerrado) c.borde else acento))
 
       Column(Modifier.fillMaxWidth().padding(Sania.dim.tarjeta)) {
-        // Zona-resumen tocable (toda esta área expande/colapsa): cabecera + recorrido +
-        // chips de consulta + progreso. La flechita es solo un indicador, no el único target.
+        // Cabecera tocable (expande/colapsa). La barra de recorrido va aparte para que
+        // tocar una bolita NO expanda la tarjeta (abre su nube de referencia).
         Column(Modifier.fillMaxWidth().clickable { expandido = !expandido }) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -129,12 +132,6 @@ fun TarjetaTratamiento(
                 Text(if (expandido) "▴" else "▾", color = c.navy)
             }
 
-            // Barra de recorrido del tratamiento (adaptativa por tipo). Solo si está vivo.
-            if (t.estado == "Activo" || t.estado == "Completado" || t.estado == "Alta") {
-                Spacer(Modifier.height(10.dp))
-                BarraRecorrido(trat = t, consultaDone = consultaDone, evalDone = evalDone)
-            }
-
             // CONSULTA (medicina/nutrición): diagnóstico + medicación + próximo control
             if (t.esConsulta) {
                 t.diagnostico?.takeIf { it.isNotBlank() }?.let {
@@ -147,8 +144,20 @@ fun TarjetaTratamiento(
                     Spacer(Modifier.height(4.dp)); ChipInfo("📅 Próximo control", it, c.navy, c.chipBg)
                 }
             }
+        }
 
-            // Barra de progreso fina (el conteo N/M ya lo muestra el paso de la barra de recorrido).
+        // Barra de recorrido (fuera del clickable: las bolitas abren su nube de referencia).
+        if (t.estado == "Activo" || t.estado == "Completado" || t.estado == "Alta") {
+            Spacer(Modifier.height(10.dp))
+            BarraRecorrido(
+                trat = t, consultaDone = consultaDone, evalDone = evalDone,
+                citaConsulta = citaConsulta, citaEvaluacion = citaEvaluacion,
+                puedePagos = verPagos, onEditarCita = onEditarCita,
+            )
+        }
+
+        // Resto de la zona-resumen, también tocable para expandir.
+        Column(Modifier.fillMaxWidth().clickable { expandido = !expandido }) {
             if (!t.esConsulta && t.totalSesiones > 0) {
                 Spacer(Modifier.height(8.dp))
                 val frac = (t.sesionesCompletadas.toFloat() / t.totalSesiones).coerceIn(0f, 1f)
@@ -156,8 +165,6 @@ fun TarjetaTratamiento(
                     Box(Modifier.fillMaxWidth(frac).height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.ok))
                 }
             }
-
-            // Pista sutil para invitar a tocar (solo si hay algo que mostrar al expandir).
             if (!expandido) {
                 Spacer(Modifier.height(8.dp))
                 Text(if (t.esConsulta) "Toca para ver detalle y pagos" else "Toca para ver sesiones y pagos",
