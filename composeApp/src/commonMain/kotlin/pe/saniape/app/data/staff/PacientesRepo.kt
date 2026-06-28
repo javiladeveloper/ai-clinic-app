@@ -155,6 +155,23 @@ object PacientesRepo {
     private val http = crearHttpClient()
     private suspend fun token(): String? = Supabase.client.auth.currentSessionOrNull()?.accessToken
 
+    /**
+     * POST a un endpoint de staff con Bearer. Centraliza el try/catch: si la red falla
+     * (timeout, server caído), devuelve false en vez de PROPAGAR la excepción y crashear
+     * la app. Antes cada método hacía http.post suelto y un SocketTimeout reventaba la app.
+     */
+    private suspend fun postStaff(path: String, cuerpo: JsonObject): Boolean = try {
+        val tk = token() ?: return false
+        val resp = http.post("${Supabase.SITE_URL}$path") {
+            header("Authorization", "Bearer $tk")
+            contentType(ContentType.Application.Json)
+            setBody(cuerpo.toString())
+        }
+        resp.status == HttpStatusCode.OK
+    } catch (e: Exception) {
+        false
+    }
+
     private fun JsonObject.str(k: String): String? =
         (this[k] as? JsonPrimitive)?.content?.takeIf { it != "null" }
     private fun JsonObject.int(k: String): Int? =
@@ -255,25 +272,16 @@ object PacientesRepo {
         sesionId: String, estado: String,
         motivo: String? = null, fecha: String? = null, hora: String? = null,
         notas: String? = null, mejorias: String? = null,
-    ): Boolean {
-        val tk = token() ?: return false
-        val cuerpo = buildJsonObject {
-            put("sesionId", sesionId)
-            put("estado", estado)
-            if (!motivo.isNullOrBlank()) put("motivo", motivo)
-            if (!fecha.isNullOrBlank()) put("fecha", fecha)
-            if (!hora.isNullOrBlank()) put("hora", hora)
-            if (!notas.isNullOrBlank()) put("notas", notas)
-            // mejorías: se manda siempre si no es null (cadena vacía = limpiar en el server)
-            if (mejorias != null) put("mejorias", mejorias)
-        }
-        val resp = http.post("${Supabase.SITE_URL}/api/staff/sesion/estado") {
-            header("Authorization", "Bearer $tk")
-            contentType(ContentType.Application.Json)
-            setBody(cuerpo.toString())
-        }
-        return resp.status == HttpStatusCode.OK
-    }
+    ): Boolean = postStaff("/api/staff/sesion/estado", buildJsonObject {
+        put("sesionId", sesionId)
+        put("estado", estado)
+        if (!motivo.isNullOrBlank()) put("motivo", motivo)
+        if (!fecha.isNullOrBlank()) put("fecha", fecha)
+        if (!hora.isNullOrBlank()) put("hora", hora)
+        if (!notas.isNullOrBlank()) put("notas", notas)
+        // mejorías: se manda siempre si no es null (cadena vacía = limpiar en el server)
+        if (mejorias != null) put("mejorias", mejorias)
+    })
 
     /** Pagos registrados de un tratamiento (para la PagoCard de la ficha). */
     suspend fun pagosDe(tratamientoId: String): List<PagoFicha> {
@@ -300,64 +308,32 @@ object PacientesRepo {
     suspend fun registrarPago(
         tratamientoId: String, monto: Double, metodo: String,
         notas: String? = null, recordar: Boolean = false,
-    ): Boolean {
-        val tk = token() ?: return false
-        val cuerpo = buildJsonObject {
-            put("tratamientoId", tratamientoId)
-            put("monto", monto)
-            put("metodo", metodo)
-            if (!notas.isNullOrBlank()) put("notas", notas)
-            if (recordar) put("recordar", true)
-        }
-        val resp = http.post("${Supabase.SITE_URL}/api/staff/pago/registrar") {
-            header("Authorization", "Bearer $tk")
-            contentType(ContentType.Application.Json)
-            setBody(cuerpo.toString())
-        }
-        return resp.status == HttpStatusCode.OK
-    }
+    ): Boolean = postStaff("/api/staff/pago/registrar", buildJsonObject {
+        put("tratamientoId", tratamientoId)
+        put("monto", monto)
+        put("metodo", metodo)
+        if (!notas.isNullOrBlank()) put("notas", notas)
+        if (recordar) put("recordar", true)
+    })
 
     /** Edita un pago (solo Admin): ajusta pago + movimiento + recalcula. */
     suspend fun editarPago(
         pagoId: String, monto: Double, metodo: String, notas: String? = null, fecha: String? = null,
-    ): Boolean {
-        val tk = token() ?: return false
-        val cuerpo = buildJsonObject {
-            put("pagoId", pagoId)
-            put("monto", monto)
-            put("metodo", metodo)
-            if (!notas.isNullOrBlank()) put("notas", notas)
-            if (!fecha.isNullOrBlank()) put("fecha", fecha)
-        }
-        val resp = http.post("${Supabase.SITE_URL}/api/staff/pago/editar") {
-            header("Authorization", "Bearer $tk")
-            contentType(ContentType.Application.Json)
-            setBody(cuerpo.toString())
-        }
-        return resp.status == HttpStatusCode.OK
-    }
+    ): Boolean = postStaff("/api/staff/pago/editar", buildJsonObject {
+        put("pagoId", pagoId)
+        put("monto", monto)
+        put("metodo", metodo)
+        if (!notas.isNullOrBlank()) put("notas", notas)
+        if (!fecha.isNullOrBlank()) put("fecha", fecha)
+    })
 
     /** Borra un pago (solo Admin): elimina movimiento + pago + recalcula. */
-    suspend fun borrarPago(pagoId: String): Boolean {
-        val tk = token() ?: return false
-        val resp = http.post("${Supabase.SITE_URL}/api/staff/pago/borrar") {
-            header("Authorization", "Bearer $tk")
-            contentType(ContentType.Application.Json)
-            setBody(buildJsonObject { put("pagoId", pagoId) }.toString())
-        }
-        return resp.status == HttpStatusCode.OK
-    }
+    suspend fun borrarPago(pagoId: String): Boolean =
+        postStaff("/api/staff/pago/borrar", buildJsonObject { put("pagoId", pagoId) })
 
     // ── Acciones de sesión (editar/revertir/borrar/reasignar) vía endpoint accion ──
-    private suspend fun accionSesion(cuerpo: JsonObject): Boolean {
-        val tk = token() ?: return false
-        val resp = http.post("${Supabase.SITE_URL}/api/staff/sesion/accion") {
-            header("Authorization", "Bearer $tk")
-            contentType(ContentType.Application.Json)
-            setBody(cuerpo.toString())
-        }
-        return resp.status == HttpStatusCode.OK
-    }
+    private suspend fun accionSesion(cuerpo: JsonObject): Boolean =
+        postStaff("/api/staff/sesion/accion", cuerpo)
 
     suspend fun editarSesion(
         sesionId: String, fecha: String, hora: String?, duracion: Int, costo: Double?, notas: String?,
@@ -384,22 +360,13 @@ object PacientesRepo {
     /** Cobrar una sesión (pago vinculado a la sesión) — reusa el endpoint de pago. */
     suspend fun cobrarSesion(
         tratamientoId: String, sesionId: String, monto: Double, metodo: String, notas: String? = null,
-    ): Boolean {
-        val tk = token() ?: return false
-        val cuerpo = buildJsonObject {
-            put("tratamientoId", tratamientoId)
-            put("sesionId", sesionId)
-            put("monto", monto)
-            put("metodo", metodo)
-            if (!notas.isNullOrBlank()) put("notas", notas)
-        }
-        val resp = http.post("${Supabase.SITE_URL}/api/staff/pago/registrar") {
-            header("Authorization", "Bearer $tk")
-            contentType(ContentType.Application.Json)
-            setBody(cuerpo.toString())
-        }
-        return resp.status == HttpStatusCode.OK
-    }
+    ): Boolean = postStaff("/api/staff/pago/registrar", buildJsonObject {
+        put("tratamientoId", tratamientoId)
+        put("sesionId", sesionId)
+        put("monto", monto)
+        put("metodo", metodo)
+        if (!notas.isNullOrBlank()) put("notas", notas)
+    })
 
     /** Profesionales activos (para reasignar). */
     suspend fun terapeutasActivos(): List<RefNombre> {
@@ -413,15 +380,8 @@ object PacientesRepo {
     }
 
     // ── Acciones de tratamiento (crear/editar/ampliar/estado) vía endpoint accion ──
-    private suspend fun accionTratamiento(cuerpo: JsonObject): Boolean {
-        val tk = token() ?: return false
-        val resp = http.post("${Supabase.SITE_URL}/api/staff/tratamiento/accion") {
-            header("Authorization", "Bearer $tk")
-            contentType(ContentType.Application.Json)
-            setBody(cuerpo.toString())
-        }
-        return resp.status == HttpStatusCode.OK
-    }
+    private suspend fun accionTratamiento(cuerpo: JsonObject): Boolean =
+        postStaff("/api/staff/tratamiento/accion", cuerpo)
 
     suspend fun crearTratamiento(
         pacienteId: String, procedimientoId: String, terapeutaId: String?, modalidad: String,
@@ -470,24 +430,15 @@ object PacientesRepo {
         fecha: String, hora: String,
         duracion: Int = 45, estado: String = "Planificada",
         costo: Double? = null, notas: String? = null,
-    ): Boolean {
-        val tk = token() ?: return false
-        val cuerpo = buildJsonObject {
-            put("pacienteId", pacienteId); put("tipo", "Sesión")
-            put("tratamientoId", tratamientoId); put("fecha", fecha); put("hora", hora)
-            if (terapeutaId != null) put("terapeutaId", terapeutaId)
-            put("duracion", duracion)
-            put("estadoSesion", estado)
-            if (costo != null) put("costo", costo)
-            if (!notas.isNullOrBlank()) put("notas", notas)
-        }
-        val resp = http.post("${Supabase.SITE_URL}/api/staff/cita/crear") {
-            header("Authorization", "Bearer $tk")
-            contentType(ContentType.Application.Json)
-            setBody(cuerpo.toString())
-        }
-        return resp.status == HttpStatusCode.OK
-    }
+    ): Boolean = postStaff("/api/staff/cita/crear", buildJsonObject {
+        put("pacienteId", pacienteId); put("tipo", "Sesión")
+        put("tratamientoId", tratamientoId); put("fecha", fecha); put("hora", hora)
+        if (terapeutaId != null) put("terapeutaId", terapeutaId)
+        put("duracion", duracion)
+        put("estadoSesion", estado)
+        if (costo != null) put("costo", costo)
+        if (!notas.isNullOrBlank()) put("notas", notas)
+    })
 
     /** Procedimientos activos (con especialidad + usa_sesiones + precios + tarifarios). */
     suspend fun procedimientos(): List<ProcedimientoRef> {
@@ -632,15 +583,8 @@ object PacientesRepo {
     } catch (e: Exception) { false }
 
     /** Da de alta un tratamiento (paciente pasa a Alta si no le quedan otros en curso). */
-    suspend fun darDeAlta(tratamientoId: String): Boolean {
-        val tk = token() ?: return false
-        val resp = http.post("${Supabase.SITE_URL}/api/staff/tratamiento/alta") {
-            header("Authorization", "Bearer $tk")
-            contentType(ContentType.Application.Json)
-            setBody(buildJsonObject { put("tratamientoId", tratamientoId) }.toString())
-        }
-        return resp.status == HttpStatusCode.OK
-    }
+    suspend fun darDeAlta(tratamientoId: String): Boolean =
+        postStaff("/api/staff/tratamiento/alta", buildJsonObject { put("tratamientoId", tratamientoId) })
 
     private fun mapear(o: JsonObject): PacienteStaff {
         val trats = (o["tratamientos"] as? JsonArray ?: emptyList()).mapNotNull { rel ->
