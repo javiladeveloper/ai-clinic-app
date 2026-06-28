@@ -172,6 +172,10 @@ fun ModalCrearTratamiento(
                 OutlinedTextField(value = diagnostico, onValueChange = { diagnostico = it },
                     placeholder = { Text("Diagnóstico que motiva este tratamiento", color = c.textoSuave) },
                     minLines = 2, modifier = Modifier.fillMaxWidth())
+                if (!diagnosticoPrevio.isNullOrBlank() || evaluacion != null) {
+                    Text("🔍 Tomado de la evaluación — puedes ajustarlo", color = c.textoSuave, fontSize = 10.sp,
+                        modifier = Modifier.padding(top = 2.dp))
+                }
                 Spacer(Modifier.height(8.dp))
 
                 // Especialidad PRIMERO (si la clínica tiene >1; con 1 se autoselecciona).
@@ -232,6 +236,11 @@ fun ModalCrearTratamiento(
                         CampoNum(precioPorSesion) { precioPorSesion = it }
                         Text("Se cobra por cada sesión realizada.", color = c.textoSuave, fontSize = 10.sp)
                     }
+                    // Precio acordado (negociado) — sobrescribe el precio base si se llena.
+                    Spacer(Modifier.height(8.dp))
+                    Etq("Precio acordado (S/) — opcional")
+                    CampoNum(precioAcordado) { precioAcordado = it }
+                    Text("Solo si se negoció un precio distinto al base.", color = c.textoSuave, fontSize = 10.sp)
                 } else if (esConsulta) {
                     // Especialidad sin sesiones (medicina, nutrición): consulta
                     Spacer(Modifier.height(10.dp))
@@ -265,7 +274,7 @@ fun ModalCrearTratamiento(
                                     else if (usaSesiones) 1 else null,
                                 precioPaquete = if (usaSesiones && modalidad == "Paquete") precioPaquete.toDoubleOrNull() else null,
                                 precioPorSesion = if (usaSesiones && modalidad == "Sesión suelta") precioPorSesion.toDoubleOrNull() else null,
-                                precioAcordado = if (esConsulta) precioAcordado.toDoubleOrNull() else null,
+                                precioAcordado = precioAcordado.toDoubleOrNull(),   // negociado (o costo consulta)
                                 diagnostico = diagnostico.trim().ifBlank { null },
                                 citaOrigenId = evaluacion?.id,
                                 medicacion = if (esConsulta) medicacion.trim().ifBlank { null } else null,
@@ -334,29 +343,46 @@ fun ModalEditarTratamiento(
     var precioPorSesion by remember { mutableStateOf(t.precioPorSesion?.toString() ?: "") }
     var precioAcordado by remember { mutableStateOf(t.precioAcordado?.toString() ?: "") }
     val esPaquete = t.modalidad == "Paquete"
+    // No se puede bajar el N° de sesiones por debajo de las ya completadas.
+    val nuevoTotal = totalSesiones.toIntOrNull() ?: 0
+    val errorSesiones = !t.esConsulta && nuevoTotal < t.sesionesCompletadas
     AlertDialog(
         onDismissRequest = onCancelar,
         title = { Text("✏ Editar tratamiento", fontWeight = FontWeight.Bold) },
         text = {
             Column {
+                // Estado actual: lo realizado/pagado no se pierde al editar.
+                if (t.sesionesCompletadas > 0) {
+                    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.chipBg)
+                        .padding(Sania.dim.md)) {
+                        Text("Ya realizadas: ${t.sesionesCompletadas} sesión(es). El total no puede ser menor.",
+                            color = c.texto, fontSize = 11.sp)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
                 if (!t.esConsulta) {
                     Etq("N° de sesiones"); CampoNum(totalSesiones) { totalSesiones = it }
+                    if (errorSesiones) Text("⚠ No puede ser menor a ${t.sesionesCompletadas} (ya completadas).",
+                        color = c.error, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
                     Spacer(Modifier.height(8.dp))
                     if (esPaquete) { Etq("Precio del paquete"); CampoNum(precioPaquete) { precioPaquete = it } }
                     else { Etq("Precio por sesión"); CampoNum(precioPorSesion) { precioPorSesion = it } }
+                    Spacer(Modifier.height(8.dp))
+                    Etq("Precio acordado (S/) — opcional"); CampoNum(precioAcordado) { precioAcordado = it }
                 } else {
                     Etq("Costo de la consulta"); CampoNum(precioAcordado) { precioAcordado = it }
                 }
             }
         },
         confirmButton = {
-            Box(Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
-                .clickable {
+            Box(Modifier.clip(RoundedCornerShape(Sania.shape.md.dp))
+                .background(if (errorSesiones) c.borde else c.navy)
+                .clickable(enabled = !errorSesiones) {
                     onGuardar(
                         if (t.esConsulta) null else totalSesiones.toIntOrNull(),
                         if (esPaquete) precioPaquete.toDoubleOrNull() else null,
                         if (!esPaquete && !t.esConsulta) precioPorSesion.toDoubleOrNull() else null,
-                        if (t.esConsulta) precioAcordado.toDoubleOrNull() else null,
+                        precioAcordado.toDoubleOrNull(),
                     )
                 }.padding(horizontal = 18.dp, vertical = 10.dp)) {
                 Text("Guardar", color = c.sobreNavy, fontWeight = FontWeight.Bold)
