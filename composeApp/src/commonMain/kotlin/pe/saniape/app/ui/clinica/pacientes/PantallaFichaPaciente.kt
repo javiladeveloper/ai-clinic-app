@@ -61,6 +61,8 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     var cargando by remember { mutableStateOf(true) }
     var completarSesion by remember { mutableStateOf<SesionFicha?>(null) }
     var editandoPaciente by remember { mutableStateOf(false) }
+    var menuPaciente by remember { mutableStateOf(false) }
+    var crearSesionEn by remember { mutableStateOf<TratamientoPaciente?>(null) }
     var creandoTratamiento by remember { mutableStateOf(false) }
     var ampliarTratamiento by remember { mutableStateOf<TratamientoPaciente?>(null) }
     var editarTratamiento by remember { mutableStateOf<TratamientoPaciente?>(null) }
@@ -93,13 +95,38 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 Spacer(Modifier.width(Sania.dim.md))
                 Text("Ficha del paciente", color = c.sobreNavy, fontSize = Sania.txt.subtitulo,
                     fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                // Editar paciente: solo gestor (no en modoClinico, que es vista sin edición).
+                // Editar paciente + menú (dar de baja/reactivar): solo gestor.
                 if (ctx.puede("pacientes")) {
                     Box(
                         Modifier.size(38.dp).clip(CircleShape).background(c.sobreNavy.copy(alpha = 0.15f))
                             .clickable { editandoPaciente = true },
                         contentAlignment = Alignment.Center,
                     ) { Text("✏", color = c.sobreNavy, fontSize = 16.sp) }
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        Modifier.size(38.dp).clip(CircleShape).background(c.sobreNavy.copy(alpha = 0.15f))
+                            .clickable { menuPaciente = !menuPaciente },
+                        contentAlignment = Alignment.Center,
+                    ) { Text("⋯", color = c.sobreNavy, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+                }
+            }
+
+            // Menú del paciente: dar de baja / reactivar.
+            if (menuPaciente) {
+                Column(Modifier.fillMaxWidth().background(c.superficie)) {
+                    val inactivo = paciente.estado == "Inactivo"
+                    Text(
+                        if (inactivo) "↻ Reactivar paciente" else "Dar de baja al paciente",
+                        color = if (inactivo) c.ok else c.error, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Medium,
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            menuPaciente = false
+                            scope.launch {
+                                PacientesRepo.cambiarEstadoPaciente(paciente.id, if (inactivo) "Nuevo" else "Inactivo")
+                                recargar()
+                            }
+                        }.padding(horizontal = Sania.dim.xl, vertical = Sania.dim.md),
+                    )
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
                 }
             }
 
@@ -172,6 +199,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                             onCambiarEstadoTrat = { tId, est ->
                                 scope.launch { PacientesRepo.cambiarEstadoTratamiento(tId, est); recargar() }
                             },
+                            onCrearSesion = { crearSesionEn = it },
                         )
                     }
                 }
@@ -210,6 +238,20 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         diagnostico = nuevo.diagnostico, citaOrigenId = nuevo.citaOrigenId,
                         medicacion = nuevo.medicacion, proximoControl = nuevo.proximoControl,
                     )
+                    recargar()
+                }
+            },
+        )
+    }
+
+    // Modal crear sesión (fecha/hora) para un tratamiento
+    crearSesionEn?.let { t ->
+        ModalCrearSesion(
+            onCancelar = { crearSesionEn = null },
+            onGuardar = { fecha, hora ->
+                crearSesionEn = null
+                scope.launch {
+                    PacientesRepo.crearSesion(paciente.id, t.id, t.terapeutaId, fecha, hora)
                     recargar()
                 }
             },
@@ -301,6 +343,34 @@ private fun ModalCompletarSesion(ses: SesionFicha, onCancelar: () -> Unit, onCon
         dismissButton = {
             androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) }
         },
+        containerColor = c.superficie,
+    )
+}
+
+@Composable
+private fun ModalCrearSesion(onCancelar: () -> Unit, onGuardar: (fecha: String, hora: String) -> Unit) {
+    val c = Sania.colors
+    var fecha by remember { mutableStateOf("") }
+    var hora by remember { mutableStateOf("09:00") }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onCancelar,
+        title = { Text("📅 Nueva sesión", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                CampoFicha("Fecha (AAAA-MM-DD)", fecha) { fecha = it }
+                Spacer(Modifier.height(8.dp))
+                CampoFicha("Hora (HH:MM)", hora) { hora = it }
+            }
+        },
+        confirmButton = {
+            Box(Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
+                .clickable {
+                    if (fecha.isNotBlank() && hora.isNotBlank()) onGuardar(fecha.trim(), hora.trim())
+                }.padding(horizontal = 18.dp, vertical = 10.dp)) {
+                Text("Agendar", color = c.sobreNavy, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
         containerColor = c.superficie,
     )
 }

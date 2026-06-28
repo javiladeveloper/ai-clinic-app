@@ -60,6 +60,7 @@ fun TarjetaTratamiento(
     onEditar: (TratamientoPaciente) -> Unit = {},
     onAmpliar: (TratamientoPaciente) -> Unit = {},
     onCambiarEstadoTrat: (tratamientoId: String, estado: String) -> Unit = { _, _ -> },
+    onCrearSesion: (TratamientoPaciente) -> Unit = {},
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -129,6 +130,9 @@ fun TarjetaTratamiento(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
                         .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
                 ) {
+                    // Crear sesión (solo tratamientos por sesiones y activos).
+                    if (!t.esConsulta && t.estado == "Activo")
+                        ItemMenu("📅 Agendar nueva sesión", c.navy) { menuTrat = false; onCrearSesion(t) }
                     ItemMenu("✏ Editar tratamiento", c.texto) { menuTrat = false; onEditar(t) }
                     if (!t.esConsulta) ItemMenu("➕ Ampliar (más sesiones)", c.navy) { menuTrat = false; onAmpliar(t) }
                     when (t.estado) {
