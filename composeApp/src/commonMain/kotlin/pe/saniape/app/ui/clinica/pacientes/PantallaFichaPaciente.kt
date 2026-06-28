@@ -181,11 +181,21 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
 
                 Spacer(Modifier.height(Sania.dim.lg))
 
-                // ── Stat cards: Estado · Saldo · Próxima cita · Última atención ──
+                // ── Stat cards: Progreso · Saldo · Próxima cita · Última atención ──
                 // Saldo GENERAL del paciente (todos sus tratamientos): acordado − pagado.
                 val saldo = saldoPendiente
+                // Progreso GLOBAL de sesiones (suma de todos los tratamientos que usan sesiones).
+                val tratsSesion = paciente.tratamientos.filter { !it.esConsulta && it.estado != "Cancelado" }
+                val sesHechas = tratsSesion.sumOf { it.sesionesCompletadas }
+                val sesTotal = tratsSesion.sumOf { it.totalSesiones }
+                val tratsActivos = paciente.tratamientos.count { it.estado == "Activo" }
+                val progresoTexto = when {
+                    sesTotal > 0 -> "$sesHechas/$sesTotal ses."
+                    tratsActivos > 0 -> "$tratsActivos activo(s)"
+                    else -> "—"
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatCard("ESTADO", paciente.estado ?: "—", estado.fg, Modifier.weight(1f))
+                    StatCard("PROGRESO", progresoTexto, if (sesTotal > 0 && sesHechas >= sesTotal) c.ok else c.navy, Modifier.weight(1f))
                     if (ctx.puede("pagos")) {
                         StatCard(
                             "SALDO PENDIENTE",
