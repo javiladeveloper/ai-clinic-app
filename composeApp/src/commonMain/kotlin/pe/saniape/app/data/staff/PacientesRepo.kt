@@ -55,6 +55,7 @@ data class SesionFicha(
     val costo: Double?,
     val notas: String?,
     val motivoEstado: String?,
+    val pagada: Boolean = false,   // tiene algún pago vinculado (sesion_id)
 ) {
     val pendiente: Boolean
         get() = estado == "Planificada" || estado == "En progreso" || estado == "Reprogramada"
@@ -163,12 +164,16 @@ object PacientesRepo {
     /** Sesiones de un tratamiento (para la ficha), ordenadas por número desc. */
     suspend fun sesionesDe(tratamientoId: String): List<SesionFicha> {
         val filas = Supabase.client.postgrest["sesiones"]
-            .select(Columns.list("id, numero, fecha, hora, estado, costo, notas, motivo_estado, terapeuta_id")) {
+            .select(Columns.raw(
+                "id, numero, fecha, hora, estado, costo, notas, motivo_estado, terapeuta_id, " +
+                    "pagos:pagos_tratamiento(id)"   // para saber si la sesión ya tiene cobro
+            )) {
                 filter { eq("tratamiento_id", tratamientoId) }
                 order("numero", Order.DESCENDING)
             }
             .decodeList<JsonObject>()
         return filas.mapNotNull { o ->
+            val tienePago = (o["pagos"] as? kotlinx.serialization.json.JsonArray)?.isNotEmpty() == true
             SesionFicha(
                 id = o.str("id") ?: return@mapNotNull null,
                 numero = o.int("numero") ?: 0,
@@ -178,6 +183,7 @@ object PacientesRepo {
                 costo = o.dbl("costo"),
                 notas = o.str("notas"),
                 motivoEstado = o.str("motivo_estado"),
+                pagada = tienePago,
             )
         }
     }

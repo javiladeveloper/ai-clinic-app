@@ -64,6 +64,7 @@ fun TarjetaTratamiento(
     var sesiones by remember { mutableStateOf<List<SesionFicha>?>(null) }
     var accionando by remember { mutableStateOf(false) }
     var menuDe by remember { mutableStateOf<SesionFicha?>(null) }   // sesión con menú ⋯ abierto
+    var cambioToken by remember { mutableStateOf(0) }   // recarga la sección de pagos tras cobros
     // Sesiones objetivo de cada modal (o null).
     var editarSesion by remember { mutableStateOf<SesionFicha?>(null) }
     var borrarSesion by remember { mutableStateOf<SesionFicha?>(null) }
@@ -83,6 +84,7 @@ fun TarjetaTratamiento(
     fun recargarSesiones() {
         scope.launch {
             sesiones = runCatching { PacientesRepo.sesionesDe(t.id) }.getOrDefault(sesiones ?: emptyList())
+            cambioToken++          // fuerza que la sección de pagos se recargue
             onCambioRealizado()
         }
     }
@@ -144,7 +146,7 @@ fun TarjetaTratamiento(
                 Text("Consulta médica — sin sesiones.", color = c.textoSuave, fontSize = 12.sp)
                 if (verPagos) {
                     Spacer(Modifier.height(Sania.dim.md))
-                    SeccionPagos(t = t, esAdmin = esAdmin, onCambio = { recargarSesiones() })
+                    SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() })
                 }
             } else when (val s = sesiones) {
                 null -> Box(Modifier.fillMaxWidth().padding(Sania.dim.md), Alignment.Center) {
@@ -188,7 +190,7 @@ fun TarjetaTratamiento(
                     // Pagos (solo con permiso): acordado/pagado/saldo + registrar/editar/borrar.
                     if (verPagos) {
                         Spacer(Modifier.height(Sania.dim.md))
-                        SeccionPagos(t = t, esAdmin = esAdmin, onCambio = { recargarSesiones() })
+                        SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() })
                     }
 
                     // Dar de alta (si el tratamiento sigue en curso y puede sesiones)
@@ -290,6 +292,11 @@ private fun FilaSesion(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 when {
                     ses.pendiente -> MiniBtn("✓ Completar", c.navy, !accionando) { onCompletar() }
+                    // Completada: si ya tiene cobro → badge "✓ Pagada"; si no → "💳 Cobrar".
+                    completada && puedePagos && ses.pagada -> Box(
+                        Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.okBg)
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    ) { Text("✓ Pagada", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                     completada && puedePagos -> MiniBtn("💳 Cobrar", c.teal, !accionando) { onCobrar() }
                 }
                 if (ses.pendiente) IconoBtn("✏", !accionando) { onEditar() }
@@ -338,7 +345,7 @@ private val METODOS_PAGO = listOf("Efectivo", "Yape", "BCP", "Transferencia", "O
 /** Sección de pagos del tratamiento: resumen + lista + registrar (reusa endpoint). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, onCambio: () -> Unit) {
+private fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, onCambio: () -> Unit) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     var pagos by remember { mutableStateOf<List<pe.saniape.app.data.staff.PagoFicha>?>(null) }
@@ -353,7 +360,8 @@ private fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, onCambio: () 
 
     suspend fun recargar() { pagos = runCatching { PacientesRepo.pagosDe(t.id) }.getOrDefault(pagos ?: emptyList()) }
 
-    LaunchedEffect(t.id) {
+    // Recarga al montar y cada vez que cambia recargaToken (tras cobrar una sesión).
+    LaunchedEffect(t.id, recargaToken) {
         pagos = runCatching { PacientesRepo.pagosDe(t.id) }.getOrDefault(emptyList())
     }
 
