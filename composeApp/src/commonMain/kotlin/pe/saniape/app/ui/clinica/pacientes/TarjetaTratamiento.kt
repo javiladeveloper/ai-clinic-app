@@ -63,6 +63,11 @@ fun TarjetaTratamiento(
     var sesiones by remember { mutableStateOf<List<SesionFicha>?>(null) }
     var accionando by remember { mutableStateOf(false) }
     var menuDe by remember { mutableStateOf<SesionFicha?>(null) }   // sesión con menú ⋯ abierto
+    // Sesiones objetivo de cada modal (o null).
+    var editarSesion by remember { mutableStateOf<SesionFicha?>(null) }
+    var borrarSesion by remember { mutableStateOf<SesionFicha?>(null) }
+    var reasignarSesion by remember { mutableStateOf<SesionFicha?>(null) }
+    var cobrarSesion by remember { mutableStateOf<SesionFicha?>(null) }
 
     val estado = EstadosColor.cita(t.estado)
     val terminado = t.estado == "Alta" || t.estado == "Cancelado" || t.estado == "Suspendido"
@@ -143,7 +148,8 @@ fun TarjetaTratamiento(
                     } else {
                         s.forEach { ses ->
                             FilaSesion(
-                                ses = ses, verCosto = verPagos, puedeSesiones = puedeSesiones, accionando = accionando,
+                                ses = ses, verCosto = verPagos, puedeSesiones = puedeSesiones,
+                                puedePagos = verPagos, esAdmin = esAdmin, accionando = accionando,
                                 menuAbierto = menuDe?.id == ses.id,
                                 onToggleMenu = { menuDe = if (menuDe?.id == ses.id) null else ses },
                                 onCompletar = { onCompletarSesion(ses) },
@@ -153,10 +159,19 @@ fun TarjetaTratamiento(
                                     accionando = true
                                     scope.launch {
                                         PacientesRepo.cambiarEstadoSesion(ses.id, nuevo)
-                                        accionando = false
-                                        recargarSesiones()
+                                        accionando = false; recargarSesiones()
                                     }
                                 },
+                                onEditar = { editarSesion = ses; menuDe = null },
+                                onRevertir = {
+                                    menuDe = null
+                                    if (accionando) return@FilaSesion
+                                    accionando = true
+                                    scope.launch { PacientesRepo.revertirSesion(ses.id); accionando = false; recargarSesiones() }
+                                },
+                                onBorrar = { borrarSesion = ses; menuDe = null },
+                                onReasignar = { reasignarSesion = ses; menuDe = null },
+                                onCobrar = { cobrarSesion = ses; menuDe = null },
                             )
                             Spacer(Modifier.height(6.dp))
                         }
@@ -190,6 +205,32 @@ fun TarjetaTratamiento(
             }
         }
     }
+
+    // ── Modales de acciones de sesión ──
+    editarSesion?.let { ses ->
+        ModalEditarSesion(ses, onCancelar = { editarSesion = null }, onGuardar = { fecha, hora, dur, costo, notas ->
+            editarSesion = null
+            scope.launch { PacientesRepo.editarSesion(ses.id, fecha, hora, dur, costo, notas); recargarSesiones() }
+        })
+    }
+    reasignarSesion?.let { ses ->
+        ModalReasignar(onCancelar = { reasignarSesion = null }, onElegir = { terId ->
+            reasignarSesion = null
+            scope.launch { PacientesRepo.reasignarSesion(ses.id, terId); recargarSesiones() }
+        })
+    }
+    cobrarSesion?.let { ses ->
+        ModalCobrar(ses, onCancelar = { cobrarSesion = null }, onConfirmar = { monto, metodo ->
+            cobrarSesion = null
+            scope.launch { PacientesRepo.cobrarSesion(t.id, ses.id, monto, metodo); recargarSesiones() }
+        })
+    }
+    borrarSesion?.let { ses ->
+        ModalBorrarSesion(ses, onCancelar = { borrarSesion = null }, onBorrar = { borrarPagos ->
+            borrarSesion = null
+            scope.launch { PacientesRepo.borrarSesion(ses.id, borrarPagos); recargarSesiones() }
+        })
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -198,14 +239,22 @@ private fun FilaSesion(
     ses: SesionFicha,
     verCosto: Boolean,
     puedeSesiones: Boolean,
+    puedePagos: Boolean,
+    esAdmin: Boolean,
     accionando: Boolean,
     menuAbierto: Boolean,
     onToggleMenu: () -> Unit,
     onCompletar: () -> Unit,
     onEstado: (String) -> Unit,
+    onEditar: () -> Unit,
+    onRevertir: () -> Unit,
+    onBorrar: () -> Unit,
+    onReasignar: () -> Unit,
+    onCobrar: () -> Unit,
 ) {
     val c = Sania.colors
     val estado = EstadosColor.sesion(ses.estado)
+    val completada = ses.estado == "Completada"
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
             .background(c.fondo).padding(horizontal = 10.dp, vertical = 8.dp),
@@ -227,12 +276,22 @@ private fun FilaSesion(
             Text("Motivo: $it", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
         }
 
-        // Acciones: solo en sesiones pendientes y con permiso.
-        if (puedeSesiones && ses.pendiente) {
+        if (puedeSesiones) {
             Spacer(Modifier.height(6.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                MiniBtn("✓ Completar", c.navy, !accionando) { onCompletar() }
-                MiniBtn("⋯ Estado", c.textoSuave, !accionando) { onToggleMenu() }
+                if (ses.pendiente) {
+                    MiniBtn("✓ Completar", c.navy, !accionando) { onCompletar() }
+                    MiniBtn("✏ Editar", c.textoSuave, !accionando) { onEditar() }
+                    MiniBtn("⋯ Estado", c.textoSuave, !accionando) { onToggleMenu() }
+                }
+                if (completada) {
+                    MiniBtn("↩ Revertir", c.pend, !accionando) { onRevertir() }
+                    // Cobrar: si se puede pagos y aún no tiene costo cobrado.
+                    if (puedePagos) MiniBtn("💳 Cobrar", c.teal, !accionando) { onCobrar() }
+                }
+                // Borrar/reasignar: disponibles siempre (con permiso).
+                MiniBtn("👤 Reasignar", c.textoSuave, !accionando) { onReasignar() }
+                MiniBtn("🗑 Borrar", c.error, !accionando) { onBorrar() }
             }
             if (menuAbierto) {
                 Spacer(Modifier.height(4.dp))
@@ -440,4 +499,143 @@ private fun modalidadIcono(m: String?): String = when (m) {
 private fun formato2(n: Double): String {
     val cent = (n * 100).toLong()
     return "${cent / 100}.${(cent % 100).toString().padStart(2, '0')}"
+}
+
+// ── Modales de acciones de sesión ──
+
+@Composable
+private fun ModalEditarSesion(
+    ses: SesionFicha,
+    onCancelar: () -> Unit,
+    onGuardar: (fecha: String, hora: String?, duracion: Int, costo: Double?, notas: String?) -> Unit,
+) {
+    val c = Sania.colors
+    var fecha by remember { mutableStateOf(ses.fecha) }
+    var hora by remember { mutableStateOf(ses.hora?.take(5) ?: "") }
+    var costo by remember { mutableStateOf(ses.costo?.let { formato2(it) } ?: "") }
+    var notas by remember { mutableStateOf(ses.notas ?: "") }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onCancelar,
+        title = { Text("✏ Editar sesión #${ses.numero}", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                CampoTexto("Fecha (AAAA-MM-DD)", fecha) { fecha = it }
+                Spacer(Modifier.height(8.dp))
+                CampoTexto("Hora (HH:MM)", hora) { hora = it }
+                Spacer(Modifier.height(8.dp))
+                CampoTexto("Costo (S/)", costo, soloNumero = true) { costo = it }
+                Spacer(Modifier.height(8.dp))
+                CampoTexto("Notas / procedimientos", notas, multilinea = true) { notas = it }
+            }
+        },
+        confirmButton = {
+            BotonModalP("Guardar") {
+                onGuardar(fecha.trim(), hora.trim().ifBlank { null }, 45, costo.toDoubleOrNull(), notas.trim().ifBlank { null })
+            }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
+        containerColor = c.superficie,
+    )
+}
+
+@Composable
+private fun ModalReasignar(onCancelar: () -> Unit, onElegir: (String) -> Unit) {
+    val c = Sania.colors
+    var terapeutas by remember { mutableStateOf<List<pe.saniape.app.data.staff.RefNombre>>(emptyList()) }
+    LaunchedEffect(Unit) { terapeutas = runCatching { PacientesRepo.terapeutasActivos() }.getOrDefault(emptyList()) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onCancelar,
+        title = { Text("👤 Reasignar profesional", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                if (terapeutas.isEmpty()) Text("Cargando…", color = c.textoSuave, fontSize = 12.sp)
+                terapeutas.forEach { ter ->
+                    Box(
+                        Modifier.fillMaxWidth().padding(vertical = 3.dp)
+                            .clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.fondo)
+                            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                            .clickable { onElegir(ter.id) }.padding(horizontal = 12.dp, vertical = 12.dp),
+                    ) { Text(ter.nombre, color = c.texto, fontSize = Sania.txt.cuerpo) }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
+        containerColor = c.superficie,
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ModalCobrar(ses: SesionFicha, onCancelar: () -> Unit, onConfirmar: (Double, String) -> Unit) {
+    val c = Sania.colors
+    var monto by remember { mutableStateOf(ses.costo?.let { formato2(it) } ?: "") }
+    var metodo by remember { mutableStateOf("Efectivo") }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onCancelar,
+        title = { Text("💳 Cobrar sesión #${ses.numero}", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                CampoTexto("Monto (S/)", monto, soloNumero = true) { monto = it }
+                Spacer(Modifier.height(8.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    METODOS_PAGO.forEach { m -> ChipMetodo(m, metodo == m) { metodo = m } }
+                }
+            }
+        },
+        confirmButton = {
+            BotonModalP("Registrar pago") { monto.toDoubleOrNull()?.takeIf { it > 0 }?.let { onConfirmar(it, metodo) } }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
+        containerColor = c.superficie,
+    )
+}
+
+@Composable
+private fun ModalBorrarSesion(ses: SesionFicha, onCancelar: () -> Unit, onBorrar: (borrarPagos: Boolean) -> Unit) {
+    val c = Sania.colors
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onCancelar,
+        title = { Text("🗑 Borrar sesión #${ses.numero}", fontWeight = FontWeight.Bold) },
+        text = {
+            Text("¿Seguro? Si la sesión tiene pagos, elige qué hacer con ellos.",
+                color = c.texto, fontSize = Sania.txt.cuerpo)
+        },
+        confirmButton = {
+            Column(horizontalAlignment = Alignment.End) {
+                BotonModalP("Borrar (conservar pagos)") { onBorrar(false) }
+                Spacer(Modifier.height(6.dp))
+                androidx.compose.material3.TextButton(onClick = { onBorrar(true) }) {
+                    Text("Borrar también el pago", color = c.error, fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
+        containerColor = c.superficie,
+    )
+}
+
+@Composable
+private fun CampoTexto(
+    label: String, value: String, soloNumero: Boolean = false, multilinea: Boolean = false, onChange: (String) -> Unit,
+) {
+    val c = Sania.colors
+    Text(label, color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
+    androidx.compose.material3.OutlinedTextField(
+        value = value,
+        onValueChange = { if (soloNumero) onChange(it.filter { ch -> ch.isDigit() || ch == '.' }) else onChange(it) },
+        singleLine = !multilinea, minLines = if (multilinea) 2 else 1,
+        keyboardOptions = if (soloNumero) androidx.compose.foundation.text.KeyboardOptions(
+            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number) else androidx.compose.foundation.text.KeyboardOptions.Default,
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+    )
+}
+
+@Composable
+private fun BotonModalP(texto: String, onClick: () -> Unit) {
+    val c = Sania.colors
+    Box(
+        Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
+            .clickable { onClick() }.padding(horizontal = 18.dp, vertical = 10.dp),
+    ) { Text(texto, color = c.sobreNavy, fontWeight = FontWeight.Bold) }
 }

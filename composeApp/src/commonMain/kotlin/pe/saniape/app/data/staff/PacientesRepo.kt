@@ -248,6 +248,70 @@ object PacientesRepo {
         return resp.status == HttpStatusCode.OK
     }
 
+    // ── Acciones de sesión (editar/revertir/borrar/reasignar) vía endpoint accion ──
+    private suspend fun accionSesion(cuerpo: JsonObject): Boolean {
+        val tk = token() ?: return false
+        val resp = http.post("${Supabase.SITE_URL}/api/staff/sesion/accion") {
+            header("Authorization", "Bearer $tk")
+            contentType(ContentType.Application.Json)
+            setBody(cuerpo.toString())
+        }
+        return resp.status == HttpStatusCode.OK
+    }
+
+    suspend fun editarSesion(
+        sesionId: String, fecha: String, hora: String?, duracion: Int, costo: Double?, notas: String?,
+    ): Boolean = accionSesion(buildJsonObject {
+        put("accion", "editar"); put("sesionId", sesionId)
+        put("fecha", fecha); put("duracion", duracion)
+        if (!hora.isNullOrBlank()) put("hora", hora)
+        if (costo != null) put("costo", costo)
+        if (!notas.isNullOrBlank()) put("notas", notas)
+    })
+
+    suspend fun revertirSesion(sesionId: String): Boolean = accionSesion(buildJsonObject {
+        put("accion", "revertir"); put("sesionId", sesionId)
+    })
+
+    suspend fun borrarSesion(sesionId: String, borrarPagos: Boolean): Boolean = accionSesion(buildJsonObject {
+        put("accion", "borrar"); put("sesionId", sesionId); put("borrarPagos", borrarPagos)
+    })
+
+    suspend fun reasignarSesion(sesionId: String, terapeutaId: String): Boolean = accionSesion(buildJsonObject {
+        put("accion", "reasignar"); put("sesionId", sesionId); put("terapeutaId", terapeutaId)
+    })
+
+    /** Cobrar una sesión (pago vinculado a la sesión) — reusa el endpoint de pago. */
+    suspend fun cobrarSesion(
+        tratamientoId: String, sesionId: String, monto: Double, metodo: String, notas: String? = null,
+    ): Boolean {
+        val tk = token() ?: return false
+        val cuerpo = buildJsonObject {
+            put("tratamientoId", tratamientoId)
+            put("sesionId", sesionId)
+            put("monto", monto)
+            put("metodo", metodo)
+            if (!notas.isNullOrBlank()) put("notas", notas)
+        }
+        val resp = http.post("${Supabase.SITE_URL}/api/staff/pago/registrar") {
+            header("Authorization", "Bearer $tk")
+            contentType(ContentType.Application.Json)
+            setBody(cuerpo.toString())
+        }
+        return resp.status == HttpStatusCode.OK
+    }
+
+    /** Profesionales activos (para reasignar). */
+    suspend fun terapeutasActivos(): List<RefNombre> {
+        val filas = Supabase.client.postgrest["terapeutas"]
+            .select(Columns.list("id, nombre, estado")) {
+                filter { eq("estado", "Activo") }
+                order("nombre", Order.ASCENDING)
+            }
+            .decodeList<JsonObject>()
+        return filas.mapNotNull { RefNombre(it.str("id") ?: return@mapNotNull null, it.str("nombre") ?: "Profesional") }
+    }
+
     /** Da de alta un tratamiento (paciente pasa a Alta si no le quedan otros en curso). */
     suspend fun darDeAlta(tratamientoId: String): Boolean {
         val tk = token() ?: return false
