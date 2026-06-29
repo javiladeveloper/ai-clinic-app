@@ -313,7 +313,8 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         )
                     }
                     "pagos" -> ContenidoPagos(
-                        ctx = ctx, paciente = paciente, recargaToken = recargarToken, onCambio = { recargar() },
+                        ctx = ctx, paciente = paciente, recargaToken = recargarToken,
+                        onVerEnAtenciones = { tab = "atenciones" },
                     )
                     "resumen" -> ContenidoResumen(
                         ctx = ctx, paciente = paciente, acciones = acciones,
@@ -1001,29 +1002,25 @@ private fun ContenidoAtenciones(
 }
 
 /**
- * Pestaña Pagos (espeja la web): mini-resumen (acordado/pagado/saldo) + un bloque de pagos
- * por tratamiento facturable (vigentes arriba, terminados-y-saldados colapsados). Reusa
- * SeccionPagos (la misma de cada tarjeta de tratamiento).
+ * Pestaña Pagos: resumen financiero del paciente SIN duplicar la PagoCard de Atenciones.
+ * Mini-resumen total (acordado/pagado/saldo) + una fila RESUMIDA por tratamiento (cifras +
+ * barra + estado de pago). Cobrar/editar se hace en Atenciones (botón "Ver →" lleva ahí).
  */
 @Composable
 private fun ContenidoPagos(
-    ctx: ContextoStaff, paciente: PacienteStaff, recargaToken: Int, onCambio: () -> Unit,
+    ctx: ContextoStaff, paciente: PacienteStaff, recargaToken: Int, onVerEnAtenciones: () -> Unit,
 ) {
     val c = Sania.colors
     var resumen by remember { mutableStateOf<pe.saniape.app.data.staff.ResumenPagos?>(null) }
-    var verSaldados by remember { mutableStateOf(false) }
     LaunchedEffect(paciente.id, recargaToken) {
         resumen = runCatching { PacientesRepo.resumenPagosDe(paciente.tratamientos) }.getOrNull()
     }
 
     val facturables = paciente.tratamientos.filter { it.estado != "Cancelado" }
-    // Vigente = activo o con saldo; lo demás (terminado y pagado) se archiva colapsado.
-    val vigentes = facturables.filter { it.estado == "Activo" || (it.estadoPago != "Pagado") }
-    val saldados = facturables.filter { it.estado != "Activo" && it.estadoPago == "Pagado" }
+    val r = resumen
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         // Mini-resumen total
-        val r = resumen
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
                 .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(14.dp),
@@ -1041,46 +1038,57 @@ private fun ContenidoPagos(
 
         if (facturables.isEmpty()) {
             Text("Sin tratamientos facturables.", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
-        }
-
-        // Bloque de pagos por tratamiento vigente
-        vigentes.forEach { t ->
-            BloquePagoTrat(t = t, esAdmin = ctx.esAdmin, recargaToken = recargaToken, onCambio = onCambio)
-        }
-
-        // Terminados y saldados (colapsado)
-        if (saldados.isNotEmpty()) {
-            Text(
-                (if (verSaldados) "▲ Ocultar " else "▼ Ver ") + "${saldados.size} terminado(s) y pagado(s)",
-                color = c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.clickable { verSaldados = !verSaldados }.padding(vertical = 4.dp),
-            )
-            if (verSaldados) saldados.forEach { t ->
-                BloquePagoTrat(t = t, esAdmin = ctx.esAdmin, recargaToken = recargaToken, onCambio = onCambio)
+        } else {
+            // Resumen POR tratamiento (no la PagoCard completa — eso vive en Atenciones).
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+                    .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(14.dp),
+            ) {
+                Text("POR TRATAMIENTO", color = c.textoSuave, fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                facturables.forEachIndexed { i, t ->
+                    if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde).padding(vertical = 0.dp))
+                    FilaPagoResumen(
+                        t = t, pagado = r?.porTratamiento?.get(t.id) ?: 0.0,
+                        onVer = onVerEnAtenciones,
+                    )
+                }
             }
+            Text("El detalle de cada pago y el cobro se gestionan en la pestaña Atenciones.",
+                color = c.textoSuave, fontSize = 10.sp)
         }
     }
 }
 
+/** Fila resumida de pagos de un tratamiento: nombre + acordado/pagado/saldo + barra + estado. */
 @Composable
-private fun BloquePagoTrat(
-    t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, onCambio: () -> Unit,
-) {
+private fun FilaPagoResumen(t: TratamientoPaciente, pagado: Double, onVer: () -> Unit) {
     val c = Sania.colors
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
-            .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(14.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 4.dp)) {
+    val acordado = t.montoAcordado
+    val saldo = (acordado - pagado).coerceAtLeast(0.0)
+    val frac = if (acordado > 0) (pagado / acordado).toFloat().coerceIn(0f, 1f) else 0f
+    val pagoEst = EstadosColor.cita(when (t.estadoPago) { "Pagado" -> "Confirmada"; "Parcial" -> "Pendiente"; else -> "Cancelada" })
+    Column(Modifier.fillMaxWidth().clickable { onVer() }.padding(vertical = 10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text("${if (t.esConsulta) "🩺" else if (t.modalidad == "Paquete") "📦" else "🎫"} ${t.procedimiento ?: "Plan de atención"}",
-                color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            val est = EstadosColor.cita(t.estado)
-            Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(est.bg)
+                color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1)
+            Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(pagoEst.bg)
                 .padding(horizontal = 8.dp, vertical = 2.dp)) {
-                Text(t.estado ?: "—", color = est.fg, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text(t.estadoPago ?: "—", color = pagoEst.fg, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
+            Spacer(Modifier.width(6.dp))
+            Text("Ver →", color = c.navy, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
-        SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = recargaToken, onCambio = onCambio)
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Acordado S/ ${formatoMonto(acordado)}", color = c.textoSuave, fontSize = 11.sp)
+            Text("Pagado S/ ${formatoMonto(pagado)}", color = c.ok, fontSize = 11.sp)
+            Text("Saldo S/ ${formatoMonto(saldo)}", color = if (saldo > 0.005) c.error else c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(5.dp))
+        Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.chipBg)) {
+            Box(Modifier.fillMaxWidth(frac).height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.ok))
+        }
     }
 }
 

@@ -114,8 +114,11 @@ data class CitaHito(
     val notas: String?,
 )
 
-/** Resumen de pagos del paciente: totales acordado/pagado/saldo. */
-data class ResumenPagos(val acordado: Double, val pagado: Double, val saldo: Double)
+/** Resumen de pagos del paciente: totales + desglose por tratamiento. */
+data class ResumenPagos(
+    val acordado: Double, val pagado: Double, val saldo: Double,
+    val porTratamiento: Map<String, Double> = emptyMap(),   // tratamientoId -> pagado
+)
 
 /** Hitos del recorrido del paciente (Consulta/Evaluación hechas, próxima cita, última atención). */
 data class HitosPaciente(
@@ -569,7 +572,7 @@ object PacientesRepo {
         val acordado = facturables.sumOf { it.montoAcordado }
         val pagado = facturables.sumOf { pagadoPorTrat[it.id] ?: 0.0 }
         val saldo = facturables.sumOf { t -> (t.montoAcordado - (pagadoPorTrat[t.id] ?: 0.0)).coerceAtLeast(0.0) }
-        return ResumenPagos(acordado, pagado, saldo)
+        return ResumenPagos(acordado, pagado, saldo, pagadoPorTrat.filterKeys { it != null }.mapKeys { it.key!! })
     }
 
     /** Solo el saldo (atajo para la stat card). */
