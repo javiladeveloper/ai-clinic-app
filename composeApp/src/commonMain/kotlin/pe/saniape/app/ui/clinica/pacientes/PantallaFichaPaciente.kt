@@ -83,6 +83,11 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     var subirDoc by remember { mutableStateOf<SubidaDoc?>(null) }
     var subiendo by remember { mutableStateOf(false) }
     var editarClinico by remember { mutableStateOf(false) }
+    var derivarTrat by remember { mutableStateOf<TratamientoPaciente?>(null) }
+    var especialidadesClinica by remember { mutableStateOf<List<pe.saniape.app.data.staff.EspecialidadClinica>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        especialidadesClinica = runCatching { PacientesRepo.especialidadesClinica() }.getOrDefault(emptyList())
+    }
     LaunchedEffect(pacienteInicial.id, recargarToken) {
         paciente = runCatching { PacientesRepo.porId(pacienteInicial.id) }.getOrNull() ?: pacienteInicial
         hitos = runCatching { PacientesRepo.hitosDe(pacienteInicial.id) }.getOrNull()
@@ -289,6 +294,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         onCrearSesion = { crearSesionEn = it },
                         onNuevoTratamiento = { creandoTratamiento = true },
                         onEditarCita = { editarCitaHito = it },
+                        onDerivar = { derivarTrat = it },
                     )
                     "examenes" -> {
                         if (subiendo) {
@@ -397,6 +403,26 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 editarCitaHito = null
                 scope.launch {
                     PacientesRepo.editarCitaHito(cita.id, fecha, hora, notas); recargar()
+                }
+            },
+        )
+    }
+
+    // Modal "Derivar tratamiento" a otra especialidad (nace del tratamiento, no del paciente).
+    derivarTrat?.let { t ->
+        val actual = t.especialidadNombre
+        val destinos = especialidadesClinica.filter { it.nombre != actual }
+        ModalDerivar(
+            especialidadActual = actual,
+            destinos = destinos,
+            onCancelar = { derivarTrat = null },
+            onGuardar = { desc, espDestinoId ->
+                derivarTrat = null
+                scope.launch {
+                    pe.saniape.app.data.staff.SolicitudesRepo.crearSolicitud(
+                        paciente.id, "Derivacion", desc, ctx.miTerapeutaId, espDestinoId, tratamientoId = t.id,
+                    )
+                    recargar()
                 }
             },
         )
@@ -930,6 +956,7 @@ private fun ContenidoAtenciones(
     onCrearSesion: (TratamientoPaciente) -> Unit,
     onNuevoTratamiento: () -> Unit,
     onEditarCita: (pe.saniape.app.data.staff.CitaHito) -> Unit,
+    onDerivar: (TratamientoPaciente) -> Unit,
 ) {
     val c = Sania.colors
     val consultaDone = hitos?.consultaDone == true
@@ -953,6 +980,7 @@ private fun ContenidoAtenciones(
                     onEditar = onEditarTrat, onAmpliar = onAmpliarTrat,
                     onCambiarEstadoTrat = onCambiarEstadoTrat,
                     onCrearSesion = onCrearSesion,
+                    onDerivar = onDerivar, puedeDerivar = ctx.can("derivaciones"),
                 )
             }
         }

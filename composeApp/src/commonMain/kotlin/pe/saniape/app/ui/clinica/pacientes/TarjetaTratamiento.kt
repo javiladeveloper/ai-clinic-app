@@ -68,6 +68,8 @@ fun TarjetaTratamiento(
     onAmpliar: (TratamientoPaciente) -> Unit = {},
     onCambiarEstadoTrat: (tratamientoId: String, estado: String) -> Unit = { _, _ -> },
     onCrearSesion: (TratamientoPaciente) -> Unit = {},
+    onDerivar: (TratamientoPaciente) -> Unit = {},
+    puedeDerivar: Boolean = false,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -193,6 +195,9 @@ fun TarjetaTratamiento(
                     // (Agendar sesión está como botón visible arriba, no se repite aquí.)
                     ItemMenu("✏ Editar tratamiento", c.texto) { menuTrat = false; onEditar(t) }
                     if (!t.esConsulta) ItemMenu("➕ Ampliar (más sesiones)", c.navy) { menuTrat = false; onAmpliar(t) }
+                    // Derivar este tratamiento a otra especialidad (feature Premium).
+                    if (puedeDerivar && t.estado == "Activo")
+                        ItemMenu("↗ Derivar a otra especialidad", c.purple) { menuTrat = false; onDerivar(t) }
                     when (t.estado) {
                         "Activo" -> {
                             ItemMenu("⏸ Suspender", c.pend) { menuTrat = false; onCambiarEstadoTrat(t.id, "Suspendido") }

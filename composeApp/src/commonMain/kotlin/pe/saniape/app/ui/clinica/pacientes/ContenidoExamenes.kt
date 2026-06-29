@@ -80,12 +80,12 @@ fun ContenidoExamenes(
     }
 
     val examenes = solicitudes?.filter { it.tipo == "Examen" } ?: emptyList()
-    val derivaciones = solicitudes?.filter { it.tipo == "Derivacion" } ?: emptyList()
     val puedeExamenes = ctx.can("examenes")
-    val puedeDerivaciones = ctx.can("derivaciones")
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         // ── Exámenes externos (Plus) ──
+        // (Las derivaciones NO van aquí: nacen de un TRATAMIENTO concreto → se derivan
+        //  desde el menú "··· Opciones del tratamiento" en la pestaña Atenciones.)
         SeccionExamenes(
             titulo = "🔬 Exámenes externos",
             subtitulo = "Solicita lab/imágenes; al volver, registra el resultado.",
@@ -101,27 +101,6 @@ fun ContenidoExamenes(
                     onCancelar = { scope.launch { SolicitudesRepo.cambiarEstado(s.id, "Cancelada"); recargar() } },
                     onEliminar = { scope.launch { SolicitudesRepo.eliminarSolicitud(s.id); recargar() } },
                     onAbrir = { path -> scope.launch { SolicitudesRepo.urlFirmada(path)?.let { acciones.abrirUrl(it) } } },
-                )
-                Spacer(Modifier.height(6.dp))
-            }
-        }
-
-        // ── Derivaciones (Premium) ──
-        SeccionExamenes(
-            titulo = "↗ Derivaciones",
-            subtitulo = "Deriva al paciente a otra especialidad de la clínica.",
-            habilitado = puedeDerivaciones, botonTexto = "+ Derivar",
-            onNuevo = { nuevo = "Derivacion" },
-            cargando = solicitudes == null, vacio = derivaciones.isEmpty(),
-            textoVacio = "Sin derivaciones.",
-            textoBloqueado = "Las derivaciones son del plan Premium.",
-        ) {
-            derivaciones.forEach { s ->
-                FilaSolicitud(s, acciones,
-                    onResultado = {},
-                    onCancelar = { scope.launch { SolicitudesRepo.cambiarEstado(s.id, "Cancelada"); recargar() } },
-                    onEliminar = { scope.launch { SolicitudesRepo.eliminarSolicitud(s.id); recargar() } },
-                    onAbrir = {},
                 )
                 Spacer(Modifier.height(6.dp))
             }
@@ -157,22 +136,14 @@ fun ContenidoExamenes(
         }
     }
 
-    // Modal: nueva solicitud (examen o derivación)
-    nuevo?.let { tipo ->
-        // Especialidad actual del paciente (del tratamiento activo, o la del profesional vinculado).
-        val espActualNombre = paciente.tratamientos.firstOrNull { it.estado == "Activo" }?.especialidadNombre
-        val espActual = especialidades.firstOrNull { it.nombre == espActualNombre }
-        // En derivación NO se muestra la especialidad actual (se deriva a OTRA).
-        val destinos = especialidades.filter { it.id != espActual?.id }
-        ModalNuevaSolicitud(
-            tipo = tipo,
-            especialidadActual = espActual?.nombre ?: espActualNombre,
-            destinos = destinos,
+    // Modal: solicitar examen externo.
+    if (nuevo == "Examen") {
+        ModalSolicitarExamen(
             onCancelar = { nuevo = null },
-            onGuardar = { desc, espId ->
+            onGuardar = { desc ->
                 nuevo = null
                 scope.launch {
-                    SolicitudesRepo.crearSolicitud(pacienteId, tipo, desc, ctx.miTerapeutaId, espId); recargar()
+                    SolicitudesRepo.crearSolicitud(pacienteId, "Examen", desc, ctx.miTerapeutaId, null); recargar()
                 }
             },
         )
@@ -292,85 +263,26 @@ private fun FilaSolicitud(
     }
 }
 
+/** Solicitar un examen externo (solo descripción). */
 @Composable
-private fun ModalNuevaSolicitud(
-    tipo: String, especialidadActual: String?, destinos: List<EspecialidadClinica>,
-    onCancelar: () -> Unit, onGuardar: (descripcion: String, especialidadId: String?) -> Unit,
+private fun ModalSolicitarExamen(
+    onCancelar: () -> Unit, onGuardar: (descripcion: String) -> Unit,
 ) {
     val c = Sania.colors
-    val esExamen = tipo == "Examen"
     var descripcion by remember { mutableStateOf("") }
-    var especialidad by remember { mutableStateOf<EspecialidadClinica?>(null) }
-    val valido = descripcion.isNotBlank() && (esExamen || especialidad != null)
-
     DialogoForm(
-        titulo = if (esExamen) "Solicitar examen" else "Derivar paciente",
-        subtitulo = if (esExamen) "Examen externo (lab/imágenes)" else "Pasar a otra especialidad de la clínica",
-        textoAccion = if (esExamen) "Solicitar examen" else "Derivar",
-        accionHabilitada = valido,
+        titulo = "Solicitar examen",
+        subtitulo = "Examen externo (lab/imágenes)",
+        textoAccion = "Solicitar examen",
+        accionHabilitada = descripcion.isNotBlank(),
         onCancelar = onCancelar,
-        onAccion = { onGuardar(descripcion.trim(), especialidad?.id) },
+        onAccion = { onGuardar(descripcion.trim()) },
     ) {
-        TarjetaForm(titulo = if (esExamen) "Examen" else "Derivación", icono = if (esExamen) "🔬" else "↗") {
-            EtqForm(if (esExamen) "Examen solicitado" else "Motivo de la derivación")
+        TarjetaForm(titulo = "Examen", icono = "🔬") {
+            EtqForm("Examen solicitado")
             OutlinedTextField(value = descripcion, onValueChange = { descripcion = it },
-                placeholder = { Text(if (esExamen) "Ej. Ecografía abdominal…" else "Ej. Evaluar por cardiología", color = c.textoSuave) },
+                placeholder = { Text("Ej. Ecografía abdominal, hemograma…", color = c.textoSuave) },
                 minLines = 2, modifier = Modifier.fillMaxWidth())
-
-            if (!esExamen) {
-                Spacer(Modifier.height(12.dp))
-                EtqForm("Derivar de → a")
-                // Cuadro visual: [especialidad actual]  →  [destino a escoger]
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Origen (especialidad actual) — informativo, no editable
-                    Box(
-                        Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
-                            .background(c.chipBg).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                            .padding(horizontal = 10.dp, vertical = 11.dp),
-                    ) {
-                        Column {
-                            Text("ACTUAL", color = c.textoSuave, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                            Text(especialidadActual ?: "—", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                        }
-                    }
-                    Text("→", color = c.navy, fontSize = 20.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp))
-                    // Destino (a escoger) — resaltado
-                    var abierto by remember { mutableStateOf(false) }
-                    Box(Modifier.weight(1f)) {
-                        Column {
-                            Box(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                                    .background(if (especialidad != null) c.navy.copy(alpha = 0.10f) else c.superficie)
-                                    .border(if (especialidad != null) 2.dp else 1.dp,
-                                        if (especialidad != null) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                                    .clickable { abierto = !abierto }.padding(horizontal = 10.dp, vertical = 11.dp),
-                            ) {
-                                Column {
-                                    Text("DESTINO", color = c.navy, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                    Text(especialidad?.nombre ?: "Elegir…",
-                                        color = if (especialidad != null) c.navy else c.textoSuave,
-                                        fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                                }
-                            }
-                            if (abierto) {
-                                Column(Modifier.fillMaxWidth().padding(top = 4.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
-                                    .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))) {
-                                    if (destinos.isEmpty()) {
-                                        Text("(No hay otras especialidades)", color = c.textoSuave, fontSize = 11.sp,
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp))
-                                    }
-                                    destinos.forEach { e ->
-                                        Text(e.nombre, color = c.texto, fontSize = Sania.txt.cuerpo,
-                                            modifier = Modifier.fillMaxWidth().clickable { especialidad = e; abierto = false }
-                                                .padding(horizontal = 10.dp, vertical = 10.dp))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 }
@@ -402,6 +314,92 @@ private fun ModalResultado(
             }
             Text("Puedes guardar solo la nota; el archivo es opcional.", color = c.textoSuave,
                 fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+        }
+    }
+}
+
+/**
+ * Derivar UN tratamiento a otra especialidad (la derivación nace del tratamiento, no del
+ * paciente). [especialidadActual] = la del tratamiento (origen informativo); [destinos] =
+ * las OTRAS especialidades de la clínica (excluyendo la actual). Reusable desde el menú
+ * "··· Opciones del tratamiento".
+ */
+@Composable
+fun ModalDerivar(
+    especialidadActual: String?,
+    destinos: List<EspecialidadClinica>,
+    onCancelar: () -> Unit,
+    onGuardar: (descripcion: String, especialidadDestinoId: String) -> Unit,
+) {
+    val c = Sania.colors
+    var descripcion by remember { mutableStateOf("") }
+    var especialidad by remember { mutableStateOf<EspecialidadClinica?>(null) }
+    var abierto by remember { mutableStateOf(false) }
+    val valido = descripcion.isNotBlank() && especialidad != null
+    DialogoForm(
+        titulo = "Derivar tratamiento",
+        subtitulo = "Pasar este caso a otra especialidad",
+        textoAccion = "Derivar",
+        accionHabilitada = valido,
+        onCancelar = onCancelar,
+        onAccion = { especialidad?.let { onGuardar(descripcion.trim(), it.id) } },
+    ) {
+        TarjetaForm(titulo = "Derivación", icono = "↗") {
+            EtqForm("Motivo de la derivación")
+            OutlinedTextField(value = descripcion, onValueChange = { descripcion = it },
+                placeholder = { Text("Ej. Evaluar por cardiología", color = c.textoSuave) },
+                minLines = 2, modifier = Modifier.fillMaxWidth())
+
+            Spacer(Modifier.height(12.dp))
+            EtqForm("Derivar de → a")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Origen (especialidad del tratamiento) — informativo
+                Box(
+                    Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .background(c.chipBg).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                        .padding(horizontal = 10.dp, vertical = 11.dp),
+                ) {
+                    Column {
+                        Text("ACTUAL", color = c.textoSuave, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        Text(especialidadActual ?: "—", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
+                }
+                Text("→", color = c.navy, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 8.dp))
+                // Destino (a escoger)
+                Box(Modifier.weight(1f)) {
+                    Column {
+                        Box(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(if (especialidad != null) c.navy.copy(alpha = 0.10f) else c.superficie)
+                                .border(if (especialidad != null) 2.dp else 1.dp,
+                                    if (especialidad != null) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { abierto = !abierto }.padding(horizontal = 10.dp, vertical = 11.dp),
+                        ) {
+                            Column {
+                                Text("DESTINO", color = c.navy, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                Text(especialidad?.nombre ?: "Elegir…",
+                                    color = if (especialidad != null) c.navy else c.textoSuave,
+                                    fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
+                        }
+                        if (abierto) {
+                            Column(Modifier.fillMaxWidth().padding(top = 4.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))) {
+                                if (destinos.isEmpty()) {
+                                    Text("(No hay otras especialidades)", color = c.textoSuave, fontSize = 11.sp,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp))
+                                }
+                                destinos.forEach { e ->
+                                    Text(e.nombre, color = c.texto, fontSize = Sania.txt.cuerpo,
+                                        modifier = Modifier.fillMaxWidth().clickable { especialidad = e; abierto = false }
+                                            .padding(horizontal = 10.dp, vertical = 10.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

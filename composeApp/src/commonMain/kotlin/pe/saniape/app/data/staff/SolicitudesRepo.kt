@@ -109,10 +109,10 @@ object SolicitudesRepo {
         }
     }
 
-    /** Crea una solicitud (examen o derivación). El terapeuta solicitante es opcional. */
+    /** Crea una solicitud (examen o derivación). [tratamientoId]: del que nace la derivación. */
     suspend fun crearSolicitud(
         pacienteId: String, tipo: String, descripcion: String,
-        terapeutaId: String?, especialidadDestinoId: String?,
+        terapeutaId: String?, especialidadDestinoId: String?, tratamientoId: String? = null,
     ): Boolean = try {
         Supabase.client.postgrest["solicitudes"].insert(buildJsonObject {
             put("paciente_id", pacienteId)
@@ -120,6 +120,7 @@ object SolicitudesRepo {
             put("descripcion", descripcion)
             if (terapeutaId != null) put("terapeuta_id", terapeutaId)
             if (especialidadDestinoId != null) put("especialidad_destino_id", especialidadDestinoId)
+            if (tratamientoId != null) put("tratamiento_id", tratamientoId)
         })
         true
     } catch (e: Exception) { false }
