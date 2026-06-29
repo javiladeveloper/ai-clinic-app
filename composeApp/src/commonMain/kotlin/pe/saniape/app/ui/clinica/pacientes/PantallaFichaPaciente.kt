@@ -295,6 +295,8 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         onNuevoTratamiento = { creandoTratamiento = true },
                         onEditarCita = { editarCitaHito = it },
                         onDerivar = { derivarTrat = it },
+                        // Derivar solo si hay plan Premium Y la clínica tiene >1 especialidad.
+                        puedeDerivar = ctx.can("derivaciones") && especialidadesClinica.size > 1,
                     )
                     "examenes" -> {
                         if (subiendo) {
@@ -957,6 +959,7 @@ private fun ContenidoAtenciones(
     onNuevoTratamiento: () -> Unit,
     onEditarCita: (pe.saniape.app.data.staff.CitaHito) -> Unit,
     onDerivar: (TratamientoPaciente) -> Unit,
+    puedeDerivar: Boolean,
 ) {
     val c = Sania.colors
     val consultaDone = hitos?.consultaDone == true
@@ -980,7 +983,9 @@ private fun ContenidoAtenciones(
                     onEditar = onEditarTrat, onAmpliar = onAmpliarTrat,
                     onCambiarEstadoTrat = onCambiarEstadoTrat,
                     onCrearSesion = onCrearSesion,
-                    onDerivar = onDerivar, puedeDerivar = ctx.can("derivaciones"),
+                    // Derivar: requiere plan Premium Y que la clínica tenga >1 especialidad
+                    // (si solo hay una, no hay a dónde derivar).
+                    onDerivar = onDerivar, puedeDerivar = puedeDerivar,
                 )
             }
         }
