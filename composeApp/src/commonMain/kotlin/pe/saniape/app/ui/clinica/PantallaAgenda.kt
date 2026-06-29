@@ -126,7 +126,20 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                                 } else vm.ejecutar(AccionCita.Cancelar, cita)
                             },
                             onReagendarVencida = { editar = it },   // abre el modal de fecha/hora
-                            onAgendarDerivacion = { creandoCita = true },
+                            // Agendar la evaluación de la derivación: form pre-llenado con el
+                            // paciente + tipo Evaluación + especialidad de destino. El profesional
+                            // queda opcional (en rayos X puede no haber uno propio). Marca procesada.
+                            onAgendarDerivacion = { d ->
+                                vm.marcarDerivacion(d.id)
+                                prefillEval = PrefillCita(
+                                    tipo = "Evaluación",
+                                    pacienteId = d.pacienteId,
+                                    pacienteNombre = d.pacienteNombre,
+                                    fecha = vm.fechaSel, hora = "09:00",
+                                    terapeutaId = null,
+                                    especialidadId = d.especialidadDestinoId,
+                                )
+                            },
                             onMarcarDerivacion = { vm.marcarDerivacion(it.id) },
                         )
                     }

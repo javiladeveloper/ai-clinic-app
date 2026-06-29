@@ -362,7 +362,10 @@ data class TerapeutaRef(val id: String, val nombre: String, val especialidadIds:
 data class TratamientoRef(val id: String, val procedimiento: String, val modalidad: String, val terapeutaId: String?)
 
 /** Una derivación pendiente (un médico derivó a un paciente; recepción decide). */
-data class Derivacion(val id: String, val pacienteId: String?, val pacienteNombre: String?, val especialidadDestino: String?)
+data class Derivacion(
+    val id: String, val pacienteId: String?, val pacienteNombre: String?,
+    val especialidadDestino: String?, val especialidadDestinoId: String?,
+)
 
 /** Una cita de mañana con su riesgo de no-show calculado. */
 data class CitaManana(val cita: CitaStaff, val riesgo: ResultadoRiesgo)
@@ -417,7 +420,7 @@ object AgendaBanners {
         val derivaciones = if (esGestor) {
             Supabase.client.postgrest["solicitudes"]
                 .select(Columns.raw(
-                    "id, paciente_id, descripcion, paciente:pacientes(nombre), " +
+                    "id, paciente_id, descripcion, especialidad_destino_id, paciente:pacientes(nombre), " +
                         "especialidad_destino:especialidades!solicitudes_especialidad_destino_id_fkey(nombre)"
                 )) {
                     filter { eq("tipo", "Derivacion"); eq("estado", "Pendiente") }
@@ -429,6 +432,7 @@ object AgendaBanners {
                         pacienteId = it.str("paciente_id"),
                         pacienteNombre = it.nested("paciente")?.str("nombre"),
                         especialidadDestino = it.nested("especialidad_destino")?.str("nombre"),
+                        especialidadDestinoId = it.str("especialidad_destino_id"),
                     )
                 }
         } else emptyList()

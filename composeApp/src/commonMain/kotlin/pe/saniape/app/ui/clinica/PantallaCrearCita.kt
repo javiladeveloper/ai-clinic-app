@@ -85,6 +85,7 @@ data class PrefillCita(
     val hora: String,
     val terapeutaId: String?,
     val citaOrigenId: String? = null,
+    val especialidadId: String? = null,   // pre-seleccionar especialidad (p.ej. derivación destino)
 )
 
 /**
@@ -168,10 +169,12 @@ fun PantallaCrearCita(
                 }
                 val ter = pf.terapeutaId?.let { id -> terapeutas.find { it.id == id } }
                 terapeuta = ter
-                // Auto-rellenar la especialidad del profesional prefijado (si tiene una sola).
-                ter?.especialidadIds?.singleOrNull()?.let { espId ->
-                    especialidad = especialidadesClinica.find { it.id == espId }
-                }
+                // Especialidad: la explícita del prefill (p.ej. derivación destino) tiene prioridad;
+                // si no, la del profesional prefijado (si tiene una sola). El profesional queda
+                // OPCIONAL: en áreas como rayos X puede no haber profesional propio (lo hace el
+                // mismo médico) → no se fuerza, recepción/el médico lo asigna si aplica.
+                especialidad = pf.especialidadId?.let { espId -> especialidadesClinica.find { it.id == espId } }
+                    ?: ter?.especialidadIds?.singleOrNull()?.let { espId -> especialidadesClinica.find { it.id == espId } }
             }
         } catch (_: Exception) {}
     }
