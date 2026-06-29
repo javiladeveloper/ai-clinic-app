@@ -7,14 +7,18 @@ import io.github.jan.supabase.postgrest.query.Order
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 import pe.saniape.app.data.Supabase
 import pe.saniape.app.data.crearHttpClient
 
@@ -142,10 +146,21 @@ data class PacienteStaff(
     val estado: String?,
     val flag: String?,          // verde / amarillo / rojo (semáforo)
     val tratamientos: List<TratamientoPaciente>,
+    // Datos clínicos (para la pestaña Resumen).
+    val talla: Int? = null,
+    val peso: Double? = null,
+    val fechaIngreso: String? = null,
+    val alergias: String? = null,
+    val medicacionActual: String? = null,
+    val antecedentes: String? = null,
 ) {
     /** Tratamientos en curso (Activo). */
     val tratamientosActivos: List<TratamientoPaciente>
         get() = tratamientos.filter { it.estado == "Activo" }
+
+    /** IMC calculado (si hay talla y peso). */
+    val imc: Double?
+        get() = if (talla != null && talla > 0 && peso != null) peso / ((talla / 100.0) * (talla / 100.0)) else null
 }
 
 /**
@@ -184,6 +199,7 @@ object PacientesRepo {
 
     private const val SELECT = """
         id, nombre, dni, edad, telefono, ocupacion, diagnostico, estado, flag,
+        talla, peso, fecha_ingreso, alergias, medicacion_actual, antecedentes,
         tratamientos:tratamientos(
             id, modalidad, estado, estado_pago, total_sesiones, sesiones_completadas,
             precio_paquete, precio_por_sesion, precio_acordado, terapeuta_id,
@@ -657,6 +673,66 @@ object PacientesRepo {
             estado = o.str("estado"),
             flag = o.str("flag"),
             tratamientos = trats,
+            talla = o.int("talla"),
+            peso = o.dbl("peso"),
+            fechaIngreso = o.str("fecha_ingreso"),
+            alergias = o.str("alergias"),
+            medicacionActual = o.str("medicacion_actual"),
+            antecedentes = o.str("antecedentes"),
         )
     }
+
+    /**
+     * Resumen clínico con IA (plan Plus). Llama a /api/ai/resumen (acepta Bearer) y devuelve
+     * el texto completo. Devuelve null si la IA no está disponible o no hay plan.
+     * (La web hace streaming; aquí leemos el texto completo, más simple para móvil.)
+     */
+    suspend fun resumenIA(paciente: PacienteStaff): String? {
+        return try {
+            val tk = token() ?: return null
+            val cuerpo = buildJsonObject {
+                putJsonObject("paciente") {
+                    put("nombre", paciente.nombre)
+                    paciente.edad?.let { put("edad", it) }
+                    paciente.diagnostico?.let { put("diagnostico", it) }
+                    paciente.alergias?.let { put("alergias", it) }
+                    paciente.medicacionActual?.let { put("medicacion_actual", it) }
+                    paciente.antecedentes?.let { put("antecedentes", it) }
+                    putJsonArray("tratamientos") {
+                        paciente.tratamientos.forEach { t ->
+                            add(buildJsonObject {
+                                put("modalidad", t.modalidad ?: "")
+                                put("estado", t.estado ?: "")
+                                put("total_sesiones", t.totalSesiones)
+                                put("sesiones_completadas", t.sesionesCompletadas)
+                                putJsonObject("procedimiento") { put("nombre", t.procedimiento ?: "") }
+                                putJsonObject("terapeuta") { put("nombre", t.terapeutaNombre ?: "") }
+                            })
+                        }
+                    }
+                }
+            }
+            val resp = http.post("${Supabase.SITE_URL}/api/ai/resumen") {
+                header("Authorization", "Bearer $tk")
+                contentType(ContentType.Application.Json)
+                setBody(cuerpo.toString())
+            }
+            val texto = resp.bodyAsText()
+            if (resp.status != HttpStatusCode.OK) texto.ifBlank { "⚠ La IA no está disponible." } else texto
+        } catch (e: Exception) { null }
+    }
+
+    /** Edita los datos clínicos del paciente (diagnóstico/alergias/medicación/antecedentes). */
+    suspend fun editarDatosClinicos(
+        pacienteId: String, diagnostico: String?, alergias: String?,
+        medicacionActual: String?, antecedentes: String?,
+    ): Boolean = try {
+        Supabase.client.postgrest["pacientes"].update({
+            set("diagnostico", diagnostico)
+            set("alergias", alergias)
+            set("medicacion_actual", medicacionActual)
+            set("antecedentes", antecedentes)
+        }) { filter { eq("id", pacienteId) } }
+        true
+    } catch (e: Exception) { false }
 }

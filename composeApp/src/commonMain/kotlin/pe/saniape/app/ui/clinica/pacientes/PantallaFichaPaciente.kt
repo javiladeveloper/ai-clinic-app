@@ -82,6 +82,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     // Subida de documento/resultado: categoria "Documento" (suelto) o "Resultado" (de una solicitud).
     var subirDoc by remember { mutableStateOf<SubidaDoc?>(null) }
     var subiendo by remember { mutableStateOf(false) }
+    var editarClinico by remember { mutableStateOf(false) }
     LaunchedEffect(pacienteInicial.id, recargarToken) {
         paciente = runCatching { PacientesRepo.porId(pacienteInicial.id) }.getOrNull() ?: pacienteInicial
         hitos = runCatching { PacientesRepo.hitosDe(pacienteInicial.id) }.getOrNull()
@@ -306,7 +307,10 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     "pagos" -> ContenidoPagos(
                         ctx = ctx, paciente = paciente, recargaToken = recargarToken, onCambio = { recargar() },
                     )
-                    "resumen" -> ContenidoResumen(paciente)
+                    "resumen" -> ContenidoResumen(
+                        ctx = ctx, paciente = paciente, acciones = acciones,
+                        onEditarClinico = { editarClinico = true },
+                    )
                 }
 
                 Spacer(Modifier.height(Sania.dim.xxl))
@@ -393,6 +397,20 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 editarCitaHito = null
                 scope.launch {
                     PacientesRepo.editarCitaHito(cita.id, fecha, hora, notas); recargar()
+                }
+            },
+        )
+    }
+
+    // Modal "Editar datos clínicos" (diagnóstico/alergias/medicación/antecedentes).
+    if (editarClinico) {
+        ModalDatosClinicos(
+            paciente = paciente,
+            onCancelar = { editarClinico = false },
+            onGuardar = { diag, alergias, medic, antec ->
+                editarClinico = false
+                scope.launch {
+                    PacientesRepo.editarDatosClinicos(paciente.id, diag, alergias, medic, antec); recargar()
                 }
             },
         )
@@ -1094,27 +1112,168 @@ private fun CifraPago(label: String, valor: String, color: androidx.compose.ui.g
     }
 }
 
-/** Pestaña Resumen: datos clínicos del paciente (lectura). La IA se agrega luego. */
+/**
+ * Pestaña Resumen (espeja la web): info card (datos + IMC), datos clínicos importantes
+ * (editables), Resumen IA (plan Plus, streaming→texto completo) e Historia clínica (PDF).
+ */
 @Composable
-private fun ContenidoResumen(paciente: PacienteStaff) {
+private fun ContenidoResumen(
+    ctx: ContextoStaff, paciente: PacienteStaff, acciones: pe.saniape.app.ui.AccionesNativas,
+    onEditarClinico: () -> Unit,
+) {
     val c = Sania.colors
-    Column {
-        paciente.diagnostico?.takeIf { it.isNotBlank() }?.let {
-            Etiqueta("Motivo / Diagnóstico")
-            Text(it, color = c.texto, fontSize = Sania.txt.cuerpo)
-            Spacer(Modifier.height(Sania.dim.md))
+    val scope = rememberCoroutineScope()
+    var aiTexto by remember { mutableStateOf<String?>(null) }
+    var aiCargando by remember { mutableStateOf(false) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Info card: datos del paciente + IMC
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(14.dp),
+        ) {
+            Etiqueta("Datos del paciente")
+            val imcTxt = paciente.imc?.let { "${formatoMonto(it)}" }
+            val datos = listOfNotNull(
+                paciente.dni?.let { "DNI" to it },
+                paciente.edad?.let { "Edad" to "$it años" },
+                paciente.ocupacion?.let { "Ocupación" to it },
+                paciente.talla?.let { "Talla" to "$it cm" },
+                paciente.peso?.let { "Peso" to "${formatoMonto(it)} kg" },
+                imcTxt?.let { "IMC" to it },
+                paciente.fechaIngreso?.let { "Ingreso" to it },
+            )
+            if (datos.isEmpty()) Text("Sin datos adicionales.", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+            datos.forEach { (k, v) ->
+                Row(Modifier.padding(vertical = 1.dp)) {
+                    Text("$k:", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.width(80.dp))
+                    Text(v, color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                }
+            }
         }
-        Etiqueta("Datos")
-        val datos = listOfNotNull(
-            paciente.dni?.let { "DNI: $it" },
-            paciente.edad?.let { "Edad: $it" },
-            paciente.ocupacion?.let { "Ocupación: $it" },
-        )
-        if (datos.isEmpty()) Text("Sin datos adicionales.", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
-        else datos.forEach { Text(it, color = c.texto, fontSize = Sania.txt.cuerpo, modifier = Modifier.padding(vertical = 1.dp)) }
-        Spacer(Modifier.height(Sania.dim.md))
-        Text("✨ El resumen clínico con IA estará disponible próximamente.",
-            color = c.textoSuave, fontSize = Sania.txt.pequeno)
+
+        // Datos clínicos importantes (editables)
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(14.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                Text("IMPORTANTE PARA EL TRATAMIENTO", color = c.textoSuave, fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp, modifier = Modifier.weight(1f))
+                Text("✏ Editar", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable { onEditarClinico() })
+            }
+            FilaClinica("Diagnóstico", paciente.diagnostico)
+            FilaClinica("Alergias", paciente.alergias)
+            FilaClinica("Medicación", paciente.medicacionActual)
+            FilaClinica("Antecedentes", paciente.antecedentes)
+        }
+
+        // Resumen IA (plan Plus)
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(14.dp),
+        ) {
+            Text("✨ RESUMEN CLÍNICO CON IA", color = c.textoSuave, fontSize = 10.sp,
+                fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+            Spacer(Modifier.height(8.dp))
+            if (!ctx.can("ia")) {
+                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.chipBg).padding(12.dp)) {
+                    Text("🔒 El resumen con IA es una función del plan Plus.", color = c.textoSuave, fontSize = 11.sp)
+                }
+            } else {
+                aiTexto?.let {
+                    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.chipBg).padding(12.dp)) {
+                        Text(it, color = c.texto, fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                Box(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .background(if (aiCargando) c.borde else c.navy)
+                        .clickable(enabled = !aiCargando) {
+                            scope.launch {
+                                aiCargando = true
+                                aiTexto = PacientesRepo.resumenIA(paciente)
+                                    ?: "⚠ El asistente de IA no está disponible. Intenta más tarde."
+                                aiCargando = false
+                            }
+                        }.padding(vertical = 11.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(if (aiCargando) "Generando…" else if (aiTexto != null) "↺ Regenerar análisis" else "Generar análisis médico",
+                        color = c.sobreNavy, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+            }
+        }
+
+        // Historia clínica (PDF imprimible — se abre en el navegador)
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(14.dp),
+        ) {
+            Text("📂 HISTORIA CLÍNICA", color = c.textoSuave, fontSize = 10.sp,
+                fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+            Text("Documento con antecedentes, tratamientos, sesiones y citas — listo para imprimir o guardar como PDF.",
+                color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.navy)
+                    .clickable { acciones.abrirUrl("${pe.saniape.app.data.Supabase.SITE_URL}/pacientes/${paciente.id}/historia") }
+                    .padding(vertical = 11.dp),
+                contentAlignment = Alignment.Center,
+            ) { Text("Ver historia (PDF)", color = c.sobreNavy, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+        }
     }
+}
+
+@Composable
+private fun FilaClinica(etq: String, valor: String?) {
+    val c = Sania.colors
+    Row(Modifier.padding(vertical = 2.dp)) {
+        Text("$etq:", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.width(90.dp))
+        Text(valor?.takeIf { it.isNotBlank() } ?: "—",
+            color = if (valor.isNullOrBlank()) c.textoSuave else c.texto, fontSize = 12.sp,
+            fontWeight = if (valor.isNullOrBlank()) FontWeight.Normal else FontWeight.Medium)
+    }
+}
+
+/** Modal editar datos clínicos: diagnóstico, alergias, medicación, antecedentes. */
+@Composable
+private fun ModalDatosClinicos(
+    paciente: PacienteStaff,
+    onCancelar: () -> Unit,
+    onGuardar: (diag: String?, alergias: String?, medic: String?, antec: String?) -> Unit,
+) {
+    val c = Sania.colors
+    var diag by remember { mutableStateOf(paciente.diagnostico ?: "") }
+    var alergias by remember { mutableStateOf(paciente.alergias ?: "") }
+    var medic by remember { mutableStateOf(paciente.medicacionActual ?: "") }
+    var antec by remember { mutableStateOf(paciente.antecedentes ?: "") }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onCancelar,
+        title = { Text("✏ Datos clínicos", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                CampoFicha("Diagnóstico", diag, multilinea = true) { diag = it }
+                Spacer(Modifier.height(8.dp))
+                CampoFicha("Alergias", alergias, multilinea = true) { alergias = it }
+                Spacer(Modifier.height(8.dp))
+                CampoFicha("Medicación actual", medic, multilinea = true) { medic = it }
+                Spacer(Modifier.height(8.dp))
+                CampoFicha("Antecedentes", antec, multilinea = true) { antec = it }
+            }
+        },
+        confirmButton = {
+            Box(Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
+                .clickable {
+                    onGuardar(diag.trim().ifBlank { null }, alergias.trim().ifBlank { null },
+                        medic.trim().ifBlank { null }, antec.trim().ifBlank { null })
+                }.padding(horizontal = 18.dp, vertical = 10.dp)) {
+                Text("Guardar", color = c.sobreNavy, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
+        containerColor = c.superficie,
+    )
 }
 
