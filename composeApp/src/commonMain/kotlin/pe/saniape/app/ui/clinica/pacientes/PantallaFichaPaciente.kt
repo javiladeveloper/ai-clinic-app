@@ -49,6 +49,9 @@ import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.ui.theme.EstadosColor
 import pe.saniape.app.ui.theme.Sania
 
+/** Petición de subir un archivo: documento suelto o resultado de una solicitud. */
+data class SubidaDoc(val categoria: String, val solicitudId: String?)
+
 /**
  * Ficha del paciente (staff). Resumen + tratamientos con su progreso. Acciones de
  * sesiones/pagos se agregan en el siguiente paso (reusan endpoints de la web).
@@ -76,6 +79,9 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     var hitos by remember { mutableStateOf<pe.saniape.app.data.staff.HitosPaciente?>(null) }
     var saldoPendiente by remember { mutableStateOf<Double?>(null) }
     var editarCitaHito by remember { mutableStateOf<pe.saniape.app.data.staff.CitaHito?>(null) }
+    // Subida de documento/resultado: categoria "Documento" (suelto) o "Resultado" (de una solicitud).
+    var subirDoc by remember { mutableStateOf<SubidaDoc?>(null) }
+    var subiendo by remember { mutableStateOf(false) }
     LaunchedEffect(pacienteInicial.id, recargarToken) {
         paciente = runCatching { PacientesRepo.porId(pacienteInicial.id) }.getOrNull() ?: pacienteInicial
         hitos = runCatching { PacientesRepo.hitosDe(pacienteInicial.id) }.getOrNull()
@@ -84,6 +90,33 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         cargando = false
     }
     fun recargar() { recargarToken++ }
+
+    // Selector de archivo nativo para subir documentos/resultados. Al elegir: sube al
+    // bucket privado (vía endpoint) y registra el documento o lo adjunta a la solicitud.
+    val pedido = subirDoc
+    val abrirSelector = pe.saniape.app.ui.recordarSelectorArchivo { archivo ->
+        val p = pedido ?: return@recordarSelectorArchivo
+        subirDoc = null
+        scope.launch {
+            subiendo = true
+            val prefijo = if (p.categoria == "Resultado") "res" else "doc"
+            val subido = pe.saniape.app.data.staff.SolicitudesRepo.subirArchivo(
+                paciente.id, archivo.nombre, archivo.bytes, archivo.mime, prefijo,
+            )
+            if (subido != null) {
+                val (path, tipo) = subido
+                if (p.solicitudId != null) {
+                    // Adjuntar como resultado del examen (conserva la nota existente vacía aquí).
+                    pe.saniape.app.data.staff.SolicitudesRepo.registrarResultado(p.solicitudId, null, path)
+                } else {
+                    pe.saniape.app.data.staff.SolicitudesRepo.registrarDocumento(paciente.id, archivo.nombre, path, tipo)
+                }
+            }
+            subiendo = false
+            recargar()
+        }
+    }
+    LaunchedEffect(subirDoc) { if (subirDoc != null) abrirSelector() }
 
     val verContacto = ctx.esGestor && !ctx.modoClinico
     val flagColor = when (paciente.flag) {
@@ -256,8 +289,20 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         onNuevoTratamiento = { creandoTratamiento = true },
                         onEditarCita = { editarCitaHito = it },
                     )
-                    "examenes" -> Text("Exámenes y derivaciones — próximamente en la app.",
-                        color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                    "examenes" -> {
+                        if (subiendo) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                                CircularProgressIndicator(color = c.navy, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Subiendo archivo…", color = c.textoSuave, fontSize = Sania.txt.pequeno)
+                            }
+                        }
+                        ContenidoExamenes(
+                            ctx = ctx, pacienteId = paciente.id, acciones = acciones,
+                            onAbrirSubida = { categoria, solId -> subirDoc = SubidaDoc(categoria, solId) },
+                            recargaToken = recargarToken,
+                        )
+                    }
                     "pagos" -> Text("Los pagos se gestionan dentro de cada tratamiento (pestaña Atenciones).",
                         color = c.textoSuave, fontSize = Sania.txt.cuerpo)
                     "resumen" -> ContenidoResumen(paciente)
