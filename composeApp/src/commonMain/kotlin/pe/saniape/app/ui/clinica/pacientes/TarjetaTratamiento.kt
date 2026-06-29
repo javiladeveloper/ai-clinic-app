@@ -513,7 +513,7 @@ private val METODOS_PAGO = listOf("Efectivo", "Yape", "Plin", "BCP", "Transferen
 /** Sección de pagos del tratamiento: resumen + lista + registrar (reusa endpoint). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, onCambio: () -> Unit) {
+fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, onCambio: () -> Unit) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     var pagos by remember { mutableStateOf<List<pe.saniape.app.data.staff.PagoFicha>?>(null) }

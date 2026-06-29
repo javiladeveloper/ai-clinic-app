@@ -110,6 +110,9 @@ data class CitaHito(
     val notas: String?,
 )
 
+/** Resumen de pagos del paciente: totales acordado/pagado/saldo. */
+data class ResumenPagos(val acordado: Double, val pagado: Double, val saldo: Double)
+
 /** Hitos del recorrido del paciente (Consulta/Evaluación hechas, próxima cita, última atención). */
 data class HitosPaciente(
     val consultaDone: Boolean,
@@ -531,13 +534,12 @@ object PacientesRepo {
     }
 
     /**
-     * Saldo pendiente GENERAL del paciente (todos sus tratamientos no cancelados de la clínica).
-     * Regla idéntica a la web: Σ max(acordado − pagado, 0). El pagado se suma de pagos_tratamiento.
+     * Resumen de pagos GENERAL del paciente (todos sus tratamientos no cancelados).
+     * Regla idéntica a la web: acordado/pagado totales y saldo = Σ max(acordado − pagado, 0).
      */
-    suspend fun saldoPendienteDe(tratamientos: List<TratamientoPaciente>): Double {
+    suspend fun resumenPagosDe(tratamientos: List<TratamientoPaciente>): ResumenPagos {
         val facturables = tratamientos.filter { it.estado != "Cancelado" }
-        if (facturables.isEmpty()) return 0.0
-        // Pagos de esos tratamientos en una sola query (suma por tratamiento_id).
+        if (facturables.isEmpty()) return ResumenPagos(0.0, 0.0, 0.0)
         val ids = facturables.map { it.id }
         val pagados = runCatching {
             Supabase.client.postgrest["pagos_tratamiento"]
@@ -548,11 +550,15 @@ object PacientesRepo {
         }.getOrDefault(emptyList())
         val pagadoPorTrat = pagados.groupBy { it.str("tratamiento_id") }
             .mapValues { (_, lista) -> lista.sumOf { it.dbl("monto") ?: 0.0 } }
-        return facturables.sumOf { t ->
-            val pagado = pagadoPorTrat[t.id] ?: 0.0
-            (t.montoAcordado - pagado).coerceAtLeast(0.0)
-        }
+        val acordado = facturables.sumOf { it.montoAcordado }
+        val pagado = facturables.sumOf { pagadoPorTrat[it.id] ?: 0.0 }
+        val saldo = facturables.sumOf { t -> (t.montoAcordado - (pagadoPorTrat[t.id] ?: 0.0)).coerceAtLeast(0.0) }
+        return ResumenPagos(acordado, pagado, saldo)
     }
+
+    /** Solo el saldo (atajo para la stat card). */
+    suspend fun saldoPendienteDe(tratamientos: List<TratamientoPaciente>): Double =
+        resumenPagosDe(tratamientos).saldo
 
     /** Hitos del recorrido del paciente (para el FlujoGuiado y las stat cards de la ficha). */
     suspend fun hitosDe(pacienteId: String): HitosPaciente {
