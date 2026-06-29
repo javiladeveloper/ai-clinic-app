@@ -49,13 +49,14 @@ import pe.saniape.app.ui.theme.Sania
 @Composable
 fun ContenidoExamenes(
     ctx: ContextoStaff,
-    pacienteId: String,
+    paciente: pe.saniape.app.data.staff.PacienteStaff,
     acciones: AccionesNativas,
     onAbrirSubida: (categoria: String, solicitudId: String?) -> Unit,
     recargaToken: Int,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
+    val pacienteId = paciente.id
     if (!ctx.puede("sesiones")) {
         Text("No tienes acceso a esta sección.", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
         return
@@ -158,8 +159,15 @@ fun ContenidoExamenes(
 
     // Modal: nueva solicitud (examen o derivación)
     nuevo?.let { tipo ->
+        // Especialidad actual del paciente (del tratamiento activo, o la del profesional vinculado).
+        val espActualNombre = paciente.tratamientos.firstOrNull { it.estado == "Activo" }?.especialidadNombre
+        val espActual = especialidades.firstOrNull { it.nombre == espActualNombre }
+        // En derivación NO se muestra la especialidad actual (se deriva a OTRA).
+        val destinos = especialidades.filter { it.id != espActual?.id }
         ModalNuevaSolicitud(
-            tipo = tipo, especialidades = especialidades.filter { it.usaSesiones || true },
+            tipo = tipo,
+            especialidadActual = espActual?.nombre ?: espActualNombre,
+            destinos = destinos,
             onCancelar = { nuevo = null },
             onGuardar = { desc, espId ->
                 nuevo = null
@@ -286,61 +294,85 @@ private fun FilaSolicitud(
 
 @Composable
 private fun ModalNuevaSolicitud(
-    tipo: String, especialidades: List<EspecialidadClinica>,
+    tipo: String, especialidadActual: String?, destinos: List<EspecialidadClinica>,
     onCancelar: () -> Unit, onGuardar: (descripcion: String, especialidadId: String?) -> Unit,
 ) {
     val c = Sania.colors
     val esExamen = tipo == "Examen"
     var descripcion by remember { mutableStateOf("") }
     var especialidad by remember { mutableStateOf<EspecialidadClinica?>(null) }
-    var abierto by remember { mutableStateOf(false) }
-    AlertDialog(
-        onDismissRequest = onCancelar,
-        title = { Text(if (esExamen) "🔬 Solicitar examen" else "↗ Derivar paciente", fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                Text(if (esExamen) "EXAMEN SOLICITADO" else "MOTIVO DE LA DERIVACIÓN",
-                    color = c.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 5.dp))
-                OutlinedTextField(value = descripcion, onValueChange = { descripcion = it },
-                    placeholder = { Text(if (esExamen) "Ej. Ecografía abdominal…" else "Ej. Evaluar por cardiología", color = c.textoSuave) },
-                    minLines = 2, modifier = Modifier.fillMaxWidth())
-                if (!esExamen) {
-                    Spacer(Modifier.height(10.dp))
-                    Text("ESPECIALIDAD DE DESTINO", color = c.textoSuave, fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 5.dp))
-                    Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                            .clickable { abierto = !abierto }.padding(horizontal = 12.dp, vertical = 11.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+    val valido = descripcion.isNotBlank() && (esExamen || especialidad != null)
+
+    DialogoForm(
+        titulo = if (esExamen) "Solicitar examen" else "Derivar paciente",
+        subtitulo = if (esExamen) "Examen externo (lab/imágenes)" else "Pasar a otra especialidad de la clínica",
+        textoAccion = if (esExamen) "Solicitar examen" else "Derivar",
+        accionHabilitada = valido,
+        onCancelar = onCancelar,
+        onAccion = { onGuardar(descripcion.trim(), especialidad?.id) },
+    ) {
+        TarjetaForm(titulo = if (esExamen) "Examen" else "Derivación", icono = if (esExamen) "🔬" else "↗") {
+            EtqForm(if (esExamen) "Examen solicitado" else "Motivo de la derivación")
+            OutlinedTextField(value = descripcion, onValueChange = { descripcion = it },
+                placeholder = { Text(if (esExamen) "Ej. Ecografía abdominal…" else "Ej. Evaluar por cardiología", color = c.textoSuave) },
+                minLines = 2, modifier = Modifier.fillMaxWidth())
+
+            if (!esExamen) {
+                Spacer(Modifier.height(12.dp))
+                EtqForm("Derivar de → a")
+                // Cuadro visual: [especialidad actual]  →  [destino a escoger]
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Origen (especialidad actual) — informativo, no editable
+                    Box(
+                        Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                            .background(c.chipBg).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                            .padding(horizontal = 10.dp, vertical = 11.dp),
                     ) {
-                        Text(especialidad?.nombre ?: "Seleccionar…", color = c.texto, fontSize = Sania.txt.cuerpo)
-                        Text("▾", color = c.navy, fontSize = 12.sp)
+                        Column {
+                            Text("ACTUAL", color = c.textoSuave, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            Text(especialidadActual ?: "—", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        }
                     }
-                    if (abierto) {
-                        Column(Modifier.fillMaxWidth().padding(top = 4.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
-                            .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))) {
-                            especialidades.forEach { e ->
-                                Text(e.nombre, color = c.texto, fontSize = Sania.txt.cuerpo,
-                                    modifier = Modifier.fillMaxWidth().clickable { especialidad = e; abierto = false }
-                                        .padding(horizontal = 12.dp, vertical = 11.dp))
+                    Text("→", color = c.navy, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp))
+                    // Destino (a escoger) — resaltado
+                    var abierto by remember { mutableStateOf(false) }
+                    Box(Modifier.weight(1f)) {
+                        Column {
+                            Box(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                    .background(if (especialidad != null) c.navy.copy(alpha = 0.10f) else c.superficie)
+                                    .border(if (especialidad != null) 2.dp else 1.dp,
+                                        if (especialidad != null) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                    .clickable { abierto = !abierto }.padding(horizontal = 10.dp, vertical = 11.dp),
+                            ) {
+                                Column {
+                                    Text("DESTINO", color = c.navy, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                    Text(especialidad?.nombre ?: "Elegir…",
+                                        color = if (especialidad != null) c.navy else c.textoSuave,
+                                        fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                }
+                            }
+                            if (abierto) {
+                                Column(Modifier.fillMaxWidth().padding(top = 4.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                    .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))) {
+                                    if (destinos.isEmpty()) {
+                                        Text("(No hay otras especialidades)", color = c.textoSuave, fontSize = 11.sp,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp))
+                                    }
+                                    destinos.forEach { e ->
+                                        Text(e.nombre, color = c.texto, fontSize = Sania.txt.cuerpo,
+                                            modifier = Modifier.fillMaxWidth().clickable { especialidad = e; abierto = false }
+                                                .padding(horizontal = 10.dp, vertical = 10.dp))
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
-        },
-        confirmButton = {
-            val valido = descripcion.isNotBlank() && (esExamen || especialidad != null)
-            Box(Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(if (valido) c.navy else c.borde)
-                .clickable(enabled = valido) { onGuardar(descripcion.trim(), especialidad?.id) }
-                .padding(horizontal = 18.dp, vertical = 10.dp)) {
-                Text("Guardar", color = if (valido) c.sobreNavy else c.textoSuave, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
-        containerColor = c.superficie,
-    )
+        }
+    }
 }
 
 @Composable
@@ -350,34 +382,26 @@ private fun ModalResultado(
 ) {
     val c = Sania.colors
     var nota by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onCancelar,
-        title = { Text("📋 Resultado del examen", fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                Text(solicitud.descripcion, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 8.dp))
-                Text("CONCLUSIÓN / NOTA", color = c.textoSuave, fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 5.dp))
-                OutlinedTextField(value = nota, onValueChange = { nota = it },
-                    placeholder = { Text("Ej. Hígado normal, sin lesiones…", color = c.textoSuave) },
-                    minLines = 3, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-                Box(Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                    .clickable { onSubirArchivo() }.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    Text("📎 Adjuntar archivo (PDF/imagen)", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-                Text("Puedes guardar solo la nota; el archivo es opcional.", color = c.textoSuave,
-                    fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+    DialogoForm(
+        titulo = "Resultado del examen",
+        subtitulo = solicitud.descripcion,
+        textoAccion = "Guardar resultado",
+        onCancelar = onCancelar,
+        onAccion = { onGuardar(nota.trim().ifBlank { null }) },
+    ) {
+        TarjetaForm(titulo = "Resultado", icono = "📋") {
+            EtqForm("Conclusión / nota")
+            OutlinedTextField(value = nota, onValueChange = { nota = it },
+                placeholder = { Text("Ej. Hígado normal, sin lesiones…", color = c.textoSuave) },
+                minLines = 3, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                .clickable { onSubirArchivo() }.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                Text("📎 Adjuntar archivo (PDF/imagen)", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
-        },
-        confirmButton = {
-            Box(Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
-                .clickable { onGuardar(nota.trim().ifBlank { null }) }.padding(horizontal = 18.dp, vertical = 10.dp)) {
-                Text("Guardar resultado", color = c.sobreNavy, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
-        containerColor = c.superficie,
-    )
+            Text("Puedes guardar solo la nota; el archivo es opcional.", color = c.textoSuave,
+                fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+        }
+    }
 }

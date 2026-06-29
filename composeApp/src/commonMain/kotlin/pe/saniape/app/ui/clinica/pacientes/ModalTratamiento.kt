@@ -348,34 +348,30 @@ fun ModalAmpliarTratamiento(
     var sesiones by remember { mutableStateOf("") }
     var monto by remember { mutableStateOf("") }
     var nota by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onCancelar,
-        title = { Text("➕ Ampliar tratamiento", fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                Text("Quedará en ${t.totalSesiones} + las que agregues.", color = c.textoSuave, fontSize = 11.sp,
-                    modifier = Modifier.padding(bottom = 8.dp))
-                Etq("Sesiones adicionales"); CampoNum(sesiones) { sesiones = it }
-                Spacer(Modifier.height(8.dp))
-                Etq("Monto adicional (S/) — opcional"); CampoNum(monto) { monto = it }
-                Spacer(Modifier.height(8.dp))
-                Etq("Motivo / acuerdo — opcional")
-                OutlinedTextField(value = nota, onValueChange = { nota = it }, minLines = 2,
-                    modifier = Modifier.fillMaxWidth())
-            }
+    val valido = (sesiones.toIntOrNull() ?: 0) > 0
+    DialogoForm(
+        titulo = "Ampliar tratamiento",
+        subtitulo = t.procedimiento ?: "Tratamiento",
+        textoAccion = "Ampliar",
+        accionHabilitada = valido,
+        onCancelar = onCancelar,
+        onAccion = {
+            val n = sesiones.toIntOrNull() ?: 0
+            if (n > 0) onConfirmar(n, monto.toDoubleOrNull() ?: 0.0, nota.trim().ifBlank { null })
         },
-        confirmButton = {
-            Box(Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
-                .clickable {
-                    val n = sesiones.toIntOrNull() ?: 0
-                    if (n > 0) onConfirmar(n, monto.toDoubleOrNull() ?: 0.0, nota.trim().ifBlank { null })
-                }.padding(horizontal = 18.dp, vertical = 10.dp)) {
-                Text("Ampliar", color = c.sobreNavy, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
-        containerColor = c.superficie,
-    )
+    ) {
+        TarjetaForm(titulo = "Sesiones adicionales", icono = "➕") {
+            Text("Quedará en ${t.totalSesiones} + las que agregues.", color = c.textoSuave, fontSize = 11.sp,
+                modifier = Modifier.padding(bottom = 10.dp))
+            EtqForm("Sesiones adicionales"); CampoNum(sesiones) { sesiones = it }
+            Spacer(Modifier.height(10.dp))
+            EtqForm("Monto adicional (S/) — opcional"); CampoNum(monto) { monto = it }
+            Spacer(Modifier.height(10.dp))
+            EtqForm("Motivo / acuerdo — opcional")
+            OutlinedTextField(value = nota, onValueChange = { nota = it }, minLines = 2,
+                modifier = Modifier.fillMaxWidth())
+        }
+    }
 }
 
 /** Editar tratamiento: N° sesiones + precios (según modalidad). */

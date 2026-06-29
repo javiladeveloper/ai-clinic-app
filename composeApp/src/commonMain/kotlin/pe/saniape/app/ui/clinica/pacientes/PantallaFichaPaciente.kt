@@ -299,7 +299,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                             }
                         }
                         ContenidoExamenes(
-                            ctx = ctx, pacienteId = paciente.id, acciones = acciones,
+                            ctx = ctx, paciente = paciente, acciones = acciones,
                             onAbrirSubida = { categoria, solId -> subirDoc = SubidaDoc(categoria, solId) },
                             recargaToken = recargarToken,
                         )
@@ -472,64 +472,49 @@ private fun ModalCompletarSesion(
     var mejorias by remember { mutableStateOf(ses.mejorias ?: "") }
     val muestraMejorias = ses.numero > 1
 
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onCancelar,
-        title = {
-            Text("✓ Completar sesión #${ses.numero}", fontWeight = FontWeight.Bold)
-        },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                // Referencia: qué se hizo la sesión anterior (evolución).
-                if (muestraMejorias && anterior != null &&
-                    (!anterior.notas.isNullOrBlank() || !anterior.mejorias.isNullOrBlank())) {
-                    Column(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                            .background(c.chipBg).padding(10.dp),
-                    ) {
-                        Text("Sesión anterior (#${anterior.numero})", color = c.textoSuave,
-                            fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        anterior.notas?.takeIf { it.isNotBlank() }?.let {
-                            Text(it, color = c.texto, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp))
-                        }
-                        anterior.mejorias?.takeIf { it.isNotBlank() }?.let {
-                            Text("↗ $it", color = c.ok, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
-                        }
-                    }
-                    Spacer(Modifier.height(12.dp))
+    DialogoForm(
+        titulo = "Completar sesión #${ses.numero}",
+        subtitulo = "Registra lo realizado en la sesión",
+        textoAccion = "✓ Completar",
+        onCancelar = onCancelar,
+        onAccion = { onConfirmar(tecnicas.trim().ifBlank { null }, mejorias.trim().ifBlank { null }) },
+    ) {
+        // Referencia: qué se hizo la sesión anterior (evolución).
+        if (muestraMejorias && anterior != null &&
+            (!anterior.notas.isNullOrBlank() || !anterior.mejorias.isNullOrBlank())) {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .background(c.chipBg).padding(10.dp),
+            ) {
+                Text("Sesión anterior (#${anterior.numero})", color = c.textoSuave,
+                    fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                anterior.notas?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, color = c.texto, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp))
                 }
-
-                Text("Procedimientos realizados", color = c.textoSuave, fontSize = Sania.txt.mini,
-                    fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
-                pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
-                    value = tecnicas, onChange = { tecnicas = it },
-                )
-
-                if (muestraMejorias) {
-                    Spacer(Modifier.height(14.dp))
-                    Text("Mejorías / evolución del paciente", color = c.textoSuave, fontSize = Sania.txt.mini,
-                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
-                    androidx.compose.material3.OutlinedTextField(
-                        value = mejorias, onValueChange = { mejorias = it },
-                        placeholder = { Text("Ej: Menos dolor al caminar, mayor rango…", color = c.textoSuave) },
-                        modifier = Modifier.fillMaxWidth(), minLines = 2,
-                    )
+                anterior.mejorias?.takeIf { it.isNotBlank() }?.let {
+                    Text("↗ $it", color = c.ok, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
                 }
             }
-        },
-        confirmButton = {
-            Box(
-                Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
-                    .clickable {
-                        onConfirmar(tecnicas.trim().ifBlank { null }, mejorias.trim().ifBlank { null })
-                    }
-                    .padding(horizontal = 20.dp, vertical = 11.dp),
-            ) { Text("✓ Completar", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
-        },
-        dismissButton = {
-            androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) }
-        },
-        containerColor = c.superficie,
-    )
+            Spacer(Modifier.height(12.dp))
+        }
+
+        TarjetaForm(titulo = "Procedimientos realizados", icono = "🩹") {
+            pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
+                value = tecnicas, onChange = { tecnicas = it },
+            )
+        }
+
+        if (muestraMejorias) {
+            Spacer(Modifier.height(12.dp))
+            TarjetaForm(titulo = "Mejorías / evolución", icono = "↗") {
+                androidx.compose.material3.OutlinedTextField(
+                    value = mejorias, onValueChange = { mejorias = it },
+                    placeholder = { Text("Ej: Menos dolor al caminar, mayor rango…", color = c.textoSuave) },
+                    modifier = Modifier.fillMaxWidth(), minLines = 2,
+                )
+            }
+        }
+    }
 }
 
 /**
@@ -616,115 +601,96 @@ private fun ModalCrearSesion(
         ) { Box(Modifier.fillMaxWidth().padding(Sania.dim.lg), Alignment.Center) { androidx.compose.material3.TimePicker(state = estadoP) } }
     }
 
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onCancelar,
-        title = { Text("📅 Nueva sesión #$numeroInfo", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                // Fecha + Hora (pickers) + Duración
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Column(Modifier.weight(1f)) {
-                        EtqMini("Fecha")
-                        SelectorBoxFicha(fecha) { mostrarFecha = true }
-                    }
-                    Column(Modifier.weight(1f)) {
-                        EtqMini("Hora")
-                        SelectorBoxFicha(hora12(hora)) { mostrarHora = true }
-                    }
+    DialogoForm(
+        titulo = "Nueva sesión #$numeroInfo",
+        subtitulo = if (esPaquete) "Incluida en el paquete" else "Sesión suelta",
+        textoAccion = "Agendar sesión",
+        accionHabilitada = fecha.isNotBlank() && hora.isNotBlank(),
+        onCancelar = onCancelar,
+        onAccion = {
+            onGuardar(
+                fecha.trim(), hora.trim(), duracion, terapeutaId, estado,
+                if (esPaquete) null else costo.toDoubleOrNull(),
+                notas.trim().ifBlank { null },
+            )
+        },
+    ) {
+        TarjetaForm(titulo = "Programación", icono = "📅") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f)) { EtqForm("Fecha"); SelectorBoxFicha(fecha) { mostrarFecha = true } }
+                Column(Modifier.weight(1f)) { EtqForm("Hora"); SelectorBoxFicha(hora12(hora)) { mostrarHora = true } }
+            }
+            Spacer(Modifier.height(10.dp))
+            EtqForm("Duración")
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(30, 45, 60).forEach { d ->
+                    val activo = duracion == d
+                    Box(
+                        Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                            .background(if (activo) c.navy else c.superficie)
+                            .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                            .clickable { duracion = d }.padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { Text("$d min", color = if (activo) c.sobreNavy else c.texto, fontSize = 12.sp,
+                        fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal) }
                 }
+            }
+            if (fechaPasada) {
                 Spacer(Modifier.height(8.dp))
-                EtqMini("Duración")
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf(30, 45, 60).forEach { d ->
-                        val activo = duracion == d
-                        Box(
-                            Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
-                                .background(if (activo) c.navy else c.superficie)
-                                .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                                .clickable { duracion = d }.padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center,
-                        ) { Text("$d min", color = if (activo) c.sobreNavy else c.texto, fontSize = 12.sp,
-                            fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal) }
-                    }
+                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .background(c.pendBg).padding(10.dp)) {
+                    Text("⚠ La fecha elegida ya pasó. Si la sesión ya ocurrió, está bien registrarla.",
+                        color = c.pend, fontSize = 11.sp)
                 }
-                if (fechaPasada) {
-                    Spacer(Modifier.height(8.dp))
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        TarjetaForm(titulo = "Atención", icono = "🩺") {
+            EtqForm("Profesional")
+            if (miTerapeutaId != null) {
+                SelectorBoxFicha("${colegas.find { it.id == miTerapeutaId }?.nombre ?: "Tú"} (tú)", bloqueado = true) {}
+            } else {
+                SelectorListaFicha(colegas, colegas.find { it.id == terapeutaId },
+                    { it.nombre }, "Sin asignar") { terapeutaId = it.id }
+            }
+            Spacer(Modifier.height(10.dp))
+            EtqForm("Estado")
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("Planificada", "En progreso", "Completada").forEach { e ->
+                    val activo = estado == e
+                    Box(
+                        Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                            .background(if (activo) c.navy else c.superficie)
+                            .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                            .clickable { estado = e }.padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { Text(e, color = if (activo) c.sobreNavy else c.texto, fontSize = 11.sp,
+                        fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal, maxLines = 1) }
+                }
+            }
+            if (puedePagos) {
+                Spacer(Modifier.height(10.dp))
+                if (esPaquete) {
                     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                        .background(c.pendBg).padding(10.dp)) {
-                        Text("⚠ La fecha elegida ya pasó. Si la sesión ya ocurrió, está bien registrarla.",
-                            color = c.pend, fontSize = 11.sp)
-                    }
-                }
-
-                Spacer(Modifier.height(10.dp))
-                // Profesional (colegas de la misma especialidad; fijo si vinculado)
-                EtqMini("Profesional")
-                if (miTerapeutaId != null) {
-                    SelectorBoxFicha("${colegas.find { it.id == miTerapeutaId }?.nombre ?: "Tú"} (tú)", bloqueado = true) {}
-                } else {
-                    SelectorListaFicha(colegas, colegas.find { it.id == terapeutaId },
-                        { it.nombre }, "Sin asignar") { terapeutaId = it.id }
-                }
-
-                Spacer(Modifier.height(10.dp))
-                // Estado
-                EtqMini("Estado")
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("Planificada", "En progreso", "Completada").forEach { e ->
-                        val activo = estado == e
-                        Box(
-                            Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
-                                .background(if (activo) c.navy else c.superficie)
-                                .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                                .clickable { estado = e }.padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center,
-                        ) { Text(e, color = if (activo) c.sobreNavy else c.texto, fontSize = 11.sp,
-                            fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal, maxLines = 1) }
-                    }
-                }
-
-                // Costo: suelta editable / paquete informativo
-                if (puedePagos) {
-                    Spacer(Modifier.height(10.dp))
-                    if (esPaquete) {
-                        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                            .background(c.purpleBg).padding(10.dp)) {
-                            Column {
-                                Text("📦 Sesión incluida en el paquete", color = c.purple,
-                                    fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Text("El paquete se cobra aparte (puede pagarse en partes). Registra los abonos en Pagos.",
-                                    color = c.texto, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
-                            }
+                        .background(c.purpleBg).padding(10.dp)) {
+                        Column {
+                            Text("📦 Sesión incluida en el paquete", color = c.purple,
+                                fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("El paquete se cobra aparte (puede pagarse en partes). Registra los abonos en Pagos.",
+                                color = c.texto, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
                         }
-                    } else {
-                        EtqMini("Costo de la sesión (S/)")
-                        CampoFicha("", costo, soloNumero = true) { costo = it }
                     }
+                } else {
+                    EtqForm("Costo de la sesión (S/)")
+                    CampoFicha("", costo, soloNumero = true) { costo = it }
                 }
-
-                Spacer(Modifier.height(10.dp))
-                EtqMini("Notas clínicas")
-                CampoFicha("", notas, multilinea = true) { notas = it }
             }
-        },
-        confirmButton = {
-            Box(Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
-                .clickable {
-                    if (fecha.isNotBlank() && hora.isNotBlank()) {
-                        onGuardar(
-                            fecha.trim(), hora.trim(), duracion, terapeutaId, estado,
-                            // En paquete el costo de sesión no aplica (el cobro es del paquete).
-                            if (esPaquete) null else costo.toDoubleOrNull(),
-                            notas.trim().ifBlank { null },
-                        )
-                    }
-                }.padding(horizontal = 18.dp, vertical = 10.dp)) {
-                Text("Agendar sesión", color = c.sobreNavy, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
-        containerColor = c.superficie,
-    )
+            Spacer(Modifier.height(10.dp))
+            EtqForm("Notas clínicas")
+            CampoFicha("", notas, multilinea = true) { notas = it }
+        }
+    }
 }
 
 /** Editar una cita-hito ya realizada (Consulta/Evaluación): fecha/hora/notas (no toca costo). */
@@ -777,33 +743,26 @@ private fun ModalEditarCitaHito(
         ) { Box(Modifier.fillMaxWidth().padding(Sania.dim.lg), Alignment.Center) { androidx.compose.material3.TimePicker(state = estadoP) } }
     }
 
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onCancelar,
-        title = { Text("✏ Editar ${cita.tipo.lowercase()}", fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Column(Modifier.weight(1f)) { EtqMini("Fecha"); SelectorBoxFicha(fecha) { mostrarFecha = true } }
-                    Column(Modifier.weight(1f)) { EtqMini("Hora"); SelectorBoxFicha(hora12(hora)) { mostrarHora = true } }
-                }
-                Spacer(Modifier.height(10.dp))
-                EtqMini("Notas")
-                CampoFicha("", notas, multilinea = true) { notas = it }
-                Spacer(Modifier.height(4.dp))
-                Text("El precio/cobro no se edita aquí (afecta caja). Hazlo desde la web si es necesario.",
-                    color = c.textoSuave, fontSize = 10.sp)
+    DialogoForm(
+        titulo = "Editar ${cita.tipo.lowercase()}",
+        subtitulo = "${cita.fecha}${cita.hora?.let { " · ${hora12(it)}" } ?: ""}",
+        textoAccion = "Guardar",
+        onCancelar = onCancelar,
+        onAccion = { onGuardar(fecha.trim(), hora.trim(), notas.trim().ifBlank { null }) },
+    ) {
+        TarjetaForm(titulo = cita.tipo, icono = if (cita.tipo == "Consulta") "💬" else "🔍") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f)) { EtqForm("Fecha"); SelectorBoxFicha(fecha) { mostrarFecha = true } }
+                Column(Modifier.weight(1f)) { EtqForm("Hora"); SelectorBoxFicha(hora12(hora)) { mostrarHora = true } }
             }
-        },
-        confirmButton = {
-            Box(Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
-                .clickable { onGuardar(fecha.trim(), hora.trim(), notas.trim().ifBlank { null }) }
-                .padding(horizontal = 18.dp, vertical = 10.dp)) {
-                Text("Guardar", color = c.sobreNavy, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
-        containerColor = c.superficie,
-    )
+            Spacer(Modifier.height(10.dp))
+            EtqForm("Notas")
+            CampoFicha("", notas, multilinea = true) { notas = it }
+            Spacer(Modifier.height(4.dp))
+            Text("El precio/cobro no se edita aquí (afecta caja). Hazlo desde la web si es necesario.",
+                color = c.textoSuave, fontSize = 10.sp)
+        }
+    }
 }
 
 @Composable
@@ -867,50 +826,43 @@ private fun ModalEditarPaciente(
     var diagnostico by remember { mutableStateOf(paciente.diagnostico ?: "") }
     var flag by remember { mutableStateOf(paciente.flag ?: "verde") }
 
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onCancelar,
-        title = { Text("✏ Editar paciente", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                CampoFicha("Nombre", nombre) { nombre = it }
-                Spacer(Modifier.height(8.dp))
-                CampoFicha("Teléfono", telefono) { telefono = it }
-                Spacer(Modifier.height(8.dp))
-                CampoFicha("Ocupación", ocupacion) { ocupacion = it }
-                Spacer(Modifier.height(8.dp))
-                CampoFicha("Edad", edad, soloNumero = true) { edad = it }
-                Spacer(Modifier.height(8.dp))
-                CampoFicha("Motivo / Diagnóstico", diagnostico, multilinea = true) { diagnostico = it }
-                Spacer(Modifier.height(10.dp))
-                Text("Comportamiento (semáforo)", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("verde" to c.ok, "amarillo" to c.pend, "rojo" to c.error).forEach { (f, col) ->
-                        val activo = flag == f
-                        Box(
-                            Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
-                                .background(if (activo) col else c.superficie)
-                                .border(1.dp, col, RoundedCornerShape(Sania.shape.pill.dp))
-                                .clickable { flag = f }.padding(horizontal = 14.dp, vertical = 6.dp),
-                        ) { Text(f.replaceFirstChar { it.uppercase() }, color = if (activo) c.sobreNavy else col,
-                            fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                    }
+    DialogoForm(
+        titulo = "Editar paciente",
+        subtitulo = paciente.nombre,
+        textoAccion = "Guardar",
+        accionHabilitada = nombre.isNotBlank(),
+        onCancelar = onCancelar,
+        onAccion = {
+            onGuardar(nombre.trim(), telefono.trim().ifBlank { null }, ocupacion.trim().ifBlank { null },
+                edad.toIntOrNull(), flag, diagnostico.trim().ifBlank { null })
+        },
+    ) {
+        TarjetaForm(titulo = "Datos del paciente", icono = "👤") {
+            CampoFicha("Nombre", nombre) { nombre = it }
+            Spacer(Modifier.height(8.dp))
+            CampoFicha("Teléfono", telefono) { telefono = it }
+            Spacer(Modifier.height(8.dp))
+            CampoFicha("Ocupación", ocupacion) { ocupacion = it }
+            Spacer(Modifier.height(8.dp))
+            CampoFicha("Edad", edad, soloNumero = true) { edad = it }
+            Spacer(Modifier.height(8.dp))
+            CampoFicha("Motivo / Diagnóstico", diagnostico, multilinea = true) { diagnostico = it }
+            Spacer(Modifier.height(10.dp))
+            EtqForm("Comportamiento (semáforo)")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("verde" to c.ok, "amarillo" to c.pend, "rojo" to c.error).forEach { (f, col) ->
+                    val activo = flag == f
+                    Box(
+                        Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+                            .background(if (activo) col else c.superficie)
+                            .border(1.dp, col, RoundedCornerShape(Sania.shape.pill.dp))
+                            .clickable { flag = f }.padding(horizontal = 14.dp, vertical = 6.dp),
+                    ) { Text(f.replaceFirstChar { it.uppercase() }, color = if (activo) c.sobreNavy else col,
+                        fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                 }
             }
-        },
-        confirmButton = {
-            Box(
-                Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
-                    .clickable {
-                        if (nombre.isBlank()) return@clickable
-                        onGuardar(nombre.trim(), telefono.trim().ifBlank { null }, ocupacion.trim().ifBlank { null },
-                            edad.toIntOrNull(), flag, diagnostico.trim().ifBlank { null })
-                    }.padding(horizontal = 18.dp, vertical = 10.dp),
-            ) { Text("Guardar", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
-        },
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
-        containerColor = c.superficie,
-    )
+        }
+    }
 }
 
 @Composable
@@ -1244,36 +1196,29 @@ private fun ModalDatosClinicos(
     onCancelar: () -> Unit,
     onGuardar: (diag: String?, alergias: String?, medic: String?, antec: String?) -> Unit,
 ) {
-    val c = Sania.colors
     var diag by remember { mutableStateOf(paciente.diagnostico ?: "") }
     var alergias by remember { mutableStateOf(paciente.alergias ?: "") }
     var medic by remember { mutableStateOf(paciente.medicacionActual ?: "") }
     var antec by remember { mutableStateOf(paciente.antecedentes ?: "") }
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onCancelar,
-        title = { Text("✏ Datos clínicos", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                CampoFicha("Diagnóstico", diag, multilinea = true) { diag = it }
-                Spacer(Modifier.height(8.dp))
-                CampoFicha("Alergias", alergias, multilinea = true) { alergias = it }
-                Spacer(Modifier.height(8.dp))
-                CampoFicha("Medicación actual", medic, multilinea = true) { medic = it }
-                Spacer(Modifier.height(8.dp))
-                CampoFicha("Antecedentes", antec, multilinea = true) { antec = it }
-            }
+    DialogoForm(
+        titulo = "Datos clínicos",
+        subtitulo = paciente.nombre,
+        textoAccion = "Guardar",
+        onCancelar = onCancelar,
+        onAccion = {
+            onGuardar(diag.trim().ifBlank { null }, alergias.trim().ifBlank { null },
+                medic.trim().ifBlank { null }, antec.trim().ifBlank { null })
         },
-        confirmButton = {
-            Box(Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
-                .clickable {
-                    onGuardar(diag.trim().ifBlank { null }, alergias.trim().ifBlank { null },
-                        medic.trim().ifBlank { null }, antec.trim().ifBlank { null })
-                }.padding(horizontal = 18.dp, vertical = 10.dp)) {
-                Text("Guardar", color = c.sobreNavy, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
-        containerColor = c.superficie,
-    )
+    ) {
+        TarjetaForm(titulo = "Importante para el tratamiento", icono = "📋") {
+            CampoFicha("Diagnóstico", diag, multilinea = true) { diag = it }
+            Spacer(Modifier.height(8.dp))
+            CampoFicha("Alergias", alergias, multilinea = true) { alergias = it }
+            Spacer(Modifier.height(8.dp))
+            CampoFicha("Medicación actual", medic, multilinea = true) { medic = it }
+            Spacer(Modifier.height(8.dp))
+            CampoFicha("Antecedentes", antec, multilinea = true) { antec = it }
+        }
+    }
 }
 
