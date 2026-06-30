@@ -410,10 +410,12 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         ModalEditarTratamiento(
             t = t,
             onCancelar = { editarTratamiento = null },
-            onGuardar = { totalSes, precioPaq, precioSes, precioAcord ->
+            onGuardar = { totalSes, precioPaq, precioSes, precioAcord, diag, medic, proxControl ->
                 editarTratamiento = null
                 scope.launch {
-                    PacientesRepo.editarTratamiento(t.id, totalSes, precioPaq, precioSes, precioAcord); recargar()
+                    PacientesRepo.editarTratamiento(t.id, totalSes, precioPaq, precioSes, precioAcord,
+                        diag, medic, proxControl)
+                    recargar()
                 }
             },
         )
@@ -986,8 +988,6 @@ private fun ContenidoAtenciones(
     onAgendarControl: (TratamientoPaciente) -> Unit,
 ) {
     val c = Sania.colors
-    val consultaDone = hitos?.consultaDone == true
-    val evalDone = hitos?.evaluacionDone == true
     Column {
         // Tratamientos: cada tarjeta lleva SU barra de recorrido (sin duplicar arriba).
         Etiqueta("Tratamientos")
@@ -996,11 +996,18 @@ private fun ContenidoAtenciones(
         } else {
             paciente.tratamientos.forEach { t ->
                 Spacer(Modifier.height(Sania.dim.sm))
+                // La cita-hito de ESTE tratamiento: la vinculada por tratamiento_id, o de su
+                // misma especialidad (no de otra). Así el recorrido no mezcla especialidades.
+                fun citaDeEste(lista: List<pe.saniape.app.data.staff.CitaHito>?) =
+                    lista?.firstOrNull { it.tratamientoId == t.id }
+                        ?: lista?.firstOrNull { t.especialidadId != null && it.especialidadId == t.especialidadId }
+                val citaC = citaDeEste(hitos?.consultas)
+                val citaE = citaDeEste(hitos?.evaluaciones)
                 TarjetaTratamiento(
                     t = t, verPagos = ctx.puede("pagos"), esAdmin = ctx.esAdmin,
                     puedeSesiones = ctx.puede("sesiones"),
-                    consultaDone = consultaDone, evalDone = evalDone,
-                    citaConsulta = hitos?.citaConsulta, citaEvaluacion = hitos?.citaEvaluacion,
+                    consultaDone = citaC != null, evalDone = citaE != null,
+                    citaConsulta = citaC, citaEvaluacion = citaE,
                     onEditarCita = onEditarCita,
                     onCompletarSesion = onCompletarSesion,
                     onCambioRealizado = onRecargar,

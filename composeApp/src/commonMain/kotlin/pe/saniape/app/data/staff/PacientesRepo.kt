@@ -43,6 +43,7 @@ data class TratamientoPaciente(
     val medicacion: String?,
     val proximoControl: String?,
     val especialidadNombre: String?,
+    val especialidadId: String? = null,
 ) {
     /** Monto total acordado del tratamiento (igual que la web). */
     val montoAcordado: Double
@@ -112,6 +113,8 @@ data class CitaHito(
     val terapeutaNombre: String?,
     val costo: Double?,
     val notas: String?,
+    val especialidadId: String? = null,   // para enlazar la cita al tratamiento de su especialidad
+    val tratamientoId: String? = null,    // vínculo directo si la cita lo tiene
 )
 
 /** Resumen de pagos del paciente: totales + desglose por tratamiento. */
@@ -127,8 +130,9 @@ data class HitosPaciente(
     val proximaCitaFecha: String?,
     val proximaCitaHora: String?,
     val ultimaAtencionFecha: String?,
-    val citaConsulta: CitaHito? = null,   // la Consulta completada (para tooltip/editar)
-    val citaEvaluacion: CitaHito? = null, // la Evaluación completada
+    // TODAS las consultas/evaluaciones completadas (cada tarjeta filtra las de SU especialidad).
+    val consultas: List<CitaHito> = emptyList(),
+    val evaluaciones: List<CitaHito> = emptyList(),
 )
 
 /** Una evaluación completada del paciente (origen de un tratamiento). */
@@ -207,8 +211,8 @@ object PacientesRepo {
             id, modalidad, estado, estado_pago, total_sesiones, sesiones_completadas,
             precio_paquete, precio_por_sesion, precio_acordado, terapeuta_id,
             diagnostico, medicacion, proximo_control,
-            procedimiento:procedimientos(nombre, especialidad:especialidades(nombre, usa_sesiones)),
-            terapeuta:terapeutas(id, nombre, especialidades:terapeuta_especialidades(especialidad:especialidades(nombre)))
+            procedimiento:procedimientos(nombre, especialidad_id, especialidad:especialidades(nombre, usa_sesiones)),
+            terapeuta:terapeutas(id, nombre, especialidades:terapeuta_especialidades(especialidad:especialidades(id, nombre)))
         )
     """
 
@@ -426,12 +430,17 @@ object PacientesRepo {
     suspend fun editarTratamiento(
         tratamientoId: String, totalSesiones: Int?, precioPaquete: Double?,
         precioPorSesion: Double?, precioAcordado: Double?,
+        // Solo Consulta (sin sesiones): datos clínicos editables. "" limpia, null = no tocar.
+        diagnostico: String? = null, medicacion: String? = null, proximoControl: String? = null,
     ): Boolean = accionTratamiento(buildJsonObject {
         put("accion", "editar"); put("tratamientoId", tratamientoId)
         if (totalSesiones != null) put("totalSesiones", totalSesiones)
         if (precioPaquete != null) put("precioPaquete", precioPaquete)
         if (precioPorSesion != null) put("precioPorSesion", precioPorSesion)
         if (precioAcordado != null) put("precioAcordado", precioAcordado)
+        if (diagnostico != null) put("diagnostico", diagnostico)
+        if (medicacion != null) put("medicacion", medicacion)
+        if (proximoControl != null) put("proximoControl", proximoControl)
     })
 
     suspend fun cambiarEstadoTratamiento(tratamientoId: String, estado: String): Boolean =
@@ -583,7 +592,7 @@ object PacientesRepo {
     suspend fun hitosDe(pacienteId: String): HitosPaciente {
         val filas = runCatching {
             Supabase.client.postgrest["citas"]
-                .select(Columns.raw("id, fecha, hora, tipo, estado, costo, notas, terapeuta:terapeutas(nombre)")) {
+                .select(Columns.raw("id, fecha, hora, tipo, estado, costo, notas, especialidad_id, tratamiento_id, terapeuta:terapeutas(nombre)")) {
                     filter { eq("paciente_id", pacienteId) }
                     order("fecha", Order.DESCENDING)
                 }
@@ -598,25 +607,27 @@ object PacientesRepo {
             terapeutaNombre = (o["terapeuta"] as? JsonObject)?.str("nombre"),
             costo = o.dbl("costo"),
             notas = o.str("notas"),
+            especialidadId = o.str("especialidad_id"),
+            tratamientoId = o.str("tratamiento_id"),
         )
 
         val hoy = pe.saniape.app.ui.clinica.agenda.hoyIso()
-        val consulta = filas.firstOrNull { it.str("tipo") == "Consulta" && it.str("estado") == "Completada" }
-        val evaluacion = filas.firstOrNull { it.str("tipo") == "Evaluación" && it.str("estado") == "Completada" }
+        val completadas = filas.filter { it.str("estado") == "Completada" }
+        val consultas = completadas.filter { it.str("tipo") == "Consulta" }.map { toHito(it) }
+        val evaluaciones = completadas.filter { it.str("tipo") == "Evaluación" }.map { toHito(it) }
         // Próxima cita: la más cercana en el futuro que no esté cancelada/completada.
         val proxima = filas
             .filter { (it.str("fecha") ?: "") >= hoy && it.str("estado") !in listOf("Cancelada", "Completada") }
             .minByOrNull { (it.str("fecha") ?: "") + (it.str("hora") ?: "") }
-        // Última atención: la cita completada más reciente.
-        val ultima = filas.firstOrNull { it.str("estado") == "Completada" }
+        val ultima = completadas.firstOrNull()
         return HitosPaciente(
-            consultaDone = consulta != null,
-            evaluacionDone = evaluacion != null,
+            consultaDone = consultas.isNotEmpty(),
+            evaluacionDone = evaluaciones.isNotEmpty(),
             proximaCitaFecha = proxima?.str("fecha"),
             proximaCitaHora = proxima?.str("hora")?.take(5),
             ultimaAtencionFecha = ultima?.str("fecha"),
-            citaConsulta = consulta?.let { toHito(it) },
-            citaEvaluacion = evaluacion?.let { toHito(it) },
+            consultas = consultas,
+            evaluaciones = evaluaciones,
         )
     }
 
@@ -647,10 +658,13 @@ object PacientesRepo {
             val ter = t["terapeuta"] as? JsonObject
             // Especialidad: del procedimiento; si falta (tratamiento sin servicio), cae a la
             // del profesional (si tiene una sola). Así un tratamiento con médico igual la tiene.
-            val espDelProf = (ter?.get("especialidades") as? JsonArray)
-                ?.mapNotNull { ((it as? JsonObject)?.get("especialidad") as? JsonObject)?.str("nombre") }
-                ?.distinct()
+            val espsProf = (ter?.get("especialidades") as? JsonArray)
+                ?.mapNotNull { (it as? JsonObject)?.get("especialidad") as? JsonObject }
+            val espDelProf = espsProf?.mapNotNull { it.str("nombre") }?.distinct()
             val espNombre = espObj?.str("nombre") ?: espDelProf?.singleOrNull()
+            // id de especialidad: del procedimiento, o del profesional (si tiene una sola).
+            val espId = procObj?.str("especialidad_id")
+                ?: espsProf?.mapNotNull { it.str("id") }?.distinct()?.singleOrNull()
             TratamientoPaciente(
                 id = t.str("id") ?: return@mapNotNull null,
                 procedimiento = proc,
@@ -669,6 +683,7 @@ object PacientesRepo {
                 medicacion = t.str("medicacion"),
                 proximoControl = t.str("proximo_control"),
                 especialidadNombre = espNombre,
+                especialidadId = espId,
             )
         }
         return PacienteStaff(

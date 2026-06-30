@@ -379,13 +379,18 @@ fun ModalAmpliarTratamiento(
 fun ModalEditarTratamiento(
     t: pe.saniape.app.data.staff.TratamientoPaciente,
     onCancelar: () -> Unit,
-    onGuardar: (totalSesiones: Int?, precioPaquete: Double?, precioPorSesion: Double?, precioAcordado: Double?) -> Unit,
+    onGuardar: (totalSesiones: Int?, precioPaquete: Double?, precioPorSesion: Double?, precioAcordado: Double?,
+                diagnostico: String?, medicacion: String?, proximoControl: String?) -> Unit,
 ) {
     val c = Sania.colors
     var totalSesiones by remember { mutableStateOf(t.totalSesiones.toString()) }
     var precioPaquete by remember { mutableStateOf(t.precioPaquete?.toString() ?: "") }
     var precioPorSesion by remember { mutableStateOf(t.precioPorSesion?.toString() ?: "") }
     var precioAcordado by remember { mutableStateOf(t.precioAcordado?.toString() ?: "") }
+    // Datos clínicos (solo Consulta sin sesiones).
+    var diagnostico by remember { mutableStateOf(t.diagnostico ?: "") }
+    var medicacion by remember { mutableStateOf(t.medicacion ?: "") }
+    var proximoControl by remember { mutableStateOf(t.proximoControl ?: "") }
     val esPaquete = t.modalidad == "Paquete"
     // No se puede bajar el N° de sesiones por debajo de las ya completadas.
     val nuevoTotal = totalSesiones.toIntOrNull() ?: 0
@@ -431,6 +436,21 @@ fun ModalEditarTratamiento(
                     }
                 } else {
                     Tarjeta(titulo = "Consulta", icono = "📋") {
+                        Etq("Diagnóstico")
+                        OutlinedTextField(value = diagnostico, onValueChange = { diagnostico = it },
+                            placeholder = { Text("Diagnóstico", color = c.textoSuave) },
+                            minLines = 2, modifier = Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(10.dp))
+                        Etq("Medicación / receta")
+                        OutlinedTextField(value = medicacion, onValueChange = { medicacion = it },
+                            placeholder = { Text("Indicaciones, receta…", color = c.textoSuave) },
+                            minLines = 2, modifier = Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(10.dp))
+                        Etq("Próximo control (AAAA-MM-DD)")
+                        OutlinedTextField(value = proximoControl, onValueChange = { proximoControl = it },
+                            placeholder = { Text("2026-07-15", color = c.textoSuave) }, singleLine = true,
+                            modifier = Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(10.dp))
                         Etq("Costo de la consulta (S/)"); CampoNum(precioAcordado) { precioAcordado = it }
                     }
                 }
@@ -451,6 +471,10 @@ fun ModalEditarTratamiento(
                                 if (esPaquete) precioPaquete.toDoubleOrNull() else null,
                                 if (!esPaquete && !t.esConsulta) precioPorSesion.toDoubleOrNull() else null,
                                 precioAcordado.toDoubleOrNull(),
+                                // Datos clínicos solo en Consulta ("" limpia el campo).
+                                if (t.esConsulta) diagnostico.trim() else null,
+                                if (t.esConsulta) medicacion.trim() else null,
+                                if (t.esConsulta) proximoControl.trim() else null,
                             )
                         }.padding(vertical = 13.dp),
                     contentAlignment = Alignment.Center,
