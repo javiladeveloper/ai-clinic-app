@@ -162,6 +162,7 @@ fun TarjetaTratamiento(
                 citaConsulta = citaConsulta, citaEvaluacion = citaEvaluacion,
                 puedePagos = verPagos, expandido = expandido, onEditarCita = onEditarCita,
                 onToggleSesiones = { expandido = !expandido },
+                onColapsarTarjeta = { expandido = false },
                 onAgendarControl = { onAgendarControl(t) },
                 onDarAlta = {
                     if (accionando) return@BarraRecorrido

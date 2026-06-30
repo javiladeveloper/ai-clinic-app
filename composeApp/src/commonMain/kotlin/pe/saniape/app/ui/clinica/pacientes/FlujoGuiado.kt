@@ -53,6 +53,7 @@ fun BarraRecorrido(
     expandido: Boolean = false,             // si la tarjeta está expandida (resalta el paso Sesiones)
     onEditarCita: (CitaHito) -> Unit = {},
     onToggleSesiones: () -> Unit = {},      // tocar la bolita Sesiones expande/colapsa la tarjeta
+    onColapsarTarjeta: () -> Unit = {},     // colapsar la tarjeta al abrir una nube (1 activo a la vez)
     onAgendarControl: () -> Unit = {},      // en Control: el paciente necesita volver
     onDarAlta: () -> Unit = {},             // en Control: el caso se cierra (alta)
 ) {
@@ -114,9 +115,17 @@ fun BarraRecorrido(
                     Modifier.size(28.dp).clip(CircleShape).background(bg)
                         .border(if (abierta) 3.dp else 2.dp, borde, CircleShape)
                         .let {
-                            if (esSesiones(i)) it.clickable { onToggleSesiones() }
-                            else if (cita != null) it.clickable { hitoAbierto = if (hitoAbierto == i) null else i }
-                            else it
+                            when {
+                                // Sesiones: expande la tarjeta y cierra cualquier nube abierta.
+                                esSesiones(i) -> it.clickable { hitoAbierto = null; onToggleSesiones() }
+                                // Nube: alterna esta nube y colapsa la tarjeta (1 activo a la vez).
+                                cita != null -> it.clickable {
+                                    val abrir = hitoAbierto != i
+                                    hitoAbierto = if (abrir) i else null
+                                    if (abrir && expandido) onColapsarTarjeta()
+                                }
+                                else -> it
+                            }
                         },
                     contentAlignment = Alignment.Center,
                 ) { Text(if (paso.done) "✓" else "${i + 1}", color = fg, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
