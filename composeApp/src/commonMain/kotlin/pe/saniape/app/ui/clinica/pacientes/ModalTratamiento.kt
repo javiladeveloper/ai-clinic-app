@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.datetime.toLocalDateTime
+import pe.saniape.app.ui.hora12
 import pe.saniape.app.data.staff.EspecialidadClinica
 import pe.saniape.app.data.staff.EvaluacionRef
 import pe.saniape.app.data.staff.PacientesRepo
@@ -464,43 +465,71 @@ fun ModalEditarTratamiento(
     }
 }
 
+/** Lo que se guarda al editar una consulta (cita + clínico + costo en un solo modal). */
+data class EdicionConsulta(
+    val fecha: String, val hora: String,
+    val diagnostico: String, val medicacion: String, val proximoControl: String, val costo: Double?,
+)
+
 /**
- * Registrar atención de una consulta/control (acto clínico, NO administrativo): diagnóstico,
- * medicación/receta y próximo control. Es lo que el médico llena tras atender (paso Control).
- * El costo se ajusta aparte en "Editar tratamiento".
+ * Editar una consulta/control TODO en un solo modal (sin confundir "editar cita" vs
+ * "registrar atención"): la cita (fecha/hora), lo clínico (diagnóstico/medicación/próximo
+ * control) y el costo. Llega tanto desde el ✏ de la bolita como desde "Registrar atención".
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun ModalRegistrarAtencion(
+fun ModalEditarConsulta(
     t: pe.saniape.app.data.staff.TratamientoPaciente,
-    esGestor: Boolean,   // recepción/admin → "fecha tentativa"; médico solo → "referencial"
-    puedePagos: Boolean, // mostrar el costo solo con permiso de pagos
+    cita: pe.saniape.app.data.staff.CitaHito?,   // la cita de la consulta (fecha/hora), si existe
+    esGestor: Boolean,
+    puedePagos: Boolean,
     onCancelar: () -> Unit,
-    onGuardar: (diagnostico: String, medicacion: String, proximoControl: String, costo: Double?) -> Unit,
+    onGuardar: (EdicionConsulta) -> Unit,
 ) {
     val c = Sania.colors
+    var fecha by remember { mutableStateOf(cita?.fecha ?: "") }
+    var hora by remember { mutableStateOf(cita?.hora ?: "09:00") }
     var diagnostico by remember { mutableStateOf(t.diagnostico ?: "") }
     var medicacion by remember { mutableStateOf(t.medicacion ?: "") }
     var proximoControl by remember { mutableStateOf(t.proximoControl ?: "") }
     var costo by remember { mutableStateOf(t.precioAcordado?.toString() ?: "") }
-    var mostrarFecha by remember { mutableStateOf(false) }
+    var mostrarFechaCita by remember { mutableStateOf(false) }
+    var mostrarHoraCita by remember { mutableStateOf(false) }
+    var mostrarProxControl by remember { mutableStateOf(false) }
 
-    if (mostrarFecha) {
+    fun msISO(ms: Long): String {
+        val d = kotlinx.datetime.Instant.fromEpochMilliseconds(ms).toLocalDateTime(kotlinx.datetime.TimeZone.UTC).date
+        return "${d.year}-${d.monthNumber.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}"
+    }
+
+    if (mostrarFechaCita || mostrarProxControl) {
+        val esCita = mostrarFechaCita
         val estadoP = androidx.compose.material3.rememberDatePickerState()
         androidx.compose.material3.DatePickerDialog(
-            onDismissRequest = { mostrarFecha = false },
+            onDismissRequest = { mostrarFechaCita = false; mostrarProxControl = false },
             confirmButton = {
                 TextButton(onClick = {
-                    estadoP.selectedDateMillis?.let { ms ->
-                        val d = kotlinx.datetime.Instant.fromEpochMilliseconds(ms)
-                            .toLocalDateTime(kotlinx.datetime.TimeZone.UTC).date
-                        proximoControl = "${d.year}-${d.monthNumber.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}"
-                    }
-                    mostrarFecha = false
+                    estadoP.selectedDateMillis?.let { ms -> if (esCita) fecha = msISO(ms) else proximoControl = msISO(ms) }
+                    mostrarFechaCita = false; mostrarProxControl = false
                 }) { Text("Aceptar", color = c.navy) }
             },
-            dismissButton = { TextButton(onClick = { mostrarFecha = false }) { Text("Cancelar", color = c.textoSuave) } },
+            dismissButton = { TextButton(onClick = { mostrarFechaCita = false; mostrarProxControl = false }) { Text("Cancelar", color = c.textoSuave) } },
         ) { androidx.compose.material3.DatePicker(state = estadoP) }
+    }
+    if (mostrarHoraCita) {
+        val p = hora.split(":")
+        val estadoP = androidx.compose.material3.rememberTimePickerState(
+            initialHour = p.getOrNull(0)?.toIntOrNull() ?: 9, initialMinute = p.getOrNull(1)?.toIntOrNull() ?: 0, is24Hour = false)
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { mostrarHoraCita = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    hora = "${estadoP.hour.toString().padStart(2, '0')}:${estadoP.minute.toString().padStart(2, '0')}"
+                    mostrarHoraCita = false
+                }) { Text("Aceptar", color = c.navy) }
+            },
+            dismissButton = { TextButton(onClick = { mostrarHoraCita = false }) { Text("Cancelar", color = c.textoSuave) } },
+        ) { Box(Modifier.fillMaxWidth().padding(20.dp), Alignment.Center) { androidx.compose.material3.TimePicker(state = estadoP) } }
     }
 
     Dialog(onDismissRequest = onCancelar, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -509,7 +538,7 @@ fun ModalRegistrarAtencion(
                 .clip(RoundedCornerShape(Sania.shape.lg.dp)).background(c.fondo),
         ) {
             Column(Modifier.fillMaxWidth().background(c.navyDark).padding(horizontal = 18.dp, vertical = 16.dp)) {
-                Text("Registrar atención", color = c.sobreNavy, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                Text("Editar consulta", color = c.sobreNavy, fontSize = 19.sp, fontWeight = FontWeight.Bold)
                 Text(t.procedimiento ?: "Consulta", color = c.sobreNavy.copy(alpha = 0.7f),
                     fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
             }
@@ -517,7 +546,24 @@ fun ModalRegistrarAtencion(
                 Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
-                Tarjeta(titulo = "Lo que se hizo en la atención", icono = "📝") {
+                // Cita: fecha/hora (solo si la consulta tiene una cita).
+                if (cita != null) {
+                    Tarjeta(titulo = "Cita", icono = "📅") {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(Modifier.weight(1f)) {
+                                Etq("Fecha")
+                                SelectorCajita(fecha.ifBlank { "Elegir…" }) { mostrarFechaCita = true }
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Etq("Hora")
+                                SelectorCajita(pe.saniape.app.ui.hora12(hora)) { mostrarHoraCita = true }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
+
+                Tarjeta(titulo = "Atención", icono = "📝") {
                     Etq("Diagnóstico")
                     OutlinedTextField(value = diagnostico, onValueChange = { diagnostico = it },
                         placeholder = { Text("Hallazgos / diagnóstico", color = c.textoSuave) },
@@ -529,28 +575,18 @@ fun ModalRegistrarAtencion(
                         minLines = 2, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(10.dp))
                     Etq("Próximo control (opcional)")
-                    // Selector de fecha (calendario). Es REFERENCIAL: no agenda la cita.
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
-                                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                                .clickable { mostrarFecha = true }.padding(horizontal = 12.dp, vertical = 11.dp),
-                        ) {
-                            Text(proximoControl.ifBlank { "📅 Elegir fecha…" },
-                                color = if (proximoControl.isBlank()) c.textoSuave else c.texto, fontSize = Sania.txt.cuerpo)
-                        }
+                        Box(Modifier.weight(1f)) { SelectorCajita(proximoControl.ifBlank { "📅 Elegir fecha…" }, vacio = proximoControl.isBlank()) { mostrarProxControl = true } }
                         if (proximoControl.isNotBlank()) {
                             Spacer(Modifier.width(8.dp))
-                            Text("✕", color = c.textoSuave, fontSize = 14.sp,
-                                modifier = Modifier.clickable { proximoControl = "" })
+                            Text("✕", color = c.textoSuave, fontSize = 14.sp, modifier = Modifier.clickable { proximoControl = "" })
                         }
                     }
                     Text(
-                        if (esGestor) "Fecha tentativa — luego confirma horario/disponibilidad del profesional al agendar."
-                        else "Referencial (ej. “vuelve en ~1 mes”). No agenda la cita; recepción coordinará el horario.",
+                        if (esGestor) "Fecha tentativa — luego confirma horario/disponibilidad al agendar."
+                        else "Referencial (ej. “vuelve en ~1 mes”). No agenda la cita.",
                         color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp),
                     )
-                    // Costo de la consulta (solo con permiso de pagos). Algunos controles no se cobran.
                     if (puedePagos) {
                         Spacer(Modifier.height(10.dp))
                         Etq("Costo de la consulta (S/) — opcional")
@@ -568,13 +604,29 @@ fun ModalRegistrarAtencion(
                 TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave, fontWeight = FontWeight.Bold) }
                 Box(
                     Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
-                        .clickable { onGuardar(diagnostico.trim(), medicacion.trim(), proximoControl.trim(), costo.toDoubleOrNull()) }
-                        .padding(vertical = 13.dp),
+                        .clickable {
+                            onGuardar(EdicionConsulta(
+                                fecha = fecha.trim(), hora = hora.trim(),
+                                diagnostico = diagnostico.trim(), medicacion = medicacion.trim(),
+                                proximoControl = proximoControl.trim(), costo = costo.toDoubleOrNull(),
+                            ))
+                        }.padding(vertical = 13.dp),
                     contentAlignment = Alignment.Center,
-                ) { Text("Guardar atención", color = c.sobreNavy, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+                ) { Text("Guardar", color = c.sobreNavy, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
             }
         }
     }
+}
+
+/** Cajita seleccionable (abre un picker). */
+@Composable
+private fun SelectorCajita(valor: String, vacio: Boolean = false, onClick: () -> Unit) {
+    val c = Sania.colors
+    Box(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.superficie)
+            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+            .clickable { onClick() }.padding(horizontal = 12.dp, vertical = 11.dp),
+    ) { Text(valor, color = if (vacio) c.textoSuave else c.texto, fontSize = Sania.txt.cuerpo) }
 }
 
 @Composable

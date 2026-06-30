@@ -431,18 +431,26 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         )
     }
 
-    // Modal "Registrar atención" (clínico): diagnóstico/medicación/próximo control.
+    // Modal "Editar consulta" (todo en uno): cita (fecha/hora) + clínico + costo.
     registrarAtencion?.let { t ->
-        ModalRegistrarAtencion(
-            t = t,
-            esGestor = ctx.esGestor,
-            puedePagos = ctx.puede("pagos"),
+        // La cita de ESTA consulta (su especialidad), para editar fecha/hora.
+        val citaConsulta = hitos?.consultas?.firstOrNull { it.tratamientoId == t.id }
+            ?: hitos?.consultas?.firstOrNull { t.especialidadId != null && it.especialidadId == t.especialidadId }
+            ?: hitos?.evaluaciones?.firstOrNull { it.tratamientoId == t.id }
+            ?: hitos?.evaluaciones?.firstOrNull { t.especialidadId != null && it.especialidadId == t.especialidadId }
+        ModalEditarConsulta(
+            t = t, cita = citaConsulta,
+            esGestor = ctx.esGestor, puedePagos = ctx.puede("pagos"),
             onCancelar = { registrarAtencion = null },
-            onGuardar = { diag, medic, proxControl, costo ->
+            onGuardar = { e ->
                 registrarAtencion = null
                 scope.launch {
-                    // Clínico + costo (sin tocar sesiones). "" limpia el campo de texto.
-                    PacientesRepo.editarTratamiento(t.id, null, null, null, costo, diag, medic, proxControl)
+                    // Clínico + costo en el tratamiento; fecha/hora/notas en la cita (si hay).
+                    PacientesRepo.editarTratamiento(t.id, null, null, null, e.costo,
+                        e.diagnostico, e.medicacion, e.proximoControl)
+                    citaConsulta?.let { ci ->
+                        if (e.fecha.isNotBlank()) PacientesRepo.editarCitaHito(ci.id, e.fecha, e.hora, ci.notas)
+                    }
                     recargar()
                 }
             },

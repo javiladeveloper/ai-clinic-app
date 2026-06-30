@@ -167,7 +167,10 @@ fun BarraRecorrido(
                         color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     Box(
                         Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.navy)
-                            .clickable { onEditarCita(cita) }.padding(horizontal = 10.dp, vertical = 4.dp),
+                            // En consultas: editar = el modal completo (cita+clínico+costo).
+                            // En fisio: editar solo la cita (fecha/hora/notas).
+                            .clickable { if (!usaSesiones) onRegistrarAtencion() else onEditarCita(cita) }
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
                     ) { Text("✏ Editar", color = c.sobreNavy, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                 }
                 Spacer(Modifier.height(4.dp))
