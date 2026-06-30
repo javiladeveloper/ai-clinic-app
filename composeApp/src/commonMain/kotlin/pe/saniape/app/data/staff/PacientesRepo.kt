@@ -156,12 +156,15 @@ data class PacienteStaff(
     val flag: String?,          // verde / amarillo / rojo (semáforo)
     val tratamientos: List<TratamientoPaciente>,
     // Datos clínicos (para la pestaña Resumen).
+    val email: String? = null,
     val talla: Int? = null,
     val peso: Double? = null,
     val fechaIngreso: String? = null,
     val alergias: String? = null,
     val medicacionActual: String? = null,
     val antecedentes: String? = null,
+    val patologias: List<String> = emptyList(),   // síntomas/patologías (chips)
+    val tipoPatologia: String? = null,            // rubro/tipo de los síntomas
 ) {
     /** Tratamientos en curso (Activo). */
     val tratamientosActivos: List<TratamientoPaciente>
@@ -207,8 +210,8 @@ object PacientesRepo {
         (this[k] as? JsonPrimitive)?.content?.toDoubleOrNull()
 
     private const val SELECT = """
-        id, nombre, dni, edad, telefono, ocupacion, diagnostico, estado, flag,
-        talla, peso, fecha_ingreso, alergias, medicacion_actual, antecedentes,
+        id, nombre, dni, edad, telefono, email, ocupacion, diagnostico, estado, flag,
+        talla, peso, fecha_ingreso, alergias, medicacion_actual, antecedentes, patologias, tipo_patologia,
         tratamientos:tratamientos(
             id, modalidad, estado, estado_pago, total_sesiones, sesiones_completadas,
             precio_paquete, precio_por_sesion, precio_acordado, terapeuta_id,
@@ -242,10 +245,18 @@ object PacientesRepo {
         return mapear(o)
     }
 
-    /** Actualiza datos del paciente desde la ficha (RLS de staff acota a su clínica). */
+    /**
+     * Actualiza datos del paciente desde la ficha (RLS de staff acota a su clínica).
+     * Los campos con default null y [tocarExtra]=false NO se tocan (compat con llamadas
+     * que solo editan lo esencial). Si [tocarExtra]=true, también escribe dni/email/
+     * patologias/tipoPatologia (modal "Editar paciente" completo).
+     */
     suspend fun actualizarPaciente(
         id: String, nombre: String, telefono: String?, ocupacion: String?,
         edad: Int?, flag: String?, diagnostico: String?,
+        dni: String? = null, email: String? = null,
+        patologias: List<String>? = null, tipoPatologia: String? = null,
+        tocarExtra: Boolean = false,
     ): Boolean = try {
         Supabase.client.postgrest["pacientes"].update({
             set("nombre", nombre)
@@ -254,6 +265,12 @@ object PacientesRepo {
             set("edad", edad)
             if (flag != null) set("flag", flag)
             set("diagnostico", diagnostico)
+            if (tocarExtra) {
+                set("dni", dni?.trim()?.ifBlank { null })
+                set("email", email?.trim()?.ifBlank { null })
+                set("patologias", patologias ?: emptyList())
+                set("tipo_patologia", tipoPatologia?.trim()?.ifBlank { null })
+            }
         }) { filter { eq("id", id) } }
         true
     } catch (_: Exception) { false }
@@ -723,12 +740,16 @@ object PacientesRepo {
             estado = o.str("estado"),
             flag = o.str("flag"),
             tratamientos = trats,
+            email = o.str("email"),
             talla = o.int("talla"),
             peso = o.dbl("peso"),
             fechaIngreso = o.str("fecha_ingreso"),
             alergias = o.str("alergias"),
             medicacionActual = o.str("medicacion_actual"),
             antecedentes = o.str("antecedentes"),
+            patologias = (o["patologias"] as? JsonArray)
+                ?.mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c != "null" } } ?: emptyList(),
+            tipoPatologia = o.str("tipo_patologia"),
         )
     }
 

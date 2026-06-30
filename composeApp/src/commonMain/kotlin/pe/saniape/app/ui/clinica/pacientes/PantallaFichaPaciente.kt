@@ -550,10 +550,13 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         ModalEditarPaciente(
             paciente = paciente,
             onCancelar = { editandoPaciente = false },
-            onGuardar = { nombre, tel, ocup, edad, flag, diag ->
+            onGuardar = { nombre, tel, ocup, edad, flag, diag, dni, email, pats, tipoPat ->
                 editandoPaciente = false
                 scope.launch {
-                    PacientesRepo.actualizarPaciente(paciente.id, nombre, tel, ocup, edad, flag, diag)
+                    PacientesRepo.actualizarPaciente(
+                        paciente.id, nombre, tel, ocup, edad, flag, diag,
+                        dni = dni, email = email, patologias = pats, tipoPatologia = tipoPat,
+                        tocarExtra = true)
                     recargar()
                 }
             },
@@ -945,14 +948,21 @@ private fun <T> SelectorListaFicha(items: List<T>, elegido: T?, etiqueta: (T) ->
 private fun ModalEditarPaciente(
     paciente: PacienteStaff,
     onCancelar: () -> Unit,
-    onGuardar: (nombre: String, tel: String?, ocup: String?, edad: Int?, flag: String?, diag: String?) -> Unit,
+    onGuardar: (
+        nombre: String, tel: String?, ocup: String?, edad: Int?, flag: String?, diag: String?,
+        dni: String?, email: String?, patologias: List<String>, tipoPatologia: String?,
+    ) -> Unit,
 ) {
     val c = Sania.colors
     var nombre by remember { mutableStateOf(paciente.nombre) }
+    var dni by remember { mutableStateOf(paciente.dni ?: "") }
     var telefono by remember { mutableStateOf(paciente.telefono ?: "") }
+    var email by remember { mutableStateOf(paciente.email ?: "") }
     var ocupacion by remember { mutableStateOf(paciente.ocupacion ?: "") }
     var edad by remember { mutableStateOf(paciente.edad?.toString() ?: "") }
     var diagnostico by remember { mutableStateOf(paciente.diagnostico ?: "") }
+    var patologias by remember { mutableStateOf(paciente.patologias.joinToString(", ")) }
+    var tipoPatologia by remember { mutableStateOf(paciente.tipoPatologia ?: "") }
     var flag by remember { mutableStateOf(paciente.flag ?: "verde") }
 
     DialogoForm(
@@ -962,14 +972,22 @@ private fun ModalEditarPaciente(
         accionHabilitada = nombre.isNotBlank(),
         onCancelar = onCancelar,
         onAccion = {
-            onGuardar(nombre.trim(), telefono.trim().ifBlank { null }, ocupacion.trim().ifBlank { null },
-                edad.toIntOrNull(), flag, diagnostico.trim().ifBlank { null })
+            val pats = patologias.split(",").map { it.trim() }.filter { it.isNotBlank() }
+            onGuardar(
+                nombre.trim(), telefono.trim().ifBlank { null }, ocupacion.trim().ifBlank { null },
+                edad.toIntOrNull(), flag, diagnostico.trim().ifBlank { null },
+                dni.trim().ifBlank { null }, email.trim().ifBlank { null }, pats,
+                tipoPatologia.trim().ifBlank { null })
         },
     ) {
         TarjetaForm(titulo = "Datos del paciente", icono = "👤") {
             CampoFicha("Nombre", nombre) { nombre = it }
             Spacer(Modifier.height(8.dp))
+            CampoFicha("DNI", dni, soloNumero = true) { dni = it }
+            Spacer(Modifier.height(8.dp))
             CampoFicha("Teléfono", telefono) { telefono = it }
+            Spacer(Modifier.height(8.dp))
+            CampoFicha("Email", email) { email = it }
             Spacer(Modifier.height(8.dp))
             CampoFicha("Ocupación", ocupacion) { ocupacion = it }
             Spacer(Modifier.height(8.dp))
@@ -990,6 +1008,12 @@ private fun ModalEditarPaciente(
                         fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                 }
             }
+        }
+        Spacer(Modifier.height(12.dp))
+        TarjetaForm(titulo = "Síntomas / patologías", icono = "🩹") {
+            CampoFicha("Síntomas (separa con comas)", patologias, multilinea = true) { patologias = it }
+            Spacer(Modifier.height(8.dp))
+            CampoFicha("Tipo / rubro (opcional)", tipoPatologia) { tipoPatologia = it }
         }
     }
 }
@@ -1219,6 +1243,7 @@ private fun CifraPago(label: String, valor: String, color: androidx.compose.ui.g
  * Pestaña Resumen (espeja la web): info card (datos + IMC), datos clínicos importantes
  * (editables), Resumen IA (plan Plus, streaming→texto completo) e Historia clínica (PDF).
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun ContenidoResumen(
     ctx: ContextoStaff, paciente: PacienteStaff, acciones: pe.saniape.app.ui.AccionesNativas,
@@ -1270,6 +1295,32 @@ private fun ContenidoResumen(
             FilaClinica("Alergias", paciente.alergias)
             FilaClinica("Medicación", paciente.medicacionActual)
             FilaClinica("Antecedentes", paciente.antecedentes)
+        }
+
+        // Síntomas / patologías (chips morados), con el tipo/rubro como subtítulo.
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(14.dp),
+        ) {
+            Text(
+                "SÍNTOMAS" + (paciente.tipoPatologia?.let { " · $it" } ?: ""),
+                color = c.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+            Spacer(Modifier.height(8.dp))
+            if (paciente.patologias.isEmpty()) {
+                Text("Sin registrar", color = c.textoSuave, fontSize = 12.sp)
+            } else {
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    paciente.patologias.forEach { pat ->
+                        Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.purpleBg)
+                            .padding(horizontal = 10.dp, vertical = 4.dp)) {
+                            Text(pat, color = c.purple, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
         }
 
         // Resumen IA (plan Plus)
