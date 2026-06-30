@@ -234,18 +234,25 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 // ── Stat cards: Progreso · Saldo · Próxima cita · Última atención ──
                 // Saldo GENERAL del paciente (todos sus tratamientos): acordado − pagado.
                 val saldo = saldoPendiente
-                // Progreso GLOBAL de sesiones (suma de todos los tratamientos que usan sesiones).
-                val tratsSesion = paciente.tratamientos.filter { !it.esConsulta && it.estado != "Cancelado" }
-                val sesHechas = tratsSesion.sumOf { it.sesionesCompletadas }
-                val sesTotal = tratsSesion.sumOf { it.totalSesiones }
-                val tratsActivos = paciente.tratamientos.count { it.estado == "Activo" }
-                val progresoTexto = when {
-                    sesTotal > 0 -> "$sesHechas/$sesTotal ses."
-                    tratsActivos > 0 -> "$tratsActivos activo(s)"
-                    else -> "—"
+                // Stat card ADAPTATIVA (evita un número sumado confuso con multi-tratamiento):
+                //  - 1 solo tratamiento por sesiones activo → PROGRESO "N/M ses."
+                //  - varios tratamientos activos → ATENCIONES "N activos"
+                //  - solo consultas (sin sesiones) → EN CONTROL
+                //  - nada → ESTADO del paciente
+                val activos = paciente.tratamientos.filter { it.estado == "Activo" }
+                val activosSesion = activos.filter { !it.esConsulta }
+                val (statLabel, statValor, statColor) = when {
+                    activosSesion.size == 1 -> {
+                        val t = activosSesion.first()
+                        Triple("PROGRESO", "${t.sesionesCompletadas}/${t.totalSesiones} ses.",
+                            if (t.sesionesCompletadas >= t.totalSesiones) c.ok else c.navy)
+                    }
+                    activos.size > 1 -> Triple("ATENCIONES", "${activos.size} activos", c.navy)
+                    activos.size == 1 && activos.first().esConsulta -> Triple("ATENCIÓN", "En control", c.navy)
+                    else -> Triple("ESTADO", paciente.estado ?: "—", c.navy)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatCard("PROGRESO", progresoTexto, if (sesTotal > 0 && sesHechas >= sesTotal) c.ok else c.navy, Modifier.weight(1f))
+                    StatCard(statLabel, statValor, statColor, Modifier.weight(1f))
                     if (ctx.puede("pagos")) {
                         StatCard(
                             "SALDO PENDIENTE",

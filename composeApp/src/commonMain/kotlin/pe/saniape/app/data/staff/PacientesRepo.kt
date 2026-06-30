@@ -615,16 +615,39 @@ object PacientesRepo {
         val completadas = filas.filter { it.str("estado") == "Completada" }
         val consultas = completadas.filter { it.str("tipo") == "Consulta" }.map { toHito(it) }
         val evaluaciones = completadas.filter { it.str("tipo") == "Evaluación" }.map { toHito(it) }
-        // Próxima cita: la más cercana en el futuro que no esté cancelada/completada.
-        val proxima = filas
+
+        // Próxima atención = lo más cercano en el futuro entre CITAS pendientes Y
+        // SESIONES planificadas (una sesión planificada también es una próxima atención).
+        val citaProxima = filas
             .filter { (it.str("fecha") ?: "") >= hoy && it.str("estado") !in listOf("Cancelada", "Completada") }
             .minByOrNull { (it.str("fecha") ?: "") + (it.str("hora") ?: "") }
+        val sesionProxima = runCatching {
+            Supabase.client.postgrest["sesiones"]
+                .select(Columns.raw("fecha, hora, estado, tratamiento:tratamientos!inner(paciente_id)")) {
+                    filter {
+                        eq("tratamiento.paciente_id", pacienteId)
+                        gte("fecha", hoy)
+                        isIn("estado", listOf("Planificada", "En progreso", "Reprogramada"))
+                    }
+                    order("fecha", Order.ASCENDING)
+                    limit(1)
+                }
+                .decodeList<JsonObject>().firstOrNull()
+        }.getOrNull()
+        // Elegir la más cercana entre la cita y la sesión.
+        val cf = citaProxima?.str("fecha"); val ch = citaProxima?.str("hora")?.take(5)
+        val sf = sesionProxima?.str("fecha"); val sh = sesionProxima?.str("hora")?.take(5)
+        val (proxFecha, proxHora) = when {
+            cf != null && (sf == null || (cf + (ch ?: "")) <= (sf + (sh ?: ""))) -> cf to ch
+            sf != null -> sf to sh
+            else -> null to null
+        }
         val ultima = completadas.firstOrNull()
         return HitosPaciente(
             consultaDone = consultas.isNotEmpty(),
             evaluacionDone = evaluaciones.isNotEmpty(),
-            proximaCitaFecha = proxima?.str("fecha"),
-            proximaCitaHora = proxima?.str("hora")?.take(5),
+            proximaCitaFecha = proxFecha,
+            proximaCitaHora = proxHora,
             ultimaAtencionFecha = ultima?.str("fecha"),
             consultas = consultas,
             evaluaciones = evaluaciones,
