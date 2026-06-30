@@ -50,11 +50,15 @@ fun BannersAgendaUI(
     val c = Sania.colors
     val acciones = recordarAcciones()
     Column(Modifier.fillMaxWidth().padding(horizontal = Sania.dim.lg)) {
-        // ── Derivaciones pendientes (morado) ──
+        // ── Pendientes de agendar: derivaciones + exámenes internos (morado) ──
         if (banners.derivaciones.isNotEmpty()) {
+            val nExam = banners.derivaciones.count { it.esExamen }
+            val tituloBanner = if (nExam > 0)
+                "↗ ${banners.derivaciones.size} pendiente(s) de agendar"
+            else "↗ ${banners.derivaciones.size} derivación(es) pendiente(s)"
             BannerColapsable(
-                titulo = "↗ ${banners.derivaciones.size} derivación(es) pendiente(s)",
-                subtitulo = "Agenda su evaluación con el especialista.",
+                titulo = tituloBanner,
+                subtitulo = "Agenda en el área correspondiente (derivaciones y exámenes internos).",
                 colorFg = c.navy, colorBg = c.chipBg, colorBorde = c.navy,
                 abiertoInicial = true,
             ) {
@@ -66,7 +70,10 @@ fun BannersAgendaUI(
                         Column(Modifier.weight(1f)) {
                             Text(d.pacienteNombre ?: "Paciente", color = c.texto,
                                 fontSize = Sania.txt.pequeno, fontWeight = FontWeight.SemiBold)
-                            d.especialidadDestino?.let { Text("→ $it", color = c.textoSuave, fontSize = 12.sp) }
+                            val detalle = if (d.esExamen)
+                                "🔬 ${d.descripcion ?: "Examen"}" + (d.especialidadDestino?.let { " → $it" } ?: "")
+                            else d.especialidadDestino?.let { "→ $it" }
+                            detalle?.let { Text(it, color = c.textoSuave, fontSize = 12.sp) }
                         }
                         MiniBoton("📅 Agendar", c.navy) { onAgendarDerivacion(d) }
                         Spacer(Modifier.width(6.dp))

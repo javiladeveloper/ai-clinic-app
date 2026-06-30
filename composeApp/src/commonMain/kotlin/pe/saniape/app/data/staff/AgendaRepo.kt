@@ -361,11 +361,17 @@ data class RefNombre(val id: String, val nombre: String)
 data class TerapeutaRef(val id: String, val nombre: String, val especialidadIds: List<String>)
 data class TratamientoRef(val id: String, val procedimiento: String, val modalidad: String, val terapeutaId: String?)
 
-/** Una derivación pendiente (un médico derivó a un paciente; recepción decide). */
+/**
+ * Una solicitud pendiente de agendar (un profesional derivó o pidió un examen interno;
+ * recepción decide cuándo y con quién). [tipo]: "Derivacion" | "Examen" (interno).
+ */
 data class Derivacion(
     val id: String, val pacienteId: String?, val pacienteNombre: String?,
     val especialidadDestino: String?, val especialidadDestinoId: String?,
-)
+    val tipo: String = "Derivacion", val descripcion: String? = null,
+) {
+    val esExamen: Boolean get() = tipo == "Examen"
+}
 
 /** Una cita de mañana con su riesgo de no-show calculado. */
 data class CitaManana(val cita: CitaStaff, val riesgo: ResultadoRiesgo)
@@ -416,14 +422,21 @@ object AgendaBanners {
             }
             .decodeList<JsonObject>().map { mapCita(it) }
 
-        // Derivaciones pendientes (solo gestor/recepción).
+        // Pendientes de agendar (solo gestor/recepción): derivaciones + exámenes INTERNOS
+        // (lugar=Interno), ambos con un área de destino. Recepción los agenda en esa área.
         val derivaciones = if (esGestor) {
             Supabase.client.postgrest["solicitudes"]
                 .select(Columns.raw(
-                    "id, paciente_id, descripcion, especialidad_destino_id, paciente:pacientes(nombre), " +
+                    "id, tipo, lugar, paciente_id, descripcion, especialidad_destino_id, paciente:pacientes(nombre), " +
                         "especialidad_destino:especialidades!solicitudes_especialidad_destino_id_fkey(nombre)"
                 )) {
-                    filter { eq("tipo", "Derivacion"); eq("estado", "Pendiente") }
+                    filter {
+                        eq("estado", "Pendiente")
+                        or {
+                            eq("tipo", "Derivacion")
+                            and { eq("tipo", "Examen"); eq("lugar", "Interno") }
+                        }
+                    }
                     order("created_at", Order.DESCENDING)
                 }
                 .decodeList<JsonObject>().mapNotNull {
@@ -433,6 +446,8 @@ object AgendaBanners {
                         pacienteNombre = it.nested("paciente")?.str("nombre"),
                         especialidadDestino = it.nested("especialidad_destino")?.str("nombre"),
                         especialidadDestinoId = it.str("especialidad_destino_id"),
+                        tipo = it.str("tipo") ?: "Derivacion",
+                        descripcion = it.str("descripcion"),
                     )
                 }
         } else emptyList()

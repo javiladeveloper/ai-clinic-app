@@ -36,7 +36,10 @@ data class SolicitudFicha(
     val especialidadDestinoNombre: String?,
     val resultadoNota: String?,
     val resultadoArchivoUrl: String?,
-)
+    val lugar: String = "Externo",   // "Interno" (en la clínica, deriva al área) | "Externo"
+) {
+    val esInterno: Boolean get() = lugar == "Interno"
+}
 
 /** Un documento clínico del paciente (radiografía, análisis…) en el bucket privado. */
 data class DocumentoFicha(
@@ -64,7 +67,7 @@ object SolicitudesRepo {
         val filas = runCatching {
             Supabase.client.postgrest["solicitudes"]
                 .select(Columns.raw(
-                    "id, tipo, descripcion, estado, fecha, especialidad_destino_id, " +
+                    "id, tipo, descripcion, estado, fecha, especialidad_destino_id, lugar, " +
                         "resultado_nota, resultado_archivo_url, terapeuta:terapeutas(nombre), " +
                         "especialidad_destino:especialidades!solicitudes_especialidad_destino_id_fkey(nombre)"
                 )) {
@@ -85,6 +88,7 @@ object SolicitudesRepo {
                 especialidadDestinoNombre = (o["especialidad_destino"] as? JsonObject)?.str("nombre"),
                 resultadoNota = o.str("resultado_nota"),
                 resultadoArchivoUrl = o.str("resultado_archivo_url"),
+                lugar = o.str("lugar") ?: "Externo",
             )
         }
     }
@@ -109,15 +113,21 @@ object SolicitudesRepo {
         }
     }
 
-    /** Crea una solicitud (examen o derivación). [tratamientoId]: del que nace la derivación. */
+    /**
+     * Crea una solicitud (examen o derivación). [tratamientoId]: del que nace la derivación.
+     * [lugar]: "Externo" (el paciente se lo hace afuera) o "Interno" (en la clínica, deriva al
+     * área [especialidadDestinoId] que la clínica designó para exámenes; recepción lo agenda/cobra).
+     */
     suspend fun crearSolicitud(
         pacienteId: String, tipo: String, descripcion: String,
         terapeutaId: String?, especialidadDestinoId: String?, tratamientoId: String? = null,
+        lugar: String = "Externo",
     ): Boolean = try {
         Supabase.client.postgrest["solicitudes"].insert(buildJsonObject {
             put("paciente_id", pacienteId)
             put("tipo", tipo)
             put("descripcion", descripcion)
+            put("lugar", lugar)
             if (terapeutaId != null) put("terapeuta_id", terapeutaId)
             if (especialidadDestinoId != null) put("especialidad_destino_id", especialidadDestinoId)
             if (tratamientoId != null) put("tratamiento_id", tratamientoId)

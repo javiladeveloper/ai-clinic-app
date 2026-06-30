@@ -136,14 +136,20 @@ fun ContenidoExamenes(
         }
     }
 
-    // Modal: solicitar examen externo.
+    // Modal: solicitar examen (externo o en la clínica → deriva al área designada).
     if (nuevo == "Examen") {
         ModalSolicitarExamen(
+            areas = especialidades,
             onCancelar = { nuevo = null },
-            onGuardar = { desc ->
+            onGuardar = { desc, lugar, areaId ->
                 nuevo = null
                 scope.launch {
-                    SolicitudesRepo.crearSolicitud(pacienteId, "Examen", desc, ctx.miTerapeutaId, null); recargar()
+                    SolicitudesRepo.crearSolicitud(
+                        pacienteId, "Examen", desc, ctx.miTerapeutaId,
+                        especialidadDestinoId = if (lugar == "Interno") areaId else null,
+                        lugar = lugar,
+                    )
+                    recargar()
                 }
             },
         )
@@ -228,7 +234,13 @@ private fun FilaSolicitud(
         }
         val sub = listOfNotNull(
             s.fecha.ifBlank { null },
-            if (s.tipo == "Derivacion") s.especialidadDestinoNombre?.let { "→ $it" } else null,
+            // Examen interno: muestra el área a la que se derivó; derivación: su destino.
+            when {
+                s.tipo == "Examen" && s.esInterno -> "🏥 ${s.especialidadDestinoNombre ?: "En la clínica"}"
+                s.tipo == "Examen" -> "📤 Externo"
+                s.tipo == "Derivacion" -> s.especialidadDestinoNombre?.let { "→ $it" }
+                else -> null
+            },
             s.terapeutaNombre,
         ).joinToString(" · ")
         if (sub.isNotBlank()) Text(sub, color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
@@ -263,20 +275,35 @@ private fun FilaSolicitud(
     }
 }
 
-/** Solicitar un examen externo (solo descripción). */
+/**
+ * Solicitar un examen. El examen puede hacerse EN LA CLÍNICA (Interno → se deriva al área
+ * que la clínica designó para exámenes, p.ej. "Imagenología"/"Ecografía"/"Rayos X"; recepción
+ * lo agenda y se cobra como un tratamiento de esa área) o AFUERA (Externo → el paciente trae el
+ * resultado, sin costo para la clínica). [areas] = especialidades de la clínica para elegir destino.
+ */
 @Composable
 private fun ModalSolicitarExamen(
-    onCancelar: () -> Unit, onGuardar: (descripcion: String) -> Unit,
+    areas: List<EspecialidadClinica>,
+    onCancelar: () -> Unit,
+    onGuardar: (descripcion: String, lugar: String, areaId: String?) -> Unit,
 ) {
     val c = Sania.colors
     var descripcion by remember { mutableStateOf("") }
+    var lugar by remember { mutableStateOf("Externo") }   // "Externo" | "Interno"
+    var areaId by remember { mutableStateOf<String?>(null) }
+    var abierto by remember { mutableStateOf(false) }
+    val areaNombre = areas.find { it.id == areaId }?.nombre
+    // Para guardar un interno hace falta elegir el área (si la clínica tiene áreas).
+    val internoValido = lugar == "Externo" || areas.isEmpty() || areaId != null
+    val valido = descripcion.isNotBlank() && internoValido
+
     DialogoForm(
         titulo = "Solicitar examen",
-        subtitulo = "Examen externo (lab/imágenes)",
+        subtitulo = if (lugar == "Interno") "En la clínica (se deriva al área)" else "Externo (lab/imágenes)",
         textoAccion = "Solicitar examen",
-        accionHabilitada = descripcion.isNotBlank(),
+        accionHabilitada = valido,
         onCancelar = onCancelar,
-        onAccion = { onGuardar(descripcion.trim()) },
+        onAccion = { onGuardar(descripcion.trim(), lugar, areaId) },
     ) {
         TarjetaForm(titulo = "Examen", icono = "🔬") {
             EtqForm("Examen solicitado")
@@ -284,6 +311,75 @@ private fun ModalSolicitarExamen(
                 placeholder = { Text("Ej. Ecografía abdominal, hemograma…", color = c.textoSuave) },
                 minLines = 2, modifier = Modifier.fillMaxWidth())
         }
+
+        Spacer(Modifier.height(12.dp))
+        TarjetaForm(titulo = "¿Dónde se realiza?", icono = "📍") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OpcionLugar("🏥 En la clínica", "Se cobra como atención", lugar == "Interno",
+                    Modifier.weight(1f)) { lugar = "Interno" }
+                OpcionLugar("📤 Externo", "El paciente lo trae", lugar == "Externo",
+                    Modifier.weight(1f)) { lugar = "Externo"; areaId = null }
+            }
+
+            // Selector de área SOLO si es interno (genérico: la clínica le puso el nombre).
+            if (lugar == "Interno") {
+                Spacer(Modifier.height(12.dp))
+                EtqForm("Área que realiza el examen")
+                if (areas.isEmpty()) {
+                    Text("La clínica no tiene áreas/especialidades para derivar. Créalas en Especialidades.",
+                        color = c.textoSuave, fontSize = 11.sp)
+                } else {
+                    Box {
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(if (areaId != null) c.navy.copy(alpha = 0.10f) else c.superficie)
+                                .border(if (areaId != null) 2.dp else 1.dp,
+                                    if (areaId != null) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { abierto = !abierto }.padding(horizontal = 12.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(areaNombre ?: "Elegir área…",
+                                color = if (areaId != null) c.navy else c.textoSuave,
+                                fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("▾", color = c.textoSuave)
+                        }
+                        if (abierto) {
+                            Column(Modifier.fillMaxWidth().padding(top = 4.dp)
+                                .clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))) {
+                                areas.forEach { a ->
+                                    Text(a.nombre, color = c.texto, fontSize = Sania.txt.cuerpo,
+                                        modifier = Modifier.fillMaxWidth()
+                                            .clickable { areaId = a.id; abierto = false }
+                                            .padding(horizontal = 12.dp, vertical = 11.dp))
+                                }
+                            }
+                        }
+                    }
+                    Text("Quedará pendiente de agendar en esa área. Recepción lo agenda y cobra.",
+                        color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp))
+                }
+            }
+        }
+    }
+}
+
+/** Opción seleccionable (chip grande) de dónde se realiza el examen. */
+@Composable
+private fun OpcionLugar(
+    titulo: String, subtitulo: String, seleccionado: Boolean, modifier: Modifier, onClick: () -> Unit,
+) {
+    val c = Sania.colors
+    Column(
+        modifier.clip(RoundedCornerShape(Sania.shape.sm.dp))
+            .background(if (seleccionado) c.navy.copy(alpha = 0.10f) else c.superficie)
+            .border(if (seleccionado) 2.dp else 1.dp, if (seleccionado) c.navy else c.borde,
+                RoundedCornerShape(Sania.shape.sm.dp))
+            .clickable { onClick() }.padding(horizontal = 10.dp, vertical = 10.dp),
+    ) {
+        Text(titulo, color = if (seleccionado) c.navy else c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(subtitulo, color = c.textoSuave, fontSize = 9.sp, modifier = Modifier.padding(top = 1.dp))
     }
 }
 
