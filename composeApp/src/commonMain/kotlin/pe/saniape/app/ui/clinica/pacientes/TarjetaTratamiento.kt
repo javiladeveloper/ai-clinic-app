@@ -71,6 +71,7 @@ fun TarjetaTratamiento(
     onDerivar: (TratamientoPaciente) -> Unit = {},
     puedeDerivar: Boolean = false,
     onAgendarControl: (TratamientoPaciente) -> Unit = {},   // sin sesiones: agendar próximo control
+    onRegistrarAtencion: (TratamientoPaciente) -> Unit = {},// sin sesiones: registrar medicación/receta
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -164,6 +165,7 @@ fun TarjetaTratamiento(
                 onToggleSesiones = { expandido = !expandido },
                 onColapsarTarjeta = { expandido = false },
                 onAgendarControl = { onAgendarControl(t) },
+                onRegistrarAtencion = { onRegistrarAtencion(t) },
                 onDarAlta = {
                     if (accionando) return@BarraRecorrido
                     accionando = true

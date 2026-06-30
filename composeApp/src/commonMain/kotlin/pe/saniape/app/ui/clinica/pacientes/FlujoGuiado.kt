@@ -56,6 +56,7 @@ fun BarraRecorrido(
     onColapsarTarjeta: () -> Unit = {},     // colapsar la tarjeta al abrir una nube (1 activo a la vez)
     onAgendarControl: () -> Unit = {},      // en Control: el paciente necesita volver
     onDarAlta: () -> Unit = {},             // en Control: el caso se cierra (alta)
+    onRegistrarAtencion: () -> Unit = {},   // en Control: registrar medicación/receta tras atender
 ) {
     val c = Sania.colors
     val usaSesiones = !trat.esConsulta
@@ -178,8 +179,17 @@ fun BarraRecorrido(
             // Paso Control: próxima cita aprox + decisión del profesional (aunque no haya cita).
             if (esControlAbierto) {
                 if (citaAbierta == null) Text("🗓 Control", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                // Lo registrado por el profesional al atender (diagnóstico/medicación).
+                trat.medicacion?.takeIf { it.isNotBlank() }?.let { FilaRef("Medicación", it) }
                 FilaRef("Próx. control", trat.proximoControl?.takeIf { it.isNotBlank() } ?: "Sin agendar")
                 if (!altaTrat) {
+                    Spacer(Modifier.height(8.dp))
+                    // Registrar atención (medicación/receta) — el momento natural tras atender.
+                    Box(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.navy)
+                            .clickable { onRegistrarAtencion() }.padding(vertical = 9.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { Text("📝 Registrar atención (medicación/receta)", color = c.sobreNavy, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                     Spacer(Modifier.height(8.dp))
                     Text("¿El paciente necesita volver?", color = c.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(4.dp))

@@ -326,6 +326,8 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                                 tratamientoId = t.id,
                             )
                         },
+                        // Registrar atención: abre el editar (diagnóstico/medicación/próx control/costo).
+                        onRegistrarAtencion = { editarTratamiento = it },
                     )
                     "examenes" -> {
                         if (subiendo) {
@@ -993,6 +995,7 @@ private fun ContenidoAtenciones(
     onDerivar: (TratamientoPaciente) -> Unit,
     puedeDerivar: Boolean,
     onAgendarControl: (TratamientoPaciente) -> Unit,
+    onRegistrarAtencion: (TratamientoPaciente) -> Unit,
 ) {
     val c = Sania.colors
     Column {
@@ -1025,6 +1028,7 @@ private fun ContenidoAtenciones(
                     // (si solo hay una, no hay a dónde derivar).
                     onDerivar = onDerivar, puedeDerivar = puedeDerivar,
                     onAgendarControl = onAgendarControl,
+                    onRegistrarAtencion = onRegistrarAtencion,
                 )
             }
         }
