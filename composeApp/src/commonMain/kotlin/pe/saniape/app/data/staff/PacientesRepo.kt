@@ -208,7 +208,7 @@ object PacientesRepo {
             precio_paquete, precio_por_sesion, precio_acordado, terapeuta_id,
             diagnostico, medicacion, proximo_control,
             procedimiento:procedimientos(nombre, especialidad:especialidades(nombre, usa_sesiones)),
-            terapeuta:terapeutas(id, nombre)
+            terapeuta:terapeutas(id, nombre, especialidades:terapeuta_especialidades(especialidad:especialidades(nombre)))
         )
     """
 
@@ -645,6 +645,12 @@ object PacientesRepo {
             val usaSes = (espObj?.get("usa_sesiones") as? JsonPrimitive)
                 ?.content?.let { it != "false" } ?: true
             val ter = t["terapeuta"] as? JsonObject
+            // Especialidad: del procedimiento; si falta (tratamiento sin servicio), cae a la
+            // del profesional (si tiene una sola). Así un tratamiento con médico igual la tiene.
+            val espDelProf = (ter?.get("especialidades") as? JsonArray)
+                ?.mapNotNull { ((it as? JsonObject)?.get("especialidad") as? JsonObject)?.str("nombre") }
+                ?.distinct()
+            val espNombre = espObj?.str("nombre") ?: espDelProf?.singleOrNull()
             TratamientoPaciente(
                 id = t.str("id") ?: return@mapNotNull null,
                 procedimiento = proc,
@@ -662,7 +668,7 @@ object PacientesRepo {
                 diagnostico = t.str("diagnostico"),
                 medicacion = t.str("medicacion"),
                 proximoControl = t.str("proximo_control"),
-                especialidadNombre = espObj?.str("nombre"),
+                especialidadNombre = espNombre,
             )
         }
         return PacienteStaff(
