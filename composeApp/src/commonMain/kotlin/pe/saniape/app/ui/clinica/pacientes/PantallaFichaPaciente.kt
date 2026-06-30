@@ -74,6 +74,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     var creandoTratamiento by remember { mutableStateOf(false) }
     var ampliarTratamiento by remember { mutableStateOf<TratamientoPaciente?>(null) }
     var editarTratamiento by remember { mutableStateOf<TratamientoPaciente?>(null) }
+    var registrarAtencion by remember { mutableStateOf<TratamientoPaciente?>(null) }
     var recargarToken by remember { mutableStateOf(0) }   // fuerza recarga de las tarjetas
     var tab by remember { mutableStateOf("atenciones") }
     var hitos by remember { mutableStateOf<pe.saniape.app.data.staff.HitosPaciente?>(null) }
@@ -326,8 +327,8 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                                 tratamientoId = t.id,
                             )
                         },
-                        // Registrar atención: abre el editar (diagnóstico/medicación/próx control/costo).
-                        onRegistrarAtencion = { editarTratamiento = it },
+                        // Registrar atención (clínico): diagnóstico/medicación/próximo control.
+                        onRegistrarAtencion = { registrarAtencion = it },
                     )
                     "examenes" -> {
                         if (subiendo) {
@@ -424,6 +425,22 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 scope.launch {
                     PacientesRepo.editarTratamiento(t.id, totalSes, precioPaq, precioSes, precioAcord,
                         diag, medic, proxControl)
+                    recargar()
+                }
+            },
+        )
+    }
+
+    // Modal "Registrar atención" (clínico): diagnóstico/medicación/próximo control.
+    registrarAtencion?.let { t ->
+        ModalRegistrarAtencion(
+            t = t,
+            onCancelar = { registrarAtencion = null },
+            onGuardar = { diag, medic, proxControl ->
+                registrarAtencion = null
+                scope.launch {
+                    // Solo campos clínicos (sin tocar costo/sesiones). "" limpia el campo.
+                    PacientesRepo.editarTratamiento(t.id, null, null, null, null, diag, medic, proxControl)
                     recargar()
                 }
             },
