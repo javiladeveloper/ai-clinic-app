@@ -32,6 +32,17 @@ private class AccionesAndroid(private val context: Context) : AccionesNativas {
             )
         } catch (_: Exception) { /* sin app que abra el enlace */ }
     }
+
+    override fun abrirHtml(html: String, titulo: String) {
+        try {
+            context.startActivity(
+                Intent(context, VisorHtmlActivity::class.java)
+                    .putExtra(VisorHtmlActivity.EXTRA_HTML, html)
+                    .putExtra(VisorHtmlActivity.EXTRA_TITULO, titulo)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        } catch (_: Exception) { /* no se pudo abrir el visor */ }
+    }
 }
 
 @Composable

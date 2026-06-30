@@ -11,6 +11,12 @@ interface AccionesNativas {
     fun abrirMapa(lat: Double, lng: Double, etiqueta: String?)
     /** Abre una URL (redes, sitio web, WhatsApp) en la app correspondiente. */
     fun abrirUrl(url: String)
+    /**
+     * Muestra un documento HTML (p.ej. la historia clínica imprimible) en un visor con
+     * impresión. Se usa cuando el contenido viene de un endpoint con Bearer (no se puede
+     * abrir la URL directa en el navegador externo porque no lleva la sesión del staff).
+     */
+    fun abrirHtml(html: String, titulo: String)
 }
 
 @Composable

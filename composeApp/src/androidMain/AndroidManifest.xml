@@ -28,6 +28,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Visor de HTML (historia clínica imprimible servida con Bearer) -->
+        <activity
+            android:name=".ui.VisorHtmlActivity"
+            android:exported="false"
+            android:label="Historia clínica" />
     </application>
 
 </manifest>

@@ -1269,7 +1269,9 @@ private fun ContenidoResumen(
             }
         }
 
-        // Historia clínica (PDF imprimible — se abre en el navegador)
+        // Historia clínica (PDF imprimible). Se pide al endpoint con Bearer y se muestra en
+        // el visor nativo (con "Imprimir / Guardar PDF"), sin pedir login en el navegador.
+        var histCargando by remember { mutableStateOf(false) }
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
                 .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(14.dp),
@@ -1279,11 +1281,22 @@ private fun ContenidoResumen(
             Text("Documento con antecedentes, tratamientos, sesiones y citas — listo para imprimir o guardar como PDF.",
                 color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
             Box(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.navy)
-                    .clickable { acciones.abrirUrl("${pe.saniape.app.data.Supabase.SITE_URL}/pacientes/${paciente.id}/historia") }
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .background(if (histCargando) c.borde else c.navy)
+                    .clickable(enabled = !histCargando) {
+                        scope.launch {
+                            histCargando = true
+                            val html = PacientesRepo.historiaHtml(paciente.id)
+                            histCargando = false
+                            if (html != null) acciones.abrirHtml(html, paciente.nombre)
+                        }
+                    }
                     .padding(vertical = 11.dp),
                 contentAlignment = Alignment.Center,
-            ) { Text("Ver historia (PDF)", color = c.sobreNavy, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+            ) {
+                Text(if (histCargando) "Generando…" else "Ver historia (PDF)",
+                    color = c.sobreNavy, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            }
         }
     }
 }

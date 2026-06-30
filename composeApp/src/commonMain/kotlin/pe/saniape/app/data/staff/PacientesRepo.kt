@@ -4,6 +4,7 @@ import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -768,6 +769,20 @@ object PacientesRepo {
             if (resp.status != HttpStatusCode.OK) texto.ifBlank { "⚠ La IA no está disponible." } else texto
         } catch (e: Exception) { null }
     }
+
+    /**
+     * Historia clínica imprimible (HTML) servida por /api/staff/historia con Bearer.
+     * Devuelve el HTML completo (o null si falló) para mostrarlo en el visor nativo.
+     * El endpoint aplica el mismo gating que la web (Reportes=Premium) y RLS de staff.
+     */
+    suspend fun historiaHtml(pacienteId: String): String? = try {
+        val tk = token() ?: return null
+        val resp = http.get("${Supabase.SITE_URL}/api/staff/historia/$pacienteId") {
+            header("Authorization", "Bearer $tk")
+        }
+        // El endpoint siempre responde HTML (incluso la página de "Función Premium").
+        resp.bodyAsText().ifBlank { null }
+    } catch (e: Exception) { null }
 
     /** Edita los datos clínicos del paciente (diagnóstico/alergias/medicación/antecedentes). */
     suspend fun editarDatosClinicos(
