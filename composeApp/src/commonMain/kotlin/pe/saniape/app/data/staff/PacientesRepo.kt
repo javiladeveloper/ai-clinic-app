@@ -165,6 +165,10 @@ data class PacienteStaff(
     val antecedentes: String? = null,
     val patologias: List<String> = emptyList(),   // síntomas/patologías (chips)
     val tipoPatologia: String? = null,            // rubro/tipo de los síntomas
+    // Resumen clínico IA persistido (se genera async; se relee al abrir la ficha).
+    val resumenIa: String? = null,
+    val resumenIaFecha: String? = null,
+    val resumenIaEstado: String? = null,          // generando | listo | error | null
 ) {
     /** Tratamientos en curso (Activo). */
     val tratamientosActivos: List<TratamientoPaciente>
@@ -212,6 +216,7 @@ object PacientesRepo {
     private const val SELECT = """
         id, nombre, dni, edad, telefono, email, ocupacion, diagnostico, estado, flag,
         talla, peso, fecha_ingreso, alergias, medicacion_actual, antecedentes, patologias, tipo_patologia,
+        resumen_ia, resumen_ia_fecha, resumen_ia_estado,
         tratamientos:tratamientos(
             id, modalidad, estado, estado_pago, total_sesiones, sesiones_completadas,
             precio_paquete, precio_por_sesion, precio_acordado, terapeuta_id,
@@ -750,28 +755,63 @@ object PacientesRepo {
             patologias = (o["patologias"] as? JsonArray)
                 ?.mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c != "null" } } ?: emptyList(),
             tipoPatologia = o.str("tipo_patologia"),
+            resumenIa = o.str("resumen_ia"),
+            resumenIaFecha = o.str("resumen_ia_fecha"),
+            resumenIaEstado = o.str("resumen_ia_estado"),
         )
     }
 
+    /** Resultado de pedir un resumen IA. */
+    sealed class ResumenPedido {
+        /** Se inició la generación (async); el texto llegará al releer la ficha. */
+        object Generando : ResumenPedido()
+        /** El VPS ya está generando el de otro paciente; hay que esperar. */
+        data class Ocupado(val mensaje: String) : ResumenPedido()
+        /** No se pudo iniciar (sin plan, red, etc.). */
+        data class Error(val mensaje: String) : ResumenPedido()
+    }
+
     /**
-     * Resumen clínico con IA (plan Plus). Manda solo el pacienteId: el endpoint
-     * /api/ai/resumen (Bearer) carga TODO el historial en el servidor (tratamientos activos y
-     * terminados + sesiones con técnica/evolución + consultas/evaluaciones) con la RLS de la
-     * clínica, así web y app dan el mismo resumen. Devuelve el texto completo o null si falla.
+     * DISPARA la generación del resumen clínico IA (plan Plus). El endpoint /api/ai/resumen
+     * carga TODO el historial (tratamientos activos+terminados, sesiones con evolución,
+     * consultas) y genera en 2do plano (el VPS tarda ~1-2 min). NO espera el texto: al
+     * terminar se guarda en pacientes.resumen_ia y la ficha lo relee. El VPS hace UN resumen
+     * a la vez por clínica → si está ocupado, devuelve Ocupado con el mensaje a mostrar.
      */
-    suspend fun resumenIA(paciente: PacienteStaff): String? {
+    suspend fun pedirResumenIA(pacienteId: String): ResumenPedido {
         return try {
-            val tk = token() ?: return null
-            val cuerpo = buildJsonObject { put("pacienteId", paciente.id) }
+            val tk = token() ?: return ResumenPedido.Error("Sesión no válida")
+            val cuerpo = buildJsonObject { put("pacienteId", pacienteId) }
             val resp = http.post("${Supabase.SITE_URL}/api/ai/resumen") {
                 header("Authorization", "Bearer $tk")
                 contentType(ContentType.Application.Json)
                 setBody(cuerpo.toString())
             }
-            val texto = resp.bodyAsText()
-            if (resp.status != HttpStatusCode.OK) texto.ifBlank { "⚠ La IA no está disponible." } else texto
-        } catch (e: Exception) { null }
+            val txt = resp.bodyAsText()
+            when (resp.status.value) {
+                202 -> ResumenPedido.Generando
+                409 -> ResumenPedido.Ocupado(mensajeDe(txt) ?: "Ya se está generando otro resumen. Espera un momento.")
+                else -> ResumenPedido.Error(mensajeDe(txt) ?: "No se pudo iniciar el resumen.")
+            }
+        } catch (e: Exception) { ResumenPedido.Error("Sin conexión con el servidor") }
     }
+
+    /** Relee SOLO el estado/texto del resumen IA del paciente (para refrescar tras generar). */
+    suspend fun resumenIaDe(pacienteId: String): Triple<String?, String?, String?> {
+        return try {
+            val o = Supabase.client.postgrest["pacientes"]
+                .select(Columns.list("resumen_ia, resumen_ia_fecha, resumen_ia_estado")) {
+                    filter { eq("id", pacienteId) }
+                }.decodeList<JsonObject>().firstOrNull() ?: return Triple(null, null, null)
+            Triple(o.str("resumen_ia"), o.str("resumen_ia_fecha"), o.str("resumen_ia_estado"))
+        } catch (e: Exception) { Triple(null, null, null) }
+    }
+
+    private fun mensajeDe(json: String): String? =
+        runCatching {
+            (kotlinx.serialization.json.Json.parseToJsonElement(json) as? JsonObject)
+                ?.get("mensaje")?.let { (it as? JsonPrimitive)?.content }
+        }.getOrNull()
 
     /**
      * Sugerencia IA para la próxima sesión de un tratamiento (plan Plus). Llama a

@@ -1362,8 +1362,20 @@ private fun ContenidoResumen(
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
-    var aiTexto by remember { mutableStateOf<String?>(null) }
-    var aiCargando by remember { mutableStateOf(false) }
+    // Resumen IA persistido: estado inicial desde el paciente (se generó antes y quedó guardado).
+    var aiTexto by remember(paciente.id) { mutableStateOf(paciente.resumenIa) }
+    var aiFecha by remember(paciente.id) { mutableStateOf(paciente.resumenIaFecha) }
+    var aiEstado by remember(paciente.id) { mutableStateOf(paciente.resumenIaEstado) }   // generando|listo|error|null
+    var aiAviso by remember(paciente.id) { mutableStateOf<String?>(null) }                // "ocupado" u otro
+
+    // Si quedó "generando", al abrir la ficha refrescamos una vez para traer el resultado
+    // (la generación corre en el servidor; aquí no bloqueamos).
+    LaunchedEffect(paciente.id) {
+        if (aiEstado == "generando") {
+            val (txt, fecha, est) = PacientesRepo.resumenIaDe(paciente.id)
+            if (est != "generando") { aiTexto = txt; aiFecha = fecha; aiEstado = est }
+        }
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         // Info card: datos del paciente + IMC
@@ -1447,12 +1459,39 @@ private fun ContenidoResumen(
                     Text("🔒 El resumen con IA es una función del plan Plus.", color = c.textoSuave, fontSize = 11.sp)
                 }
             } else {
-                aiTexto?.let { texto ->
+                val generando = aiEstado == "generando"
+
+                // Banner de estado mientras se genera (corre en el servidor, ~1-2 min).
+                if (generando) {
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .background(c.chipBg).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(color = c.navy, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text("Generando el resumen… tarda 1-2 min. Sal y vuelve a esta ficha para verlo.",
+                            color = c.texto, fontSize = 11.sp)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                // Aviso "ocupado" (el VPS ya genera el de otro paciente).
+                aiAviso?.let {
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .background(c.pendBg).border(1.dp, c.pend, RoundedCornerShape(Sania.shape.sm.dp)).padding(12.dp)) {
+                        Text("⏳ $it", color = c.texto, fontSize = 11.sp)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                // Texto del último resumen (si ya hay uno guardado).
+                aiTexto?.takeIf { it.isNotBlank() }?.let { texto ->
                     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.chipBg).padding(12.dp)) {
                         Text(texto, color = c.texto, fontSize = 12.sp)
                     }
+                    aiFecha?.let {
+                        Text("Actualizado: ${it.take(16).replace("T", " ")}",
+                            color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                    }
                     Spacer(Modifier.height(8.dp))
-                    // Copiar al portapapeles · Imprimir/guardar PDF (visor nativo).
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Box(
                             Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
@@ -1471,20 +1510,25 @@ private fun ContenidoResumen(
                     }
                     Spacer(Modifier.height(8.dp))
                 }
+
+                // Botón generar / regenerar (deshabilitado mientras genera).
                 Box(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                        .background(if (aiCargando) c.borde else c.navy)
-                        .clickable(enabled = !aiCargando) {
+                        .background(if (generando) c.borde else c.navy)
+                        .clickable(enabled = !generando) {
                             scope.launch {
-                                aiCargando = true
-                                aiTexto = PacientesRepo.resumenIA(paciente)
-                                    ?: "⚠ El asistente de IA no está disponible. Intenta más tarde."
-                                aiCargando = false
+                                aiAviso = null
+                                when (val r = PacientesRepo.pedirResumenIA(paciente.id)) {
+                                    is PacientesRepo.ResumenPedido.Generando -> aiEstado = "generando"
+                                    is PacientesRepo.ResumenPedido.Ocupado -> aiAviso = r.mensaje
+                                    is PacientesRepo.ResumenPedido.Error -> aiAviso = r.mensaje
+                                }
                             }
                         }.padding(vertical = 11.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(if (aiCargando) "Generando…" else if (aiTexto != null) "↺ Regenerar análisis" else "Generar análisis médico",
+                    Text(
+                        if (generando) "Generando…" else if (!aiTexto.isNullOrBlank()) "↺ Regenerar análisis" else "Generar análisis médico",
                         color = c.sobreNavy, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
