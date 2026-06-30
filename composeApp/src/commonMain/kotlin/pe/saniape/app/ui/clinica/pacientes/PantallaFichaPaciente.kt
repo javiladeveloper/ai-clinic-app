@@ -1043,6 +1043,7 @@ private fun ContenidoAtenciones(
                 TarjetaTratamiento(
                     t = t, verPagos = ctx.puede("pagos"), esAdmin = ctx.esAdmin,
                     puedeSesiones = ctx.puede("sesiones"),
+                    pacienteId = paciente.id, puedeFotos = ctx.can("fotosEvolutivas"),
                     consultaDone = citaC != null, evalDone = citaE != null,
                     citaConsulta = citaC, citaEvaluacion = citaE,
                     onEditarCita = onEditarCita,

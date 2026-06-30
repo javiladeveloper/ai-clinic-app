@@ -55,6 +55,10 @@ kotlin {
             implementation(libs.supabase.realtime)
             implementation(libs.supabase.compose.auth)
             implementation(libs.ktor.client.android)
+
+            // Coil 3: carga de imágenes remotas (fotos evolutivas) con motor de red ktor
+            implementation(libs.coil.compose)
+            implementation(libs.coil.network.ktor)
         }
     }
 }

@@ -57,6 +57,8 @@ fun TarjetaTratamiento(
     verPagos: Boolean,
     esAdmin: Boolean,
     puedeSesiones: Boolean,
+    pacienteId: String = "",
+    puedeFotos: Boolean = false,   // feature fotosEvolutivas (Premium)
     consultaDone: Boolean = false,   // para la barra de recorrido (de los hitos del paciente)
     evalDone: Boolean = false,
     citaConsulta: pe.saniape.app.data.staff.CitaHito? = null,   // detalle para la nube de la bolita
@@ -264,6 +266,10 @@ fun TarjetaTratamiento(
                     Spacer(Modifier.height(Sania.dim.md))
                     SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() })
                 }
+                // Fotos evolutivas también en consultas (medicina/nutri pueden documentar).
+                if (puedeFotos && pacienteId.isNotBlank()) {
+                    GaleriaFotos(pacienteId = pacienteId, tratamientoId = t.id, sesiones = emptyList())
+                }
             } else if (cargaFallo) {
                 // La carga falló (timeout/red). NO decir "sin sesiones": ofrecer reintentar.
                 BloqueReintentar("No se pudieron cargar las sesiones.") { sesiones = null; recargarSesiones() }
@@ -320,6 +326,11 @@ fun TarjetaTratamiento(
                     if (verPagos) {
                         Spacer(Modifier.height(Sania.dim.md))
                         SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() })
+                    }
+
+                    // Fotos evolutivas (antes/durante/después) — feature Premium.
+                    if (puedeFotos && pacienteId.isNotBlank()) {
+                        GaleriaFotos(pacienteId = pacienteId, tratamientoId = t.id, sesiones = s)
                     }
 
                     // Dar de alta (si el tratamiento sigue en curso y puede sesiones)
