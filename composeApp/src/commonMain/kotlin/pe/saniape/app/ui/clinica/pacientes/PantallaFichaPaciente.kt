@@ -435,6 +435,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     registrarAtencion?.let { t ->
         ModalRegistrarAtencion(
             t = t,
+            esGestor = ctx.esGestor,
             onCancelar = { registrarAtencion = null },
             onGuardar = { diag, medic, proxControl ->
                 registrarAtencion = null

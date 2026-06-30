@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.data.staff.EspecialidadClinica
 import pe.saniape.app.data.staff.EvaluacionRef
 import pe.saniape.app.data.staff.PacientesRepo
@@ -468,9 +469,11 @@ fun ModalEditarTratamiento(
  * medicación/receta y próximo control. Es lo que el médico llena tras atender (paso Control).
  * El costo se ajusta aparte en "Editar tratamiento".
  */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ModalRegistrarAtencion(
     t: pe.saniape.app.data.staff.TratamientoPaciente,
+    esGestor: Boolean,   // recepción/admin → "fecha tentativa"; médico solo → "referencial"
     onCancelar: () -> Unit,
     onGuardar: (diagnostico: String, medicacion: String, proximoControl: String) -> Unit,
 ) {
@@ -478,6 +481,25 @@ fun ModalRegistrarAtencion(
     var diagnostico by remember { mutableStateOf(t.diagnostico ?: "") }
     var medicacion by remember { mutableStateOf(t.medicacion ?: "") }
     var proximoControl by remember { mutableStateOf(t.proximoControl ?: "") }
+    var mostrarFecha by remember { mutableStateOf(false) }
+
+    if (mostrarFecha) {
+        val estadoP = androidx.compose.material3.rememberDatePickerState()
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { mostrarFecha = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    estadoP.selectedDateMillis?.let { ms ->
+                        val d = kotlinx.datetime.Instant.fromEpochMilliseconds(ms)
+                            .toLocalDateTime(kotlinx.datetime.TimeZone.UTC).date
+                        proximoControl = "${d.year}-${d.monthNumber.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}"
+                    }
+                    mostrarFecha = false
+                }) { Text("Aceptar", color = c.navy) }
+            },
+            dismissButton = { TextButton(onClick = { mostrarFecha = false }) { Text("Cancelar", color = c.textoSuave) } },
+        ) { androidx.compose.material3.DatePicker(state = estadoP) }
+    }
 
     Dialog(onDismissRequest = onCancelar, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
@@ -504,10 +526,28 @@ fun ModalRegistrarAtencion(
                         placeholder = { Text("Indicaciones, receta…", color = c.textoSuave) },
                         minLines = 2, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(10.dp))
-                    Etq("Próximo control (AAAA-MM-DD) — opcional")
-                    OutlinedTextField(value = proximoControl, onValueChange = { proximoControl = it },
-                        placeholder = { Text("2026-07-15", color = c.textoSuave) }, singleLine = true,
-                        modifier = Modifier.fillMaxWidth())
+                    Etq("Próximo control (opcional)")
+                    // Selector de fecha (calendario). Es REFERENCIAL: no agenda la cita.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { mostrarFecha = true }.padding(horizontal = 12.dp, vertical = 11.dp),
+                        ) {
+                            Text(proximoControl.ifBlank { "📅 Elegir fecha…" },
+                                color = if (proximoControl.isBlank()) c.textoSuave else c.texto, fontSize = Sania.txt.cuerpo)
+                        }
+                        if (proximoControl.isNotBlank()) {
+                            Spacer(Modifier.width(8.dp))
+                            Text("✕", color = c.textoSuave, fontSize = 14.sp,
+                                modifier = Modifier.clickable { proximoControl = "" })
+                        }
+                    }
+                    Text(
+                        if (esGestor) "Fecha tentativa — luego confirma horario/disponibilidad del profesional al agendar."
+                        else "Referencial (ej. “vuelve en ~1 mes”). No agenda la cita; recepción coordinará el horario.",
+                        color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
