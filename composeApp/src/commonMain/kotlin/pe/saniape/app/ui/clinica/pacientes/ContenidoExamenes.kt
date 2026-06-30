@@ -361,7 +361,9 @@ fun ModalDerivar(
                 ) {
                     Column {
                         Text("ACTUAL", color = c.textoSuave, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                        Text(especialidadActual ?: "—", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(especialidadActual ?: "Sin especialidad",
+                            color = if (especialidadActual != null) c.texto else c.textoSuave,
+                            fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
                 }
                 Text("→", color = c.navy, fontSize = 20.sp, fontWeight = FontWeight.Bold,
