@@ -176,9 +176,38 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 }
             }
 
-            // Menú del paciente: dar de baja / reactivar.
+            // Menú del paciente: invitar al portal (Plus) + dar de baja / reactivar.
             if (menuPaciente) {
                 Column(Modifier.fillMaxWidth().background(c.superficie)) {
+                    // Invitar al portal: el paciente entra con su correo y ve sus citas/tratamiento.
+                    // Requiere feature reservas (Plus) + email o teléfono.
+                    val puedeInvitar = ctx.can("reservas") &&
+                        (!paciente.email.isNullOrBlank() || !paciente.telefono.isNullOrBlank())
+                    if (puedeInvitar) {
+                        val base = pe.saniape.app.data.Supabase.SITE_URL
+                        val link = paciente.email?.takeIf { it.isNotBlank() }
+                            ?.let { "$base/paciente/login?email=$it" } ?: "$base/paciente/login"
+                        val msg = "Hola ${paciente.nombre.split(" ").first()}, accede a tu portal para ver tus citas y tu tratamiento: $link"
+                        if (!paciente.telefono.isNullOrBlank()) {
+                            Text("💬 Invitar por WhatsApp", color = c.texto, fontSize = Sania.txt.cuerpo,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    menuPaciente = false
+                                    val tel = paciente.telefono!!.filter { it.isDigit() }
+                                    val wa = if (tel.length <= 9) "51$tel" else tel
+                                    acciones.abrirUrl("https://wa.me/$wa?text=${urlEncode(msg)}")
+                                }.padding(horizontal = Sania.dim.xl, vertical = Sania.dim.md))
+                            Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
+                        }
+                        Text("🔗 Copiar enlace del portal", color = c.texto, fontSize = Sania.txt.cuerpo,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                menuPaciente = false
+                                acciones.copiarTexto(link, "Enlace del portal")
+                            }.padding(horizontal = Sania.dim.xl, vertical = Sania.dim.md))
+                        Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
+                    }
+
                     val inactivo = paciente.estado == "Inactivo"
                     Text(
                         if (inactivo) "↻ Reactivar paciente" else "Dar de baja al paciente",
@@ -1420,6 +1449,16 @@ private fun FilaClinica(etq: String, valor: String?) {
         Text(valor?.takeIf { it.isNotBlank() } ?: "—",
             color = if (valor.isNullOrBlank()) c.textoSuave else c.texto, fontSize = 12.sp,
             fontWeight = if (valor.isNullOrBlank()) FontWeight.Normal else FontWeight.Medium)
+    }
+}
+
+/** Codifica un texto para usarlo en una URL (mensaje de WhatsApp) — percent-encoding UTF-8. */
+private fun urlEncode(s: String): String = buildString {
+    for (b in s.encodeToByteArray()) {
+        val c = b.toInt() and 0xFF
+        if (c.toChar() in 'A'..'Z' || c.toChar() in 'a'..'z' || c.toChar() in '0'..'9' ||
+            c.toChar() in "-_.~") append(c.toChar())
+        else append('%').append(c.toString(16).uppercase().padStart(2, '0'))
     }
 }
 
