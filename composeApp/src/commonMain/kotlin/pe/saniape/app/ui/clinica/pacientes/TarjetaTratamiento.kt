@@ -70,6 +70,7 @@ fun TarjetaTratamiento(
     onCrearSesion: (TratamientoPaciente) -> Unit = {},
     onDerivar: (TratamientoPaciente) -> Unit = {},
     puedeDerivar: Boolean = false,
+    onAgendarControl: (TratamientoPaciente) -> Unit = {},   // sin sesiones: agendar próximo control
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -159,7 +160,14 @@ fun TarjetaTratamiento(
             BarraRecorrido(
                 trat = t, consultaDone = consultaDone, evalDone = evalDone,
                 citaConsulta = citaConsulta, citaEvaluacion = citaEvaluacion,
-                puedePagos = verPagos, onEditarCita = onEditarCita,
+                puedePagos = verPagos, expandido = expandido, onEditarCita = onEditarCita,
+                onToggleSesiones = { expandido = !expandido },
+                onAgendarControl = { onAgendarControl(t) },
+                onDarAlta = {
+                    if (accionando) return@BarraRecorrido
+                    accionando = true
+                    scope.launch { PacientesRepo.darDeAlta(t.id); accionando = false; onCambioRealizado() }
+                },
             )
         }
 
@@ -241,8 +249,10 @@ fun TarjetaTratamiento(
             Spacer(Modifier.height(Sania.dim.md))
 
             // Las Consultas (especialidad sin sesiones) no listan sesiones; solo pagos.
+            // El alta se declara desde el paso "Control" de la barra (no como botón suelto).
             if (t.esConsulta) {
-                Text("Consulta médica — sin sesiones.", color = c.textoSuave, fontSize = 12.sp)
+                Text("Atención sin sesiones — el alta se declara desde el paso “Control”.",
+                    color = c.textoSuave, fontSize = 12.sp)
                 if (verPagos) {
                     Spacer(Modifier.height(Sania.dim.md))
                     SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() })
@@ -308,20 +318,10 @@ fun TarjetaTratamiento(
                     // Dar de alta (si el tratamiento sigue en curso y puede sesiones)
                     if (!terminado && puedeSesiones) {
                         Spacer(Modifier.height(Sania.dim.sm))
-                        Box(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                                .background(c.ok.copy(alpha = 0.12f))
-                                .border(1.dp, c.ok, RoundedCornerShape(Sania.shape.sm.dp))
-                                .clickable(enabled = !accionando) {
-                                    accionando = true
-                                    scope.launch {
-                                        PacientesRepo.darDeAlta(t.id)
-                                        accionando = false
-                                        onCambioRealizado()
-                                    }
-                                }.padding(vertical = 10.dp),
-                            contentAlignment = Alignment.Center,
-                        ) { Text("✓ Dar de alta este tratamiento", color = c.ok, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                        BtnDarAlta(habilitado = !accionando) {
+                            accionando = true
+                            scope.launch { PacientesRepo.darDeAlta(t.id); accionando = false; onCambioRealizado() }
+                        }
                     }
                 }
             }
@@ -503,6 +503,18 @@ private fun BloqueReintentar(mensaje: String, onReintentar: () -> Unit) {
                 .clickable { onReintentar() }.padding(horizontal = 16.dp, vertical = 7.dp),
         ) { Text("↻ Reintentar", color = c.sobreNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
     }
+}
+
+/** Botón "Dar de alta este tratamiento" (verde). El alta SIEMPRE la declara el profesional. */
+@Composable
+private fun BtnDarAlta(habilitado: Boolean, onClick: () -> Unit) {
+    val c = Sania.colors
+    Box(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+            .background(c.ok.copy(alpha = 0.12f)).border(1.dp, c.ok, RoundedCornerShape(Sania.shape.sm.dp))
+            .clickable(enabled = habilitado) { onClick() }.padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) { Text("✓ Dar de alta este tratamiento", color = c.ok, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
 }
 
 /** Fila de un menú desplegable. */

@@ -86,6 +86,7 @@ data class PrefillCita(
     val terapeutaId: String?,
     val citaOrigenId: String? = null,
     val especialidadId: String? = null,   // pre-seleccionar especialidad (p.ej. derivación destino)
+    val tratamientoId: String? = null,    // enlazar la cita al tratamiento que la origina (control)
 )
 
 /**
@@ -187,10 +188,12 @@ fun PantallaCrearCita(
             else -> "0"
         }
     }
-    // Tratamientos del paciente (para tipo Sesión)
+    // Tratamientos del paciente (para tipo Sesión / control vinculado)
     LaunchedEffect(paciente?.id) {
         val p = paciente
         tratamientos = if (p != null) try { AgendaRepo.tratamientosActivos(p.id) } catch (_: Exception) { emptyList() } else emptyList()
+        // Si el prefill trae un tratamiento (p.ej. control que nace de un tratamiento), enlazarlo.
+        prefill?.tratamientoId?.let { tid -> tratamiento = tratamientos.find { it.id == tid } }
     }
 
     // Pickers nativos

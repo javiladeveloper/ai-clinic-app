@@ -84,6 +84,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     var subiendo by remember { mutableStateOf(false) }
     var editarClinico by remember { mutableStateOf(false) }
     var derivarTrat by remember { mutableStateOf<TratamientoPaciente?>(null) }
+    var crearCita by remember { mutableStateOf<pe.saniape.app.ui.clinica.PrefillCita?>(null) }
     var especialidadesClinica by remember { mutableStateOf<List<pe.saniape.app.data.staff.EspecialidadClinica>>(emptyList()) }
     LaunchedEffect(Unit) {
         especialidadesClinica = runCatching { PacientesRepo.especialidadesClinica() }.getOrDefault(emptyList())
@@ -96,6 +97,16 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         cargando = false
     }
     fun recargar() { recargarToken++ }
+
+    // Crear cita (control que nace de un tratamiento) — pantalla completa.
+    crearCita?.let { prefill ->
+        pe.saniape.app.ui.clinica.PantallaCrearCita(
+            ctx = ctx, fechaInicial = prefill.fecha, prefill = prefill,
+            onListo = { crearCita = null; recargar() },
+            onCancelar = { crearCita = null },
+        )
+        return
+    }
 
     // Selector de archivo nativo para subir documentos/resultados. Al elegir: sube al
     // bucket privado (vía endpoint) y registra el documento o lo adjunta a la solicitud.
@@ -297,6 +308,17 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         onDerivar = { derivarTrat = it },
                         // Derivar solo si hay plan Premium Y la clínica tiene >1 especialidad.
                         puedeDerivar = ctx.can("derivaciones") && especialidadesClinica.size > 1,
+                        // Agendar control: cita vinculada AL TRATAMIENTO de origen (trazabilidad).
+                        onAgendarControl = { t ->
+                            crearCita = pe.saniape.app.ui.clinica.PrefillCita(
+                                tipo = "Consulta",
+                                pacienteId = paciente.id, pacienteNombre = paciente.nombre,
+                                fecha = pe.saniape.app.ui.clinica.agenda.hoyIso(), hora = "09:00",
+                                terapeutaId = t.terapeutaId,
+                                especialidadId = especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id,
+                                tratamientoId = t.id,
+                            )
+                        },
                     )
                     "examenes" -> {
                         if (subiendo) {
@@ -961,6 +983,7 @@ private fun ContenidoAtenciones(
     onEditarCita: (pe.saniape.app.data.staff.CitaHito) -> Unit,
     onDerivar: (TratamientoPaciente) -> Unit,
     puedeDerivar: Boolean,
+    onAgendarControl: (TratamientoPaciente) -> Unit,
 ) {
     val c = Sania.colors
     val consultaDone = hitos?.consultaDone == true
@@ -987,6 +1010,7 @@ private fun ContenidoAtenciones(
                     // Derivar: requiere plan Premium Y que la clínica tenga >1 especialidad
                     // (si solo hay una, no hay a dónde derivar).
                     onDerivar = onDerivar, puedeDerivar = puedeDerivar,
+                    onAgendarControl = onAgendarControl,
                 )
             }
         }

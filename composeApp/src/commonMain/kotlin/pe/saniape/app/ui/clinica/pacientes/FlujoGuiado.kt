@@ -36,10 +36,11 @@ import pe.saniape.app.ui.theme.Sania
 private data class Paso(val label: String, val done: Boolean, val activo: Boolean)
 
 /**
- * Barra de recorrido ADAPTATIVA por tipo, para incrustar en la cabecera de cada
- * TarjetaTratamiento (multi-especialidad):
- *  - con sesiones (fisio/psico):   Consulta → Evaluación → Sesiones (N/M) → Alta
- *  - sin sesiones (medicina/nutri): Consulta → Evaluación → Control → Alta
+ * Barra de recorrido ADAPTATIVA por el flag `usa_sesiones` de la especialidad (NO por su
+ * nombre), para incrustar en la cabecera de cada TarjetaTratamiento. Aplica a CUALQUIER
+ * especialidad:
+ *  - usa_sesiones=true (fisio/psico/etc):   Consulta → Evaluación → Sesiones (N/M) → Alta
+ *  - usa_sesiones=false (medicina/nutri/imagenología/etc): Consulta → Evaluación → Control → Alta
  */
 @Composable
 fun BarraRecorrido(
@@ -49,7 +50,11 @@ fun BarraRecorrido(
     citaConsulta: CitaHito? = null,
     citaEvaluacion: CitaHito? = null,
     puedePagos: Boolean = false,
+    expandido: Boolean = false,             // si la tarjeta está expandida (resalta el paso Sesiones)
     onEditarCita: (CitaHito) -> Unit = {},
+    onToggleSesiones: () -> Unit = {},      // tocar la bolita Sesiones expande/colapsa la tarjeta
+    onAgendarControl: () -> Unit = {},      // en Control: el paciente necesita volver
+    onDarAlta: () -> Unit = {},             // en Control: el caso se cierra (alta)
 ) {
     val c = Sania.colors
     val usaSesiones = !trat.esConsulta
@@ -60,15 +65,17 @@ fun BarraRecorrido(
     // Bolita seleccionada (muestra su nube de referencia). Índice del paso abierto, o null.
     var hitoAbierto by remember { mutableStateOf<Int?>(null) }
 
-    // Tercer paso: con sesiones = progreso N/M; sin sesiones = "Control" (hecho = hubo
-    // una consulta/control completado, NO por tener fecha futura agendada).
+    // Tercer paso: con sesiones = progreso N/M; sin sesiones = "Control" (la próxima cita
+    // aprox). 'done' si ya se atendió (hubo consulta/evaluación); 'activo' si hay próximo
+    // control agendado pero aún no ocurrió. No se marca por tener fecha futura sola.
+    val atendido = consultaDone || evalDone
+    val tieneProxControl = !trat.proximoControl.isNullOrBlank()
     val pasoTercero = when {
         usaSesiones -> {
             val etq = if (sesComp > sesTot) "$sesTot/$sesTot +${sesComp - sesTot}" else "$sesComp/$sesTot ses."
             Paso(etq, done = completo, activo = !completo && !altaTrat)
         }
-        // El control se considera realizado si hubo la consulta que generó el plan.
-        else -> Paso("Control", done = consultaDone || evalDone, activo = !altaTrat && !(consultaDone || evalDone))
+        else -> Paso("Control", done = atendido, activo = !altaTrat && tieneProxControl)
     }
     val pasos = listOf(
         Paso("Consulta", done = consultaDone, activo = false),
@@ -89,19 +96,28 @@ fun BarraRecorrido(
         }
     }
 
+    // El paso "Sesiones" (índice 2, con sesiones) controla el expandir de la tarjeta.
+    val esSesiones = { i: Int -> i == 2 && usaSesiones }
+
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         pasos.forEachIndexed { i, paso ->
             val cita = citaDelPaso(i)
-            val clickeable = cita != null
+            // Tocable si: tiene cita (abre nube) o es el paso Sesiones (expande la tarjeta).
+            val clickeable = cita != null || esSesiones(i)
             Column(Modifier.width(60.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                val abierta = hitoAbierto == i
+                // "abierta" = nube abierta, o (paso Sesiones) la tarjeta está expandida.
+                val abierta = hitoAbierto == i || (esSesiones(i) && expandido)
                 val bg = when { paso.done -> c.ok; paso.activo -> c.navy; else -> c.superficie }
                 val fg = when { paso.done || paso.activo -> c.sobreNavy; else -> c.textoSuave }
                 val borde = when { abierta -> c.navy; paso.done -> c.ok; paso.activo -> c.navy; else -> c.borde }
                 Box(
                     Modifier.size(28.dp).clip(CircleShape).background(bg)
                         .border(if (abierta) 3.dp else 2.dp, borde, CircleShape)
-                        .let { if (clickeable) it.clickable { hitoAbierto = if (abierta) null else i } else it },
+                        .let {
+                            if (esSesiones(i)) it.clickable { onToggleSesiones() }
+                            else if (cita != null) it.clickable { hitoAbierto = if (hitoAbierto == i) null else i }
+                            else it
+                        },
                     contentAlignment = Alignment.Center,
                 ) { Text(if (paso.done) "✓" else "${i + 1}", color = fg, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                 Text(
@@ -140,6 +156,30 @@ fun BarraRecorrido(
             cita.terapeutaNombre?.let { FilaRef("Profesional", it) }
             if (puedePagos && cita.costo != null) FilaRef("Precio", if (cita.costo > 0) "S/ ${cita.costo}" else "Gratuita")
             cita.notas?.takeIf { it.isNotBlank() }?.let { FilaRef("Notas", it) }
+            // Paso Control (sin sesiones): próxima cita aprox + decisión del profesional.
+            if (hitoAbierto == 2 && !usaSesiones) {
+                FilaRef("Próx. control", trat.proximoControl?.takeIf { it.isNotBlank() } ?: "Sin agendar")
+                if (!altaTrat) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("¿El paciente necesita volver?", color = c.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // Sí: agendar el próximo control
+                        Box(
+                            Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.navy)
+                                .clickable { onAgendarControl() }.padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center,
+                        ) { Text("📅 Agendar control", color = c.sobreNavy, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        // No: dar de alta (cierra el caso)
+                        Box(
+                            Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(c.ok.copy(alpha = 0.15f)).border(1.dp, c.ok, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { onDarAlta() }.padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center,
+                        ) { Text("✓ Dar de alta", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                    }
+                }
+            }
         }
     }
 }
