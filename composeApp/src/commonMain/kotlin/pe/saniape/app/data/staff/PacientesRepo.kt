@@ -794,6 +794,22 @@ object PacientesRepo {
     }
 
     /**
+     * Sugerencia IA para la próxima sesión de un tratamiento (plan Plus). Llama a
+     * /api/ai/sugerir-sesion (acepta Bearer). Devuelve el texto completo o null si la IA
+     * no está disponible / sin plan. La decisión siempre es del profesional.
+     */
+    suspend fun sugerirSesion(tratamientoId: String): String? = try {
+        val tk = token() ?: return null
+        val resp = http.post("${Supabase.SITE_URL}/api/ai/sugerir-sesion") {
+            header("Authorization", "Bearer $tk")
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject { put("tratamientoId", tratamientoId) }.toString())
+        }
+        val texto = resp.bodyAsText()
+        if (resp.status != HttpStatusCode.OK) texto.ifBlank { "⚠ La IA no está disponible." } else texto.ifBlank { null }
+    } catch (e: Exception) { null }
+
+    /**
      * Historia clínica imprimible (HTML) servida por /api/staff/historia con Bearer.
      * Devuelve el HTML completo (o null si falló) para mostrarlo en el visor nativo.
      * El endpoint aplica el mismo gating que la web (Reportes=Premium) y RLS de staff.

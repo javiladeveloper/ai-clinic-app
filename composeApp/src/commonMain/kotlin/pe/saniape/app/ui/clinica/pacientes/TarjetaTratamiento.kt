@@ -59,6 +59,7 @@ fun TarjetaTratamiento(
     puedeSesiones: Boolean,
     pacienteId: String = "",
     puedeFotos: Boolean = false,   // feature fotosEvolutivas (Premium)
+    puedeIA: Boolean = false,      // feature ia (Plus): sugerencia de sesión
     consultaDone: Boolean = false,   // para la barra de recorrido (de los hitos del paciente)
     evalDone: Boolean = false,
     citaConsulta: pe.saniape.app.data.staff.CitaHito? = null,   // detalle para la nube de la bolita
@@ -320,6 +321,12 @@ fun TarjetaTratamiento(
                             )
                             Spacer(Modifier.height(6.dp))
                         }
+                    }
+
+                    // Sugerencia IA para la próxima sesión (Plus) — solo en tratamientos activos.
+                    if (puedeIA && !terminado) {
+                        Spacer(Modifier.height(Sania.dim.sm))
+                        SugerenciaSesionIA(tratamientoId = t.id)
                     }
 
                     // Pagos (solo con permiso): acordado/pagado/saldo + registrar/editar/borrar.
@@ -902,4 +909,48 @@ private fun BotonModalP(texto: String, onClick: () -> Unit) {
         Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
             .clickable { onClick() }.padding(horizontal = 18.dp, vertical = 10.dp),
     ) { Text(texto, color = c.sobreNavy, fontWeight = FontWeight.Bold) }
+}
+
+/**
+ * Botón "💡 Sugerir para la próxima sesión" (IA, Plus). Espeja SugerenciaSesion.tsx:
+ * la IA propone 2-4 técnicas para la siguiente sesión según diagnóstico/evolución; el
+ * profesional decide. Muestra el texto completo al terminar (sin efecto "escribiendo").
+ */
+@Composable
+private fun SugerenciaSesionIA(tratamientoId: String) {
+    val c = Sania.colors
+    val scope = rememberCoroutineScope()
+    var texto by remember { mutableStateOf<String?>(null) }
+    var cargando by remember { mutableStateOf(false) }
+
+    fun sugerir() {
+        if (cargando) return
+        scope.launch {
+            cargando = true
+            texto = PacientesRepo.sugerirSesion(tratamientoId)
+                ?: "⚠ El asistente de IA no está disponible. Inténtalo de nuevo."
+            cargando = false
+        }
+    }
+
+    Column(Modifier.fillMaxWidth()) {
+        Box(
+            Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.superficie)
+                .border(1.dp, c.lav, RoundedCornerShape(Sania.shape.sm.dp))
+                .clickable(enabled = !cargando) { sugerir() }.padding(horizontal = 12.dp, vertical = 9.dp),
+        ) {
+            Text(if (cargando) "✨ Analizando…" else "💡 Sugerir para la próxima sesión",
+                color = c.lav, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
+        texto?.let {
+            Spacer(Modifier.height(8.dp))
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                .background(c.chipBg).padding(12.dp)) {
+                Text(it, color = c.texto, fontSize = 12.sp)
+                Spacer(Modifier.height(6.dp))
+                Text("↺ Regenerar", color = c.navy, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable(enabled = !cargando) { sugerir() })
+            }
+        }
+    }
 }
