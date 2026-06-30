@@ -17,6 +17,8 @@ interface AccionesNativas {
      * abrir la URL directa en el navegador externo porque no lleva la sesión del staff).
      */
     fun abrirHtml(html: String, titulo: String)
+    /** Copia texto al portapapeles del sistema (p.ej. el resumen clínico IA o un enlace). */
+    fun copiarTexto(texto: String, etiqueta: String = "Texto")
 }
 
 @Composable

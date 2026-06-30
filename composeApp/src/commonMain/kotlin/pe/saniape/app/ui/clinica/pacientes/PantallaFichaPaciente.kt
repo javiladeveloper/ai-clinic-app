@@ -1336,9 +1336,27 @@ private fun ContenidoResumen(
                     Text("🔒 El resumen con IA es una función del plan Plus.", color = c.textoSuave, fontSize = 11.sp)
                 }
             } else {
-                aiTexto?.let {
+                aiTexto?.let { texto ->
                     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.chipBg).padding(12.dp)) {
-                        Text(it, color = c.texto, fontSize = 12.sp)
+                        Text(texto, color = c.texto, fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    // Copiar al portapapeles · Imprimir/guardar PDF (visor nativo).
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(
+                            Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { acciones.copiarTexto(texto, "Resumen clínico") }
+                                .padding(vertical = 9.dp),
+                            contentAlignment = Alignment.Center,
+                        ) { Text("📋 Copiar", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                        Box(
+                            Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { acciones.abrirHtml(htmlResumenIA(paciente, texto), paciente.nombre) }
+                                .padding(vertical = 9.dp),
+                            contentAlignment = Alignment.Center,
+                        ) { Text("🖨 Imprimir", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                     }
                     Spacer(Modifier.height(8.dp))
                 }
@@ -1402,6 +1420,37 @@ private fun FilaClinica(etq: String, valor: String?) {
             color = if (valor.isNullOrBlank()) c.textoSuave else c.texto, fontSize = 12.sp,
             fontWeight = if (valor.isNullOrBlank()) FontWeight.Normal else FontWeight.Medium)
     }
+}
+
+/**
+ * HTML imprimible del resumen clínico IA (espeja imprimirResumenIA de la web): encabezado
+ * con datos del paciente + el texto generado + sello de advertencia (la IA es apoyo, no
+ * reemplaza el juicio clínico). Se abre en el visor nativo con "Imprimir / Guardar PDF".
+ */
+private fun htmlResumenIA(paciente: PacienteStaff, resumen: String): String {
+    fun esc(s: String?): String = (s ?: "")
+        .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    val datos = listOfNotNull(
+        paciente.dni?.let { "DNI: ${esc(it)}" },
+        paciente.edad?.let { "Edad: $it años" },
+        paciente.diagnostico?.let { "Diagnóstico: ${esc(it)}" },
+    ).joinToString(" · ")
+    return """<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resumen clínico - ${esc(paciente.nombre)}</title>
+<style>
+ body{font-family:system-ui,-apple-system,sans-serif;color:#111827;max-width:760px;margin:0 auto;padding:24px;line-height:1.5}
+ h1{color:#1e2d5e;font-size:1.4rem;margin:0 0 4px}
+ .meta{color:#6b7280;font-size:0.85rem;margin-bottom:16px}
+ .texto{white-space:pre-wrap;font-size:0.95rem;background:#f7f8fc;border:1px solid #dde1f0;border-radius:10px;padding:16px}
+ .sello{margin-top:18px;font-size:0.78rem;color:#92400e;background:#fef3c7;border:1px solid #d97706;border-radius:8px;padding:10px}
+ @media print{@page{margin:1.4cm}}
+</style></head><body>
+ <h1>Resumen clínico — ${esc(paciente.nombre)}</h1>
+ <div class="meta">${esc(datos)}</div>
+ <div class="texto">${esc(resumen)}</div>
+ <p class="sello">⚠️ Resumen generado con asistencia de IA como apoyo al profesional. No reemplaza el juicio clínico ni constituye un diagnóstico. Revísalo antes de usarlo.</p>
+</body></html>"""
 }
 
 /** Modal editar el recordatorio de recepción de un tratamiento. */

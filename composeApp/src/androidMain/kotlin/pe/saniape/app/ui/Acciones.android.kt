@@ -43,6 +43,13 @@ private class AccionesAndroid(private val context: Context) : AccionesNativas {
             )
         } catch (_: Exception) { /* no se pudo abrir el visor */ }
     }
+
+    override fun copiarTexto(texto: String, etiqueta: String) {
+        try {
+            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText(etiqueta, texto))
+        } catch (_: Exception) { /* sin portapapeles */ }
+    }
 }
 
 @Composable
