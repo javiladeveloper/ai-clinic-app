@@ -1118,13 +1118,21 @@ private fun ContenidoAtenciones(
     onRegistrarAtencion: (TratamientoPaciente) -> Unit,
 ) {
     val c = Sania.colors
+    // Profesional vinculado en modo "lo mío": separa SUS tratamientos (con acciones) de los
+    // de otros profesionales (solo lectura, para contexto clínico) — igual que la web.
+    val filtrarMio = ctx.modoClinico && ctx.miTerapeutaId != null
+    val mios = if (filtrarMio) paciente.tratamientos.filter { it.terapeutaId == ctx.miTerapeutaId }
+        else paciente.tratamientos
+    val otros = if (filtrarMio) paciente.tratamientos.filter { it.terapeutaId != ctx.miTerapeutaId }
+        else emptyList()
+
     Column {
         // Tratamientos: cada tarjeta lleva SU barra de recorrido (sin duplicar arriba).
         Etiqueta("Tratamientos")
-        if (paciente.tratamientos.isEmpty()) {
+        if (mios.isEmpty() && otros.isEmpty()) {
             Text("Sin tratamientos registrados.", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
         } else {
-            paciente.tratamientos.forEach { t ->
+            mios.forEach { t ->
                 Spacer(Modifier.height(Sania.dim.sm))
                 // La cita-hito de ESTE tratamiento: la vinculada por tratamiento_id, o de su
                 // misma especialidad (no de otra). Así el recorrido no mezcla especialidades.
@@ -1154,6 +1162,12 @@ private fun ContenidoAtenciones(
                 )
             }
         }
+
+        // Otros tratamientos en la clínica (a cargo de otro profesional) — solo lectura.
+        if (otros.isNotEmpty()) {
+            Spacer(Modifier.height(Sania.dim.md))
+            OtrosTratamientos(otros)
+        }
         if (ctx.puede("sesiones") || ctx.puede("pacientes")) {
             Spacer(Modifier.height(Sania.dim.md))
             Box(
@@ -1161,6 +1175,73 @@ private fun ContenidoAtenciones(
                     .background(c.navy).clickable { onNuevoTratamiento() }.padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center,
             ) { Text("➕ Nuevo tratamiento", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
+        }
+    }
+}
+
+/**
+ * "Otros tratamientos en esta clínica" — los del paciente a cargo de OTRO profesional.
+ * Solo lectura (para el contexto clínico del profesional vinculado): nombre, estado,
+ * progreso, profesional, diagnóstico, y al expandir, las sesiones completadas. Igual que la web.
+ */
+@Composable
+private fun OtrosTratamientos(otros: List<TratamientoPaciente>) {
+    val c = Sania.colors
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+            .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(14.dp),
+    ) {
+        Text("📋 OTROS TRATAMIENTOS EN ESTA CLÍNICA", color = c.textoSuave, fontSize = 10.sp,
+            fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+        Text("A cargo de otro profesional · solo lectura, para tu contexto clínico",
+            color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 1.dp, bottom = 8.dp))
+        otros.forEach { t ->
+            var abierto by remember(t.id) { mutableStateOf(false) }
+            var sesiones by remember(t.id) { mutableStateOf<List<SesionFicha>?>(null) }
+            LaunchedEffect(abierto) {
+                if (abierto && sesiones == null) {
+                    sesiones = runCatching { PacientesRepo.sesionesDe(t.id) }
+                        .getOrDefault(emptyList()).filter { it.estado == "Completada" }.sortedBy { it.numero }
+                }
+            }
+            Column(
+                Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .background(c.fondo).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                    .clickable { abierto = !abierto }.padding(10.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (abierto) "▼" else "▶", color = c.textoSuave, fontSize = 9.sp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(t.procedimiento ?: t.especialidadNombre ?: "Tratamiento",
+                        color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text("${t.sesionesCompletadas}/${t.totalSesiones} ses.", color = c.textoSuave, fontSize = 11.sp)
+                }
+                Text(listOfNotNull(t.terapeutaNombre, t.estado).joinToString(" · "),
+                    color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(start = 15.dp, top = 1.dp))
+                t.diagnostico?.takeIf { it.isNotBlank() }?.let {
+                    Text("Dx: $it", color = c.texto, fontSize = 11.sp, modifier = Modifier.padding(start = 15.dp, top = 2.dp))
+                }
+                if (abierto) {
+                    Spacer(Modifier.height(6.dp))
+                    when (val s = sesiones) {
+                        null -> Text("Cargando…", color = c.textoSuave, fontSize = 11.sp)
+                        else -> if (s.isEmpty()) {
+                            Text("Sin sesiones realizadas aún", color = c.textoSuave, fontSize = 11.sp)
+                        } else s.forEach { ses ->
+                            Column(Modifier.fillMaxWidth().padding(start = 15.dp, top = 3.dp)) {
+                                Text("Sesión #${ses.numero} · ${ses.fecha}", color = c.texto, fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold)
+                                ses.notas?.takeIf { it.isNotBlank() }?.let {
+                                    Text(it, color = c.textoSuave, fontSize = 11.sp)
+                                }
+                                ses.mejorias?.takeIf { it.isNotBlank() }?.let {
+                                    Text("↗ $it", color = c.ok, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
