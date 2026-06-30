@@ -47,6 +47,7 @@ fun PantallaMasClinica(
     puedeIrAPortal: Boolean,
     onIrAPortal: () -> Unit,
     onCerrarSesion: () -> Unit,
+    onAbrirSesiones: (() -> Unit)? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -83,6 +84,23 @@ fun PantallaMasClinica(
                 }
 
                 Spacer(Modifier.height(Sania.dim.lg))
+
+                // Módulos clínicos sin tab propio (Sesiones…)
+                if (onAbrirSesiones != null) {
+                    Text("MÓDULOS", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(Sania.dim.sm))
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                            .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                            .clickable { onAbrirSesiones() }.padding(Sania.dim.lg),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("🏃  Sesiones", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
+                        Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                    }
+                    Spacer(Modifier.height(Sania.dim.lg))
+                }
 
                 // Selector de clínica (si tiene más de una)
                 if (ctx.clinicas.size > 1) {

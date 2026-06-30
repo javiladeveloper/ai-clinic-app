@@ -62,6 +62,8 @@ fun ClinicaConTabs(
     var error by remember { mutableStateOf<String?>(null) }
     var tab by remember { mutableStateOf(TabClinica.Inicio) }
     var intento by remember { mutableStateOf(0) }   // para "Reintentar"
+    // Sub-pantallas accesibles desde "Más" (módulos sin tab propio).
+    var verSesiones by remember { mutableStateOf(false) }
 
     LaunchedEffect(intento) {
         cargando = true; error = null
@@ -74,7 +76,9 @@ fun ClinicaConTabs(
         cargando = false
     }
 
-    ManejarAtras(activo = tab != TabClinica.Inicio) { tab = TabClinica.Inicio }
+    ManejarAtras(activo = verSesiones || tab != TabClinica.Inicio) {
+        if (verSesiones) verSesiones = false else tab = TabClinica.Inicio
+    }
 
     if (cargando) {
         Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
@@ -118,8 +122,8 @@ fun ClinicaConTabs(
             NavigationBar(containerColor = c.superficie) {
                 tabs.forEach { t ->
                     NavigationBarItem(
-                        selected = tab == t,
-                        onClick = { tab = t },
+                        selected = tab == t && !verSesiones,
+                        onClick = { verSesiones = false; tab = t },
                         icon = { Icon(t.icono, contentDescription = t.titulo) },
                         label = { Text(t.titulo, fontSize = 11.sp) },
                         colors = NavigationBarItemDefaults.colors(
@@ -144,7 +148,14 @@ fun ClinicaConTabs(
                     puedeIrAPortal = puedeIrAPortal,
                     onIrAPortal = onIrAPortal,
                     onCerrarSesion = onCerrarSesion,
+                    onAbrirSesiones = if (contexto.puede("sesiones")) ({ verSesiones = true }) else null,
                 )
+            }
+            // Overlay de módulos sin tab propio (encima del contenido, oculta los tabs).
+            if (verSesiones && contexto.puede("sesiones")) {
+                Box(Modifier.fillMaxSize().background(c.fondo)) {
+                    PantallaSesiones(ctx = contexto)
+                }
             }
         }
     }
