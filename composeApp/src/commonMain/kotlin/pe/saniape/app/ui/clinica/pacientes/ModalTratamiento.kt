@@ -91,8 +91,7 @@ fun ModalCrearTratamiento(
     var precioPorSesion by remember { mutableStateOf("") }
     var precioAcordado by remember { mutableStateOf("") }
     var diagnostico by remember { mutableStateOf(diagnosticoPrevio ?: "") }
-    var medicacion by remember { mutableStateOf("") }
-    var proximoControl by remember { mutableStateOf("") }
+    // medicación y próximo control: no se piden al crear (se llenan al editar tras atender).
 
     LaunchedEffect(pacienteId) {
         procedimientos = runCatching { PacientesRepo.procedimientos() }.getOrDefault(emptyList())
@@ -261,19 +260,12 @@ fun ModalCrearTratamiento(
                 } else if (esConsulta) {
                     Spacer(Modifier.height(12.dp))
                     Tarjeta(titulo = "Consulta", icono = "📋") {
-                        Etq("Medicación / receta (opcional)")
-                        OutlinedTextField(value = medicacion, onValueChange = { medicacion = it },
-                            placeholder = { Text("Indicaciones, receta…", color = c.textoSuave) },
-                            minLines = 2, modifier = Modifier.fillMaxWidth())
-                        Spacer(Modifier.height(10.dp))
-                        Etq("Próximo control (AAAA-MM-DD, opcional)")
-                        OutlinedTextField(value = proximoControl, onValueChange = { proximoControl = it },
-                            placeholder = { Text("2026-07-15", color = c.textoSuave) }, singleLine = true,
-                            modifier = Modifier.fillMaxWidth())
-                        Spacer(Modifier.height(10.dp))
+                        // La medicación/receta NO se pide al crear: el médico aún no atendió.
+                        // Se registra al EDITAR el tratamiento, después de la atención.
                         Etq("Costo de la consulta (S/) — opcional")
                         CampoNum(precioAcordado) { precioAcordado = it }
-                        Text("Déjalo vacío si es gratis.", color = c.textoSuave, fontSize = 10.sp)
+                        Text("Déjalo vacío si es gratis. La medicación y el próximo control se " +
+                            "registran al editar, después de atender.", color = c.textoSuave, fontSize = 10.sp)
                     }
                 }
             }
@@ -304,8 +296,9 @@ fun ModalCrearTratamiento(
                                     precioAcordado = precioAcordado.toDoubleOrNull(),
                                     diagnostico = diagnostico.trim().ifBlank { null },
                                     citaOrigenId = evaluacion?.id,
-                                    medicacion = if (esConsulta) medicacion.trim().ifBlank { null } else null,
-                                    proximoControl = if (esConsulta) proximoControl.trim().ifBlank { null } else null,
+                                    // Medicación y próximo control NO se piden al crear (se llenan al editar tras atender).
+                                    medicacion = null,
+                                    proximoControl = null,
                                 )
                             )
                         }.padding(vertical = 13.dp),

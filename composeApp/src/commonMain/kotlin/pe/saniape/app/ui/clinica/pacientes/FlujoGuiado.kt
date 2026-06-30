@@ -99,12 +99,15 @@ fun BarraRecorrido(
 
     // El paso "Sesiones" (índice 2, con sesiones) controla el expandir de la tarjeta.
     val esSesiones = { i: Int -> i == 2 && usaSesiones }
+    // El paso "Control" (índice 2, sin sesiones) SIEMPRE abre su nube (próx. control + acciones),
+    // aunque no haya una cita asociada — así el profesional puede agendar/dar de alta.
+    val esControl = { i: Int -> i == 2 && !usaSesiones }
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         pasos.forEachIndexed { i, paso ->
             val cita = citaDelPaso(i)
-            // Tocable si: tiene cita (abre nube) o es el paso Sesiones (expande la tarjeta).
-            val clickeable = cita != null || esSesiones(i)
+            // Tocable si: tiene cita, o es Control, o es Sesiones.
+            val abreNube = cita != null || esControl(i)
             Column(Modifier.width(60.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 // "abierta" = nube abierta, o (paso Sesiones) la tarjeta está expandida.
                 val abierta = hitoAbierto == i || (esSesiones(i) && expandido)
@@ -118,8 +121,8 @@ fun BarraRecorrido(
                             when {
                                 // Sesiones: expande la tarjeta y cierra cualquier nube abierta.
                                 esSesiones(i) -> it.clickable { hitoAbierto = null; onToggleSesiones() }
-                                // Nube: alterna esta nube y colapsa la tarjeta (1 activo a la vez).
-                                cita != null -> it.clickable {
+                                // Nube (cita o Control): alterna y colapsa la tarjeta (1 activo a la vez).
+                                abreNube -> it.clickable {
                                     val abrir = hitoAbierto != i
                                     hitoAbierto = if (abrir) i else null
                                     if (abrir && expandido) onColapsarTarjeta()
@@ -144,42 +147,48 @@ fun BarraRecorrido(
         }
     }
 
-    // Nube flotante de referencia de la bolita tocada (Consulta/Evaluación/Control).
-    hitoAbierto?.let { citaDelPaso(it) }?.let { cita ->
+    // Nube flotante del paso tocado. Renderiza si hay cita (Consulta/Eval/Control con datos)
+    // O si es el paso Control (aunque no haya cita → muestra próx. control + acciones).
+    val abi = hitoAbierto
+    val citaAbierta = abi?.let { citaDelPaso(it) }
+    val esControlAbierto = abi == 2 && !usaSesiones
+    if (abi != null && (citaAbierta != null || esControlAbierto)) {
         Spacer(Modifier.height(8.dp))
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
                 .background(c.chipBg).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
                 .padding(10.dp),
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("${if (cita.tipo == "Consulta") "💬" else "🔍"} ${cita.tipo}",
-                    color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Box(
-                    Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.navy)
-                        .clickable { onEditarCita(cita) }.padding(horizontal = 10.dp, vertical = 4.dp),
-                ) { Text("✏ Editar", color = c.sobreNavy, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+            // Detalle de la cita (si la hay)
+            citaAbierta?.let { cita ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("${if (cita.tipo == "Consulta") "💬" else "🔍"} ${cita.tipo}",
+                        color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Box(
+                        Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.navy)
+                            .clickable { onEditarCita(cita) }.padding(horizontal = 10.dp, vertical = 4.dp),
+                    ) { Text("✏ Editar", color = c.sobreNavy, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                }
+                Spacer(Modifier.height(4.dp))
+                FilaRef("Fecha", "${cita.fecha}${cita.hora?.let { " · $it" } ?: ""}")
+                cita.terapeutaNombre?.let { FilaRef("Profesional", it) }
+                if (puedePagos && cita.costo != null) FilaRef("Precio", if (cita.costo > 0) "S/ ${cita.costo}" else "Gratuita")
+                cita.notas?.takeIf { it.isNotBlank() }?.let { FilaRef("Notas", it) }
             }
-            Spacer(Modifier.height(4.dp))
-            FilaRef("Fecha", "${cita.fecha}${cita.hora?.let { " · $it" } ?: ""}")
-            cita.terapeutaNombre?.let { FilaRef("Profesional", it) }
-            if (puedePagos && cita.costo != null) FilaRef("Precio", if (cita.costo > 0) "S/ ${cita.costo}" else "Gratuita")
-            cita.notas?.takeIf { it.isNotBlank() }?.let { FilaRef("Notas", it) }
-            // Paso Control (sin sesiones): próxima cita aprox + decisión del profesional.
-            if (hitoAbierto == 2 && !usaSesiones) {
+            // Paso Control: próxima cita aprox + decisión del profesional (aunque no haya cita).
+            if (esControlAbierto) {
+                if (citaAbierta == null) Text("🗓 Control", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 FilaRef("Próx. control", trat.proximoControl?.takeIf { it.isNotBlank() } ?: "Sin agendar")
                 if (!altaTrat) {
                     Spacer(Modifier.height(8.dp))
                     Text("¿El paciente necesita volver?", color = c.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // Sí: agendar el próximo control
                         Box(
                             Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.navy)
                                 .clickable { onAgendarControl() }.padding(vertical = 8.dp),
                             contentAlignment = Alignment.Center,
                         ) { Text("📅 Agendar control", color = c.sobreNavy, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                        // No: dar de alta (cierra el caso)
                         Box(
                             Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
                                 .background(c.ok.copy(alpha = 0.15f)).border(1.dp, c.ok, RoundedCornerShape(Sania.shape.sm.dp))
