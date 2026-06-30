@@ -85,6 +85,8 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     var subiendo by remember { mutableStateOf(false) }
     var editarClinico by remember { mutableStateOf(false) }
     var derivarTrat by remember { mutableStateOf<TratamientoPaciente?>(null) }
+    // Editar recordatorio de recepción: (tratamientoId, texto actual).
+    var notaRecModal by remember { mutableStateOf<Pair<String, String>?>(null) }
     var crearCita by remember { mutableStateOf<pe.saniape.app.ui.clinica.PrefillCita?>(null) }
     var especialidadesClinica by remember { mutableStateOf<List<pe.saniape.app.data.staff.EspecialidadClinica>>(emptyList()) }
     LaunchedEffect(Unit) {
@@ -275,6 +277,32 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 }
 
                 Spacer(Modifier.height(Sania.dim.lg))
+
+                // ── Recordatorios de recepción (banner ámbar por tratamiento, solo gestor) ──
+                if (ctx.esGestor) {
+                    paciente.tratamientos.filter { !it.notaRecepcion.isNullOrBlank() }.forEach { t ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(bottom = Sania.dim.sm)
+                                .clip(RoundedCornerShape(Sania.shape.md.dp))
+                                .background(c.pendBg).border(1.dp, c.pend, RoundedCornerShape(Sania.shape.md.dp))
+                                .padding(horizontal = 14.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Text("📌", fontSize = 16.sp)
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("RECORDATORIO · ${t.procedimiento ?: t.especialidadNombre ?: "Tratamiento"}",
+                                    color = c.pend, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                                Text(t.notaRecepcion ?: "", color = c.texto, fontSize = 13.sp,
+                                    modifier = Modifier.padding(top = 2.dp))
+                            }
+                            Text("✏", fontSize = 14.sp, modifier = Modifier.padding(horizontal = 6.dp)
+                                .clickable { notaRecModal = t.id to (t.notaRecepcion ?: "") })
+                            Text("✕", fontSize = 14.sp, color = c.textoSuave, modifier = Modifier
+                                .clickable { scope.launch { PacientesRepo.guardarNotaRecepcion(t.id, null); recargar() } })
+                        }
+                    }
+                }
 
                 // ── Tabs: Atenciones · Exámenes · Pagos(perm) · Resumen ──
                 val tabs = buildList {
@@ -501,6 +529,18 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 scope.launch {
                     PacientesRepo.editarDatosClinicos(paciente.id, diag, alergias, medic, antec); recargar()
                 }
+            },
+        )
+    }
+
+    // Modal editar recordatorio de recepción.
+    notaRecModal?.let { (tratId, textoActual) ->
+        ModalNotaRecepcion(
+            textoInicial = textoActual,
+            onCancelar = { notaRecModal = null },
+            onGuardar = { texto ->
+                notaRecModal = null
+                scope.launch { PacientesRepo.guardarNotaRecepcion(tratId, texto); recargar() }
             },
         )
     }
@@ -1310,6 +1350,34 @@ private fun FilaClinica(etq: String, valor: String?) {
         Text(valor?.takeIf { it.isNotBlank() } ?: "—",
             color = if (valor.isNullOrBlank()) c.textoSuave else c.texto, fontSize = 12.sp,
             fontWeight = if (valor.isNullOrBlank()) FontWeight.Normal else FontWeight.Medium)
+    }
+}
+
+/** Modal editar el recordatorio de recepción de un tratamiento. */
+@Composable
+private fun ModalNotaRecepcion(
+    textoInicial: String,
+    onCancelar: () -> Unit,
+    onGuardar: (texto: String?) -> Unit,
+) {
+    val c = Sania.colors
+    var texto by remember { mutableStateOf(textoInicial) }
+    DialogoForm(
+        titulo = "Recordatorio de recepción",
+        subtitulo = "Una nota que verá quien atienda en recepción",
+        textoAccion = "Guardar",
+        onCancelar = onCancelar,
+        onAccion = { onGuardar(texto.trim().ifBlank { null }) },
+    ) {
+        TarjetaForm(titulo = "Nota", icono = "📌") {
+            androidx.compose.material3.OutlinedTextField(
+                value = texto, onValueChange = { texto = it },
+                placeholder = { Text("Ej. El paciente debe traer su receta / pagó la mitad…", color = c.textoSuave) },
+                modifier = Modifier.fillMaxWidth(), minLines = 2,
+            )
+            Text("Se muestra como recordatorio en la ficha. Déjalo vacío para quitarlo.",
+                color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp))
+        }
     }
 }
 

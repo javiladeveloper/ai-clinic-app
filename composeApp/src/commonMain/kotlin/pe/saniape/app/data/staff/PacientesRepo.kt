@@ -45,6 +45,7 @@ data class TratamientoPaciente(
     val proximoControl: String?,
     val especialidadNombre: String?,
     val especialidadId: String? = null,
+    val notaRecepcion: String? = null,   // recordatorio de recepción (se limpia al pagar)
 ) {
     /** Monto total acordado del tratamiento (igual que la web). */
     val montoAcordado: Double
@@ -211,7 +212,7 @@ object PacientesRepo {
         tratamientos:tratamientos(
             id, modalidad, estado, estado_pago, total_sesiones, sesiones_completadas,
             precio_paquete, precio_por_sesion, precio_acordado, terapeuta_id,
-            diagnostico, medicacion, proximo_control,
+            diagnostico, medicacion, proximo_control, nota_recepcion,
             procedimiento:procedimientos(nombre, especialidad_id, especialidad:especialidades(nombre, usa_sesiones)),
             terapeuta:terapeutas(id, nombre, especialidades:terapeuta_especialidades(especialidad:especialidades(id, nombre)))
         )
@@ -708,6 +709,7 @@ object PacientesRepo {
                 proximoControl = t.str("proximo_control"),
                 especialidadNombre = espNombre,
                 especialidadId = espId,
+                notaRecepcion = t.str("nota_recepcion"),
             )
         }
         return PacienteStaff(
@@ -783,6 +785,19 @@ object PacientesRepo {
         // El endpoint siempre responde HTML (incluso la página de "Función Premium").
         resp.bodyAsText().ifBlank { null }
     } catch (e: Exception) { null }
+
+    /**
+     * Guarda/limpia el recordatorio de recepción de un tratamiento (banner ámbar para el
+     * gestor, p.ej. "el paciente debe traer la receta"). [texto] vacío/null → lo quita.
+     * RLS de staff acota a su clínica. Solo gestores (recepción/admin) lo usan.
+     */
+    suspend fun guardarNotaRecepcion(tratamientoId: String, texto: String?): Boolean = try {
+        Supabase.client.postgrest["tratamientos"]
+            .update({ set("nota_recepcion", texto?.trim()?.ifBlank { null }) }) {
+                filter { eq("id", tratamientoId) }
+            }
+        true
+    } catch (e: Exception) { false }
 
     /** Edita los datos clínicos del paciente (diagnóstico/alergias/medicación/antecedentes). */
     suspend fun editarDatosClinicos(
