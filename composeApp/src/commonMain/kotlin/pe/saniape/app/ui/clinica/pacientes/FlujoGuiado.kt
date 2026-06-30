@@ -57,15 +57,18 @@ fun BarraRecorrido(
     val sesTot = trat.totalSesiones
     val altaTrat = trat.estado == "Alta"
     val completo = trat.estado == "Completado" || (sesTot > 0 && sesComp >= sesTot)
-    // Bolita seleccionada (muestra su nube de referencia): "consulta" | "evaluacion" | null.
-    var hitoAbierto by remember { mutableStateOf<String?>(null) }
+    // Bolita seleccionada (muestra su nube de referencia). Índice del paso abierto, o null.
+    var hitoAbierto by remember { mutableStateOf<Int?>(null) }
 
+    // Tercer paso: con sesiones = progreso N/M; sin sesiones = "Control" (hecho = hubo
+    // una consulta/control completado, NO por tener fecha futura agendada).
     val pasoTercero = when {
         usaSesiones -> {
             val etq = if (sesComp > sesTot) "$sesTot/$sesTot +${sesComp - sesTot}" else "$sesComp/$sesTot ses."
             Paso(etq, done = completo, activo = !completo && !altaTrat)
         }
-        else -> Paso("Control", done = trat.proximoControl != null, activo = !altaTrat)
+        // El control se considera realizado si hubo la consulta que generó el plan.
+        else -> Paso("Control", done = consultaDone || evalDone, activo = !altaTrat && !(consultaDone || evalDone))
     }
     val pasos = listOf(
         Paso("Consulta", done = consultaDone, activo = false),
@@ -73,24 +76,32 @@ fun BarraRecorrido(
         pasoTercero,
         Paso("Alta", done = altaTrat, activo = false),
     )
-    // Qué bolitas tienen detalle clickeable (Consulta/Evaluación completadas).
-    val claveDe = { i: Int -> if (i == 0) "consulta" else if (i == 1) "evaluacion" else null }
-    val hitoDe = { clave: String? -> if (clave == "consulta") citaConsulta else if (clave == "evaluacion") citaEvaluacion else null }
+    // Cada bolita puede abrir su nube de referencia si hay una cita-hito asociada:
+    //  - paso 0 (Consulta) → citaConsulta
+    //  - paso 1 (Evaluación) → citaEvaluacion
+    //  - paso 2 (Control, sin sesiones) → la cita que se realizó (consulta o evaluación)
+    val citaDelPaso = { i: Int ->
+        when {
+            i == 0 -> citaConsulta
+            i == 1 -> citaEvaluacion
+            i == 2 && !usaSesiones -> citaConsulta ?: citaEvaluacion
+            else -> null
+        }
+    }
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         pasos.forEachIndexed { i, paso ->
-            val clave = claveDe(i)
-            val cita = hitoDe(clave)
-            val clickeable = cita != null && paso.done
+            val cita = citaDelPaso(i)
+            val clickeable = cita != null
             Column(Modifier.width(60.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                val abierta = hitoAbierto == clave
+                val abierta = hitoAbierto == i
                 val bg = when { paso.done -> c.ok; paso.activo -> c.navy; else -> c.superficie }
                 val fg = when { paso.done || paso.activo -> c.sobreNavy; else -> c.textoSuave }
                 val borde = when { abierta -> c.navy; paso.done -> c.ok; paso.activo -> c.navy; else -> c.borde }
                 Box(
                     Modifier.size(28.dp).clip(CircleShape).background(bg)
                         .border(if (abierta) 3.dp else 2.dp, borde, CircleShape)
-                        .let { if (clickeable) it.clickable { hitoAbierto = if (abierta) null else clave } else it },
+                        .let { if (clickeable) it.clickable { hitoAbierto = if (abierta) null else i } else it },
                     contentAlignment = Alignment.Center,
                 ) { Text(if (paso.done) "✓" else "${i + 1}", color = fg, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                 Text(
@@ -108,8 +119,8 @@ fun BarraRecorrido(
         }
     }
 
-    // Nube flotante de referencia de la bolita tocada (Consulta/Evaluación).
-    hitoDe(hitoAbierto)?.let { cita ->
+    // Nube flotante de referencia de la bolita tocada (Consulta/Evaluación/Control).
+    hitoAbierto?.let { citaDelPaso(it) }?.let { cita ->
         Spacer(Modifier.height(8.dp))
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
