@@ -436,12 +436,13 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         ModalRegistrarAtencion(
             t = t,
             esGestor = ctx.esGestor,
+            puedePagos = ctx.puede("pagos"),
             onCancelar = { registrarAtencion = null },
-            onGuardar = { diag, medic, proxControl ->
+            onGuardar = { diag, medic, proxControl, costo ->
                 registrarAtencion = null
                 scope.launch {
-                    // Solo campos clínicos (sin tocar costo/sesiones). "" limpia el campo.
-                    PacientesRepo.editarTratamiento(t.id, null, null, null, null, diag, medic, proxControl)
+                    // Clínico + costo (sin tocar sesiones). "" limpia el campo de texto.
+                    PacientesRepo.editarTratamiento(t.id, null, null, null, costo, diag, medic, proxControl)
                     recargar()
                 }
             },

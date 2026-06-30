@@ -474,13 +474,15 @@ fun ModalEditarTratamiento(
 fun ModalRegistrarAtencion(
     t: pe.saniape.app.data.staff.TratamientoPaciente,
     esGestor: Boolean,   // recepción/admin → "fecha tentativa"; médico solo → "referencial"
+    puedePagos: Boolean, // mostrar el costo solo con permiso de pagos
     onCancelar: () -> Unit,
-    onGuardar: (diagnostico: String, medicacion: String, proximoControl: String) -> Unit,
+    onGuardar: (diagnostico: String, medicacion: String, proximoControl: String, costo: Double?) -> Unit,
 ) {
     val c = Sania.colors
     var diagnostico by remember { mutableStateOf(t.diagnostico ?: "") }
     var medicacion by remember { mutableStateOf(t.medicacion ?: "") }
     var proximoControl by remember { mutableStateOf(t.proximoControl ?: "") }
+    var costo by remember { mutableStateOf(t.precioAcordado?.toString() ?: "") }
     var mostrarFecha by remember { mutableStateOf(false) }
 
     if (mostrarFecha) {
@@ -548,6 +550,14 @@ fun ModalRegistrarAtencion(
                         else "Referencial (ej. “vuelve en ~1 mes”). No agenda la cita; recepción coordinará el horario.",
                         color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp),
                     )
+                    // Costo de la consulta (solo con permiso de pagos). Algunos controles no se cobran.
+                    if (puedePagos) {
+                        Spacer(Modifier.height(10.dp))
+                        Etq("Costo de la consulta (S/) — opcional")
+                        CampoNum(costo) { costo = it }
+                        Text("Déjalo vacío si es gratis (p. ej. un control sin cobro).",
+                            color = c.textoSuave, fontSize = 10.sp)
+                    }
                 }
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
@@ -558,7 +568,7 @@ fun ModalRegistrarAtencion(
                 TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave, fontWeight = FontWeight.Bold) }
                 Box(
                     Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
-                        .clickable { onGuardar(diagnostico.trim(), medicacion.trim(), proximoControl.trim()) }
+                        .clickable { onGuardar(diagnostico.trim(), medicacion.trim(), proximoControl.trim(), costo.toDoubleOrNull()) }
                         .padding(vertical = 13.dp),
                     contentAlignment = Alignment.Center,
                 ) { Text("Guardar atención", color = c.sobreNavy, fontWeight = FontWeight.Bold, fontSize = 15.sp) }

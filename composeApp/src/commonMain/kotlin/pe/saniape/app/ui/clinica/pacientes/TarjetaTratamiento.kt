@@ -204,8 +204,12 @@ fun TarjetaTratamiento(
                         .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
                 ) {
                     // (Agendar sesión está como botón visible arriba, no se repite aquí.)
-                    ItemMenu("✏ Editar tratamiento", c.texto) { menuTrat = false; onEditar(t) }
-                    if (!t.esConsulta) ItemMenu("➕ Ampliar (más sesiones)", c.navy) { menuTrat = false; onAmpliar(t) }
+                    // Editar tratamiento solo en planes por sesiones: precio/n° sesiones.
+                    // En consultas todo (incl. costo) se registra en "Registrar atención" (paso Control).
+                    if (!t.esConsulta) {
+                        ItemMenu("✏ Editar tratamiento", c.texto) { menuTrat = false; onEditar(t) }
+                        ItemMenu("➕ Ampliar (más sesiones)", c.navy) { menuTrat = false; onAmpliar(t) }
+                    }
                     // Derivar este tratamiento a otra especialidad (feature Premium).
                     if (puedeDerivar && t.estado == "Activo")
                         ItemMenu("↗ Derivar a otra especialidad", c.purple) { menuTrat = false; onDerivar(t) }
