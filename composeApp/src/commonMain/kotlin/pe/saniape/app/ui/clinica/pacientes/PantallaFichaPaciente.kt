@@ -1368,12 +1368,19 @@ private fun ContenidoResumen(
     var aiEstado by remember(paciente.id) { mutableStateOf(paciente.resumenIaEstado) }   // generando|listo|error|null
     var aiAviso by remember(paciente.id) { mutableStateOf<String?>(null) }                // "ocupado" u otro
 
-    // Si quedó "generando", al abrir la ficha refrescamos una vez para traer el resultado
-    // (la generación corre en el servidor; aquí no bloqueamos).
-    LaunchedEffect(paciente.id) {
+    // Mientras esté "generando" (la IA corre en el servidor ~1-2 min), hacemos polling suave:
+    // revisamos cada 6s y, al terminar, mostramos el resultado SOLO — sin que el usuario tenga
+    // que salir y volver a entrar a la ficha. Se reactiva cada vez que aiEstado pasa a generando.
+    LaunchedEffect(paciente.id, aiEstado) {
         if (aiEstado == "generando") {
-            val (txt, fecha, est) = PacientesRepo.resumenIaDe(paciente.id)
-            if (est != "generando") { aiTexto = txt; aiFecha = fecha; aiEstado = est }
+            repeat(30) {   // ~3 min máx
+                kotlinx.coroutines.delay(6000)
+                val (txt, fecha, est) = PacientesRepo.resumenIaDe(paciente.id)
+                if (est != "generando") {
+                    aiTexto = txt; aiFecha = fecha; aiEstado = est
+                    return@LaunchedEffect
+                }
+            }
         }
     }
 
@@ -1467,7 +1474,7 @@ private fun ContenidoResumen(
                         .background(c.chipBg).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(color = c.navy, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(10.dp))
-                        Text("Generando el resumen… tarda 1-2 min. Sal y vuelve a esta ficha para verlo.",
+                        Text("Generando el análisis… tarda 1-2 min. Aparecerá aquí al terminar.",
                             color = c.texto, fontSize = 11.sp)
                     }
                     Spacer(Modifier.height(8.dp))
@@ -1492,22 +1499,14 @@ private fun ContenidoResumen(
                             color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
                     }
                     Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Box(
-                            Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
-                                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                                .clickable { acciones.copiarTexto(texto, "Resumen clínico") }
-                                .padding(vertical = 9.dp),
-                            contentAlignment = Alignment.Center,
-                        ) { Text("📋 Copiar", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                        Box(
-                            Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
-                                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                                .clickable { acciones.abrirHtml(htmlResumenIA(paciente, texto), paciente.nombre) }
-                                .padding(vertical = 9.dp),
-                            contentAlignment = Alignment.Center,
-                        ) { Text("🖨 Imprimir", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                    }
+                    // El análisis ya se guarda; "Copiar" se quitó. Solo Imprimir/Guardar PDF.
+                    Box(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                            .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                            .clickable { acciones.abrirHtml(htmlResumenIA(paciente, texto), paciente.nombre) }
+                            .padding(vertical = 9.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { Text("🖨 Imprimir / Guardar PDF", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                     Spacer(Modifier.height(8.dp))
                 }
 
