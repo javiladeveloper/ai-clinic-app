@@ -754,35 +754,15 @@ object PacientesRepo {
     }
 
     /**
-     * Resumen clínico con IA (plan Plus). Llama a /api/ai/resumen (acepta Bearer) y devuelve
-     * el texto completo. Devuelve null si la IA no está disponible o no hay plan.
-     * (La web hace streaming; aquí leemos el texto completo, más simple para móvil.)
+     * Resumen clínico con IA (plan Plus). Manda solo el pacienteId: el endpoint
+     * /api/ai/resumen (Bearer) carga TODO el historial en el servidor (tratamientos activos y
+     * terminados + sesiones con técnica/evolución + consultas/evaluaciones) con la RLS de la
+     * clínica, así web y app dan el mismo resumen. Devuelve el texto completo o null si falla.
      */
     suspend fun resumenIA(paciente: PacienteStaff): String? {
         return try {
             val tk = token() ?: return null
-            val cuerpo = buildJsonObject {
-                putJsonObject("paciente") {
-                    put("nombre", paciente.nombre)
-                    paciente.edad?.let { put("edad", it) }
-                    paciente.diagnostico?.let { put("diagnostico", it) }
-                    paciente.alergias?.let { put("alergias", it) }
-                    paciente.medicacionActual?.let { put("medicacion_actual", it) }
-                    paciente.antecedentes?.let { put("antecedentes", it) }
-                    putJsonArray("tratamientos") {
-                        paciente.tratamientos.forEach { t ->
-                            add(buildJsonObject {
-                                put("modalidad", t.modalidad ?: "")
-                                put("estado", t.estado ?: "")
-                                put("total_sesiones", t.totalSesiones)
-                                put("sesiones_completadas", t.sesionesCompletadas)
-                                putJsonObject("procedimiento") { put("nombre", t.procedimiento ?: "") }
-                                putJsonObject("terapeuta") { put("nombre", t.terapeutaNombre ?: "") }
-                            })
-                        }
-                    }
-                }
-            }
+            val cuerpo = buildJsonObject { put("pacienteId", paciente.id) }
             val resp = http.post("${Supabase.SITE_URL}/api/ai/resumen") {
                 header("Authorization", "Bearer $tk")
                 contentType(ContentType.Application.Json)
