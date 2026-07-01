@@ -25,6 +25,7 @@ data class ContextoStaff(
     fun puede(key: String): Boolean = when (key) {
         "pacientes" -> permisos.pacientes
         "citas" -> permisos.citas
+        "agendar" -> permisos.agendar
         "sesiones" -> permisos.sesiones
         "pagos" -> permisos.pagos
         "finanzas" -> permisos.finanzas
@@ -72,6 +73,7 @@ data class ContextoStaff(
 data class Permisos(
     val pacientes: Boolean,
     val citas: Boolean,
+    val agendar: Boolean = false,   // crear citas (recepción/admin); médicos solo ven
     val sesiones: Boolean,
     val pagos: Boolean,
     val finanzas: Boolean,

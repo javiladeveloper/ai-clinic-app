@@ -39,6 +39,7 @@ object StaffContextoRepo {
     private fun permisos(o: JsonObject?): Permisos = Permisos(
         pacientes = o?.bool("pacientes") ?: false,
         citas = o?.bool("citas") ?: false,
+        agendar = o?.bool("agendar") ?: false,
         sesiones = o?.bool("sesiones") ?: false,
         pagos = o?.bool("pagos") ?: false,
         finanzas = o?.bool("finanzas") ?: false,

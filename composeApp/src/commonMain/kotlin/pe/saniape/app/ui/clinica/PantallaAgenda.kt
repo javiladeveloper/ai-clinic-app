@@ -82,12 +82,16 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text("Agenda", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
-                Box(
-                    Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
-                        .background(c.sobreNavy.copy(alpha = 0.15f))
-                        .clickable { creandoCita = true }
-                        .padding(horizontal = 14.dp, vertical = 7.dp),
-                ) { Text("+ Nueva", color = c.sobreNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                // Agendar (crear cita) solo con permiso 'agendar' (recepción/admin). El profesional
+                // que solo atiende ve su agenda pero no agenda.
+                if (ctx.puede("agendar")) {
+                    Box(
+                        Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+                            .background(c.sobreNavy.copy(alpha = 0.15f))
+                            .clickable { creandoCita = true }
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
+                    ) { Text("+ Nueva", color = c.sobreNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                }
             }
 
             // La tira de días solo aplica en modo "día" (no en la lista/historial).
