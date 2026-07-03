@@ -36,11 +36,13 @@ import pe.saniape.app.ui.theme.Sania
 private data class Paso(val label: String, val done: Boolean, val activo: Boolean)
 
 /**
- * Barra de recorrido ADAPTATIVA por el flag `usa_sesiones` de la especialidad (NO por su
- * nombre), para incrustar en la cabecera de cada TarjetaTratamiento. Aplica a CUALQUIER
- * especialidad:
- *  - usa_sesiones=true (fisio/psico/etc):   Consulta → Evaluación → Sesiones (N/M) → Alta
- *  - usa_sesiones=false (medicina/nutri/imagenología/etc): Consulta → Evaluación → Control → Alta
+ * Barra de recorrido ADAPTATIVA por TIPO de tratamiento (Strategy, como la web), para incrustar
+ * en la cabecera de cada TarjetaTratamiento. Aplica a CUALQUIER especialidad:
+ *  - SESIONES (fisio/orto/etc):        Consulta → Evaluación → Sesiones (N/M) → Alta
+ *  - CONSULTA/UNIDADES (medicina/etc): Consulta → Evaluación → Control → Alta
+ *  - SERVICIO ÚNICO (blanqueamiento):  Consulta → Evaluación → Por hacer/Realizado → Pagado
+ *    (sin "Alta": realizado + pagado ya es el fin. "Realizado" SOLO si el trat está Completado —
+ *    no basta con tener consulta/evaluación hechas.)
  */
 @Composable
 fun BarraRecorrido(
@@ -56,10 +58,14 @@ fun BarraRecorrido(
     onColapsarTarjeta: () -> Unit = {},     // colapsar la tarjeta al abrir una nube (1 activo a la vez)
     onAgendarControl: () -> Unit = {},      // en Control: el paciente necesita volver
     onDarAlta: () -> Unit = {},             // en Control: el caso se cierra (alta)
-    onRegistrarAtencion: () -> Unit = {},   // en Control: registrar medicación/receta tras atender
+    onRegistrarAtencion: () -> Unit = {},   // Control: medicación/receta · Servicio único: registrar el servicio
+    onRevertirServicio: () -> Unit = {},    // Servicio único: volver a "Por hacer" (conserva el pago)
 ) {
     val c = Sania.colors
-    val usaSesiones = !trat.esConsulta
+    val esServUnico = trat.esServicioUnico
+    val servRealizado = trat.servicioRealizado
+    val servPagado = trat.estadoPago == "Pagado"
+    val usaSesiones = !trat.esConsulta && !esServUnico
     val sesComp = trat.sesionesCompletadas
     val sesTot = trat.totalSesiones
     val altaTrat = trat.estado == "Alta"
@@ -73,17 +79,24 @@ fun BarraRecorrido(
     val atendido = consultaDone || evalDone
     val tieneProxControl = !trat.proximoControl.isNullOrBlank()
     val pasoTercero = when {
+        esServUnico -> Paso(
+            if (servRealizado) "Realizado" else "Por hacer",
+            done = servRealizado, activo = !servRealizado && !altaTrat,
+        )
         usaSesiones -> {
             val etq = if (sesComp > sesTot) "$sesTot/$sesTot +${sesComp - sesTot}" else "$sesComp/$sesTot ses."
             Paso(etq, done = completo, activo = !completo && !altaTrat)
         }
         else -> Paso("Control", done = atendido, activo = !altaTrat && tieneProxControl)
     }
+    val pasoCuarto =
+        if (esServUnico) Paso("Pagado", done = servPagado, activo = servRealizado && !servPagado)
+        else Paso("Alta", done = altaTrat, activo = false)
     val pasos = listOf(
         Paso("Consulta", done = consultaDone, activo = false),
         Paso("Evaluación", done = evalDone, activo = false),
         pasoTercero,
-        Paso("Alta", done = altaTrat, activo = false),
+        pasoCuarto,
     )
     // Cada bolita puede abrir su nube de referencia si hay una cita-hito asociada:
     //  - paso 0 (Consulta) → citaConsulta
@@ -93,7 +106,7 @@ fun BarraRecorrido(
         when {
             i == 0 -> citaConsulta
             i == 1 -> citaEvaluacion
-            i == 2 && !usaSesiones -> citaConsulta ?: citaEvaluacion
+            i == 2 && !usaSesiones && !esServUnico -> citaConsulta ?: citaEvaluacion
             else -> null
         }
     }
@@ -102,13 +115,15 @@ fun BarraRecorrido(
     val esSesiones = { i: Int -> i == 2 && usaSesiones }
     // El paso "Control" (índice 2, sin sesiones) SIEMPRE abre su nube (próx. control + acciones),
     // aunque no haya una cita asociada — así el profesional puede agendar/dar de alta.
-    val esControl = { i: Int -> i == 2 && !usaSesiones }
+    val esControl = { i: Int -> i == 2 && !usaSesiones && !esServUnico }
+    // El paso del SERVICIO (índice 2, servicio único): nube con detalles + registrar/revertir.
+    val esServicio = { i: Int -> i == 2 && esServUnico }
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         pasos.forEachIndexed { i, paso ->
             val cita = citaDelPaso(i)
-            // Tocable si: tiene cita, o es Control, o es Sesiones.
-            val abreNube = cita != null || esControl(i)
+            // Tocable si: tiene cita, o es Control, o es el paso del Servicio (único).
+            val abreNube = cita != null || esControl(i) || esServicio(i)
             Column(Modifier.width(60.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 // "abierta" = nube abierta, o (paso Sesiones) la tarjeta está expandida.
                 val abierta = hitoAbierto == i || (esSesiones(i) && expandido)
@@ -149,11 +164,12 @@ fun BarraRecorrido(
     }
 
     // Nube flotante del paso tocado. Renderiza si hay cita (Consulta/Eval/Control con datos)
-    // O si es el paso Control (aunque no haya cita → muestra próx. control + acciones).
+    // O si es el paso Control/Servicio (aunque no haya cita → detalles + acciones).
     val abi = hitoAbierto
     val citaAbierta = abi?.let { citaDelPaso(it) }
-    val esControlAbierto = abi == 2 && !usaSesiones
-    if (abi != null && (citaAbierta != null || esControlAbierto)) {
+    val esControlAbierto = abi == 2 && !usaSesiones && !esServUnico
+    val esServicioAbierto = abi == 2 && esServUnico
+    if (abi != null && (citaAbierta != null || esControlAbierto || esServicioAbierto)) {
         Spacer(Modifier.height(8.dp))
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
@@ -166,11 +182,13 @@ fun BarraRecorrido(
                     Text("${if (cita.tipo == "Consulta") "💬" else "🔍"} ${cita.tipo}",
                         color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     // El ✏ Editar NO va en el paso Control (ahí está "Registrar atención").
-                    // En Consulta/Evaluación de fisio sí, para editar la cita.
+                    // En Consulta/Evaluación (fisio Y servicio único) sí: edita la cita.
                     if (!esControlAbierto) {
                         Box(
                             Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.navy)
-                                .clickable { if (!usaSesiones) onRegistrarAtencion() else onEditarCita(cita) }
+                                .clickable {
+                                    if (!usaSesiones && !esServUnico) onRegistrarAtencion() else onEditarCita(cita)
+                                }
                                 .padding(horizontal = 10.dp, vertical = 4.dp),
                         ) { Text("✏ Editar", color = c.sobreNavy, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                     }
@@ -210,6 +228,38 @@ fun BarraRecorrido(
                                 .clickable { onDarAlta() }.padding(vertical = 8.dp),
                             contentAlignment = Alignment.Center,
                         ) { Text("✓ Dar de alta", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                    }
+                }
+            }
+            // Paso del SERVICIO ÚNICO: detalles (diagnóstico/precio) + registrar o revertir.
+            // Sin "Dar de alta": realizado + pagado ya es el fin del servicio.
+            if (esServicioAbierto) {
+                Text(
+                    if (servRealizado) "✨ Servicio realizado" else "✨ Servicio por realizar",
+                    color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(4.dp))
+                trat.diagnostico?.takeIf { it.isNotBlank() }?.let { FilaRef("Diagnóstico", it) }
+                if (puedePagos) {
+                    val precio = trat.precioAcordado ?: trat.precioBase ?: 0.0
+                    FilaRef("Precio", "S/ ${if (precio % 1.0 == 0.0) precio.toInt() else precio}")
+                }
+                if (!altaTrat) {
+                    Spacer(Modifier.height(8.dp))
+                    if (!servRealizado) {
+                        Box(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.navy)
+                                .clickable { onRegistrarAtencion() }.padding(vertical = 9.dp),
+                            contentAlignment = Alignment.Center,
+                        ) { Text("📝 Registrar atención", color = c.sobreNavy, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                    } else {
+                        // Se marcó por error: vuelve a "Por hacer" (el pago se conserva).
+                        Box(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { onRevertirServicio() }.padding(vertical = 9.dp),
+                            contentAlignment = Alignment.Center,
+                        ) { Text("↩ Revertir (volver a “Por hacer”)", color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                     }
                 }
             }

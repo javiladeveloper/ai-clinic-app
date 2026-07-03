@@ -89,6 +89,8 @@ fun TarjetaTratamiento(
     var borrarSesion by remember { mutableStateOf<SesionFicha?>(null) }
     var reasignarSesion by remember { mutableStateOf<SesionFicha?>(null) }
     var cobrarSesion by remember { mutableStateOf<SesionFicha?>(null) }
+    // SERVICIO ÚNICO: modal "Registrar atención" (nota de qué se hizo + cobro opcional).
+    var registrarServicioAbierto by remember { mutableStateOf(false) }
 
     val estado = EstadosColor.cita(t.estado)
     val terminado = t.estado == "Alta" || t.estado == "Cancelado" || t.estado == "Suspendido"
@@ -113,8 +115,8 @@ fun TarjetaTratamiento(
         }
     }
 
-    // Acento de color por tipo: sesiones = teal, consulta = morado (multi-especialidad).
-    val acento = if (t.esConsulta) c.purple else c.teal
+    // Acento de color por tipo: sesiones/servicio = teal, consulta médica = morado.
+    val acento = if (t.esConsulta && !t.esServicioUnico) c.purple else c.teal
     val cerrado = t.estado == "Alta" || t.estado == "Cancelado" || t.estado == "Suspendido"
 
     Row(
@@ -131,7 +133,7 @@ fun TarjetaTratamiento(
         Column(Modifier.fillMaxWidth().clickable { expandido = !expandido }) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("${if (t.esConsulta) "🩺" else "📦"} ${t.procedimiento ?: "Tratamiento"}",
+                    Text("${if (t.esServicioUnico) "✨" else if (t.esConsulta) "🩺" else "📦"} ${t.procedimiento ?: "Tratamiento"}",
                         color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
                     val sub = listOfNotNull(t.especialidadNombre, t.terapeutaNombre?.let { "con $it" }).joinToString(" · ")
                     if (sub.isNotBlank()) Text(sub, color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 1.dp))
@@ -144,16 +146,19 @@ fun TarjetaTratamiento(
                 Text(if (expandido) "▴" else "▾", color = c.navy)
             }
 
-            // CONSULTA (medicina/nutrición): diagnóstico + medicación + próximo control
-            if (t.esConsulta) {
+            // CONSULTA (medicina/nutrición): diagnóstico + medicación + próximo control.
+            // SERVICIO ÚNICO (blanqueamiento): solo diagnóstico (medicación/control no aplican).
+            if (t.esConsulta || t.esServicioUnico) {
                 t.diagnostico?.takeIf { it.isNotBlank() }?.let {
                     Spacer(Modifier.height(6.dp)); ChipInfo("📋", it, c.info, c.infoBg)
                 }
-                t.medicacion?.takeIf { it.isNotBlank() }?.let {
-                    Spacer(Modifier.height(4.dp)); ChipInfo("💊", it, c.purple, c.purpleBg)
-                }
-                t.proximoControl?.takeIf { it.isNotBlank() }?.let {
-                    Spacer(Modifier.height(4.dp)); ChipInfo("📅 Próximo control", it, c.navy, c.chipBg)
+                if (!t.esServicioUnico) {
+                    t.medicacion?.takeIf { it.isNotBlank() }?.let {
+                        Spacer(Modifier.height(4.dp)); ChipInfo("💊", it, c.purple, c.purpleBg)
+                    }
+                    t.proximoControl?.takeIf { it.isNotBlank() }?.let {
+                        Spacer(Modifier.height(4.dp)); ChipInfo("📅 Próximo control", it, c.navy, c.chipBg)
+                    }
                 }
             }
         }
@@ -168,7 +173,15 @@ fun TarjetaTratamiento(
                 onToggleSesiones = { expandido = !expandido },
                 onColapsarTarjeta = { expandido = false },
                 onAgendarControl = { onAgendarControl(t) },
-                onRegistrarAtencion = { onRegistrarAtencion(t) },
+                // Servicio único: abre el modal local (nota + cobro). Consulta médica: el de siempre.
+                onRegistrarAtencion = {
+                    if (t.esServicioUnico) registrarServicioAbierto = true else onRegistrarAtencion(t)
+                },
+                onRevertirServicio = {
+                    if (accionando) return@BarraRecorrido
+                    accionando = true
+                    scope.launch { PacientesRepo.revertirServicio(t.id); accionando = false; onCambioRealizado() }
+                },
                 onDarAlta = {
                     if (accionando) return@BarraRecorrido
                     accionando = true
@@ -179,7 +192,7 @@ fun TarjetaTratamiento(
 
         // Resto de la zona-resumen, también tocable para expandir.
         Column(Modifier.fillMaxWidth().clickable { expandido = !expandido }) {
-            if (!t.esConsulta && t.totalSesiones > 0) {
+            if (!t.esConsulta && !t.esServicioUnico && t.totalSesiones > 0) {
                 Spacer(Modifier.height(8.dp))
                 val frac = (t.sesionesCompletadas.toFloat() / t.totalSesiones).coerceIn(0f, 1f)
                 Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.chipBg)) {
@@ -188,7 +201,7 @@ fun TarjetaTratamiento(
             }
             if (!expandido) {
                 Spacer(Modifier.height(8.dp))
-                Text(if (t.esConsulta) "Toca para ver detalle y pagos" else "Toca para ver sesiones y pagos",
+                Text(if (t.esConsulta || t.esServicioUnico) "Toca para ver detalle y pagos" else "Toca para ver sesiones y pagos",
                     color = c.textoSuave, fontSize = 10.sp)
             }
         }
@@ -258,11 +271,14 @@ fun TarjetaTratamiento(
             Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
             Spacer(Modifier.height(Sania.dim.md))
 
-            // Las Consultas (especialidad sin sesiones) no listan sesiones; solo pagos.
-            // El alta se declara desde el paso "Control" de la barra (no como botón suelto).
-            if (t.esConsulta) {
-                Text("Atención sin sesiones — el alta se declara desde el paso “Control”.",
-                    color = c.textoSuave, fontSize = 12.sp)
+            // Las Consultas (especialidad sin sesiones) y el SERVICIO ÚNICO no listan sesiones;
+            // solo pagos + fotos. El servicio único NO tiene "alta": realizado + pagado es el fin.
+            if (t.esConsulta || t.esServicioUnico) {
+                Text(
+                    if (t.esServicioUnico) "Servicio único — se registra desde el paso “Por hacer” del recorrido."
+                    else "Atención sin sesiones — el alta se declara desde el paso “Control”.",
+                    color = c.textoSuave, fontSize = 12.sp,
+                )
                 if (verPagos) {
                     Spacer(Modifier.height(Sania.dim.md))
                     SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() })
@@ -381,6 +397,82 @@ fun TarjetaTratamiento(
             scope.launch { PacientesRepo.borrarSesion(ses.id, borrarPagos); recargarSesiones() }
         })
     }
+    // SERVICIO ÚNICO: registrar la atención (qué se hizo + cobro opcional en el mismo paso).
+    if (registrarServicioAbierto) {
+        ModalRegistrarServicio(
+            t = t,
+            onCancelar = { registrarServicioAbierto = false },
+            onConfirmar = { nota, cobrar, monto, metodo ->
+                registrarServicioAbierto = false
+                if (accionando) return@ModalRegistrarServicio
+                accionando = true
+                scope.launch {
+                    // 1) Marca Completado + acumula la nota (server-side).
+                    PacientesRepo.registrarServicio(t.id, nota)
+                    // 2) Aprender las técnicas usadas (se sugieren en futuras atenciones).
+                    if (!nota.isNullOrBlank()) runCatching { pe.saniape.app.data.staff.TecnicasRepo.registrar(nota) }
+                    // 3) Cobro opcional (pago + kardex + recálculo, server-side).
+                    if (cobrar && monto != null && monto > 0) {
+                        PacientesRepo.registrarPago(t.id, monto, metodo, notas = "Pago del servicio")
+                    }
+                    accionando = false
+                    cambioToken++
+                    onCambioRealizado()
+                }
+            },
+        )
+    }
+}
+
+/** Modal del SERVICIO ÚNICO: nota de la atención (con autocompletado de técnicas) + cobro opcional. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ModalRegistrarServicio(
+    t: TratamientoPaciente,
+    onCancelar: () -> Unit,
+    onConfirmar: (nota: String?, cobrar: Boolean, monto: Double?, metodo: String) -> Unit,
+) {
+    val c = Sania.colors
+    var nota by remember { mutableStateOf("") }
+    var cobrar by remember { mutableStateOf(false) }
+    var monto by remember { mutableStateOf((t.precioAcordado ?: t.precioBase)?.let { formato2(it) } ?: "") }
+    var metodo by remember { mutableStateOf("Efectivo") }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onCancelar,
+        title = { Text("✨ Registrar servicio", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text("Qué se hizo / receta (opcional)", color = c.textoSuave, fontSize = Sania.txt.mini,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
+                pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
+                    value = nota, onChange = { nota = it },
+                )
+                Spacer(Modifier.height(10.dp))
+                // Cobro en el mismo paso (opcional): el pago también puede registrarse después.
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable { cobrar = !cobrar }) {
+                    Text(if (cobrar) "☑" else "☐", fontSize = 18.sp, color = if (cobrar) c.teal else c.textoSuave)
+                    Spacer(Modifier.width(8.dp))
+                    Text("💳 ¿El paciente pagó el servicio?", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+                if (cobrar) {
+                    Spacer(Modifier.height(8.dp))
+                    CampoTexto("Monto (S/)", monto, soloNumero = true) { monto = it }
+                    Spacer(Modifier.height(8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        METODOS_PAGO.forEach { m -> ChipMetodo(m, metodo == m) { metodo = m } }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            BotonModalP("✓ Registrar") {
+                onConfirmar(nota.trim().ifBlank { null }, cobrar, monto.toDoubleOrNull(), metodo)
+            }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
+        containerColor = c.superficie,
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)

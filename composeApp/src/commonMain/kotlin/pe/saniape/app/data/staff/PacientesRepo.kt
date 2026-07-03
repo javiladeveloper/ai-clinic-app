@@ -23,6 +23,16 @@ import kotlinx.serialization.json.putJsonObject
 import pe.saniape.app.data.Supabase
 import pe.saniape.app.data.crearHttpClient
 
+/**
+ * TIPO de tratamiento (Strategy, espejo de lib/tipos-tratamiento.ts de la web).
+ * Se resuelve por modalidad + modo_cobro/precio del procedimiento, sin datos nuevos:
+ *  - SESIONES:        Paquete / Sesión suelta (fisio, ortodoncia)
+ *  - UNIDADES:        Unidades (injerto capilar, botox por unidad)
+ *  - SERVICIO_UNICO:  Consulta + procedimiento simple con precio>0 (blanqueamiento, profilaxis)
+ *  - CONSULTA_MEDICA: Consulta + gratis/precio 0 (medicina general, nutrición)
+ */
+enum class TipoTratamiento { SESIONES, UNIDADES, SERVICIO_UNICO, CONSULTA_MEDICA }
+
 /** Un tratamiento del paciente (resumen para la lista/ficha). */
 data class TratamientoPaciente(
     val id: String,
@@ -46,6 +56,9 @@ data class TratamientoPaciente(
     val especialidadNombre: String?,
     val especialidadId: String? = null,
     val notaRecepcion: String? = null,   // recordatorio de recepción (se limpia al pagar)
+    // Del procedimiento — para detectar el TIPO (servicio único vs consulta médica).
+    val modoCobro: String? = null,       // 'simple' | 'sesiones' | 'unidades'
+    val precioBase: Double? = null,      // precio fijo del servicio (procedimientos.precio)
 ) {
     /** Monto total acordado del tratamiento (igual que la web). */
     val montoAcordado: Double
@@ -55,6 +68,21 @@ data class TratamientoPaciente(
 
     /** Es una Consulta (especialidad sin sesiones): no muestra contador/acciones de sesión. */
     val esConsulta: Boolean get() = !usaSesiones
+
+    /** TIPO del tratamiento (misma detección que tipoDe() en la web). */
+    val tipo: TipoTratamiento
+        get() = when {
+            modalidad == "Unidades" -> TipoTratamiento.UNIDADES
+            modalidad == "Consulta" ->
+                if (modoCobro == "simple" && (precioBase ?: 0.0) > 0.0) TipoTratamiento.SERVICIO_UNICO
+                else TipoTratamiento.CONSULTA_MEDICA
+            else -> TipoTratamiento.SESIONES
+        }
+
+    /** Servicio único (blanqueamiento/profilaxis): recorrido Por hacer → Realizado → Pagado. */
+    val esServicioUnico: Boolean get() = tipo == TipoTratamiento.SERVICIO_UNICO
+    /** El servicio se realizó (Completado/Alta). NO basta consulta/evaluación hechas. */
+    val servicioRealizado: Boolean get() = estado == "Completado" || estado == "Alta"
 }
 
 /** Una sesión de un tratamiento (para la ficha). */
@@ -221,7 +249,7 @@ object PacientesRepo {
             id, modalidad, estado, estado_pago, total_sesiones, sesiones_completadas,
             precio_paquete, precio_por_sesion, precio_acordado, terapeuta_id,
             diagnostico, medicacion, proximo_control, nota_recepcion,
-            procedimiento:procedimientos(nombre, especialidad_id, especialidad:especialidades(nombre, usa_sesiones)),
+            procedimiento:procedimientos(nombre, especialidad_id, modo_cobro, precio, especialidad:especialidades(nombre, usa_sesiones)),
             terapeuta:terapeutas(id, nombre, especialidades:terapeuta_especialidades(especialidad:especialidades(id, nombre)))
         )
     """
@@ -471,6 +499,21 @@ object PacientesRepo {
         accionTratamiento(buildJsonObject {
             put("accion", "estado"); put("tratamientoId", tratamientoId); put("estado", estado)
         })
+
+    /**
+     * SERVICIO ÚNICO (blanqueamiento/profilaxis): registrar la atención — marca el tratamiento
+     * Completado y ACUMULA la nota de "qué se hizo" en sus notas (server-side, mismo resultado
+     * que la ficha web). El cobro opcional va aparte por registrarPago (pago + kardex + recálculo).
+     */
+    suspend fun registrarServicio(tratamientoId: String, nota: String?): Boolean =
+        accionTratamiento(buildJsonObject {
+            put("accion", "estado"); put("tratamientoId", tratamientoId); put("estado", "Completado")
+            if (!nota.isNullOrBlank()) put("notaAtencion", nota.trim())
+        })
+
+    /** SERVICIO ÚNICO: revertir el servicio realizado (vuelve a Activo; el pago se conserva). */
+    suspend fun revertirServicio(tratamientoId: String): Boolean =
+        cambiarEstadoTratamiento(tratamientoId, "Activo")
 
     suspend fun ampliarTratamiento(tratamientoId: String, sesionesExtra: Int, montoExtra: Double, nota: String?): Boolean =
         accionTratamiento(buildJsonObject {
@@ -732,6 +775,8 @@ object PacientesRepo {
                 especialidadNombre = espNombre,
                 especialidadId = espId,
                 notaRecepcion = t.str("nota_recepcion"),
+                modoCobro = procObj?.str("modo_cobro"),
+                precioBase = procObj?.dbl("precio"),
             )
         }
         return PacienteStaff(
