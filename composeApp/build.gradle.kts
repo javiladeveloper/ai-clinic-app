@@ -34,6 +34,8 @@ kotlin {
             // Mapa OSM + ubicación
             implementation(libs.osmdroid)
             implementation(libs.play.location)
+            // Rotación EXIF al comprimir fotos clínicas antes de subirlas
+            implementation("androidx.exifinterface:exifinterface:1.3.7")
         }
         commonMain.dependencies {
             implementation(compose.runtime)

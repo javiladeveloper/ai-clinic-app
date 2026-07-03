@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Rutas expuestas por el FileProvider: solo el subdirectorio de fotos de cámara en cache. -->
+<paths>
+    <cache-path name="fotos_camara" path="fotos_camara/" />
+</paths>

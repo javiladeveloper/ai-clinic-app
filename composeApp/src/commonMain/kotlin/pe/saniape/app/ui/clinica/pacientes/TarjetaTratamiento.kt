@@ -279,13 +279,14 @@ fun TarjetaTratamiento(
                     else "Atención sin sesiones — el alta se declara desde el paso “Control”.",
                     color = c.textoSuave, fontSize = 12.sp,
                 )
+                // Fotos evolutivas ARRIBA de pagos (el antes/después es parte de la atención,
+                // no del cobro) — también en consultas/servicios (documentan resultados).
+                if (puedeFotos && pacienteId.isNotBlank()) {
+                    GaleriaFotos(pacienteId = pacienteId, tratamientoId = t.id, sesiones = emptyList())
+                }
                 if (verPagos) {
                     Spacer(Modifier.height(Sania.dim.md))
                     SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() })
-                }
-                // Fotos evolutivas también en consultas (medicina/nutri pueden documentar).
-                if (puedeFotos && pacienteId.isNotBlank()) {
-                    GaleriaFotos(pacienteId = pacienteId, tratamientoId = t.id, sesiones = emptyList())
                 }
             } else if (cargaFallo) {
                 // La carga falló (timeout/red). NO decir "sin sesiones": ofrecer reintentar.
@@ -345,15 +346,15 @@ fun TarjetaTratamiento(
                         SugerenciaSesionIA(tratamientoId = t.id)
                     }
 
+                    // Fotos evolutivas (antes/durante/después) ARRIBA de pagos — feature Premium.
+                    if (puedeFotos && pacienteId.isNotBlank()) {
+                        GaleriaFotos(pacienteId = pacienteId, tratamientoId = t.id, sesiones = s)
+                    }
+
                     // Pagos (solo con permiso): acordado/pagado/saldo + registrar/editar/borrar.
                     if (verPagos) {
                         Spacer(Modifier.height(Sania.dim.md))
                         SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() })
-                    }
-
-                    // Fotos evolutivas (antes/durante/después) — feature Premium.
-                    if (puedeFotos && pacienteId.isNotBlank()) {
-                        GaleriaFotos(pacienteId = pacienteId, tratamientoId = t.id, sesiones = s)
                     }
 
                     // Dar de alta (si el tratamiento sigue en curso y puede sesiones)

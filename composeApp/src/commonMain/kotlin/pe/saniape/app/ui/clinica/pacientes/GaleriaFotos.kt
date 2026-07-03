@@ -45,6 +45,8 @@ import pe.saniape.app.data.staff.FotosRepo
 import pe.saniape.app.data.staff.SesionFicha
 import pe.saniape.app.data.staff.SolicitudesRepo
 import pe.saniape.app.ui.ArchivoSeleccionado
+import pe.saniape.app.ui.comprimirImagen
+import pe.saniape.app.ui.recordarCamaraFoto
 import pe.saniape.app.ui.recordarSelectorArchivo
 import pe.saniape.app.ui.theme.Sania
 
@@ -98,6 +100,8 @@ fun GaleriaFotos(
         }
     }
     LaunchedEffect(pedirArchivo) { if (pedirArchivo) abrirSelector() }
+    // Tomar la foto con la CÁMARA (nativa) — el momento natural en consultorio.
+    val abrirCamara = recordarCamaraFoto { archivo -> pendiente = archivo }
 
     val delTratamiento = fotos?.filter { it.tratamientoId == tratamientoId } ?: emptyList()
 
@@ -108,8 +112,13 @@ fun GaleriaFotos(
             verticalAlignment = Alignment.CenterVertically) {
             Text("📷 FOTOS / EVOLUCIÓN", color = c.textoSuave, fontSize = 11.sp,
                 fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
-            Text("+ Foto", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.clickable(enabled = !subiendo) { pedirArchivo = true })
+            // Tomar con la cámara (lo natural en consultorio) o elegir de la galería.
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("📸 Tomar foto", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable(enabled = !subiendo) { abrirCamara() })
+                Text("🖼 Galería", color = c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable(enabled = !subiendo) { pedirArchivo = true })
+            }
         }
         Spacer(Modifier.height(8.dp))
 
@@ -141,12 +150,15 @@ fun GaleriaFotos(
             onGuardar = { momento, sesionId, nota, visible ->
                 scope.launch {
                     subiendo = true
+                    // Comprimir ANTES de subir (1600px / JPEG 70, como la web): una foto de
+                    // cámara de ~5-8 MB baja a ~200-500 KB → no satura el storage.
+                    val listo = comprimirImagen(archivo)
                     val subido = SolicitudesRepo.subirArchivo(
-                        pacienteId, archivo.nombre, archivo.bytes, archivo.mime, "foto")
+                        pacienteId, listo.nombre, listo.bytes, listo.mime, "foto")
                     if (subido != null) {
                         val (path, tipo) = subido
                         FotosRepo.registrarFoto(
-                            pacienteId, tratamientoId, sesionId, archivo.nombre, path, tipo,
+                            pacienteId, tratamientoId, sesionId, listo.nombre, path, tipo,
                             momento, nota, visible)
                     }
                     subiendo = false; pendiente = null; recargar()
@@ -155,8 +167,15 @@ fun GaleriaFotos(
         )
     }
 
-    // Lightbox a pantalla completa.
+    // Lightbox tipo CARRUSEL: flechas ‹ › (circular) + contador N/M, sin cerrar entre fotos.
     lightbox?.let { f ->
+        val idx = delTratamiento.indexOfFirst { it.id == f.id }
+        val varias = delTratamiento.size > 1
+        fun irA(destino: Int) {
+            if (delTratamiento.isEmpty()) return
+            val d = delTratamiento[((destino % delTratamiento.size) + delTratamiento.size) % delTratamiento.size]
+            scope.launch { urlDe(d.archivoUrl); lightbox = d }
+        }
         Dialog(onDismissRequest = { lightbox = null },
             properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Box(Modifier.fillMaxSize().background(Color(0xD9000000)).clickable { lightbox = null },
@@ -176,11 +195,25 @@ fun GaleriaFotos(
                         momentoLabel(f.momento).ifBlank { null },
                         f.notas?.takeIf { it.isNotBlank() },
                         f.createdAt?.take(10),
+                        if (varias) "${idx + 1}/${delTratamiento.size}" else null,
                     ).joinToString(" · ")
                     Text(detalle, color = Color(0xE6FFFFFF), fontSize = 13.sp)
                     Spacer(Modifier.height(10.dp))
                     Text("Cerrar ✕", color = Color(0xB3FFFFFF), fontSize = 13.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.clickable { lightbox = null })
+                }
+                // Flechas del carrusel (solo si hay más de una foto del tratamiento).
+                if (varias) {
+                    Box(Modifier.align(Alignment.CenterStart).padding(start = 6.dp).size(40.dp)
+                        .clip(RoundedCornerShape(20.dp)).background(Color(0x33FFFFFF))
+                        .clickable { irA(idx - 1) }, contentAlignment = Alignment.Center) {
+                        Text("‹", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Box(Modifier.align(Alignment.CenterEnd).padding(end = 6.dp).size(40.dp)
+                        .clip(RoundedCornerShape(20.dp)).background(Color(0x33FFFFFF))
+                        .clickable { irA(idx + 1) }, contentAlignment = Alignment.Center) {
+                        Text("›", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
