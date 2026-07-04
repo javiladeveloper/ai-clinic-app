@@ -36,6 +36,9 @@ kotlin {
             implementation(libs.play.location)
             // Rotación EXIF al comprimir fotos clínicas antes de subirlas
             implementation("androidx.exifinterface:exifinterface:1.3.7")
+            // Notificaciones FCM (init programática — sin plugin google-services; los valores
+            // del proyecto Firebase van en push/FirebaseCfg.kt)
+            implementation("com.google.firebase:firebase-messaging:24.1.0")
         }
         commonMain.dependencies {
             implementation(compose.runtime)

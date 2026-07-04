@@ -77,6 +77,10 @@ fun ClinicaConTabs(
         cargando = false
     }
 
+    // Notificaciones REALES del celular (FCM): registrar este dispositivo para el staff
+    // logueado. No-op mientras FirebaseCfg esté vacío.
+    pe.saniape.app.ui.EfectoPushNativo()
+
     ManejarAtras(activo = verSesiones || verCaja || tab != TabClinica.Inicio) {
         when {
             verSesiones -> verSesiones = false

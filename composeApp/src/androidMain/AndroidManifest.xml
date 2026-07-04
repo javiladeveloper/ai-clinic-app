@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- osmdroid: estado de red para cargar los tiles de OpenStreetMap -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Notificaciones en la barra (Android 13+ las pide en runtime) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".SaniaApplication"
@@ -34,6 +36,16 @@
             android:name=".ui.VisorHtmlActivity"
             android:exported="false"
             android:label="Historia clínica" />
+
+        <!-- FCM: recibe los push del dashboard y los muestra en la barra (SaniaFcmService).
+             Solo actúa si FirebaseCfg tiene los valores del proyecto (init programática). -->
+        <service
+            android:name=".push.SaniaFcmService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
 
         <!-- FileProvider: URI temporal donde la cámara escribe la foto clínica (tomar foto).
              NO requiere permiso CAMERA: TakePicture delega en la app de cámara del sistema. -->

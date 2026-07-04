@@ -16,6 +16,8 @@ class SaniaApplication : Application(), SingletonImageLoader.Factory {
         Preferencias.init(this)
         // Toca el cliente para inicializarlo y que restaure la sesión guardada.
         Supabase.client
+        // FCM (notificaciones del celular): no-op hasta pegar los valores en FirebaseCfg.
+        pe.saniape.app.push.FirebaseCfg.inicializar(this)
     }
 
     // ImageLoader de Coil con fetcher de red ktor (carga las fotos evolutivas desde
