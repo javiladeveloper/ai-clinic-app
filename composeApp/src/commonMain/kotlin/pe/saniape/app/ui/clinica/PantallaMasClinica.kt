@@ -119,6 +119,27 @@ fun PantallaMasClinica(
                     Spacer(Modifier.height(Sania.dim.lg))
                 }
 
+                // Apariencia (preferencia personal del dispositivo — todos los roles).
+                Text("APARIENCIA", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(Sania.dim.sm))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("sistema" to "🖥 Sistema", "claro" to "☀️ Claro", "oscuro" to "🌙 Oscuro").forEach { (valor, etq) ->
+                        val sel = pe.saniape.app.ui.theme.TemaConfig.modo == valor
+                        Box(
+                            Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(if (sel) c.navy else c.superficie)
+                                .border(1.dp, if (sel) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { pe.saniape.app.ui.theme.TemaConfig.cambiar(valor) }
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(etq, color = if (sel) c.sobreNavy else c.textoSuave,
+                                fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(Sania.dim.lg))
+
                 // Selector de clínica (si tiene más de una)
                 if (ctx.clinicas.size > 1) {
                     Text("CAMBIAR DE CLÍNICA", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)

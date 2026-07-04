@@ -9,4 +9,7 @@ expect object Preferencias {
     /** "clinica" | "paciente" | null (no elegido aún). */
     fun modoActivo(): String?
     fun setModoActivo(modo: String?)
+    /** Tema elegido: "sistema" | "claro" | "oscuro" | null (= sistema). */
+    fun tema(): String?
+    fun setTema(tema: String?)
 }

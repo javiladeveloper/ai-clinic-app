@@ -10,6 +10,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -125,10 +127,31 @@ private val FormasM3 = Shapes(
     large = RoundedCornerShape(Formas.lg.dp),
 )
 
+/**
+ * Preferencia de tema del usuario: "sistema" (default) | "claro" | "oscuro".
+ * Estado reactivo: cambiarlo re-tematiza la app AL INSTANTE y queda persistido.
+ */
+object TemaConfig {
+    var modo by androidx.compose.runtime.mutableStateOf(
+        pe.saniape.app.data.Preferencias.tema() ?: "sistema"
+    )
+        private set
+
+    fun cambiar(nuevo: String) {
+        modo = nuevo
+        pe.saniape.app.data.Preferencias.setTema(if (nuevo == "sistema") null else nuevo)
+    }
+}
+
 @Composable
 fun TemaSania(content: @Composable () -> Unit) {
-    // Sigue el tema del SISTEMA (como la web, que respeta prefers-color-scheme).
-    val oscuro = isSystemInDarkTheme()
+    // El usuario elige (Más → Apariencia); "sistema" sigue el modo del teléfono
+    // (como la web, que respeta prefers-color-scheme).
+    val oscuro = when (TemaConfig.modo) {
+        "oscuro" -> true
+        "claro" -> false
+        else -> isSystemInDarkTheme()
+    }
     CompositionLocalProvider(LocalSaniaColors provides if (oscuro) ColoresOscuro else ColoresClaro) {
         MaterialTheme(
             colorScheme = if (oscuro) EsquemaM3Oscuro else EsquemaM3,

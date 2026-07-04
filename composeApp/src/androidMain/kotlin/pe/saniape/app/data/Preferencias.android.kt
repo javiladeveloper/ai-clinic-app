@@ -24,4 +24,13 @@ actual object Preferencias {
             apply()
         }
     }
+
+    actual fun tema(): String? = prefs?.getString("tema", null)
+
+    actual fun setTema(tema: String?) {
+        prefs?.edit()?.apply {
+            if (tema == null) remove("tema") else putString("tema", tema)
+            apply()
+        }
+    }
 }
