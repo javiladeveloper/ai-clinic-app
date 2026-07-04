@@ -22,6 +22,8 @@ actual fun MapaClinicas(
     clinicas: List<ClinicaDir>,
     miUbicacion: Pair<Double, Double>?,
     recentrarEnMi: Int,
+    enfocarClinica: ClinicaDir?,
+    enfocarTick: Int,
     onTocarClinica: (ClinicaDir) -> Unit,
     modifier: Modifier,
 ) {
@@ -98,6 +100,16 @@ actual fun MapaClinicas(
                 mapa.controller.setZoom(16.0)
             }
         }
+    }
+
+    // Enfocar una clínica (tap en su tarjeta de la lista): centrar + abrir su globo.
+    LaunchedEffect(enfocarTick) {
+        val cl = enfocarClinica ?: return@LaunchedEffect
+        if (enfocarTick <= 0 || cl.lat == null || cl.lng == null) return@LaunchedEffect
+        mapa.overlays.filterIsInstance<Marker>().forEach { it.closeInfoWindow() }
+        mapa.controller.animateTo(GeoPoint(cl.lat!!, cl.lng!!))
+        mapa.controller.setZoom(16.0)
+        mapa.overlays.filterIsInstance<Marker>().firstOrNull { it.title == cl.nombre }?.showInfoWindow()
     }
 }
 

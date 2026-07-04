@@ -1,8 +1,10 @@
 package pe.saniape.app.ui.reservar
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,6 +57,9 @@ fun PantallaDirectorio(onElegirClinica: (ClinicaDir) -> Unit) {
     var miUbicacion by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var vista by remember { mutableStateOf(Vista.Mapa) }
     var recentrarTick by remember { mutableStateOf(0) }
+    // Clínica enfocada en el mapa (tap simple en su tarjeta).
+    var enfocada by remember { mutableStateOf<ClinicaDir?>(null) }
+    var enfocarTick by remember { mutableStateOf(0) }
 
     val solicitarUbicacion = recordarSolicitarUbicacion { miUbicacion = it }
 
@@ -112,6 +117,8 @@ fun PantallaDirectorio(onElegirClinica: (ClinicaDir) -> Unit) {
                             clinicas = ordenadas,
                             miUbicacion = miUbicacion,
                             recentrarEnMi = recentrarTick,
+                            enfocarClinica = enfocada,
+                            enfocarTick = enfocarTick,
                             onTocarClinica = onElegirClinica,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -154,7 +161,13 @@ fun PantallaDirectorio(onElegirClinica: (ClinicaDir) -> Unit) {
                         item { TituloSeccion("📍 Cerca de ti") }
                     }
                     items(cercanas) { cl ->
-                        TarjetaClinica(cl, distDe(cl), onClick = { onElegirClinica(cl) })
+                        TarjetaClinica(cl, distDe(cl),
+                            onVerEnMapa = {
+                                if (cl.lat != null && cl.lng != null) {
+                                    vista = Vista.Mapa; enfocada = cl; enfocarTick++
+                                } else onElegirClinica(cl)   // sin coordenadas no hay pin → detalle
+                            },
+                            onDetalles = { onElegirClinica(cl) })
                     }
                     if (u != null && cercanas.isEmpty() && lejanas.isNotEmpty()) {
                         item {
@@ -166,7 +179,13 @@ fun PantallaDirectorio(onElegirClinica: (ClinicaDir) -> Unit) {
                         item { TituloSeccion("🌎 Otras ciudades") }
                     }
                     items(lejanas) { cl ->
-                        TarjetaClinica(cl, distDe(cl), onClick = { onElegirClinica(cl) })
+                        TarjetaClinica(cl, distDe(cl),
+                            onVerEnMapa = {
+                                if (cl.lat != null && cl.lng != null) {
+                                    vista = Vista.Mapa; enfocada = cl; enfocarTick++
+                                } else onElegirClinica(cl)
+                            },
+                            onDetalles = { onElegirClinica(cl) })
                     }
                     if (ordenadas.isEmpty()) {
                         item {
@@ -201,16 +220,21 @@ private fun Toggle(texto: String, activo: Boolean, onClick: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
-private fun TarjetaClinica(cl: ClinicaDir, distanciaKm: Double?, onClick: () -> Unit) {
+private fun TarjetaClinica(
+    cl: ClinicaDir,
+    distanciaKm: Double?,
+    onVerEnMapa: () -> Unit,   // tap simple → centrar en el mapa
+    onDetalles: () -> Unit,    // doble tap (o el link de abajo) → landing/reservar
+) {
     val c = Sania.colors
     Column(
         Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(Sania.shape.md.dp))
             .background(c.superficie)
             .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp))
-            .clickable { onClick() }
+            .combinedClickable(onDoubleClick = { onDetalles() }) { onVerEnMapa() }
             .padding(Sania.dim.tarjeta),
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
@@ -241,10 +265,13 @@ private fun TarjetaClinica(cl: ClinicaDir, distanciaKm: Double?, onClick: () -> 
         }
 
         Spacer(Modifier.height(Sania.dim.md))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically) {
+            Text("Toca para ver en el mapa", color = c.textoSuave, fontSize = 11.sp)
             // Premium sale en el directorio pero SIN reserva online (eso es de Plus).
             Text(if (cl.permiteReserva) "Ver y reservar →" else "Ver clínica →",
-                color = c.navy, fontSize = Sania.txt.pequeno, fontWeight = FontWeight.Bold)
+                color = c.navy, fontSize = Sania.txt.pequeno, fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable { onDetalles() }.padding(4.dp))
         }
     }
 }

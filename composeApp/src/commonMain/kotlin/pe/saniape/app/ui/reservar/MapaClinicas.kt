@@ -14,6 +14,10 @@ expect fun MapaClinicas(
     miUbicacion: Pair<Double, Double>?,
     // Cambia este valor para pedir al mapa que recentre en mi ubicación (botón 📍).
     recentrarEnMi: Int,
+    // Clínica a enfocar (tap en una tarjeta de la lista): el mapa la centra y abre su globo.
+    // enfocarTick cambia en cada tap para re-enfocar aunque sea la misma clínica.
+    enfocarClinica: ClinicaDir?,
+    enfocarTick: Int,
     onTocarClinica: (ClinicaDir) -> Unit,
     modifier: Modifier,
 )
