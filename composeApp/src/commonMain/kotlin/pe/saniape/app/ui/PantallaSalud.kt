@@ -182,19 +182,22 @@ private fun TarjetaTratamiento(t: Tratamiento, saldo: Saldo?) {
         // Cuenta del tratamiento — SOLO INFORMATIVO: costo, pagado, debe y el
         // detalle de pagos. El paciente controla su gasto (la clínica puede
         // ocultarlo en su configuración).
-        if (saldo != null && saldo.acordado > 0) {
+        // Se muestra si hay costo O si ya hay pagos (aunque la clínica no haya
+        // puesto precio todavía — el paciente igual debe ver lo que pagó).
+        if (saldo != null && (saldo.acordado > 0 || saldo.pagado > 0)) {
             var verPagos by remember { mutableStateOf(false) }
             Spacer(Modifier.height(Sania.dim.md))
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
                 .background(c.fondo).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
                 .padding(horizontal = 12.dp, vertical = 10.dp)) {
                 Row(Modifier.fillMaxWidth()) {
-                    ColumnaMonto("COSTO", "S/ ${formato2(saldo.acordado)}", c.texto, Modifier.weight(1f))
+                    ColumnaMonto("COSTO", if (saldo.acordado > 0) "S/ ${formato2(saldo.acordado)}" else "—",
+                        c.texto, Modifier.weight(1f))
                     ColumnaMonto("PAGADO", "S/ ${formato2(saldo.pagado)}", c.ok, Modifier.weight(1f))
-                    if (saldo.saldo > 0) {
-                        ColumnaMonto("DEBES", "S/ ${formato2(saldo.saldo)}", c.pend, Modifier.weight(1f))
-                    } else {
-                        ColumnaMonto("SALDO", "Pagado ✓", c.ok, Modifier.weight(1f))
+                    when {
+                        saldo.saldo > 0 -> ColumnaMonto("DEBES", "S/ ${formato2(saldo.saldo)}", c.pend, Modifier.weight(1f))
+                        saldo.acordado > 0 -> ColumnaMonto("SALDO", "Pagado ✓", c.ok, Modifier.weight(1f))
+                        else -> ColumnaMonto("SALDO", "—", c.textoSuave, Modifier.weight(1f))
                     }
                 }
                 if (saldo.pagos.isNotEmpty()) {
