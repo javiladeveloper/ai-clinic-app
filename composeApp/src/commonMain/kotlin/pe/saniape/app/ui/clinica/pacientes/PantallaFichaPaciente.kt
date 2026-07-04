@@ -1414,6 +1414,13 @@ private fun ContenidoResumen(
             }
         }
 
+        // Campos personalizados de la clínica (capilar: densidad; estética: fototipo…) —
+        // solo aparece si la clínica definió campos en su configuración.
+        CamposCustomPaciente(
+            pacienteId = paciente.id,
+            valoresIniciales = paciente.camposCustom,
+        )
+
         // Datos clínicos importantes (editables)
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))

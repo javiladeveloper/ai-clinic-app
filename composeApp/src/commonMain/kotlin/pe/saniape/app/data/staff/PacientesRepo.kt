@@ -140,6 +140,15 @@ data class ProcedimientoRef(
 /** Un profesional con sus especialidades (para filtrar servicios). */
 data class TerapeutaConEsp(val id: String, val nombre: String, val especialidadIds: List<String>)
 
+/** Campo personalizado de la ficha del paciente (definido por la clínica, por rubro). */
+data class CampoPaciente(
+    val id: String,
+    val nombre: String,
+    val tipo: String,            // texto | numero | fecha | opciones | booleano
+    val opciones: List<String>,  // solo tipo 'opciones'
+    val ayuda: String?,
+)
+
 /** Plantilla de tratamiento ("combo" pre-armado por la clínica): autocompleta el form. */
 data class PlantillaRef(
     val id: String,
@@ -222,6 +231,8 @@ data class PacienteStaff(
     val resumenIa: String? = null,
     val resumenIaFecha: String? = null,
     val resumenIaEstado: String? = null,          // generando | listo | error | null
+    // Campos personalizados de la clínica: { campo_id -> valor en texto } (pacientes.campos_custom).
+    val camposCustom: Map<String, String> = emptyMap(),
 ) {
     /** Tratamientos en curso (Activo). */
     val tratamientosActivos: List<TratamientoPaciente>
@@ -269,7 +280,7 @@ object PacientesRepo {
     private const val SELECT = """
         id, nombre, dni, edad, telefono, email, ocupacion, diagnostico, estado, flag,
         talla, peso, fecha_ingreso, alergias, medicacion_actual, antecedentes, patologias, tipo_patologia,
-        resumen_ia, resumen_ia_fecha, resumen_ia_estado,
+        resumen_ia, resumen_ia_fecha, resumen_ia_estado, campos_custom,
         tratamientos:tratamientos(
             id, modalidad, estado, estado_pago, total_sesiones, sesiones_completadas,
             precio_paquete, precio_por_sesion, precio_acordado, terapeuta_id,
@@ -619,6 +630,50 @@ object PacientesRepo {
         }
     }
 
+    /** Definiciones de campos personalizados del paciente (por clínica, RLS aísla). */
+    suspend fun camposPaciente(): List<CampoPaciente> {
+        val filas = Supabase.client.postgrest["campos_paciente"]
+            .select(Columns.raw("id, nombre, tipo, opciones, ayuda, orden")) {
+                filter { eq("estado", "Activo") }
+                order("orden", Order.ASCENDING)
+                order("nombre", Order.ASCENDING)
+            }
+            .decodeList<JsonObject>()
+        return filas.mapNotNull { o ->
+            CampoPaciente(
+                id = o.str("id") ?: return@mapNotNull null,
+                nombre = o.str("nombre") ?: "Campo",
+                tipo = o.str("tipo") ?: "texto",
+                opciones = (o["opciones"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content } ?: emptyList(),
+                ayuda = o.str("ayuda"),
+            )
+        }
+    }
+
+    /**
+     * Guarda los VALORES de los campos personalizados del paciente (pacientes.campos_custom,
+     * JSONB completo con clave = campo.id). Tipa cada valor según la definición (booleano/número)
+     * para que la web los muestre igual; claves vacías fuera (no dejar basura en el JSON).
+     */
+    suspend fun guardarCamposCustom(
+        pacienteId: String, campos: List<CampoPaciente>, valores: Map<String, String>,
+    ): Boolean = try {
+        val json = buildJsonObject {
+            valores.forEach { (id, v) ->
+                if (v.isBlank()) return@forEach
+                when (campos.find { it.id == id }?.tipo) {
+                    "booleano" -> put(id, v == "true")
+                    "numero" -> v.toDoubleOrNull()?.let { put(id, it) } ?: put(id, v)
+                    else -> put(id, v)
+                }
+            }
+        }
+        Supabase.client.postgrest["pacientes"].update(
+            { set("campos_custom", json) }
+        ) { filter { eq("id", pacienteId) } }
+        true
+    } catch (_: Exception) { false }
+
     suspend fun procedimientos(): List<ProcedimientoRef> {
         val filas = Supabase.client.postgrest["procedimientos"]
             .select(Columns.raw(
@@ -890,6 +945,9 @@ object PacientesRepo {
             resumenIa = o.str("resumen_ia"),
             resumenIaFecha = o.str("resumen_ia_fecha"),
             resumenIaEstado = o.str("resumen_ia_estado"),
+            camposCustom = (o["campos_custom"] as? JsonObject)
+                ?.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.content?.let { k to it } }
+                ?.toMap() ?: emptyMap(),
         )
     }
 
