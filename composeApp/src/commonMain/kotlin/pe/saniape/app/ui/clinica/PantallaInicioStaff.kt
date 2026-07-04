@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -28,9 +29,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
 import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -74,7 +77,18 @@ fun PantallaInicioStaff(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    pe.saniape.app.ui.LogoSania(size = 24.dp)
+                    // White-label: el LOGO DE LA CLÍNICA si lo configuró (como el sidebar web);
+                    // si no, la marca Sania.
+                    if (!ctx.logoUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = ctx.logoUrl,
+                            contentDescription = ctx.clinicaNombre,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)),
+                        )
+                    } else {
+                        pe.saniape.app.ui.LogoSania(size = 24.dp)
+                    }
                     Spacer(Modifier.width(8.dp))
                     Text(ctx.clinicaNombre, color = c.sobreNavy, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }

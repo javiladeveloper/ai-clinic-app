@@ -1130,40 +1130,71 @@ private fun ContenidoAtenciones(
     val otros = if (filtrarMio) paciente.tratamientos.filter { it.terapeutaId != ctx.miTerapeutaId }
         else emptyList()
 
+    // Vivos arriba; los CERRADOS (Alta/Cancelado/Suspendido/Completado) van a un historial
+    // colapsado para no hacer ruido — mismo criterio que la web.
+    val vivos = mios.filter { it.estado == "Activo" }
+    val cerrados = mios.filter {
+        it.estado == "Alta" || it.estado == "Cancelado" || it.estado == "Suspendido" || it.estado == "Completado"
+    }
+    var verHistorial by remember(paciente.id) { mutableStateOf(false) }
+
+    // Render de UNA tarjeta (vivo o del historial) — mismo componente y acciones.
+    val renderTrat: @Composable (TratamientoPaciente) -> Unit = { t ->
+        Spacer(Modifier.height(Sania.dim.sm))
+        // La cita-hito de ESTE tratamiento: la vinculada por tratamiento_id, o de su
+        // misma especialidad (no de otra). Así el recorrido no mezcla especialidades.
+        fun citaDeEste(lista: List<pe.saniape.app.data.staff.CitaHito>?) =
+            lista?.firstOrNull { it.tratamientoId == t.id }
+                ?: lista?.firstOrNull { t.especialidadId != null && it.especialidadId == t.especialidadId }
+        val citaC = citaDeEste(hitos?.consultas)
+        val citaE = citaDeEste(hitos?.evaluaciones)
+        TarjetaTratamiento(
+            t = t, verPagos = ctx.puede("pagos"), esAdmin = ctx.esAdmin,
+            puedeSesiones = ctx.puede("sesiones"),
+            pacienteId = paciente.id, puedeFotos = ctx.can("fotosEvolutivas"),
+            puedeIA = ctx.can("ia"),
+            consultaDone = citaC != null, evalDone = citaE != null,
+            citaConsulta = citaC, citaEvaluacion = citaE,
+            onEditarCita = onEditarCita,
+            onCompletarSesion = onCompletarSesion,
+            onCambioRealizado = onRecargar,
+            onEditar = onEditarTrat, onAmpliar = onAmpliarTrat,
+            onCambiarEstadoTrat = onCambiarEstadoTrat,
+            onCrearSesion = onCrearSesion,
+            // Derivar: requiere plan Premium Y que la clínica tenga >1 especialidad
+            // (si solo hay una, no hay a dónde derivar).
+            onDerivar = onDerivar, puedeDerivar = puedeDerivar,
+            onAgendarControl = onAgendarControl,
+            onRegistrarAtencion = onRegistrarAtencion,
+        )
+    }
+
     Column {
         // Tratamientos: cada tarjeta lleva SU barra de recorrido (sin duplicar arriba).
         Etiqueta("Tratamientos")
         if (mios.isEmpty() && otros.isEmpty()) {
             Text("Sin tratamientos registrados.", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
         } else {
-            mios.forEach { t ->
-                Spacer(Modifier.height(Sania.dim.sm))
-                // La cita-hito de ESTE tratamiento: la vinculada por tratamiento_id, o de su
-                // misma especialidad (no de otra). Así el recorrido no mezcla especialidades.
-                fun citaDeEste(lista: List<pe.saniape.app.data.staff.CitaHito>?) =
-                    lista?.firstOrNull { it.tratamientoId == t.id }
-                        ?: lista?.firstOrNull { t.especialidadId != null && it.especialidadId == t.especialidadId }
-                val citaC = citaDeEste(hitos?.consultas)
-                val citaE = citaDeEste(hitos?.evaluaciones)
-                TarjetaTratamiento(
-                    t = t, verPagos = ctx.puede("pagos"), esAdmin = ctx.esAdmin,
-                    puedeSesiones = ctx.puede("sesiones"),
-                    pacienteId = paciente.id, puedeFotos = ctx.can("fotosEvolutivas"),
-                    puedeIA = ctx.can("ia"),
-                    consultaDone = citaC != null, evalDone = citaE != null,
-                    citaConsulta = citaC, citaEvaluacion = citaE,
-                    onEditarCita = onEditarCita,
-                    onCompletarSesion = onCompletarSesion,
-                    onCambioRealizado = onRecargar,
-                    onEditar = onEditarTrat, onAmpliar = onAmpliarTrat,
-                    onCambiarEstadoTrat = onCambiarEstadoTrat,
-                    onCrearSesion = onCrearSesion,
-                    // Derivar: requiere plan Premium Y que la clínica tenga >1 especialidad
-                    // (si solo hay una, no hay a dónde derivar).
-                    onDerivar = onDerivar, puedeDerivar = puedeDerivar,
-                    onAgendarControl = onAgendarControl,
-                    onRegistrarAtencion = onRegistrarAtencion,
-                )
+            vivos.forEach { renderTrat(it) }
+            if (vivos.isEmpty() && cerrados.isNotEmpty()) {
+                Text("Sin tratamientos activos.", color = c.textoSuave, fontSize = Sania.txt.cuerpo,
+                    modifier = Modifier.padding(vertical = 4.dp))
+            }
+            // 📁 Historial colapsado (dado de alta / cancelado / suspendido / completado).
+            if (cerrados.isNotEmpty()) {
+                Spacer(Modifier.height(Sania.dim.md))
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .clickable { verHistorial = !verHistorial }
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(if (verHistorial) "▼" else "▶", color = c.textoSuave, fontSize = 11.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("📁 Historial de tratamientos (${cerrados.size})",
+                        color = c.textoSuave, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+                if (verHistorial) cerrados.forEach { renderTrat(it) }
             }
         }
 
