@@ -242,19 +242,13 @@ fun PantallaCrearCita(
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            // Toolbar nativa: flecha ← circular + título (en vez del texto "Volver" suelto).
+            // Sin flecha "←": en táctil el gesto/botón ATRÁS del sistema ya cancela
+            // (ManejarAtras arriba). Dibujarla era redundante.
             Row(
                 Modifier.fillMaxWidth().background(c.navyDark)
                     .padding(horizontal = Sania.dim.lg, vertical = Sania.dim.lg),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    Modifier.size(38.dp).clip(CircleShape)
-                        .background(c.sobreNavy.copy(alpha = 0.15f))
-                        .clickable { onCancelar() },
-                    contentAlignment = Alignment.Center,
-                ) { Text("←", color = c.sobreNavy, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
-                Spacer(Modifier.width(Sania.dim.md))
                 Text(if (prefill != null) "Nueva evaluación" else "Nueva cita",
                     color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
             }

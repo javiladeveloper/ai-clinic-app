@@ -152,12 +152,8 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     .padding(horizontal = Sania.dim.lg, vertical = Sania.dim.lg),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    Modifier.size(38.dp).clip(CircleShape).background(c.sobreNavy.copy(alpha = 0.15f))
-                        .clickable { onCerrar() },
-                    contentAlignment = Alignment.Center,
-                ) { Text("←", color = c.sobreNavy, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
-                Spacer(Modifier.width(Sania.dim.md))
+                // Sin flecha "←": en táctil el gesto/botón ATRÁS del sistema ya cierra la ficha
+                // (ManejarAtras arriba). Dibujarla era redundante y comía espacio del header.
                 Text("Ficha del paciente", color = c.sobreNavy, fontSize = Sania.txt.subtitulo,
                     fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 // Editar paciente + menú (dar de baja/reactivar): solo gestor.
