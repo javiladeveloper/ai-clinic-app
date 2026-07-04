@@ -18,7 +18,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,7 +29,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,8 +39,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import pe.saniape.app.data.CitaPortal
 import pe.saniape.app.data.PortalRepo
+import pe.saniape.app.data.SaludRepo
 import pe.saniape.app.data.Tratamiento
 
 /**
@@ -51,12 +57,16 @@ fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
     var pasadas by remember { mutableStateOf<List<CitaPortal>>(emptyList()) }
     var tratamientos by remember { mutableStateOf<List<Tratamiento>>(emptyList()) }
     var verHistorial by remember { mutableStateOf(false) }
+    // DNI de la cuenta (llave de enlace con sus fichas). null = falta → pedirlo.
+    var dniCuenta by remember { mutableStateOf<String?>("...") } // "..." = cargando
+    var recargarTick by remember { mutableStateOf(0) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(recargarTick) {
         try {
             val (prox, pas) = PortalRepo.misCitas()
             proximas = prox; pasadas = pas
             tratamientos = PortalRepo.misTratamientos()
+            dniCuenta = runCatching { SaludRepo.dniCuenta() }.getOrNull()
         } catch (e: Exception) {
             error = e.message ?: "No se pudieron cargar tus datos"
         } finally {
@@ -105,6 +115,18 @@ fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
                                 color = TextoPrincipal, fontSize = 24.sp, fontWeight = FontWeight.Bold,
                             )
                             Text("Tu salud, en un solo lugar.", color = Muted, fontSize = 13.sp)
+                        }
+                    }
+
+                    // Pedir el DNI si la cuenta no lo tiene: es la llave que conecta
+                    // sus atenciones previas (fichas registradas con DNI, sin correo).
+                    if (dniCuenta == null) {
+                        item {
+                            TarjetaPedirDni(onGuardado = {
+                                dniCuenta = it
+                                cargando = true
+                                recargarTick++
+                            })
                         }
                     }
 
@@ -342,4 +364,64 @@ private fun colorEstadoSesion(estado: String): Color = when (estado) {
     "En progreso" -> Blue
     "Reprogramada" -> Amber
     else -> Muted
+}
+
+/**
+ * Tarjeta para reclamar el DNI de la cuenta: la llave que conecta el portal con
+ * las fichas del paciente en las clínicas (aunque no registraran su correo).
+ * El servidor valida RENIEC + coincidencia de nombre + único + fijo 30 días.
+ */
+@Composable
+private fun TarjetaPedirDni(onGuardado: (String) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var dni by remember { mutableStateOf("") }
+    var guardando by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Blanco)
+            .border(1.dp, Navy, RoundedCornerShape(16.dp)).padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("🪪", fontSize = 24.sp)
+            Spacer(Modifier.width(8.dp))
+            Text("Completa tu DNI", color = TextoPrincipal, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Con tu DNI conectamos las atenciones que ya tuviste en tus clínicas, aunque no hayan registrado tu correo. Solo se pide una vez.",
+            color = Muted, fontSize = 12.sp,
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = dni,
+                onValueChange = { v -> dni = v.filter { it.isDigit() }.take(8); error = null },
+                placeholder = { Text("Tu DNI (8 dígitos)", fontSize = 14.sp) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            TextButton(
+                onClick = {
+                    if (dni.length != 8 || guardando) return@TextButton
+                    guardando = true
+                    scope.launch {
+                        val err = runCatching { SaludRepo.reclamarDni(dni) }
+                            .getOrElse { "No se pudo guardar. Intenta de nuevo." }
+                        guardando = false
+                        if (err == null) onGuardado(dni) else error = err
+                    }
+                },
+                enabled = dni.length == 8 && !guardando,
+            ) {
+                Text(if (guardando) "Validando…" else "Guardar", color = Navy, fontWeight = FontWeight.Bold)
+            }
+        }
+        error?.let {
+            Spacer(Modifier.height(6.dp))
+            Text("⚠ $it", color = RedDanger, fontSize = 12.sp)
+        }
+    }
 }

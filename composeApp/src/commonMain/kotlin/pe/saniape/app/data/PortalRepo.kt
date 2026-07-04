@@ -45,8 +45,21 @@ object PortalRepo {
     var clinicaHabitualSlug: String? = null
         private set
 
-    /** Citas del paciente con profesional/clínica, separadas en próximas y pasadas. */
+    /**
+     * Citas del paciente, separadas en próximas y pasadas.
+     * Primero por el API web (identidad email O DNI — jala las fichas registradas
+     * solo con DNI); si el API no responde, cae al camino directo por email.
+     */
     suspend fun misCitas(): Pair<List<CitaPortal>, List<CitaPortal>> {
+        runCatching { SaludRepo.misCitas() }.getOrNull()?.let { (prox, pas) ->
+            clinicaHabitualSlug = prox.firstNotNullOfOrNull { it.clinicaSlug }
+                ?: pas.firstNotNullOfOrNull { it.clinicaSlug }
+            return prox to pas
+        }
+        return misCitasDirecto()
+    }
+
+    private suspend fun misCitasDirecto(): Pair<List<CitaPortal>, List<CitaPortal>> {
         val pacIds = misPacienteIds()
         if (pacIds.isEmpty()) return emptyList<CitaPortal>() to emptyList()
 
@@ -90,8 +103,16 @@ object PortalRepo {
         return proximas to pasadas
     }
 
-    /** Tratamientos del paciente con progreso + timeline de sesiones. */
+    /**
+     * Tratamientos del paciente con progreso + timeline. Primero por el API web
+     * (email O DNI + logo de clínica); si falla, el camino directo por email.
+     */
     suspend fun misTratamientos(): List<Tratamiento> {
+        runCatching { SaludRepo.tratamientos() }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }
+        return misTratamientosDirecto()
+    }
+
+    private suspend fun misTratamientosDirecto(): List<Tratamiento> {
         val pacIds = misPacienteIds()
         if (pacIds.isEmpty()) return emptyList()
 

@@ -3,8 +3,12 @@ package pe.saniape.app.data
 import io.github.jan.supabase.auth.auth
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -119,5 +123,59 @@ object SaludRepo {
         }
         if (resp.status != HttpStatusCode.OK) return null
         return json.parseToJsonElement(resp.bodyAsText()).jsonObject.str("url")
+    }
+
+    // ── DNI de la cuenta: la llave que enlaza el portal con sus fichas ──
+
+    /** DNI reclamado por la cuenta, o null si aún no tiene (→ pedirlo). */
+    suspend fun dniCuenta(): String? {
+        val tk = token() ?: return null
+        val resp = http.get("${Supabase.SITE_URL}/api/paciente/dni") {
+            header("Authorization", "Bearer $tk")
+        }
+        if (resp.status != HttpStatusCode.OK) return null
+        return json.parseToJsonElement(resp.bodyAsText()).jsonObject.str("dni")
+    }
+
+    /**
+     * Reclama el DNI para la cuenta (el server valida RENIEC + coincidencia de
+     * nombre + único + fijo 30 días). Devuelve null si ok; si no, el mensaje de error.
+     */
+    suspend fun reclamarDni(dni: String): String? {
+        val tk = token() ?: return "Sesión expirada"
+        val resp = http.post("${Supabase.SITE_URL}/api/paciente/dni") {
+            header("Authorization", "Bearer $tk")
+            contentType(ContentType.Application.Json)
+            setBody("""{"dni":"$dni"}""")
+        }
+        if (resp.status == HttpStatusCode.OK) return null
+        return runCatching {
+            json.parseToJsonElement(resp.bodyAsText()).jsonObject.str("error")
+        }.getOrNull() ?: "No se pudo guardar tu DNI"
+    }
+
+    /** Citas del portal desde el API web (email O DNI — no solo email). */
+    suspend fun misCitas(): Pair<List<CitaPortal>, List<CitaPortal>>? {
+        val tk = token() ?: return null
+        val resp = http.get("${Supabase.SITE_URL}/api/paciente/mis-citas") {
+            header("Authorization", "Bearer $tk")
+        }
+        if (resp.status != HttpStatusCode.OK) return null
+        val root = json.parseToJsonElement(resp.bodyAsText()).jsonObject
+        fun mapear(k: String): List<CitaPortal> =
+            (root[k] as? JsonArray ?: JsonArray(emptyList())).mapNotNull {
+                val o = it.jsonObject
+                CitaPortal(
+                    id = o.str("id") ?: return@mapNotNull null,
+                    fecha = o.str("fecha") ?: "",
+                    hora = o.str("hora") ?: "",
+                    estado = o.str("estado") ?: "",
+                    tipo = o.str("tipo"),
+                    profesional = o.str("profesional"),
+                    clinica = o.str("clinica"),
+                    clinicaSlug = o.str("clinicaSlug"),
+                )
+            }
+        return mapear("proximas") to mapear("pasadas")
     }
 }

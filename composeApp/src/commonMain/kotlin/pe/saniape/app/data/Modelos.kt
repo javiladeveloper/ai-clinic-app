@@ -52,4 +52,5 @@ data class CitaPortal(
     val tipo: String?,
     val profesional: String?,
     val clinica: String?,
+    val clinicaSlug: String? = null,
 )
