@@ -65,6 +65,7 @@ object SaludRepo {
                 id = o.str("id") ?: return@mapNotNull null,
                 procedimiento = o.str("procedimiento") ?: "Tratamiento",
                 clinica = o.str("clinica"),
+                clinicaLogo = o.str("clinicaLogo"),
                 estado = o.str("estado") ?: "",
                 usaSesiones = o.bool("usaSesiones"),
                 totalSesiones = (o["totalSesiones"] as? JsonPrimitive)?.content?.toIntOrNull(),

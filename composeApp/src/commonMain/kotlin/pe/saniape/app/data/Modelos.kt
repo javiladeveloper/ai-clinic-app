@@ -28,6 +28,7 @@ data class Tratamiento(
     val id: String,
     val procedimiento: String,
     val clinica: String?,
+    val clinicaLogo: String? = null,
     val estado: String,
     val usaSesiones: Boolean,
     val totalSesiones: Int?,

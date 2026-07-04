@@ -134,18 +134,39 @@ fun PantallaDirectorio(onElegirClinica: (ClinicaDir) -> Unit) {
                     Spacer(Modifier.height(Sania.dim.sm))
                 }
 
+                // Con ubicación: primero "Cerca de ti" (≤ 50 km) y aparte "Otras ciudades",
+                // para que no aparezca una clínica de Lima arriba estando en Tacna.
+                val u = miUbicacion
+                val distDe: (ClinicaDir) -> Double? = { cl ->
+                    if (u != null && cl.lat != null && cl.lng != null)
+                        distanciaKm(u.first, u.second, cl.lat, cl.lng) else null
+                }
+                val cercanas = if (u != null) ordenadas.filter { (distDe(it) ?: Double.MAX_VALUE) <= 50.0 } else ordenadas
+                val lejanas = if (u != null) ordenadas.filterNot { (distDe(it) ?: Double.MAX_VALUE) <= 50.0 } else emptyList()
+
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(horizontal = Sania.dim.lg),
                     verticalArrangement = Arrangement.spacedBy(Sania.dim.md),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
                         top = Sania.dim.sm, bottom = Sania.dim.xl),
                 ) {
-                    items(ordenadas) { cl ->
-                        val dist = miUbicacion?.let { u ->
-                            if (cl.lat != null && cl.lng != null)
-                                distanciaKm(u.first, u.second, cl.lat, cl.lng) else null
+                    if (u != null && cercanas.isNotEmpty()) {
+                        item { TituloSeccion("📍 Cerca de ti") }
+                    }
+                    items(cercanas) { cl ->
+                        TarjetaClinica(cl, distDe(cl), onClick = { onElegirClinica(cl) })
+                    }
+                    if (u != null && cercanas.isEmpty() && lejanas.isNotEmpty()) {
+                        item {
+                            Text("No encontramos clínicas cerca de tu ubicación todavía.",
+                                color = c.textoSuave, fontSize = Sania.txt.pequeno)
                         }
-                        TarjetaClinica(cl, dist, onClick = { onElegirClinica(cl) })
+                    }
+                    if (lejanas.isNotEmpty()) {
+                        item { TituloSeccion("🌎 Otras ciudades") }
+                    }
+                    items(lejanas) { cl ->
+                        TarjetaClinica(cl, distDe(cl), onClick = { onElegirClinica(cl) })
                     }
                     if (ordenadas.isEmpty()) {
                         item {
@@ -160,6 +181,11 @@ fun PantallaDirectorio(onElegirClinica: (ClinicaDir) -> Unit) {
 }
 
 private enum class Vista { Mapa, Lista }
+
+@Composable
+private fun TituloSeccion(texto: String) {
+    Text(texto, color = Sania.colors.navy, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
+}
 
 @Composable
 private fun Toggle(texto: String, activo: Boolean, onClick: () -> Unit) {
@@ -216,7 +242,9 @@ private fun TarjetaClinica(cl: ClinicaDir, distanciaKm: Double?, onClick: () -> 
 
         Spacer(Modifier.height(Sania.dim.md))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            Text("Ver y reservar →", color = c.navy, fontSize = Sania.txt.pequeno, fontWeight = FontWeight.Bold)
+            // Premium sale en el directorio pero SIN reserva online (eso es de Plus).
+            Text(if (cl.permiteReserva) "Ver y reservar →" else "Ver clínica →",
+                color = c.navy, fontSize = Sania.txt.pequeno, fontWeight = FontWeight.Bold)
         }
     }
 }

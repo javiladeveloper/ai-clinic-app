@@ -24,6 +24,10 @@ data class ClinicaDir(
     val lng: Double?,
     val descripcion: String?,
     val especialidades: List<String>,
+    /** Reserva ONLINE habilitada (plan Plus/Trial + toggle). Premium sale en el directorio pero SIN reservar. */
+    val permiteReserva: Boolean = true,
+    /** WhatsApp de contacto: la alternativa cuando no se puede reservar online. */
+    val whatsappContacto: String? = null,
 )
 
 /**
@@ -70,6 +74,9 @@ object DirectorioRepo {
                 descripcion = o.str("descripcion"),
                 especialidades = (o["especialidades"] as? JsonArray)
                     ?.mapNotNull { (it as? JsonPrimitive)?.content } ?: emptyList(),
+                // Si el backend aún no manda el campo (deploy viejo), asumimos true (comportamiento previo).
+                permiteReserva = (o["permite_reserva"] as? JsonPrimitive)?.content != "false",
+                whatsappContacto = o.str("whatsapp_contacto"),
             )
         }
     }

@@ -209,8 +209,12 @@ fun PantallaLandingClinica(
                 Spacer(Modifier.height(Sania.dim.xxl))
             }
 
-            // CTA fijo abajo
-            if (det.reservas) {
+            // CTA fijo abajo. La reserva ONLINE es del plan Plus (permiteReserva viene del
+            // directorio) ADEMÁS del toggle de la clínica (det.reservas). Una Premium se ve
+            // en el directorio pero su CTA es contactar por WhatsApp, no reservar.
+            val puedeReservar = det.reservas && clinica.permiteReserva
+            val wa = waNumero(det.whatsappContacto ?: clinica.whatsappContacto)
+            if (puedeReservar) {
                 Box(Modifier.fillMaxWidth().background(c.superficie).padding(Sania.dim.lg)) {
                     Button(
                         onClick = onReservar,
@@ -218,6 +222,15 @@ fun PantallaLandingClinica(
                         colors = ButtonDefaults.buttonColors(containerColor = marca, contentColor = Color.White),
                         modifier = Modifier.fillMaxWidth().height(Sania.dim.boton),
                     ) { Text("📅  Reservar mi cita", fontWeight = FontWeight.Bold) }
+                }
+            } else if (wa != null) {
+                Box(Modifier.fillMaxWidth().background(c.superficie).padding(Sania.dim.lg)) {
+                    Button(
+                        onClick = { acciones.abrirUrl("https://wa.me/$wa") },
+                        shape = RoundedCornerShape(Sania.shape.md.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366), contentColor = Color.White),
+                        modifier = Modifier.fillMaxWidth().height(Sania.dim.boton),
+                    ) { Text("💬  Agendar por WhatsApp", fontWeight = FontWeight.Bold) }
                 }
             }
         }

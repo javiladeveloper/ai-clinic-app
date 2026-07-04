@@ -32,8 +32,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import pe.saniape.app.data.Documento
 import pe.saniape.app.data.Saldo
@@ -134,7 +136,23 @@ private fun TarjetaTratamiento(t: Tratamiento, saldo: Saldo?) {
             verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
                 Text(t.procedimiento, color = c.texto, fontSize = Sania.txt.seccion, fontWeight = FontWeight.Bold)
-                t.clinica?.let { Text("🏥 $it", color = c.textoSuave, fontSize = 12.sp) }
+                // Nombre de la clínica con SU LOGO (white-label); sin logo → 🏥 genérico.
+                t.clinica?.let { nombre ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (!t.clinicaLogo.isNullOrBlank()) {
+                            AsyncImage(
+                                model = t.clinicaLogo,
+                                contentDescription = nombre,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.size(16.dp).clip(RoundedCornerShape(4.dp)),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(nombre, color = c.textoSuave, fontSize = 12.sp)
+                        } else {
+                            Text("🏥 $nombre", color = c.textoSuave, fontSize = 12.sp)
+                        }
+                    }
+                }
             }
             val activo = t.estado == "Activo"
             Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
