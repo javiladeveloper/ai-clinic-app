@@ -93,14 +93,14 @@ fun PantallaLogin(onLogueado: () -> Unit) {
                     onClick = {
                         if (cargando) return@Button
                         cargando = true; error = null
+                        // La PUERTA elegida manda — y se guarda ANTES de lanzar el login:
+                        // el router reacciona al evento de sesión de Supabase, que puede llegar
+                        // antes que el callback (guardarlo después perdía la carrera y una
+                        // cuenta multi-rol caía en clínica).
+                        pe.saniape.app.data.Preferencias.setModoActivo("paciente")
                         launcher.lanzar { exito, err ->
                             cargando = false
-                            if (exito) {
-                                // La PUERTA elegida manda: entró por "Portal del paciente" →
-                                // modo paciente (aunque la cuenta también sea staff multi-rol).
-                                pe.saniape.app.data.Preferencias.setModoActivo("paciente")
-                                onLogueado()
-                            } else error = err
+                            if (exito) onLogueado() else error = err
                         }
                     },
                     enabled = !cargando,
@@ -140,14 +140,12 @@ fun PantallaLogin(onLogueado: () -> Unit) {
                         if (cargando) return@Button
                         if (email.isBlank() || password.isBlank()) { error = "Completa correo y contraseña"; return@Button }
                         cargando = true; error = null
+                        // Entró por "Acceso clínicas" → modo clínica (ANTES de lanzar, ver arriba).
+                        pe.saniape.app.data.Preferencias.setModoActivo("clinica")
                         scope.launch {
                             val err = AuthStaff.ingresar(email, password)
                             cargando = false
-                            if (err == null) {
-                                // Entró por "Acceso clínicas" → modo clínica.
-                                pe.saniape.app.data.Preferencias.setModoActivo("clinica")
-                                onLogueado()
-                            } else error = err
+                            if (err == null) onLogueado() else error = err
                         }
                     },
                     enabled = !cargando,
