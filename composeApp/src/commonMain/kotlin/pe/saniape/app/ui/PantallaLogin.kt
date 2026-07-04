@@ -95,7 +95,12 @@ fun PantallaLogin(onLogueado: () -> Unit) {
                         cargando = true; error = null
                         launcher.lanzar { exito, err ->
                             cargando = false
-                            if (exito) onLogueado() else error = err
+                            if (exito) {
+                                // La PUERTA elegida manda: entró por "Portal del paciente" →
+                                // modo paciente (aunque la cuenta también sea staff multi-rol).
+                                pe.saniape.app.data.Preferencias.setModoActivo("paciente")
+                                onLogueado()
+                            } else error = err
                         }
                     },
                     enabled = !cargando,
@@ -138,7 +143,11 @@ fun PantallaLogin(onLogueado: () -> Unit) {
                         scope.launch {
                             val err = AuthStaff.ingresar(email, password)
                             cargando = false
-                            if (err == null) onLogueado() else error = err
+                            if (err == null) {
+                                // Entró por "Acceso clínicas" → modo clínica.
+                                pe.saniape.app.data.Preferencias.setModoActivo("clinica")
+                                onLogueado()
+                            } else error = err
                         }
                     },
                     enabled = !cargando,
