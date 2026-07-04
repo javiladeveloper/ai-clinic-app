@@ -15,8 +15,17 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 
-/** Saldo de un tratamiento (si la clínica lo habilitó). */
-data class Saldo(val acordado: Double, val pagado: Double, val saldo: Double, val estado: String)
+/** Un pago registrado del tratamiento (informativo para el paciente). */
+data class PagoInfo(val fecha: String, val monto: Double, val metodo: String?)
+
+/** Cuenta del tratamiento: costo, pagado, saldo y detalle de pagos (informativo). */
+data class Saldo(
+    val acordado: Double,
+    val pagado: Double,
+    val saldo: Double,
+    val estado: String,
+    val pagos: List<PagoInfo> = emptyList(),
+)
 
 /** Documento del paciente visible en su portal. */
 data class Documento(val id: String, val nombre: String, val categoria: String, val path: String, val fecha: String)
@@ -90,7 +99,15 @@ object SaludRepo {
         val obj = json.parseToJsonElement(resp.bodyAsText()).jsonObject["saldos"]?.jsonObject ?: return emptyMap()
         return obj.mapNotNull { (id, v) ->
             val o = v as? JsonObject ?: return@mapNotNull null
-            id to Saldo(o.dbl("acordado"), o.dbl("pagado"), o.dbl("saldo"), o.str("estado") ?: "")
+            val pagos = (o["pagos"] as? JsonArray ?: JsonArray(emptyList())).mapNotNull {
+                val p = it.jsonObject
+                PagoInfo(
+                    fecha = p.str("fecha") ?: return@mapNotNull null,
+                    monto = p.dbl("monto"),
+                    metodo = p.str("metodo"),
+                )
+            }
+            id to Saldo(o.dbl("acordado"), o.dbl("pagado"), o.dbl("saldo"), o.str("estado") ?: "", pagos)
         }.toMap()
     }
 

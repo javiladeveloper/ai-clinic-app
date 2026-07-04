@@ -179,16 +179,43 @@ private fun TarjetaTratamiento(t: Tratamiento, saldo: Saldo?) {
             }
         }
 
-        // Saldo
+        // Cuenta del tratamiento — SOLO INFORMATIVO: costo, pagado, debe y el
+        // detalle de pagos. El paciente controla su gasto (la clínica puede
+        // ocultarlo en su configuración).
         if (saldo != null && saldo.acordado > 0) {
+            var verPagos by remember { mutableStateOf(false) }
             Spacer(Modifier.height(Sania.dim.md))
-            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
                 .background(c.fondo).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Saldo del tratamiento", color = c.textoSuave, fontSize = 13.sp)
-                Text(if (saldo.saldo > 0) "Debes S/ ${formato2(saldo.saldo)}" else "Pagado ✓",
-                    color = if (saldo.saldo > 0) c.pend else c.ok, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                .padding(horizontal = 12.dp, vertical = 10.dp)) {
+                Row(Modifier.fillMaxWidth()) {
+                    ColumnaMonto("COSTO", "S/ ${formato2(saldo.acordado)}", c.texto, Modifier.weight(1f))
+                    ColumnaMonto("PAGADO", "S/ ${formato2(saldo.pagado)}", c.ok, Modifier.weight(1f))
+                    if (saldo.saldo > 0) {
+                        ColumnaMonto("DEBES", "S/ ${formato2(saldo.saldo)}", c.pend, Modifier.weight(1f))
+                    } else {
+                        ColumnaMonto("SALDO", "Pagado ✓", c.ok, Modifier.weight(1f))
+                    }
+                }
+                if (saldo.pagos.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(if (verPagos) "Ocultar pagos" else "Ver mis pagos (${saldo.pagos.size})",
+                        color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable { verPagos = !verPagos })
+                    AnimatedVisibility(verPagos) {
+                        Column(Modifier.padding(top = 4.dp)) {
+                            saldo.pagos.forEach { p ->
+                                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(p.fecha + (p.metodo?.let { " · $it" } ?: ""),
+                                        color = c.textoSuave, fontSize = 12.sp)
+                                    Text("S/ ${formato2(p.monto)}", color = c.texto,
+                                        fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -222,6 +249,15 @@ private fun TarjetaTratamiento(t: Tratamiento, saldo: Saldo?) {
                 }
             }
         }
+    }
+}
+
+/** Columna de la cuenta del tratamiento: etiqueta arriba, monto abajo. */
+@Composable
+private fun ColumnaMonto(etiqueta: String, valor: String, color: androidx.compose.ui.graphics.Color, modifier: Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(etiqueta, color = Sania.colors.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        Text(valor, color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 
