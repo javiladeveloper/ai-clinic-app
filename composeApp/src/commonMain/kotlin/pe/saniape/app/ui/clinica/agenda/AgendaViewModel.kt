@@ -73,10 +73,26 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                 (filtroTerapeuta == null || c.terapeutaId == filtroTerapeuta) &&
                 (filtroEspecialidad == null || c.especialidadId == filtroEspecialidad)
         }.sortedWith(
-            // Las activas (pendiente/confirmada) primero, por hora ascendente;
-            // las cerradas (completada/cancelada) al final.
-            compareBy<CitaStaff>({ if (it.estado == "Completada" || it.estado == "Cancelada") 1 else 0 })
-                .thenBy { it.hora }
+            // Orden de la agenda (mismo criterio que compararCitas en la web):
+            //  1) Las CANCELADAS siempre al fondo del todo.
+            //  2) Entre las demás (completadas incluidas): por HORA ascendente.
+            //  3) Desempate a misma hora Y MISMO paciente: la Evaluación arriba de la Consulta
+            //     (el paciente pasa consulta → evaluación; se prioriza la evaluación).
+            Comparator { a, b ->
+                val aCanc = a.estado == "Cancelada"
+                val bCanc = b.estado == "Cancelada"
+                if (aCanc != bCanc) return@Comparator if (aCanc) 1 else -1
+                val ha = a.hora.take(5)
+                val hb = b.hora.take(5)
+                if (ha != hb) return@Comparator ha.compareTo(hb)
+                if (a.pacienteId != null && a.pacienteId == b.pacienteId) {
+                    val prioridad = { t: String? -> when (t) { "Evaluación" -> 0; "Consulta" -> 1; "Sesión" -> 2; else -> 3 } }
+                    val pa = prioridad(a.tipo)
+                    val pb = prioridad(b.tipo)
+                    if (pa != pb) return@Comparator pa - pb
+                }
+                0
+            }
         )
 
     /** Citas del día sin profesional asignado (aviso "⚠ Asignar"). */

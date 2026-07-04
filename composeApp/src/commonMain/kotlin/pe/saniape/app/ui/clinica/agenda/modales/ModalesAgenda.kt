@@ -48,6 +48,7 @@ import pe.saniape.app.ui.theme.Sania
  *  - Evaluación: diagnóstico + opción de derivar a especialidad.
  *  - Sesión: observaciones (procedimientos realizados).
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun ModalCompletar(
     cita: CitaStaff,
@@ -84,6 +85,40 @@ fun ModalCompletar(
                         modifier = Modifier.fillMaxWidth(), minLines = 3,
                         shape = RoundedCornerShape(Sania.shape.sm.dp),
                     )
+                    // Chips de PATOLOGÍA por especialidad (como la web): tocar agrega/quita.
+                    val espNombre = especialidades.find { it.id == cita.especialidadId }?.nombre
+                        ?: especialidades.singleOrNull()?.nombre
+                    val chips = pe.saniape.app.ui.clinica.chipsDeEspecialidad(espNombre).tipos
+                    if (chips.isNotEmpty()) {
+                        Spacer(Modifier.height(6.dp))
+                        androidx.compose.foundation.layout.FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            chips.forEach { chip ->
+                                val puesto = texto.contains(chip, ignoreCase = true)
+                                Box(
+                                    Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+                                        .background(if (puesto) c.navy else c.chipBg)
+                                        .border(1.dp, if (puesto) c.navy else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
+                                        .clickable {
+                                            texto = if (puesto) {
+                                                texto.split(",").map { it.trim() }
+                                                    .filterNot { it.equals(chip, ignoreCase = true) }
+                                                    .filter { it.isNotBlank() }.joinToString(", ")
+                                            } else {
+                                                if (texto.isBlank()) chip else "${texto.trim().trimEnd(',')}, $chip"
+                                            }
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                                ) {
+                                    Text("${if (puesto) "✓" else "+"} $chip",
+                                        color = if (puesto) c.sobreNavy else c.textoSuave,
+                                        fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
                     Text("Se guardará en la ficha del paciente.", color = c.textoSuave,
                         fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
                 } else {
