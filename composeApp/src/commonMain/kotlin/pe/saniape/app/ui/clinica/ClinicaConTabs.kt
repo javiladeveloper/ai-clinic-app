@@ -145,7 +145,12 @@ fun ClinicaConTabs(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding).background(c.fondo)) {
             when (tab) {
-                TabClinica.Inicio -> PantallaInicioStaff(contexto)
+                TabClinica.Inicio -> PantallaInicioStaff(
+                    ctx = contexto,
+                    onIrAgenda = { tab = TabClinica.Agenda },
+                    onIrPacientes = { tab = TabClinica.Pacientes },
+                    onAbrirCaja = if (contexto.puede("pagos")) ({ verCaja = true }) else null,
+                )
                 TabClinica.Agenda -> PantallaAgenda(contexto)
                 TabClinica.Pacientes -> PantallaPacientesStaff(contexto)
                 TabClinica.Mas -> PantallaMasClinica(

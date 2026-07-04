@@ -1,8 +1,10 @@
 package pe.saniape.app.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -58,6 +60,28 @@ private val ColoresClaro = SaniaColors(
     chipBg = Paleta.Navy50,
 )
 
+/** Tema OSCURO: mismos tokens semánticos con la paleta oscura (espeja el dark de la web).
+ *  Las pantallas no cambian: consumen Sania.colors y el mapeo decide. */
+private val ColoresOscuro = SaniaColors(
+    navy = Paleta.Navy500,            // más luz para que el primario contraste sobre oscuro
+    navyDark = Paleta.NavyDarkOscuro,
+    navyLight = Paleta.Lav300,
+    lav = Paleta.Lav300,
+    fondo = Paleta.FondoOscuro,
+    superficie = Paleta.SuperficieOscura,
+    borde = Paleta.BordeOscuro,
+    texto = Paleta.TextoClaro,
+    textoSuave = Paleta.MutedOscuro,
+    sobreNavy = Paleta.Blanco,
+    ok = Paleta.GreenOsc, okBg = Paleta.GreenBgOsc,
+    pend = Paleta.AmberOsc, pendBg = Paleta.AmberBgOsc,
+    error = Paleta.RedOsc, errorBg = Paleta.RedBgOsc,
+    info = Paleta.BlueOsc, infoBg = Paleta.BlueBgOsc,
+    teal = Paleta.TealOsc, tealBg = Paleta.TealBgOsc,
+    purple = Paleta.PurpleOsc, purpleBg = Paleta.PurpleBgOsc,
+    chipBg = Paleta.ChipOscuro,
+)
+
 /** Acceso a los colores de marca desde cualquier Composable: `Sania.colors.navy`. */
 val LocalSaniaColors: ProvidableCompositionLocal<SaniaColors> =
     staticCompositionLocalOf { ColoresClaro }
@@ -83,6 +107,18 @@ private val EsquemaM3 = lightColorScheme(
     error = Paleta.Red,
 )
 
+private val EsquemaM3Oscuro = darkColorScheme(
+    primary = Paleta.Navy500,
+    onPrimary = Paleta.Blanco,
+    secondary = Paleta.Lav300,
+    background = Paleta.FondoOscuro,
+    onBackground = Paleta.TextoClaro,
+    surface = Paleta.SuperficieOscura,
+    onSurface = Paleta.TextoClaro,
+    outline = Paleta.BordeOscuro,
+    error = Paleta.RedOsc,
+)
+
 private val FormasM3 = Shapes(
     small = RoundedCornerShape(Formas.sm.dp),
     medium = RoundedCornerShape(Formas.md.dp),
@@ -91,9 +127,11 @@ private val FormasM3 = Shapes(
 
 @Composable
 fun TemaSania(content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalSaniaColors provides ColoresClaro) {
+    // Sigue el tema del SISTEMA (como la web, que respeta prefers-color-scheme).
+    val oscuro = isSystemInDarkTheme()
+    CompositionLocalProvider(LocalSaniaColors provides if (oscuro) ColoresOscuro else ColoresClaro) {
         MaterialTheme(
-            colorScheme = EsquemaM3,
+            colorScheme = if (oscuro) EsquemaM3Oscuro else EsquemaM3,
             shapes = FormasM3,
             typography = TipografiaSania(),
             content = content,

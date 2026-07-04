@@ -2,6 +2,7 @@ package pe.saniape.app.ui.clinica
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,10 +28,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.datetime.Clock
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.data.staff.CitaAgenda
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.DashboardRepo
@@ -39,11 +42,17 @@ import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.theme.Sania
 
 /**
- * Inicio del staff: saludo + stats (2×2 del profesional o KPIs del gestor) + agenda
- * de hoy. Los stats vienen ya filtrados por miTerapeutaId desde /api/dashboard/stats.
+ * Inicio del staff: saludo con fecha, PRÓXIMA CITA destacada, stats, avisos tocables
+ * (sin confirmar / sin profesional → Agenda), accesos rápidos y la agenda de hoy.
+ * Los stats vienen ya filtrados por miTerapeutaId desde /api/dashboard/stats.
  */
 @Composable
-fun PantallaInicioStaff(ctx: ContextoStaff) {
+fun PantallaInicioStaff(
+    ctx: ContextoStaff,
+    onIrAgenda: () -> Unit = {},
+    onIrPacientes: () -> Unit = {},
+    onAbrirCaja: (() -> Unit)? = null,
+) {
     val c = Sania.colors
     var cargando by remember { mutableStateOf(true) }
     var stats by remember { mutableStateOf<StatsDashboard?>(null) }
@@ -89,15 +98,56 @@ fun PantallaInicioStaff(ctx: ContextoStaff) {
                             if (primerNombre != null) "Hola, $primerNombre 👋" else "Hola 👋",
                             color = c.texto, fontSize = Sania.txt.titulo, fontWeight = FontWeight.Bold,
                         )
-                        Text("Este es tu resumen de hoy.", color = c.textoSuave, fontSize = Sania.txt.pequeno)
+                        Text(fechaHumanaHoy(), color = c.textoSuave, fontSize = Sania.txt.pequeno)
                     }
                 }
 
                 if (s != null) {
-                    // Stats: profesional (2×2) vs gestor (KPIs).
-                    if (s.esProfesional) {
+                    // ── PRÓXIMA CITA destacada (la primera de hoy que aún no pasa) ──
+                    val proxima = proximaCita(s.agendaHoy)
+                    if (proxima != null) {
                         item {
-                            Column(verticalArrangement = Arrangement.spacedBy(Sania.dim.md)) {
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+                                    .background(c.navy).clickable { onIrAgenda() }
+                                    .padding(Sania.dim.lg),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("SIGUIENTE PACIENTE", color = c.sobreNavy.copy(alpha = 0.7f),
+                                        fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp)
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(proxima.paciente, color = c.sobreNavy, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                    Text(proxima.procedimiento, color = c.sobreNavy.copy(alpha = 0.8f), fontSize = 12.sp)
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(hora12(proxima.hora), color = c.sobreNavy, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                    Text("→ ver agenda", color = c.sobreNavy.copy(alpha = 0.7f), fontSize = 10.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Avisos accionables (tocarlos lleva a la Agenda) ──
+                    if (!s.esProfesional && (s.citasSinConfirmar > 0 || s.citasSinProfesional > 0)) {
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (s.citasSinConfirmar > 0) {
+                                    AvisoInicio("❓", "${s.citasSinConfirmar} cita(s) sin confirmar",
+                                        "Confírmalas o el paciente puede no llegar", c.pend, c.pendBg) { onIrAgenda() }
+                                }
+                                if (s.citasSinProfesional > 0) {
+                                    AvisoInicio("🧑‍⚕️", "${s.citasSinProfesional} cita(s) sin profesional",
+                                        "Asigna quién atenderá", c.error, c.errorBg) { onIrAgenda() }
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Stats: profesional (2×2) vs gestor (KPIs) ──
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(Sania.dim.md)) {
+                            if (s.esProfesional) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(Sania.dim.md)) {
                                     StatCard("Citas hoy", s.citasHoy.toString(), "📅", Modifier.weight(1f))
                                     StatCard("Pendientes", s.misCitasPendientes.toString(), "⏳", Modifier.weight(1f))
@@ -106,41 +156,120 @@ fun PantallaInicioStaff(ctx: ContextoStaff) {
                                     StatCard("Mis pacientes", s.totalPacientes.toString(), "👥", Modifier.weight(1f))
                                     StatCard("Sesiones", s.misSesionesCompletadas.toString(), "✅", Modifier.weight(1f))
                                 }
-                            }
-                        }
-                    } else {
-                        item {
-                            Column(verticalArrangement = Arrangement.spacedBy(Sania.dim.md)) {
+                            } else {
                                 Row(horizontalArrangement = Arrangement.spacedBy(Sania.dim.md)) {
                                     StatCard("Total pacientes", s.totalPacientes.toString(), "👥", Modifier.weight(1f))
                                     StatCard("Citas hoy", s.citasHoy.toString(), "📅", Modifier.weight(1f))
-                                }
-                                Row(horizontalArrangement = Arrangement.spacedBy(Sania.dim.md)) {
-                                    StatCard("Sin confirmar", s.citasSinConfirmar.toString(), "❓", Modifier.weight(1f))
-                                    StatCard("Sin profesional", s.citasSinProfesional.toString(), "🧑‍⚕️", Modifier.weight(1f))
                                 }
                             }
                         }
                     }
 
-                    // Agenda de hoy
+                    // ── Accesos rápidos (lo que se hace 20 veces al día) ──
                     item {
-                        Spacer(Modifier.height(Sania.dim.sm))
-                        Text("AGENDA DE HOY", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(Sania.dim.md)) {
+                            AccesoRapido("📅", "Agenda", Modifier.weight(1f)) { onIrAgenda() }
+                            AccesoRapido("👤", "Pacientes", Modifier.weight(1f)) { onIrPacientes() }
+                            if (onAbrirCaja != null) {
+                                AccesoRapido("💰", "Caja", Modifier.weight(1f)) { onAbrirCaja() }
+                            }
+                        }
+                    }
+
+                    // ── Agenda de hoy ──
+                    item {
+                        Row(
+                            Modifier.fillMaxWidth().padding(top = Sania.dim.sm),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("AGENDA DE HOY", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
+                            Text("Ver todo →", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clickable { onIrAgenda() })
+                        }
                     }
                     if (s.agendaHoy.isEmpty()) {
                         item {
-                            Text("No tienes citas para hoy.", color = c.textoSuave, fontSize = Sania.txt.cuerpo,
-                                modifier = Modifier.padding(vertical = Sania.dim.sm))
+                            Column(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+                                    .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp))
+                                    .padding(Sania.dim.xl),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text("🌤", fontSize = 28.sp)
+                                Spacer(Modifier.height(6.dp))
+                                Text("Sin citas para hoy", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
+                                Text("Toca Agenda para programar la semana.", color = c.textoSuave, fontSize = 12.sp)
+                            }
                         }
                     } else {
-                        items(s.agendaHoy) { cita -> FilaAgenda(cita) }
+                        items(s.agendaHoy) { cita -> FilaAgenda(cita, onClick = onIrAgenda) }
                     }
                 } else {
                     item { Text("No se pudieron cargar tus datos.", color = c.error, fontSize = Sania.txt.cuerpo) }
                 }
+
+                item { Spacer(Modifier.height(Sania.dim.xxl)) }
             }
         }
+    }
+}
+
+/** "jueves 3 de julio" — la fecha de hoy en humano. */
+private fun fechaHumanaHoy(): String {
+    val d = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+    val dias = listOf("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+    val meses = listOf("enero", "febrero", "marzo", "abril", "mayo", "junio",
+        "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre")
+    val dia = dias[d.dayOfWeek.ordinal]
+    return "${dia.replaceFirstChar { it.uppercase() }} ${d.dayOfMonth} de ${meses[d.monthNumber - 1]}"
+}
+
+/** La primera cita de hoy que aún no pasó (y no está cancelada). */
+private fun proximaCita(agenda: List<CitaAgenda>): CitaAgenda? {
+    val ahora = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+    val horaAhora = "${ahora.hour.toString().padStart(2, '0')}:${ahora.minute.toString().padStart(2, '0')}"
+    return agenda
+        .filter { it.estado != "Cancelada" && it.estado != "Completada" }
+        .sortedBy { it.hora }
+        .firstOrNull { it.hora.take(5) >= horaAhora }
+}
+
+@Composable
+private fun AvisoInicio(
+    icono: String, titulo: String, detalle: String,
+    fg: androidx.compose.ui.graphics.Color, bg: androidx.compose.ui.graphics.Color,
+    onClick: () -> Unit,
+) {
+    val c = Sania.colors
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(bg)
+            .border(1.dp, fg.copy(alpha = 0.4f), RoundedCornerShape(Sania.shape.sm.dp))
+            .clickable { onClick() }.padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(icono, fontSize = 16.sp)
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(titulo, color = fg, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(detalle, color = c.textoSuave, fontSize = 11.sp)
+        }
+        Text("→", color = fg, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun AccesoRapido(emoji: String, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val c = Sania.colors
+    Column(
+        modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
+            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp))
+            .clickable { onClick() }.padding(vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(emoji, fontSize = 20.sp)
+        Spacer(Modifier.height(3.dp))
+        Text(label, color = c.texto, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -159,11 +288,12 @@ private fun StatCard(label: String, valor: String, emoji: String, modifier: Modi
 }
 
 @Composable
-private fun FilaAgenda(cita: CitaAgenda) {
+private fun FilaAgenda(cita: CitaAgenda, onClick: () -> Unit = {}) {
     val c = Sania.colors
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.superficie)
-            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)).padding(Sania.dim.md),
+            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+            .clickable { onClick() }.padding(Sania.dim.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(hora12(cita.hora), color = c.navy, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)

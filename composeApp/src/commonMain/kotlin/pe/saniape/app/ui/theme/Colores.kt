@@ -42,4 +42,20 @@ internal object Paleta {
     val PurpleBg = Color(0xFFEDE9FE)
     val Teal = Color(0xFF0F766E)
     val TealBg = Color(0xFFCCFBF1)
+
+    // ── TEMA OSCURO (espeja el dark de la web: fondos navy profundos) ─
+    val FondoOscuro = Color(0xFF0F1524)       // fondo de pantalla
+    val SuperficieOscura = Color(0xFF1A2138)  // tarjetas
+    val BordeOscuro = Color(0xFF2A3352)
+    val TextoClaro = Color(0xFFE8EAF2)        // texto principal sobre oscuro
+    val MutedOscuro = Color(0xFF98A0B8)
+    val ChipOscuro = Color(0xFF232C48)        // chips/selección suave
+    val NavyDarkOscuro = Color(0xFF141B30)    // barra de marca (más profunda que las cards)
+    // Estados con más luz (legibles sobre oscuro) + fondos tintados oscuros.
+    val GreenOsc = Color(0xFF4ADE80);  val GreenBgOsc = Color(0xFF12301D)
+    val AmberOsc = Color(0xFFFBBF24);  val AmberBgOsc = Color(0xFF33260B)
+    val RedOsc = Color(0xFFF87171);    val RedBgOsc = Color(0xFF3A1518)
+    val BlueOsc = Color(0xFF60A5FA);   val BlueBgOsc = Color(0xFF13263C)
+    val PurpleOsc = Color(0xFFA78BFA); val PurpleBgOsc = Color(0xFF261A40)
+    val TealOsc = Color(0xFF2DD4BF);   val TealBgOsc = Color(0xFF0E2E2A)
 }
