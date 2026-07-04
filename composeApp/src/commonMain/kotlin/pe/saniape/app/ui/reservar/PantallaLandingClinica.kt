@@ -35,6 +35,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -101,7 +103,17 @@ fun PantallaLandingClinica(
                     Modifier.fillMaxWidth().padding(Sania.dim.xl),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Avatar(det.nombre.first().toString(), marca, 84.dp, 30.sp)
+                    // White-label: el LOGO de la clínica si lo configuró; si no, su inicial.
+                    if (!det.logoUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = det.logoUrl,
+                            contentDescription = det.nombre,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(84.dp).clip(CircleShape),
+                        )
+                    } else {
+                        Avatar(det.nombre.first().toString(), marca, 84.dp, 30.sp)
+                    }
                     Spacer(Modifier.height(Sania.dim.md))
                     Text(det.nombre, color = c.texto, fontSize = Sania.txt.titulo,
                         fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
@@ -256,7 +268,16 @@ private fun Bloque(titulo: String, contenido: @Composable () -> Unit) {
 private fun Profesional(p: ProfDetalle, marca: Color) {
     val c = Sania.colors
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(96.dp)) {
-        Avatar(p.nombre.first().toString(), parseColor(p.color) ?: marca, 60.dp, 20.sp)
+        if (!p.fotoUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = p.fotoUrl,
+                contentDescription = p.nombre,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(60.dp).clip(CircleShape),
+            )
+        } else {
+            Avatar(p.nombre.first().toString(), parseColor(p.color) ?: marca, 60.dp, 20.sp)
+        }
         Spacer(Modifier.height(4.dp))
         Text(p.nombre, color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
         p.especialidad?.let { Text(it, color = c.textoSuave, fontSize = 11.sp, textAlign = TextAlign.Center) }

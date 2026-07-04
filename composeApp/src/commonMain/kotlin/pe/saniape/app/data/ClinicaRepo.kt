@@ -14,6 +14,7 @@ import kotlinx.serialization.json.jsonObject
 data class ClinicaDetalle(
     val nombre: String,
     val slug: String,
+    val logoUrl: String? = null,
     val colorPrincipal: String?,
     val descripcion: String?,
     val ciudad: String?,
@@ -96,6 +97,7 @@ object ClinicaRepo {
         return ClinicaDetalle(
             nombre = o.str("nombre") ?: "Clínica",
             slug = o.str("slug") ?: slug,
+            logoUrl = o.str("logo_url"),
             colorPrincipal = o.str("color_principal"),
             descripcion = o.str("descripcion"),
             ciudad = o.str("ciudad"),

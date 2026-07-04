@@ -12,6 +12,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import coil3.request.allowHardware
 import coil3.toBitmap
 import kotlin.math.cos
 import kotlin.math.sin
@@ -55,7 +56,11 @@ actual fun MapaClinicas(
             val url = cl.logoUrl
             if (url.isNullOrBlank() || logos.containsKey(cl.slug)) continue
             try {
-                val res = loader.execute(ImageRequest.Builder(context).data(url).build())
+                // allowHardware(false): el pin se dibuja en un Canvas de software y los
+                // hardware bitmaps de coil lo crashean ("Software rendering doesn't support...").
+                val res = loader.execute(
+                    ImageRequest.Builder(context).data(url).allowHardware(false).build()
+                )
                 (res as? SuccessResult)?.image?.toBitmap()?.let { bmp ->
                     logos = logos + (cl.slug to bmp)
                 }
