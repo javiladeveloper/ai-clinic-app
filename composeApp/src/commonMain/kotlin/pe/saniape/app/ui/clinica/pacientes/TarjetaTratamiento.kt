@@ -409,6 +409,7 @@ fun TarjetaTratamiento(
     if (registrarServicioAbierto) {
         ModalRegistrarServicio(
             t = t,
+            puedePagos = verPagos,
             onCancelar = { registrarServicioAbierto = false },
             onConfirmar = { nota, cobrar, monto, metodo ->
                 registrarServicioAbierto = false
@@ -432,11 +433,14 @@ fun TarjetaTratamiento(
     }
 }
 
-/** Modal del SERVICIO ÚNICO: nota de la atención (con autocompletado de técnicas) + cobro opcional. */
+/** Modal del SERVICIO ÚNICO: nota de la atención (con autocompletado de técnicas) + cobro opcional.
+ *  El cobro SOLO se ofrece con permiso de pagos (el fisio/médico registra la atención;
+ *  recepción cobra después) — el endpoint igual lo valida server-side. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ModalRegistrarServicio(
     t: TratamientoPaciente,
+    puedePagos: Boolean,
     onCancelar: () -> Unit,
     onConfirmar: (nota: String?, cobrar: Boolean, monto: Double?, metodo: String) -> Unit,
 ) {
@@ -455,21 +459,27 @@ private fun ModalRegistrarServicio(
                 pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
                     value = nota, onChange = { nota = it },
                 )
-                Spacer(Modifier.height(10.dp))
-                // Cobro en el mismo paso (opcional): el pago también puede registrarse después.
-                Row(verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().clickable { cobrar = !cobrar }) {
-                    Text(if (cobrar) "☑" else "☐", fontSize = 18.sp, color = if (cobrar) c.teal else c.textoSuave)
-                    Spacer(Modifier.width(8.dp))
-                    Text("💳 ¿El paciente pagó el servicio?", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-                if (cobrar) {
-                    Spacer(Modifier.height(8.dp))
-                    CampoTexto("Monto (S/)", monto, soloNumero = true) { monto = it }
-                    Spacer(Modifier.height(8.dp))
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        METODOS_PAGO.forEach { m -> ChipMetodo(m, metodo == m) { metodo = m } }
+                // Cobro en el mismo paso (opcional) — SOLO con permiso de pagos.
+                if (puedePagos) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().clickable { cobrar = !cobrar }) {
+                        Text(if (cobrar) "☑" else "☐", fontSize = 18.sp, color = if (cobrar) c.teal else c.textoSuave)
+                        Spacer(Modifier.width(8.dp))
+                        Text("💳 ¿El paciente pagó el servicio?", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
+                    if (cobrar) {
+                        Spacer(Modifier.height(8.dp))
+                        CampoTexto("Monto (S/)", monto, soloNumero = true) { monto = it }
+                        Spacer(Modifier.height(8.dp))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            METODOS_PAGO.forEach { m -> ChipMetodo(m, metodo == m) { metodo = m } }
+                        }
+                    }
+                } else {
+                    Spacer(Modifier.height(6.dp))
+                    Text("El cobro lo registra recepción (Pagos del tratamiento).",
+                        color = c.textoSuave, fontSize = 10.sp)
                 }
             }
         },
