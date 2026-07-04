@@ -50,7 +50,7 @@ private val ESTADOS = listOf("Nuevo", "Consultado", "Evaluado", "En tratamiento"
  * progreso de tratamiento y contacto (DNI/teléfono solo si es gestor). Tocar abre
  * la ficha. Respeta scope del profesional vinculado.
  */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun PantallaPacientes(ctx: ContextoStaff, onAbrirFicha: (PacienteStaff) -> Unit) {
     val c = Sania.colors
@@ -96,6 +96,12 @@ fun PantallaPacientes(ctx: ContextoStaff, onAbrirFicha: (PacienteStaff) -> Unit)
                 }
             }
 
+            // Pull-to-refresh: deslizar hacia abajo recarga la lista.
+            androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+                isRefreshing = vm.cargando,
+                onRefresh = { vm.cargar() },
+                modifier = Modifier.fillMaxSize(),
+            ) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = Sania.dim.xl)) {
                 when {
                     vm.cargando -> item {
@@ -118,6 +124,7 @@ fun PantallaPacientes(ctx: ContextoStaff, onAbrirFicha: (PacienteStaff) -> Unit)
                     }
                 }
             }
+            } // cierre PullToRefreshBox
         }
     }
 

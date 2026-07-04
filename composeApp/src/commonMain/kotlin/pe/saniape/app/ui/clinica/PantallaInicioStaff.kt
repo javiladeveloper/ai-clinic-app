@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -49,6 +50,7 @@ import pe.saniape.app.ui.theme.Sania
  * (sin confirmar / sin profesional → Agenda), accesos rápidos y la agenda de hoy.
  * Los stats vienen ya filtrados por miTerapeutaId desde /api/dashboard/stats.
  */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun PantallaInicioStaff(
     ctx: ContextoStaff,
@@ -59,11 +61,17 @@ fun PantallaInicioStaff(
     val c = Sania.colors
     var cargando by remember { mutableStateOf(true) }
     var stats by remember { mutableStateOf<StatsDashboard?>(null) }
+    // 🔔 Notificaciones in-app (misma tabla que la campanita web). No es push (eso será FCM).
+    var notifs by remember { mutableStateOf<List<pe.saniape.app.data.staff.NotificacionClinica>>(emptyList()) }
+    var verNotifs by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         try { stats = DashboardRepo.stats() } catch (_: Exception) {}
         cargando = false
+        notifs = runCatching { pe.saniape.app.data.staff.NotificacionesRepo.listar() }.getOrDefault(emptyList())
     }
+    val noLeidas = notifs.count { !it.leida }
 
     val primerNombre = ctx.nombre?.trim()?.split(" ")?.firstOrNull()
 
@@ -92,7 +100,33 @@ fun PantallaInicioStaff(
                     Spacer(Modifier.width(8.dp))
                     Text(ctx.clinicaNombre, color = c.sobreNavy, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
-                ctx.rol?.let { Text(it, color = c.sobreNavy.copy(alpha = 0.8f), fontSize = 12.sp) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 🔔 Campana con badge de no leídas → panel de notificaciones.
+                    Box(
+                        Modifier.clip(RoundedCornerShape(50)).clickable {
+                            verNotifs = true
+                            if (noLeidas > 0) scope.launch {
+                                pe.saniape.app.data.staff.NotificacionesRepo.marcarTodasLeidas()
+                                notifs = notifs.map { it.copy(leida = true) }
+                            }
+                        }.padding(6.dp),
+                    ) {
+                        Text("🔔", fontSize = 18.sp)
+                        if (noLeidas > 0) {
+                            Box(
+                                Modifier.align(Alignment.TopEnd)
+                                    .clip(RoundedCornerShape(50)).background(c.error)
+                                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                            ) {
+                                Text(if (noLeidas > 9) "9+" else noLeidas.toString(),
+                                    color = androidx.compose.ui.graphics.Color.White,
+                                    fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    ctx.rol?.let { Text(it, color = c.sobreNavy.copy(alpha = 0.8f), fontSize = 12.sp) }
+                }
             }
 
             if (cargando) {
@@ -101,6 +135,20 @@ fun PantallaInicioStaff(
             }
             val s = stats
 
+            // Pull-to-refresh: deslizar hacia abajo recarga stats + notificaciones.
+            var refrescando by remember { mutableStateOf(false) }
+            androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+                isRefreshing = refrescando,
+                onRefresh = {
+                    refrescando = true
+                    scope.launch {
+                        runCatching { DashboardRepo.stats() }.onSuccess { stats = it }
+                        notifs = runCatching { pe.saniape.app.data.staff.NotificacionesRepo.listar() }.getOrDefault(notifs)
+                        refrescando = false
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+            ) {
             LazyColumn(
                 Modifier.fillMaxSize().padding(horizontal = Sania.dim.lg),
                 verticalArrangement = Arrangement.spacedBy(Sania.dim.md),
@@ -225,7 +273,53 @@ fun PantallaInicioStaff(
 
                 item { Spacer(Modifier.height(Sania.dim.xxl)) }
             }
+            } // cierre PullToRefreshBox
         }
+    }
+
+    // 🔔 Panel de notificaciones (in-app). Al abrirlo se marcan leídas (como la campanita web).
+    if (verNotifs) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { verNotifs = false },
+            title = { Text("🔔 Notificaciones", fontWeight = FontWeight.Bold) },
+            text = {
+                if (notifs.isEmpty()) {
+                    Text("Sin notificaciones por ahora.", color = c.textoSuave, fontSize = 13.sp)
+                } else {
+                    LazyColumn(
+                        Modifier.fillMaxWidth().height(380.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(notifs) { n ->
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                    .background(c.chipBg).padding(10.dp),
+                                verticalAlignment = Alignment.Top,
+                            ) {
+                                Text(n.icono ?: "🔔", fontSize = 16.sp)
+                                Spacer(Modifier.width(8.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(n.titulo, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    n.cuerpo?.takeIf { it.isNotBlank() }?.let {
+                                        Text(it, color = c.textoSuave, fontSize = 12.sp)
+                                    }
+                                    n.createdAt?.take(16)?.replace("T", " · ")?.let {
+                                        Text(it, color = c.textoSuave, fontSize = 10.sp,
+                                            modifier = Modifier.padding(top = 2.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { verNotifs = false }) {
+                    Text("Cerrar", color = c.navy, fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = c.superficie,
+        )
     }
 }
 

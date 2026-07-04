@@ -87,9 +87,15 @@ fun TarjetaCita(
                 cita.pacienteTelefono?.takeIf { it.isNotBlank() }?.let { tel ->
                     IconoContacto("📞", c.navy) { acciones.abrirUrl("tel:${tel.filter { ch -> ch.isDigit() }}") }
                     Spacer(Modifier.width(6.dp))
+                    // WhatsApp con el RECORDATORIO de la cita prellenado (como el 📱 de la web):
+                    // un toque y el mensaje sale listo para enviar.
                     IconoContacto("💬", Color(0xFF25D366)) {
                         val n = tel.filter { ch -> ch.isDigit() }.let { if (it.length <= 9) "51$it" else it }
-                        acciones.abrirUrl("https://wa.me/$n")
+                        val nombre = cita.pacienteNombre?.trim()?.split(" ")?.firstOrNull() ?: ""
+                        val msg = "Hola $nombre 👋 Te recordamos tu cita" +
+                            (cita.tipo?.let { " de ${it.lowercase()}" } ?: "") +
+                            " el ${cita.fecha} a las ${hora12(cita.hora)}. ¿Nos confirmas tu asistencia? 🙌"
+                        acciones.abrirUrl("https://wa.me/$n?text=${pe.saniape.app.ui.urlEncode(msg)}")
                     }
                 }
             }
