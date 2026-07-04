@@ -48,6 +48,7 @@ fun PantallaMasClinica(
     onIrAPortal: () -> Unit,
     onCerrarSesion: () -> Unit,
     onAbrirSesiones: (() -> Unit)? = null,
+    onAbrirCaja: (() -> Unit)? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -85,19 +86,35 @@ fun PantallaMasClinica(
 
                 Spacer(Modifier.height(Sania.dim.lg))
 
-                // Módulos clínicos sin tab propio (Sesiones…)
-                if (onAbrirSesiones != null) {
+                // Módulos clínicos sin tab propio (Sesiones, Caja…)
+                if (onAbrirSesiones != null || onAbrirCaja != null) {
                     Text("MÓDULOS", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(Sania.dim.sm))
-                    Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                            .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                            .clickable { onAbrirSesiones() }.padding(Sania.dim.lg),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("🏃  Sesiones", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
-                        Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                    if (onAbrirSesiones != null) {
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { onAbrirSesiones() }.padding(Sania.dim.lg),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("🏃  Sesiones", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
+                            Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                        }
+                        Spacer(Modifier.height(Sania.dim.sm))
+                    }
+                    // 💰 Caja de hoy (con permiso de pagos): cuánto entró y por qué método.
+                    if (onAbrirCaja != null) {
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { onAbrirCaja() }.padding(Sania.dim.lg),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("💰  Caja de hoy", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
+                            Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                        }
                     }
                     Spacer(Modifier.height(Sania.dim.lg))
                 }

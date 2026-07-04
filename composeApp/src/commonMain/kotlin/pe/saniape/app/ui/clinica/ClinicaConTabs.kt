@@ -64,6 +64,7 @@ fun ClinicaConTabs(
     var intento by remember { mutableStateOf(0) }   // para "Reintentar"
     // Sub-pantallas accesibles desde "Más" (módulos sin tab propio).
     var verSesiones by remember { mutableStateOf(false) }
+    var verCaja by remember { mutableStateOf(false) }
 
     LaunchedEffect(intento) {
         cargando = true; error = null
@@ -76,8 +77,12 @@ fun ClinicaConTabs(
         cargando = false
     }
 
-    ManejarAtras(activo = verSesiones || tab != TabClinica.Inicio) {
-        if (verSesiones) verSesiones = false else tab = TabClinica.Inicio
+    ManejarAtras(activo = verSesiones || verCaja || tab != TabClinica.Inicio) {
+        when {
+            verSesiones -> verSesiones = false
+            verCaja -> verCaja = false
+            else -> tab = TabClinica.Inicio
+        }
     }
 
     if (cargando) {
@@ -149,12 +154,18 @@ fun ClinicaConTabs(
                     onIrAPortal = onIrAPortal,
                     onCerrarSesion = onCerrarSesion,
                     onAbrirSesiones = if (contexto.puede("sesiones")) ({ verSesiones = true }) else null,
+                    onAbrirCaja = if (contexto.puede("pagos")) ({ verCaja = true }) else null,
                 )
             }
             // Overlay de módulos sin tab propio (encima del contenido, oculta los tabs).
             if (verSesiones && contexto.puede("sesiones")) {
                 Box(Modifier.fillMaxSize().background(c.fondo)) {
                     PantallaSesiones(ctx = contexto)
+                }
+            }
+            if (verCaja && contexto.puede("pagos")) {
+                Box(Modifier.fillMaxSize().background(c.fondo)) {
+                    PantallaCajaHoy(ctx = contexto)
                 }
             }
         }
