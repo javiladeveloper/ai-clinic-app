@@ -133,8 +133,15 @@ fun TarjetaTratamiento(
         Column(Modifier.fillMaxWidth().clickable { expandido = !expandido }) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("${if (t.esServicioUnico) "✨" else if (t.esConsulta) "🩺" else "📦"} ${t.procedimiento ?: "Tratamiento"}",
+                    val esUnid = t.tipo == pe.saniape.app.data.staff.TipoTratamiento.UNIDADES
+                    Text("${if (esUnid) "🔢" else if (t.esServicioUnico) "✨" else if (t.esConsulta) "🩺" else "📦"} ${t.procedimiento ?: "Tratamiento"}",
                         color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
+                    // Unidades: "1500 folículos × S/ 1.2" bajo el nombre (como el badge web).
+                    if (esUnid && t.cantidadUnidades != null) {
+                        Text("${t.cantidadUnidades} ${t.unidadLabel ?: "unidades"}${t.precioUnitario?.let { " × S/ $it" } ?: ""}",
+                            color = c.teal, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 1.dp))
+                    }
                     val sub = listOfNotNull(t.especialidadNombre, t.terapeutaNombre?.let { "con $it" }).joinToString(" · ")
                     if (sub.isNotBlank()) Text(sub, color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 1.dp))
                 }

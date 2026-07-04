@@ -433,6 +433,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         precioPorSesion = nuevo.precioPorSesion, precioAcordado = nuevo.precioAcordado,
                         diagnostico = nuevo.diagnostico, citaOrigenId = nuevo.citaOrigenId,
                         medicacion = nuevo.medicacion, proximoControl = nuevo.proximoControl,
+                        cantidadUnidades = nuevo.cantidadUnidades, precioUnitario = nuevo.precioUnitario,
                     )
                     recargar()
                 }
@@ -477,11 +478,11 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         ModalEditarTratamiento(
             t = t,
             onCancelar = { editarTratamiento = null },
-            onGuardar = { totalSes, precioPaq, precioSes, precioAcord, diag, medic, proxControl ->
+            onGuardar = { totalSes, precioPaq, precioSes, precioAcord, diag, medic, proxControl, cantU, precioU ->
                 editarTratamiento = null
                 scope.launch {
                     PacientesRepo.editarTratamiento(t.id, totalSes, precioPaq, precioSes, precioAcord,
-                        diag, medic, proxControl)
+                        diag, medic, proxControl, cantU, precioU)
                     recargar()
                 }
             },

@@ -59,6 +59,10 @@ data class TratamientoPaciente(
     // Del procedimiento — para detectar el TIPO (servicio único vs consulta médica).
     val modoCobro: String? = null,       // 'simple' | 'sesiones' | 'unidades'
     val precioBase: Double? = null,      // precio fijo del servicio (procedimientos.precio)
+    // Modalidad Unidades (injerto, botox…): cantidad × precio unitario.
+    val cantidadUnidades: Int? = null,
+    val precioUnitario: Double? = null,
+    val unidadLabel: String? = null,     // "folículos", "piezas"… (del procedimiento)
 ) {
     /** Monto total acordado del tratamiento (igual que la web). */
     val montoAcordado: Double
@@ -126,6 +130,11 @@ data class ProcedimientoRef(
     val especialidadId: String?,
     val usaSesiones: Boolean,
     val tarifarios: List<TarifarioRef>,
+    // Modo de cobro del servicio (decide el TIPO de tratamiento al crear):
+    //  'sesiones' (default) · 'simple' (servicio único / consulta) · 'unidades' (× cantidad)
+    val modoCobro: String? = null,
+    val unidadLabel: String? = null,             // "folículos", "piezas"… (modo unidades)
+    val precioUnitarioSugerido: Double? = null,  // precio por unidad sugerido (modo unidades)
 )
 
 /** Un profesional con sus especialidades (para filtrar servicios). */
@@ -248,8 +257,9 @@ object PacientesRepo {
         tratamientos:tratamientos(
             id, modalidad, estado, estado_pago, total_sesiones, sesiones_completadas,
             precio_paquete, precio_por_sesion, precio_acordado, terapeuta_id,
+            cantidad_unidades, precio_unitario,
             diagnostico, medicacion, proximo_control, nota_recepcion,
-            procedimiento:procedimientos(nombre, especialidad_id, modo_cobro, precio, especialidad:especialidades(nombre, usa_sesiones)),
+            procedimiento:procedimientos(nombre, especialidad_id, modo_cobro, precio, unidad_label, especialidad:especialidades(nombre, usa_sesiones)),
             terapeuta:terapeutas(id, nombre, especialidades:terapeuta_especialidades(especialidad:especialidades(id, nombre)))
         )
     """
@@ -465,6 +475,8 @@ object PacientesRepo {
         pacienteId: String, procedimientoId: String, terapeutaId: String?, modalidad: String,
         totalSesiones: Int?, precioPaquete: Double?, precioPorSesion: Double?, precioAcordado: Double?,
         diagnostico: String?, citaOrigenId: String? = null, medicacion: String? = null, proximoControl: String? = null,
+        // Modalidad Unidades (injerto capilar, botox…): cantidad × precio unitario.
+        cantidadUnidades: Int? = null, precioUnitario: Double? = null,
     ): Boolean = accionTratamiento(buildJsonObject {
         put("accion", "crear"); put("pacienteId", pacienteId); put("procedimientoId", procedimientoId)
         if (terapeutaId != null) put("terapeutaId", terapeutaId)
@@ -473,6 +485,8 @@ object PacientesRepo {
         if (precioPaquete != null) put("precioPaquete", precioPaquete)
         if (precioPorSesion != null) put("precioPorSesion", precioPorSesion)
         if (precioAcordado != null) put("precioAcordado", precioAcordado)
+        if (cantidadUnidades != null) put("cantidadUnidades", cantidadUnidades)
+        if (precioUnitario != null) put("precioUnitario", precioUnitario)
         if (!diagnostico.isNullOrBlank()) put("diagnostico", diagnostico)
         if (!citaOrigenId.isNullOrBlank()) put("citaOrigenId", citaOrigenId)
         if (!medicacion.isNullOrBlank()) put("medicacion", medicacion)
@@ -484,12 +498,16 @@ object PacientesRepo {
         precioPorSesion: Double?, precioAcordado: Double?,
         // Solo Consulta (sin sesiones): datos clínicos editables. "" limpia, null = no tocar.
         diagnostico: String? = null, medicacion: String? = null, proximoControl: String? = null,
+        // Modalidad Unidades: cantidad × precio unitario.
+        cantidadUnidades: Int? = null, precioUnitario: Double? = null,
     ): Boolean = accionTratamiento(buildJsonObject {
         put("accion", "editar"); put("tratamientoId", tratamientoId)
         if (totalSesiones != null) put("totalSesiones", totalSesiones)
         if (precioPaquete != null) put("precioPaquete", precioPaquete)
         if (precioPorSesion != null) put("precioPorSesion", precioPorSesion)
         if (precioAcordado != null) put("precioAcordado", precioAcordado)
+        if (cantidadUnidades != null) put("cantidadUnidades", cantidadUnidades)
+        if (precioUnitario != null) put("precioUnitario", precioUnitario)
         if (diagnostico != null) put("diagnostico", diagnostico)
         if (medicacion != null) put("medicacion", medicacion)
         if (proximoControl != null) put("proximoControl", proximoControl)
@@ -543,6 +561,7 @@ object PacientesRepo {
         val filas = Supabase.client.postgrest["procedimientos"]
             .select(Columns.raw(
                 "id, nombre, precio, precio_paquete, especialidad_id, " +
+                    "modo_cobro, unidad_label, precio_unitario_sugerido, " +
                     "especialidad:especialidades(usa_sesiones), " +
                     "tarifarios:tarifario_paquetes(id, cantidad_sesiones, precio_total, estado)"
             )) {
@@ -569,6 +588,9 @@ object PacientesRepo {
                 usaSesiones = ((o["especialidad"] as? JsonObject)?.get("usa_sesiones") as? JsonPrimitive)
                     ?.content?.let { it != "false" } ?: true,
                 tarifarios = tarifs,
+                modoCobro = o.str("modo_cobro"),
+                unidadLabel = o.str("unidad_label"),
+                precioUnitarioSugerido = o.dbl("precio_unitario_sugerido"),
             )
         }
     }
@@ -777,6 +799,9 @@ object PacientesRepo {
                 notaRecepcion = t.str("nota_recepcion"),
                 modoCobro = procObj?.str("modo_cobro"),
                 precioBase = procObj?.dbl("precio"),
+                cantidadUnidades = t.int("cantidad_unidades"),
+                precioUnitario = t.dbl("precio_unitario"),
+                unidadLabel = procObj?.str("unidad_label"),
             )
         }
         return PacienteStaff(

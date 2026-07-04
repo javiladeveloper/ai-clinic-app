@@ -61,6 +61,9 @@ data class TratamientoNuevo(
     val citaOrigenId: String?,
     val medicacion: String?,
     val proximoControl: String?,
+    // Modalidad Unidades (injerto capilar, botox…): cantidad × precio unitario.
+    val cantidadUnidades: Int? = null,
+    val precioUnitario: Double? = null,
 )
 
 /**
@@ -92,6 +95,8 @@ fun ModalCrearTratamiento(
     var precioPaquete by remember { mutableStateOf("") }
     var precioPorSesion by remember { mutableStateOf("") }
     var precioAcordado by remember { mutableStateOf("") }
+    var cantidadUnidades by remember { mutableStateOf("") }   // modo unidades
+    var precioUnitario by remember { mutableStateOf("") }     // modo unidades
     var diagnostico by remember { mutableStateOf(diagnosticoPrevio ?: "") }
     // medicación y próximo control: no se piden al crear (se llenan al editar tras atender).
 
@@ -143,12 +148,25 @@ fun ModalCrearTratamiento(
                 precioPaquete = p.precioPaquete?.toString() ?: ""
                 totalSesiones = "10"
             }
+            // Modo unidades: prellenar el precio por unidad sugerido.
+            precioUnitario = (p.precioUnitarioSugerido ?: p.precio).toString()
+            // Servicio único (simple + precio > 0): el acordado arranca en el precio base.
+            if (p.modoCobro == "simple" && p.precio > 0) precioAcordado = p.precio.toString()
         }
     }
 
-    val esConsulta = proc?.usaSesiones == false
-    val usaSesiones = proc != null && !esConsulta
-    val puedeCrear = proc != null
+    // TIPO del tratamiento a crear (mismo criterio que la web / TipoTratamiento):
+    //  - UNIDADES:       servicio con modo_cobro 'unidades' (injerto, botox × cantidad)
+    //  - SERVICIO ÚNICO: modo_cobro 'simple' con precio > 0 (blanqueamiento, profilaxis)
+    //  - CONSULTA:       especialidad sin sesiones (medicina/nutrición)
+    //  - SESIONES:       el resto (fisio, ortodoncia…)
+    val esUnidades = proc?.modoCobro == "unidades"
+    val esServUnico = !esUnidades && proc?.modoCobro == "simple" && (proc?.precio ?: 0.0) > 0.0
+    val esConsulta = proc != null && !esUnidades && !esServUnico && proc?.usaSesiones == false
+    val usaSesiones = proc != null && !esUnidades && !esServUnico && !esConsulta
+    // Unidades: exige cantidad y precio por unidad (> 0) para poder crear.
+    val puedeCrear = proc != null && (!esUnidades ||
+        ((cantidadUnidades.toIntOrNull() ?: 0) > 0 && (precioUnitario.toDoubleOrNull() ?: 0.0) > 0.0))
 
     Dialog(onDismissRequest = onCancelar, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
@@ -160,6 +178,8 @@ fun ModalCrearTratamiento(
                 Text("Nuevo tratamiento", color = c.sobreNavy, fontSize = 19.sp, fontWeight = FontWeight.Bold)
                 Text(
                     when {
+                        esUnidades -> "Por unidades · ${proc?.unidadLabel ?: "unidades"} × precio"
+                        esServUnico -> "Servicio único · un solo acto"
                         esConsulta -> "Consulta médica · sin sesiones"
                         usaSesiones -> "Plan por sesiones"
                         else -> "Elige el servicio para empezar"
@@ -225,7 +245,43 @@ fun ModalCrearTratamiento(
                 }
 
                 // Bloque 2 · adaptado al tipo de servicio ─────────────────
-                if (usaSesiones) {
+                if (esUnidades) {
+                    Spacer(Modifier.height(12.dp))
+                    val etiquetaU = proc?.unidadLabel ?: "unidades"
+                    Tarjeta(titulo = "Cobro por $etiquetaU", icono = "🔢") {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(Modifier.weight(1f)) { Etq("Cantidad de $etiquetaU"); CampoNum(cantidadUnidades) { cantidadUnidades = it } }
+                            Column(Modifier.weight(1f)) { Etq("Precio por unidad (S/)"); CampoNum(precioUnitario) { precioUnitario = it } }
+                        }
+                        // Total en vivo (cantidad × precio unitario) — es el acordado por defecto.
+                        val total = (cantidadUnidades.toIntOrNull() ?: 0) * (precioUnitario.toDoubleOrNull() ?: 0.0)
+                        if (total > 0) {
+                            Spacer(Modifier.height(8.dp))
+                            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(c.chipBg).padding(10.dp)) {
+                                Text("Total: S/ ${if (total % 1.0 == 0.0) total.toInt() else total}",
+                                    color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Etq("Precio acordado (S/) — opcional")
+                        CampoNum(precioAcordado) { precioAcordado = it }
+                        Text("Solo si se negoció distinto al total (cantidad × precio).",
+                            color = c.textoSuave, fontSize = 10.sp)
+                    }
+                } else if (esServUnico) {
+                    Spacer(Modifier.height(12.dp))
+                    Tarjeta(titulo = "Servicio único", icono = "✨") {
+                        Etq("Precio base del servicio")
+                        SelectorBox("S/ ${proc?.precio ?: 0.0}", bloqueado = true) {}
+                        Spacer(Modifier.height(10.dp))
+                        Etq("Precio acordado (S/)")
+                        CampoNum(precioAcordado) { precioAcordado = it }
+                        Text("Prellenado con el precio base; ajústalo si se negoció otro. " +
+                            "El servicio se registra al realizarse (paso “Por hacer”).",
+                            color = c.textoSuave, fontSize = 10.sp)
+                    }
+                } else if (usaSesiones) {
                     Spacer(Modifier.height(12.dp))
                     Tarjeta(titulo = "Pago del plan", icono = "💳") {
                         Etq("Modalidad de pago")
@@ -286,21 +342,30 @@ fun ModalCrearTratamiento(
                         .background(if (puedeCrear) c.navy else c.borde)
                         .clickable(enabled = puedeCrear) {
                             val p = proc ?: return@clickable
+                            // Unidades: si no se negoció un acordado, el total = cantidad × precio.
+                            val totalUnidades = (cantidadUnidades.toIntOrNull() ?: 0) * (precioUnitario.toDoubleOrNull() ?: 0.0)
                             onGuardar(
                                 TratamientoNuevo(
                                     procedimientoId = p.id,
                                     terapeutaId = if (miTerapeutaId != null) miTerapeutaId else terapeuta?.id,
-                                    modalidad = if (esConsulta) "Consulta" else modalidad,
+                                    modalidad = when {
+                                        esUnidades -> "Unidades"
+                                        esServUnico || esConsulta -> "Consulta"
+                                        else -> modalidad
+                                    },
                                     totalSesiones = if (usaSesiones && modalidad == "Paquete") totalSesiones.toIntOrNull() ?: 10
                                         else if (usaSesiones) 1 else null,
                                     precioPaquete = if (usaSesiones && modalidad == "Paquete") precioPaquete.toDoubleOrNull() else null,
                                     precioPorSesion = if (usaSesiones && modalidad == "Sesión suelta") precioPorSesion.toDoubleOrNull() else null,
-                                    precioAcordado = precioAcordado.toDoubleOrNull(),
+                                    precioAcordado = precioAcordado.toDoubleOrNull()
+                                        ?: if (esUnidades && totalUnidades > 0) totalUnidades else null,
                                     diagnostico = diagnostico.trim().ifBlank { null },
                                     citaOrigenId = evaluacion?.id,
                                     // Medicación y próximo control NO se piden al crear (se llenan al editar tras atender).
                                     medicacion = null,
                                     proximoControl = null,
+                                    cantidadUnidades = if (esUnidades) cantidadUnidades.toIntOrNull() else null,
+                                    precioUnitario = if (esUnidades) precioUnitario.toDoubleOrNull() else null,
                                 )
                             )
                         }.padding(vertical = 13.dp),
@@ -375,17 +440,21 @@ fun ModalEditarTratamiento(
     t: pe.saniape.app.data.staff.TratamientoPaciente,
     onCancelar: () -> Unit,
     onGuardar: (totalSesiones: Int?, precioPaquete: Double?, precioPorSesion: Double?, precioAcordado: Double?,
-                diagnostico: String?, medicacion: String?, proximoControl: String?) -> Unit,
+                diagnostico: String?, medicacion: String?, proximoControl: String?,
+                cantidadUnidades: Int?, precioUnitario: Double?) -> Unit,
 ) {
     val c = Sania.colors
     var totalSesiones by remember { mutableStateOf(t.totalSesiones.toString()) }
     var precioPaquete by remember { mutableStateOf(t.precioPaquete?.toString() ?: "") }
     var precioPorSesion by remember { mutableStateOf(t.precioPorSesion?.toString() ?: "") }
     var precioAcordado by remember { mutableStateOf(t.precioAcordado?.toString() ?: "") }
+    var cantidadUnidades by remember { mutableStateOf(t.cantidadUnidades?.toString() ?: "") }
+    var precioUnitario by remember { mutableStateOf(t.precioUnitario?.toString() ?: "") }
     val esPaquete = t.modalidad == "Paquete"
+    val esUnidades = t.tipo == pe.saniape.app.data.staff.TipoTratamiento.UNIDADES
     // No se puede bajar el N° de sesiones por debajo de las ya completadas.
     val nuevoTotal = totalSesiones.toIntOrNull() ?: 0
-    val errorSesiones = !t.esConsulta && nuevoTotal < t.sesionesCompletadas
+    val errorSesiones = !t.esConsulta && !esUnidades && !t.esServicioUnico && nuevoTotal < t.sesionesCompletadas
 
     Dialog(onDismissRequest = onCancelar, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
@@ -413,7 +482,25 @@ fun ModalEditarTratamiento(
                     Spacer(Modifier.height(12.dp))
                 }
 
-                if (!t.esConsulta) {
+                if (esUnidades) {
+                    val etiquetaU = t.unidadLabel ?: "unidades"
+                    Tarjeta(titulo = "Cobro por $etiquetaU", icono = "🔢") {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(Modifier.weight(1f)) { Etq("Cantidad de $etiquetaU"); CampoNum(cantidadUnidades) { cantidadUnidades = it } }
+                            Column(Modifier.weight(1f)) { Etq("Precio por unidad (S/)"); CampoNum(precioUnitario) { precioUnitario = it } }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Etq("Precio acordado (S/)"); CampoNum(precioAcordado) { precioAcordado = it }
+                        Text("El acordado manda sobre cantidad × precio si se negoció distinto.",
+                            color = c.textoSuave, fontSize = 10.sp)
+                    }
+                } else if (t.esServicioUnico) {
+                    Tarjeta(titulo = "Servicio único", icono = "✨") {
+                        Etq("Precio acordado (S/)"); CampoNum(precioAcordado) { precioAcordado = it }
+                        Text("Precio base del servicio: S/ ${t.precioBase ?: 0.0}.",
+                            color = c.textoSuave, fontSize = 10.sp)
+                    }
+                } else if (!t.esConsulta) {
                     Tarjeta(titulo = "Plan por sesiones", icono = if (esPaquete) "📦" else "🎫") {
                         Etq("N° de sesiones"); CampoNum(totalSesiones) { totalSesiones = it }
                         if (errorSesiones) Text("⚠ No puede ser menor a ${t.sesionesCompletadas} (ya completadas).",
@@ -446,13 +533,16 @@ fun ModalEditarTratamiento(
                     Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.md.dp))
                         .background(if (errorSesiones) c.borde else c.navy)
                         .clickable(enabled = !errorSesiones) {
+                            val esSesiones = !t.esConsulta && !esUnidades && !t.esServicioUnico
                             onGuardar(
-                                if (t.esConsulta) null else totalSesiones.toIntOrNull(),
-                                if (esPaquete) precioPaquete.toDoubleOrNull() else null,
-                                if (!esPaquete && !t.esConsulta) precioPorSesion.toDoubleOrNull() else null,
+                                if (esSesiones) totalSesiones.toIntOrNull() else null,
+                                if (esSesiones && esPaquete) precioPaquete.toDoubleOrNull() else null,
+                                if (esSesiones && !esPaquete) precioPorSesion.toDoubleOrNull() else null,
                                 precioAcordado.toDoubleOrNull(),
                                 // Editar = solo costo; lo clínico va en "Registrar atención".
                                 null, null, null,
+                                if (esUnidades) cantidadUnidades.toIntOrNull() else null,
+                                if (esUnidades) precioUnitario.toDoubleOrNull() else null,
                             )
                         }.padding(vertical = 13.dp),
                     contentAlignment = Alignment.Center,
