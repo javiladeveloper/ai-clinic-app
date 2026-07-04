@@ -43,6 +43,7 @@ import pe.saniape.app.ui.hora12
 import pe.saniape.app.data.staff.EspecialidadClinica
 import pe.saniape.app.data.staff.EvaluacionRef
 import pe.saniape.app.data.staff.PacientesRepo
+import pe.saniape.app.data.staff.PlantillaRef
 import pe.saniape.app.data.staff.ProcedimientoRef
 import pe.saniape.app.data.staff.TarifarioRef
 import pe.saniape.app.data.staff.TerapeutaConEsp
@@ -64,6 +65,9 @@ data class TratamientoNuevo(
     // Modalidad Unidades (injerto capilar, botox…): cantidad × precio unitario.
     val cantidadUnidades: Int? = null,
     val precioUnitario: Double? = null,
+    // Plantilla usada (si se eligió): técnicas por sesión + contador de usos.
+    val tecnicasSugeridas: String? = null,
+    val plantillaId: String? = null,
 )
 
 /**
@@ -98,6 +102,11 @@ fun ModalCrearTratamiento(
     var cantidadUnidades by remember { mutableStateOf("") }   // modo unidades
     var precioUnitario by remember { mutableStateOf("") }     // modo unidades
     var diagnostico by remember { mutableStateOf(diagnosticoPrevio ?: "") }
+    // Plantillas ("combos" de la clínica): elegir una autocompleta servicio + comercial + clínico.
+    var plantillas by remember { mutableStateOf<List<PlantillaRef>>(emptyList()) }
+    var plantilla by remember { mutableStateOf<PlantillaRef?>(null) }
+    // La plantilla se aplica DESPUÉS del prefill del servicio (LaunchedEffect) para no ser pisada.
+    var plantillaPend by remember { mutableStateOf<PlantillaRef?>(null) }
     // medicación y próximo control: no se piden al crear (se llenan al editar tras atender).
 
     LaunchedEffect(pacienteId) {
@@ -108,6 +117,7 @@ fun ModalCrearTratamiento(
         especialidades = esps
         terapeutas = ters
         evaluaciones = runCatching { PacientesRepo.evaluacionesDe(pacienteId) }.getOrDefault(emptyList())
+        plantillas = runCatching { PacientesRepo.plantillas() }.getOrDefault(emptyList())
         // Si la clínica tiene 1 sola especialidad, se autoselecciona.
         if (especialidad == null && esps.size == 1) especialidad = esps.first()
         // Profesional vinculado: fijar su(s) especialidad(es) si tiene una sola.
@@ -152,6 +162,16 @@ fun ModalCrearTratamiento(
             precioUnitario = (p.precioUnitarioSugerido ?: p.precio).toString()
             // Servicio único (simple + precio > 0): el acordado arranca en el precio base.
             if (p.modoCobro == "simple" && p.precio > 0) precioAcordado = p.precio.toString()
+            // Plantilla elegida: SUS valores comerciales mandan sobre el prefill del servicio.
+            plantillaPend?.let { pl ->
+                pl.modalidad?.takeIf { it == "Paquete" || it == "Sesión suelta" }?.let { modalidad = it }
+                pl.totalSesiones?.let { totalSesiones = it.toString() }
+                pl.precioPaquete?.let { precioPaquete = it.toString() }
+                pl.precioPorSesion?.let { precioPorSesion = it.toString() }
+                pl.cantidadUnidades?.let { cantidadUnidades = it.toString() }
+                pl.precioUnitario?.let { precioUnitario = it.toString() }
+                plantillaPend = null
+            }
         }
     }
 
@@ -195,6 +215,27 @@ fun ModalCrearTratamiento(
             ) {
                 // Bloque 1 · ATENCIÓN ─────────────────────────────────────
                 Tarjeta(titulo = "Atención", icono = "🩺") {
+                    // ⚡ Plantilla ("combo" de la clínica): autocompleta servicio + comercial + clínico.
+                    if (plantillas.isNotEmpty()) {
+                        Etq("⚡ Usar plantilla (opcional)")
+                        SelectorLista(plantillas, plantilla, { it.nombre }, "Armar manualmente…") { pl ->
+                            plantilla = pl
+                            plantillaPend = pl
+                            // Servicio de la plantilla → dispara el prefill y luego se aplican sus valores.
+                            pl.procedimientoId?.let { pid ->
+                                procedimientos.find { it.id == pid }?.let { pr ->
+                                    proc = pr
+                                    pr.especialidadId?.let { eId -> especialidad = especialidades.find { it.id == eId } ?: especialidad }
+                                }
+                            }
+                            if (miTerapeutaId == null) pl.terapeutaId?.let { tId ->
+                                terapeuta = terapeutas.find { it.id == tId } ?: terapeuta
+                            }
+                            pl.diagnostico?.takeIf { it.isNotBlank() }?.let { diagnostico = it }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                    }
+
                     // ¿Nació de una evaluación? (primero — autocompleta especialidad y médico)
                     if (evaluaciones.isNotEmpty()) {
                         Etq("¿Nació de una evaluación? (opcional)")
@@ -366,6 +407,8 @@ fun ModalCrearTratamiento(
                                     proximoControl = null,
                                     cantidadUnidades = if (esUnidades) cantidadUnidades.toIntOrNull() else null,
                                     precioUnitario = if (esUnidades) precioUnitario.toDoubleOrNull() else null,
+                                    tecnicasSugeridas = plantilla?.tecnicasSesion?.takeIf { it.isNotBlank() },
+                                    plantillaId = plantilla?.id,
                                 )
                             )
                         }.padding(vertical = 13.dp),

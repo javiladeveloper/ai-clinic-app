@@ -434,7 +434,10 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         diagnostico = nuevo.diagnostico, citaOrigenId = nuevo.citaOrigenId,
                         medicacion = nuevo.medicacion, proximoControl = nuevo.proximoControl,
                         cantidadUnidades = nuevo.cantidadUnidades, precioUnitario = nuevo.precioUnitario,
+                        tecnicasSugeridas = nuevo.tecnicasSugeridas,
                     )
+                    // Si se usó una plantilla, contar el uso (ordena "más usadas primero").
+                    nuevo.plantillaId?.let { PacientesRepo.contarUsoPlantilla(it) }
                     recargar()
                 }
             },

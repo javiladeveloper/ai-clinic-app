@@ -140,6 +140,22 @@ data class ProcedimientoRef(
 /** Un profesional con sus especialidades (para filtrar servicios). */
 data class TerapeutaConEsp(val id: String, val nombre: String, val especialidadIds: List<String>)
 
+/** Plantilla de tratamiento ("combo" pre-armado por la clínica): autocompleta el form. */
+data class PlantillaRef(
+    val id: String,
+    val nombre: String,
+    val procedimientoId: String?,
+    val terapeutaId: String?,
+    val modalidad: String?,
+    val totalSesiones: Int?,
+    val precioPaquete: Double?,
+    val precioPorSesion: Double?,
+    val cantidadUnidades: Int?,
+    val precioUnitario: Double?,
+    val diagnostico: String?,
+    val tecnicasSesion: String?,   // "A + B" — precarga las técnicas de cada sesión
+)
+
 /** Una especialidad de la clínica. */
 data class EspecialidadClinica(val id: String, val nombre: String, val usaSesiones: Boolean)
 
@@ -477,6 +493,8 @@ object PacientesRepo {
         diagnostico: String?, citaOrigenId: String? = null, medicacion: String? = null, proximoControl: String? = null,
         // Modalidad Unidades (injerto capilar, botox…): cantidad × precio unitario.
         cantidadUnidades: Int? = null, precioUnitario: Double? = null,
+        // Técnicas sugeridas por sesión (de la plantilla): precargan el completar sesión.
+        tecnicasSugeridas: String? = null,
     ): Boolean = accionTratamiento(buildJsonObject {
         put("accion", "crear"); put("pacienteId", pacienteId); put("procedimientoId", procedimientoId)
         if (terapeutaId != null) put("terapeutaId", terapeutaId)
@@ -491,6 +509,7 @@ object PacientesRepo {
         if (!citaOrigenId.isNullOrBlank()) put("citaOrigenId", citaOrigenId)
         if (!medicacion.isNullOrBlank()) put("medicacion", medicacion)
         if (!proximoControl.isNullOrBlank()) put("proximoControl", proximoControl)
+        if (!tecnicasSugeridas.isNullOrBlank()) put("tecnicasSugeridas", tecnicasSugeridas)
     })
 
     suspend fun editarTratamiento(
@@ -557,6 +576,49 @@ object PacientesRepo {
     })
 
     /** Procedimientos activos (con especialidad + usa_sesiones + precios + tarifarios). */
+    /** Plantillas de tratamiento activas de la clínica (RLS aísla), más usadas primero. */
+    suspend fun plantillas(): List<PlantillaRef> {
+        val filas = Supabase.client.postgrest["plantillas_tratamiento"]
+            .select(Columns.raw(
+                "id, nombre, procedimiento_id, terapeuta_id, modalidad, total_sesiones, " +
+                    "precio_paquete, precio_por_sesion, cantidad_unidades, precio_unitario, " +
+                    "diagnostico, tecnicas_sesion, usos"
+            )) {
+                filter { eq("estado", "Activo") }
+                order("usos", Order.DESCENDING)
+                order("nombre", Order.ASCENDING)
+            }
+            .decodeList<JsonObject>()
+        return filas.mapNotNull { o ->
+            PlantillaRef(
+                id = o.str("id") ?: return@mapNotNull null,
+                nombre = o.str("nombre") ?: "Plantilla",
+                procedimientoId = o.str("procedimiento_id"),
+                terapeutaId = o.str("terapeuta_id"),
+                modalidad = o.str("modalidad"),
+                totalSesiones = o.int("total_sesiones"),
+                precioPaquete = o.dbl("precio_paquete"),
+                precioPorSesion = o.dbl("precio_por_sesion"),
+                cantidadUnidades = o.int("cantidad_unidades"),
+                precioUnitario = o.dbl("precio_unitario"),
+                diagnostico = o.str("diagnostico"),
+                tecnicasSesion = o.str("tecnicas_sesion"),
+            )
+        }
+    }
+
+    /** Cuenta un uso de la plantilla (ordena "más usadas primero"). Fire-and-forget. */
+    suspend fun contarUsoPlantilla(plantillaId: String) {
+        runCatching {
+            val actual = Supabase.client.postgrest["plantillas_tratamiento"]
+                .select(Columns.raw("usos")) { filter { eq("id", plantillaId) } }
+                .decodeList<JsonObject>().firstOrNull()?.int("usos") ?: 0
+            Supabase.client.postgrest["plantillas_tratamiento"].update(
+                { set("usos", actual + 1) }
+            ) { filter { eq("id", plantillaId) } }
+        }
+    }
+
     suspend fun procedimientos(): List<ProcedimientoRef> {
         val filas = Supabase.client.postgrest["procedimientos"]
             .select(Columns.raw(
