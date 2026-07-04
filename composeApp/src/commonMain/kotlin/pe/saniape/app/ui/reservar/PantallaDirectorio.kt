@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,6 +62,8 @@ fun PantallaDirectorio(onElegirClinica: (ClinicaDir) -> Unit) {
     // Clínica enfocada en el mapa (tap simple en su tarjeta).
     var enfocada by remember { mutableStateOf<ClinicaDir?>(null) }
     var enfocarTick by remember { mutableStateOf(0) }
+    // Filtro por especialidad: solo se ven (mapa y lista) las clínicas que la tienen.
+    var filtroEsp by remember { mutableStateOf<String?>(null) }
 
     val solicitarUbicacion = recordarSolicitarUbicacion { miUbicacion = it }
 
@@ -75,11 +79,19 @@ fun PantallaDirectorio(onElegirClinica: (ClinicaDir) -> Unit) {
     // Pedir ubicación al entrar (para centrar el mapa "cerca de mí").
     LaunchedEffect(Unit) { solicitarUbicacion() }
 
-    // Ordenar por cercanía si tenemos ubicación.
-    val ordenadas = remember(clinicas, miUbicacion) {
+    // Todas las especialidades disponibles (para los chips del filtro).
+    val especialidades = remember(clinicas) {
+        clinicas.flatMap { it.especialidades }.distinct().sorted()
+    }
+
+    // Filtrar por especialidad + ordenar por cercanía si tenemos ubicación.
+    val ordenadas = remember(clinicas, miUbicacion, filtroEsp) {
+        val filtradas = filtroEsp?.let { f ->
+            clinicas.filter { cl -> cl.especialidades.any { it.equals(f, ignoreCase = true) } }
+        } ?: clinicas
         val u = miUbicacion
-        if (u == null) clinicas
-        else clinicas.sortedBy { cl ->
+        if (u == null) filtradas
+        else filtradas.sortedBy { cl ->
             if (cl.lat != null && cl.lng != null) distanciaKm(u.first, u.second, cl.lat, cl.lng)
             else Double.MAX_VALUE
         }
@@ -104,6 +116,21 @@ fun PantallaDirectorio(onElegirClinica: (ClinicaDir) -> Unit) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Toggle("🗺️ Mapa", vista == Vista.Mapa) { vista = Vista.Mapa }
                         Toggle("☰ Lista", vista == Vista.Lista) { vista = Vista.Lista }
+                    }
+                    // Filtro por especialidad: chips deslizables; filtra mapa Y lista.
+                    if (especialidades.size > 1) {
+                        Spacer(Modifier.height(Sania.dim.sm))
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            ChipFiltro("Todas", filtroEsp == null) { filtroEsp = null }
+                            especialidades.forEach { esp ->
+                                ChipFiltro(esp, filtroEsp == esp) {
+                                    filtroEsp = if (filtroEsp == esp) null else esp
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -204,6 +231,20 @@ private enum class Vista { Mapa, Lista }
 @Composable
 private fun TituloSeccion(texto: String) {
     Text(texto, color = Sania.colors.navy, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
+}
+
+/** Chip del filtro de especialidad (pill pequeña, seleccionable). */
+@Composable
+private fun ChipFiltro(texto: String, activo: Boolean, onClick: () -> Unit) {
+    val c = Sania.colors
+    Box(
+        Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+            .background(if (activo) c.navy else c.chipBg)
+            .clickable { onClick() }.padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Text(texto, color = if (activo) c.sobreNavy else c.navy,
+            fontSize = 12.sp, fontWeight = FontWeight.Bold)
+    }
 }
 
 @Composable
