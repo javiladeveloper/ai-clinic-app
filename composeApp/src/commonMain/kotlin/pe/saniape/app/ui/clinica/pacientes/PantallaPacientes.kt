@@ -26,6 +26,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,16 +55,27 @@ private val ESTADOS = listOf("Nuevo", "Consultado", "Evaluado", "En tratamiento"
 fun PantallaPacientes(ctx: ContextoStaff, onAbrirFicha: (PacienteStaff) -> Unit) {
     val c = Sania.colors
     val vm: PacientesViewModel = viewModel(key = ctx.clinicaId) { PacientesViewModel(ctx) }
+    var nuevoAbierto by remember { mutableStateOf(false) }
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            // Barra de marca
+            // Barra de marca (+ alta de paciente para quien gestiona pacientes)
             Row(
                 Modifier.fillMaxWidth().background(c.navyDark)
                     .padding(horizontal = Sania.dim.xl, vertical = Sania.dim.lg),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Pacientes", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
+                Text("Pacientes", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f))
+                if (ctx.puede("pacientes")) {
+                    Box(
+                        Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.teal)
+                            .clickable { nuevoAbierto = true }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    ) {
+                        Text("+ Nuevo", color = c.sobreNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
 
             // Búsqueda + filtros de estado
@@ -104,6 +119,19 @@ fun PantallaPacientes(ctx: ContextoStaff, onAbrirFicha: (PacienteStaff) -> Unit)
                 }
             }
         }
+    }
+
+    // Alta de paciente (esencial de recepción): DNI con búsqueda + datos mínimos.
+    // Al crear (o elegir un duplicado existente) se abre su ficha y se recarga la lista.
+    if (nuevoAbierto) {
+        ModalNuevoPaciente(
+            onCancelar = { nuevoAbierto = false },
+            onCreado = { p ->
+                nuevoAbierto = false
+                vm.cargar()
+                onAbrirFicha(p)
+            },
+        )
     }
 }
 

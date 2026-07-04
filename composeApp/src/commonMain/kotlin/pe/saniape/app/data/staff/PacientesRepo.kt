@@ -12,6 +12,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -321,6 +322,45 @@ object PacientesRepo {
      * que solo editan lo esencial). Si [tocarExtra]=true, también escribe dni/email/
      * patologias/tipoPatologia (modal "Editar paciente" completo).
      */
+    /** Busca el nombre en el padrón nacional por DNI (endpoint web con MaxFind). */
+    suspend fun nombrePorDni(dni: String): String? = try {
+        val tk = token() ?: return null
+        val resp = http.get("${Supabase.SITE_URL}/api/dni/$dni") { header("Authorization", "Bearer $tk") }
+        if (resp.status != HttpStatusCode.OK) null
+        else {
+            val o = Json.parseToJsonElement(resp.bodyAsText()) as? JsonObject
+            val ok = (o?.get("success") as? JsonPrimitive)?.content == "true"
+            if (ok) (o?.get("data") as? JsonObject)?.str("nombre_completo") else null
+        }
+    } catch (_: Exception) { null }
+
+    /** Dedup: paciente EXISTENTE con ese DNI en la clínica (RLS aísla), o null. */
+    suspend fun porDni(dni: String): PacienteStaff? = try {
+        Supabase.client.postgrest["pacientes"]
+            .select(Columns.raw(SELECT)) { filter { eq("dni", dni) } }
+            .decodeList<JsonObject>().firstOrNull()?.let { mapear(it) }
+    } catch (_: Exception) { null }
+
+    /**
+     * Crea un paciente (estado 'Nuevo' — arranca el flujo Consulta→Evaluación→…). Devuelve el
+     * paciente creado (para abrir su ficha) o null si falló. El dedup por DNI se hace ANTES
+     * (porDni) para ofrecer abrir el existente en vez de duplicar.
+     */
+    suspend fun crearPaciente(
+        nombre: String, dni: String?, telefono: String?, edad: Int?, diagnostico: String?,
+    ): PacienteStaff? = try {
+        val fila = Supabase.client.postgrest["pacientes"].insert(buildJsonObject {
+            put("nombre", nombre.trim())
+            dni?.trim()?.takeIf { it.isNotBlank() }?.let { put("dni", it) }
+            telefono?.trim()?.takeIf { it.isNotBlank() }?.let { put("telefono", it) }
+            if (edad != null) put("edad", edad)
+            diagnostico?.trim()?.takeIf { it.isNotBlank() }?.let { put("diagnostico", it) }
+            put("estado", "Nuevo")
+        }) { select(Columns.raw(SELECT)) }
+            .decodeList<JsonObject>().firstOrNull()
+        fila?.let { mapear(it) }
+    } catch (_: Exception) { null }
+
     suspend fun actualizarPaciente(
         id: String, nombre: String, telefono: String?, ocupacion: String?,
         edad: Int?, flag: String?, diagnostico: String?,
