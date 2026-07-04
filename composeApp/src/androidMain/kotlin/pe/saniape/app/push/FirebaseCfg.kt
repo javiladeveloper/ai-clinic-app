@@ -12,11 +12,11 @@ import com.google.firebase.FirebaseOptions
  * Mientras estén vacíos, TODO el pipeline de push es no-op (la app funciona normal).
  */
 object FirebaseCfg {
-    // ── PEGAR los valores del proyecto Firebase aquí ─────────────────────────
-    const val API_KEY = ""          // apiKey        (ej. "AIzaSy…")
-    const val APP_ID = ""           // appId         (ej. "1:9414…:android:ab12…")
-    const val PROJECT_ID = ""       // projectId     (ej. "sania-xxxxx")
-    const val SENDER_ID = ""        // messagingSenderId / gcm_defaultSenderId
+    // ── Valores del proyecto Firebase "sania-f9daa" (google-services.json) ───
+    const val API_KEY = "AIzaSyAmtUvatYwXm1gQvFk8PnoxaBBrgeWczdY"
+    const val APP_ID = "1:209141436625:android:3abb00bafae1f699d875f0"
+    const val PROJECT_ID = "sania-f9daa"
+    const val SENDER_ID = "209141436625"
     // ─────────────────────────────────────────────────────────────────────────
 
     val activo: Boolean
