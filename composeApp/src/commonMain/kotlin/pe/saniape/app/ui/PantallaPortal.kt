@@ -130,6 +130,15 @@ fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
                         }
                     }
 
+                    // Canjear el código de la clínica (vincula la ficha aunque no
+                    // tenga email ni DNI). Link discreto que se expande.
+                    item {
+                        TarjetaVincularCodigo(onVinculado = {
+                            cargando = true
+                            recargarTick++
+                        })
+                    }
+
                     // Próxima cita destacada o estado vacío
                     val proxima = proximas.firstOrNull()
                     if (proxima != null) {
@@ -364,6 +373,78 @@ private fun colorEstadoSesion(estado: String): Color = when (estado) {
     "En progreso" -> Blue
     "Reprogramada" -> Amber
     else -> Muted
+}
+
+/**
+ * Canjear el código que le dio su clínica: vínculo explícito cuenta↔ficha para
+ * pacientes sin email ni DNI registrados (el matching automático no los alcanza).
+ * Colapsado como link discreto; se expande al tocarlo.
+ */
+@Composable
+private fun TarjetaVincularCodigo(onVinculado: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var abierto by remember { mutableStateOf(false) }
+    var codigo by remember { mutableStateOf("") }
+    var canjeando by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    if (!abierto) {
+        Text(
+            "🔑 ¿Tu clínica te dio un código? Vincúlalo aquí",
+            color = Muted, fontSize = 13.sp,
+            modifier = Modifier.clickable { abierto = true }.padding(vertical = 2.dp),
+        )
+        return
+    }
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Blanco)
+            .border(1.dp, BorderColor, RoundedCornerShape(16.dp)).padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("🔑", fontSize = 20.sp)
+            Spacer(Modifier.width(8.dp))
+            Text("Código de tu clínica", color = TextoPrincipal, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            Text("✕", color = Muted, fontSize = 14.sp,
+                modifier = Modifier.clickable { abierto = false }.padding(4.dp))
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Ingresa el código de 6 dígitos que te dieron en recepción para conectar tus atenciones.",
+            color = Muted, fontSize = 12.sp,
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = codigo,
+                onValueChange = { v -> codigo = v.filter { it.isDigit() }.take(6); error = null },
+                placeholder = { Text("000000", fontSize = 15.sp) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            TextButton(
+                onClick = {
+                    if (codigo.length != 6 || canjeando) return@TextButton
+                    canjeando = true
+                    scope.launch {
+                        val err = runCatching { SaludRepo.vincularCodigo(codigo) }
+                            .getOrElse { "No se pudo vincular. Intenta de nuevo." }
+                        canjeando = false
+                        if (err == null) { abierto = false; onVinculado() } else error = err
+                    }
+                },
+                enabled = codigo.length == 6 && !canjeando,
+            ) {
+                Text(if (canjeando) "Vinculando…" else "Vincular", color = Navy, fontWeight = FontWeight.Bold)
+            }
+        }
+        error?.let {
+            Spacer(Modifier.height(6.dp))
+            Text("⚠ $it", color = RedDanger, fontSize = 12.sp)
+        }
+    }
 }
 
 /**

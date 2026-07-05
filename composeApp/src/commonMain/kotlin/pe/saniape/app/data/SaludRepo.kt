@@ -171,6 +171,24 @@ object SaludRepo {
         }.getOrNull() ?: "No se pudo guardar tu DNI"
     }
 
+    /**
+     * Canjea el código de 6 dígitos que le dio su clínica: vincula la cuenta con su
+     * ficha aunque no tenga email ni DNI registrados. Devuelve null si ok; si no,
+     * el mensaje de error del servidor (código usado, vencido, inválido...).
+     */
+    suspend fun vincularCodigo(codigo: String): String? {
+        val tk = token() ?: return "Sesión expirada"
+        val resp = http.post("${Supabase.SITE_URL}/api/paciente/vincular") {
+            header("Authorization", "Bearer $tk")
+            contentType(ContentType.Application.Json)
+            setBody("""{"codigo":"$codigo"}""")
+        }
+        if (resp.status == HttpStatusCode.OK) return null
+        return runCatching {
+            json.parseToJsonElement(resp.bodyAsText()).jsonObject.str("error")
+        }.getOrNull() ?: "No se pudo vincular"
+    }
+
     /** Citas del portal desde el API web (email O DNI — no solo email). */
     suspend fun misCitas(): Pair<List<CitaPortal>, List<CitaPortal>>? {
         val tk = token() ?: return null
