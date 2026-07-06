@@ -1,4 +1,13 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import java.util.Properties
+
+// Firma de release: lee las claves desde keystore.properties (ignorado por git).
+// Si el archivo no existe (ej. CI sin secretos), el release queda sin firmar y el
+// build normal/debug sigue funcionando.
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
+}
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -76,8 +85,20 @@ android {
         applicationId = "pe.saniape.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        // La TWA anterior (mismo packageId pe.saniape.app) llegó a versionCode 4;
+        // esta app nativa debe subir con un código MAYOR para actualizar la ficha.
+        versionCode = 5
+        versionName = "2.0.0"
+    }
+    signingConfigs {
+        create("release") {
+            if (keystorePropsFile.exists()) {
+                storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
     }
     packaging {
         resources {
@@ -96,6 +117,10 @@ android {
         getByName("release") {
             isMinifyEnabled = false
             buildConfigField("String", "SITE_URL", "\"https://www.saniape.com\"")
+            // Firmar el bundle solo si hay keystore.properties (si no, .aab sin firmar).
+            if (keystorePropsFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {
