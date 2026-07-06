@@ -19,6 +19,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -118,10 +119,22 @@ fun PantallaLogin(onLogueado: () -> Unit) {
                 }
             } else {
                 // ── Staff: usuario + contraseña ──
+                // colors explícito: el texto que se escribe DEBE ser oscuro y visible
+                // (el default de Material3 lo dejaba en un gris tenue casi invisible).
+                val coloresCampo = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = TextoPrincipal,
+                    unfocusedTextColor = TextoPrincipal,
+                    cursorColor = Navy,
+                    focusedBorderColor = Navy,
+                    unfocusedBorderColor = BorderColor,
+                    focusedContainerColor = Blanco,
+                    unfocusedContainerColor = Blanco,
+                )
                 OutlinedTextField(
                     value = email, onValueChange = { email = it },
                     placeholder = { Text("Correo", color = Muted) },
                     singleLine = true,
+                    colors = coloresCampo,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -130,6 +143,7 @@ fun PantallaLogin(onLogueado: () -> Unit) {
                     value = password, onValueChange = { password = it },
                     placeholder = { Text("Contraseña", color = Muted) },
                     singleLine = true,
+                    colors = coloresCampo,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                     modifier = Modifier.fillMaxWidth(),
