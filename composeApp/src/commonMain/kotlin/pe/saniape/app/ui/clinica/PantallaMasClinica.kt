@@ -47,12 +47,18 @@ fun PantallaMasClinica(
     puedeIrAPortal: Boolean,
     onIrAPortal: () -> Unit,
     onCerrarSesion: () -> Unit,
+    // Al cambiar de clínica activa: el PADRE recarga el contexto maestro (para que
+    // TODA la app —header, pacientes, agenda, permisos— refleje la nueva clínica,
+    // no solo una copia local de esta pantalla).
+    onCambioClinica: () -> Unit = {},
     onAbrirSesiones: (() -> Unit)? = null,
     onAbrirCaja: (() -> Unit)? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
-    var ctx by remember { mutableStateOf(contexto) }
+    // El contexto viene del padre; el ✓ y el header se leen de ÉL (no de una copia
+    // local que se quedaba desincronizada tras cambiar de clínica).
+    val ctx = contexto
     var cambiando by remember { mutableStateOf(false) }
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
@@ -155,14 +161,10 @@ fun PantallaMasClinica(
                                     cambiando = true
                                     scope.launch {
                                         val ok = ModoRepo.cambiar("clinica", cl.id)
-                                        if (ok) {
-                                            // Recargar contexto con la nueva clínica activa.
-                                            when (val r = StaffContextoRepo.cargar()) {
-                                                is StaffContextoRepo.Resultado.Ok -> ctx = r.contexto
-                                                else -> {}
-                                            }
-                                        }
                                         cambiando = false
+                                        // El padre recarga el contexto maestro → toda la
+                                        // app pasa a la nueva clínica (header, ✓, pacientes).
+                                        if (ok) onCambioClinica()
                                     }
                                 }
                                 .padding(horizontal = 14.dp, vertical = 14.dp),
