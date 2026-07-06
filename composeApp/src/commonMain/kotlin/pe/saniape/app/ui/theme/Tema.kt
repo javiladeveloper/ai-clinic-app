@@ -105,6 +105,11 @@ private val EsquemaM3 = lightColorScheme(
     onBackground = Paleta.Texto,
     surface = Paleta.Blanco,
     onSurface = Paleta.Texto,
+    // surfaceVariant/onSurfaceVariant = color del texto DENTRO de los TextField y de
+    // labels/iconos. Sin esto, Material3 usa un gris muy tenue → el texto que escribes
+    // en los inputs casi no se ve en tema claro.
+    surfaceVariant = Paleta.Blanco,
+    onSurfaceVariant = Paleta.Texto,
     outline = Paleta.Borde,
     error = Paleta.Red,
 )
@@ -117,6 +122,8 @@ private val EsquemaM3Oscuro = darkColorScheme(
     onBackground = Paleta.TextoClaro,
     surface = Paleta.SuperficieOscura,
     onSurface = Paleta.TextoClaro,
+    surfaceVariant = Paleta.SuperficieOscura,
+    onSurfaceVariant = Paleta.TextoClaro,
     outline = Paleta.BordeOscuro,
     error = Paleta.RedOsc,
 )
