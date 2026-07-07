@@ -47,6 +47,12 @@ fun IntroMarca(onFin: () -> Unit) {
 
     val sonar = recordarSonidoIntro()
 
+    // White-label: si el usuario ya entró antes como clínica, la intro muestra el LOGO y
+    // NOMBRE de su clínica (guardados en Preferencias) en vez de la marca Sania. Primera
+    // vez / paciente / tras cerrar sesión → Sania.
+    val logoClinica = remember { pe.saniape.app.data.Preferencias.logoClinica()?.takeIf { it.isNotBlank() } }
+    val nombreMarca = remember { pe.saniape.app.data.Preferencias.nombreClinica()?.takeIf { it.isNotBlank() } ?: "Sania" }
+
     LaunchedEffect(Unit) {
         sonar() // shimmer al arrancar
     }
@@ -87,15 +93,27 @@ fun IntroMarca(onFin: () -> Unit) {
             }
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                LogoSania(
-                    size = 80.dp,
-                    modifier = Modifier.alpha(textoAlpha.value).scale(textoScale.value),
-                )
+                if (logoClinica != null) {
+                    // Logo de la clínica (white-label). allowHardware(false) por si el destino
+                    // no soporta hardware bitmaps (mismo criterio que el resto de imágenes).
+                    coil3.compose.AsyncImage(
+                        model = logoClinica,
+                        contentDescription = nombreMarca,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                        modifier = Modifier.size(88.dp)
+                            .alpha(textoAlpha.value).scale(textoScale.value),
+                    )
+                } else {
+                    LogoSania(
+                        size = 80.dp,
+                        modifier = Modifier.alpha(textoAlpha.value).scale(textoScale.value),
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "Sania",
+                    nombreMarca,
                     color = Color.White,
-                    fontSize = 44.sp,
+                    fontSize = if (nombreMarca.length > 12) 30.sp else 44.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.alpha(textoAlpha.value).scale(textoScale.value),
                 )

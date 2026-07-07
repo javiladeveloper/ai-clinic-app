@@ -33,4 +33,22 @@ actual object Preferencias {
             apply()
         }
     }
+
+    actual fun logoClinica(): String? = prefs?.getString("logo_clinica", null)
+
+    actual fun setLogoClinica(url: String?) {
+        prefs?.edit()?.apply {
+            if (url == null) remove("logo_clinica") else putString("logo_clinica", url)
+            apply()
+        }
+    }
+
+    actual fun nombreClinica(): String? = prefs?.getString("nombre_clinica", null)
+
+    actual fun setNombreClinica(nombre: String?) {
+        prefs?.edit()?.apply {
+            if (nombre == null) remove("nombre_clinica") else putString("nombre_clinica", nombre)
+            apply()
+        }
+    }
 }

@@ -77,57 +77,18 @@ fun PantallaInicioStaff(
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            // Barra de marca
-            Row(
-                Modifier.fillMaxWidth().background(c.navyDark)
-                    .padding(horizontal = Sania.dim.xl, vertical = Sania.dim.lg),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // White-label: el LOGO DE LA CLÍNICA si lo configuró (como el sidebar web);
-                    // si no, la marca Sania.
-                    if (!ctx.logoUrl.isNullOrBlank()) {
-                        AsyncImage(
-                            model = ctx.logoUrl,
-                            contentDescription = ctx.clinicaNombre,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)),
-                        )
-                    } else {
-                        pe.saniape.app.ui.LogoSania(size = 24.dp)
+            // Barra de marca white-label compartida (logo de la clínica + nombre + campana).
+            HeaderMarcaClinica(
+                ctx = ctx,
+                noLeidas = noLeidas,
+                onCampana = {
+                    verNotifs = true
+                    if (noLeidas > 0) scope.launch {
+                        pe.saniape.app.data.staff.NotificacionesRepo.marcarTodasLeidas()
+                        notifs = notifs.map { it.copy(leida = true) }
                     }
-                    Spacer(Modifier.width(8.dp))
-                    Text(ctx.clinicaNombre, color = c.sobreNavy, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // 🔔 Campana con badge de no leídas → panel de notificaciones.
-                    Box(
-                        Modifier.clip(RoundedCornerShape(50)).clickable {
-                            verNotifs = true
-                            if (noLeidas > 0) scope.launch {
-                                pe.saniape.app.data.staff.NotificacionesRepo.marcarTodasLeidas()
-                                notifs = notifs.map { it.copy(leida = true) }
-                            }
-                        }.padding(6.dp),
-                    ) {
-                        Text("🔔", fontSize = 18.sp)
-                        if (noLeidas > 0) {
-                            Box(
-                                Modifier.align(Alignment.TopEnd)
-                                    .clip(RoundedCornerShape(50)).background(c.error)
-                                    .padding(horizontal = 4.dp, vertical = 1.dp),
-                            ) {
-                                Text(if (noLeidas > 9) "9+" else noLeidas.toString(),
-                                    color = androidx.compose.ui.graphics.Color.White,
-                                    fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                    Spacer(Modifier.width(6.dp))
-                    ctx.rol?.let { Text(it, color = c.sobreNavy.copy(alpha = 0.8f), fontSize = 12.sp) }
-                }
-            }
+                },
+            )
 
             if (cargando) {
                 Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator(color = c.navy) }

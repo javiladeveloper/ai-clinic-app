@@ -69,7 +69,13 @@ fun ClinicaConTabs(
     LaunchedEffect(intento) {
         cargando = true; error = null
         when (val r = StaffContextoRepo.cargar()) {
-            is StaffContextoRepo.Resultado.Ok -> ctx = r.contexto
+            is StaffContextoRepo.Resultado.Ok -> {
+                ctx = r.contexto
+                // Recordar la marca de la clínica activa para que la intro al REABRIR la app
+                // muestre su logo (no el de Sania) antes de cargar el contexto.
+                pe.saniape.app.data.Preferencias.setLogoClinica(r.contexto.logoUrl)
+                pe.saniape.app.data.Preferencias.setNombreClinica(r.contexto.clinicaNombre)
+            }
             is StaffContextoRepo.Resultado.NoEsClinica -> error = "Esta cuenta no es de una clínica."
             is StaffContextoRepo.Resultado.Suspendida -> error = "Tu clínica está suspendida. Contacta a Sania."
             is StaffContextoRepo.Resultado.Error -> error = r.mensaje

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -63,8 +64,11 @@ fun PantallaMasClinica(
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            Box(Modifier.fillMaxWidth().background(c.navyDark)
-                .padding(horizontal = Sania.dim.xl, vertical = Sania.dim.lg)) {
+            Row(Modifier.fillMaxWidth().background(c.navyDark)
+                .padding(horizontal = Sania.dim.xl, vertical = Sania.dim.lg),
+                verticalAlignment = Alignment.CenterVertically) {
+                LogoMarcaChica(ctx)
+                Spacer(Modifier.width(10.dp))
                 Text("Más", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
             }
 

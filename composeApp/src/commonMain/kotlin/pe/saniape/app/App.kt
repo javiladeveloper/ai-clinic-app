@@ -94,13 +94,21 @@ fun App() {
                 logueado == true && modo == "clinica" -> ClinicaConTabs(
                     puedeIrAPortal = tienePortal,
                     onIrAPortal = { irA("paciente") },
-                    onCerrarSesion = { scope.launch { Supabase.client.auth.signOut() } },
+                    onCerrarSesion = { scope.launch {
+                        // Olvidar la marca de la clínica al salir (la próxima intro vuelve a Sania).
+                        Preferencias.setLogoClinica(null); Preferencias.setNombreClinica(null)
+                        Supabase.client.auth.signOut()
+                    } },
                 )
                 logueado == true && modo == "paciente" -> PortalConTabs(
                     nombre = nombre,
                     puedeIrAClinica = tieneClinica,
                     onIrAClinica = { irA("clinica") },
-                    onCerrarSesion = { scope.launch { Supabase.client.auth.signOut() } },
+                    onCerrarSesion = { scope.launch {
+                        // Olvidar la marca de la clínica al salir (la próxima intro vuelve a Sania).
+                        Preferencias.setLogoClinica(null); Preferencias.setNombreClinica(null)
+                        Supabase.client.auth.signOut()
+                    } },
                 )
                 else -> { /* esperando estado de sesión tras la intro */ }
             }

@@ -65,6 +65,8 @@ fun PantallaPacientes(ctx: ContextoStaff, onAbrirFicha: (PacienteStaff) -> Unit)
                     .padding(horizontal = Sania.dim.xl, vertical = Sania.dim.lg),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                pe.saniape.app.ui.clinica.LogoMarcaChica(ctx)
+                Spacer(Modifier.width(10.dp))
                 Text("Pacientes", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f))
                 if (ctx.puede("pacientes")) {
