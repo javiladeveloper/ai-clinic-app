@@ -22,6 +22,10 @@
 	<string>1</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Solo usa HTTPS/TLS estándar → exento de cifrado no-estándar. Evita la
+	     pregunta de "export compliance" en cada subida a TestFlight/App Store. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<!-- Google Sign-In (portal del paciente). GIDClientID = OAuth Client ID tipo iOS;
 	     GIDServerClientID = Web Client ID que valida Supabase (el mismo de Android).
 	     El URL scheme (REVERSED_CLIENT_ID) va en CFBundleURLTypes, más abajo. -->
