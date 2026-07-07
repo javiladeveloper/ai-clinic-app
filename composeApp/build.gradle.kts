@@ -83,7 +83,9 @@ kotlin {
             implementation(libs.supabase.postgrest)
             implementation(libs.supabase.realtime)
             implementation(libs.supabase.compose.auth)
-            implementation(libs.ktor.client.android)
+            // Solo el core común de Ktor; el engine lo pone cada plataforma
+            // (Android: OkHttp en androidMain — iOS: Darwin en iosMain).
+            implementation(libs.ktor.client.core)
 
             // Coil 3: carga de imágenes remotas (fotos evolutivas) con motor de red ktor
             implementation(libs.coil.compose)

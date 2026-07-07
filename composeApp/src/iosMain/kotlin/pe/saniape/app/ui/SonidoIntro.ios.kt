@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.get
 import kotlinx.cinterop.usePinned
 import platform.AVFAudio.AVAudioEngine
 import platform.AVFAudio.AVAudioFormat
