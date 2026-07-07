@@ -16,10 +16,12 @@ local.properties
 .DS_Store
 Thumbs.db
 
-# Xcode (archivos de usuario/estado local — NO commitear)
+# Xcode (archivos de usuario/estado local — NO commitear).
+# Se ignora solo el estado de usuario; Package.resolved (versiones SPM) SÍ se commitea.
 xcuserdata/
 *.xcuserstate
-iosApp/iosApp.xcodeproj/project.xcworkspace/
+iosApp/iosApp.xcodeproj/project.xcworkspace/xcuserdata/
+iosApp/iosApp.xcodeproj/xcuserdata/
 
 # Keystore de firma (NO commitear)
 *.jks

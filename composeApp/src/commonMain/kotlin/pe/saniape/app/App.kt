@@ -66,8 +66,12 @@ fun App() {
                         // si no es staff, ClinicaConTabs muestra "no es una clínica".
                         val guardado = Preferencias.modoActivo()
                         modo = when {
-                            guardado == "clinica" -> "clinica"   // entró por la puerta de clínica
-                            guardado == "paciente" && tienePortal -> "paciente"
+                            // La PUERTA elegida manda, simétrico para ambos lados: si entró por
+                            // clínica → clínica; si entró por Google (paciente) → paciente, aunque
+                            // app_metadata no tenga aún el flag tienePortal (p.ej. alta nueva por
+                            // Google, o cuenta que también es staff). El servidor valida de verdad.
+                            guardado == "clinica" -> "clinica"
+                            guardado == "paciente" -> "paciente"
                             tieneClinica -> "clinica"
                             else -> "paciente"
                         }

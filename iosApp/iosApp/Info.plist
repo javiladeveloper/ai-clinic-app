@@ -22,6 +22,22 @@
 	<string>1</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Google Sign-In (portal del paciente). GIDClientID = OAuth Client ID tipo iOS;
+	     GIDServerClientID = Web Client ID que valida Supabase (el mismo de Android).
+	     El URL scheme (REVERSED_CLIENT_ID) va en CFBundleURLTypes, más abajo. -->
+	<key>GIDClientID</key>
+	<string>942581341329-s46d5bonqtek5curcqjuj2rg51fpv639.apps.googleusercontent.com</string>
+	<key>GIDServerClientID</key>
+	<string>942581341329-7qfpdj6fsol2bkkhj2movknju4tets1q.apps.googleusercontent.com</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.942581341329-s46d5bonqtek5curcqjuj2rg51fpv639</string>
+			</array>
+		</dict>
+	</array>
 	<!-- ATS: permite HTTP plano SOLO a recursos locales (localhost/loopback), para
 	     el backend Next.js local en debug (http://localhost:3000). Producción usa
 	     https://www.saniape.com, que no se ve afectado. -->
