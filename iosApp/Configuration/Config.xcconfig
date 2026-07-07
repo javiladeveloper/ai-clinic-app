@@ -1,0 +1,5 @@
+// Configuración compartida del target iosApp.
+// El bundle id debe coincidir con el que registres en Apple Developer / App Store Connect.
+TEAM_ID=
+BUNDLE_ID=pe.saniape.app
+APP_NAME=Sania

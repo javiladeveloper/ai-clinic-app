@@ -25,3 +25,11 @@ Thumbs.db
 
 # Firma de release (claves reales, NUNCA al repo)
 keystore.properties
+
+# Claves y ZIPs de firma (nunca al repo)
+*.jks
+output*.zip
+
+# Herramientas/artefactos de firma de Play Store (nunca al repo)
+pepk.jar
+upload_certificate.pem

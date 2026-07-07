@@ -1,4 +1,5 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.jetbrains.kotlin.gradle.plugin.mpp.Framework
 import java.util.Properties
 
 // Firma de release: lee las claves desde keystore.properties (ignorado por git).
@@ -25,6 +26,20 @@ kotlin {
                     jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
                 }
             }
+        }
+    }
+
+    // Targets iOS: iPhone real (arm64), simulador en Mac Intel (x64) y simulador
+    // en Mac con Apple Silicon (simulatorArm64). Los tres empaquetan un mismo
+    // Framework llamado "ComposeApp" que el proyecto Xcode (iosApp) enlaza.
+    listOf(
+        iosX64(),
+        iosArm64(),
+        iosSimulatorArm64(),
+    ).forEach { iosTarget ->
+        iosTarget.binaries.framework {
+            baseName = "ComposeApp"
+            isStatic = true
         }
     }
 
@@ -73,6 +88,10 @@ kotlin {
             // Coil 3: carga de imágenes remotas (fotos evolutivas) con motor de red ktor
             implementation(libs.coil.compose)
             implementation(libs.coil.network.ktor)
+        }
+        iosMain.dependencies {
+            // Ktor con engine Darwin (NSURLSession) — el que usa Supabase en iOS.
+            implementation(libs.ktor.client.darwin)
         }
     }
 }
