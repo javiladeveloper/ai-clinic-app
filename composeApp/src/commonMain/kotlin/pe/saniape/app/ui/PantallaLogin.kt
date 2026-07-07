@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,6 +57,7 @@ fun PantallaLogin(onLogueado: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var verPassword by remember { mutableStateOf(false) }   // ojito mostrar/ocultar
 
     Surface(color = Sand, modifier = Modifier.fillMaxSize()) {
         Column(
@@ -144,7 +146,17 @@ fun PantallaLogin(onLogueado: () -> Unit) {
                     placeholder = { Text("Contraseña", color = Muted) },
                     singleLine = true,
                     colors = coloresCampo,
-                    visualTransformation = PasswordVisualTransformation(),
+                    // Ojito para ver/ocultar la contraseña (evita errores al tipear).
+                    visualTransformation = if (verPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        Text(
+                            text = if (verPassword) "🙈" else "👁",
+                            fontSize = 18.sp,
+                            modifier = Modifier
+                                .clickable { verPassword = !verPassword }
+                                .padding(horizontal = 12.dp),
+                        )
+                    },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                     modifier = Modifier.fillMaxWidth(),
                 )
