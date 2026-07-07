@@ -21,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -94,15 +95,22 @@ fun IntroMarca(onFin: () -> Unit) {
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 if (logoClinica != null) {
-                    // Logo de la clínica (white-label). allowHardware(false) por si el destino
-                    // no soporta hardware bitmaps (mismo criterio que el resto de imágenes).
-                    coil3.compose.AsyncImage(
-                        model = logoClinica,
-                        contentDescription = nombreMarca,
-                        contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-                        modifier = Modifier.size(88.dp)
-                            .alpha(textoAlpha.value).scale(textoScale.value),
-                    )
+                    // Logo de la clínica (white-label) sobre un chip blanco redondeado para que
+                    // se vea nítido sobre el fondo navy (aunque el logo sea oscuro/transparente).
+                    Box(
+                        Modifier.size(104.dp)
+                            .alpha(textoAlpha.value).scale(textoScale.value)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
+                            .background(Color.White),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        coil3.compose.AsyncImage(
+                            model = logoClinica,
+                            contentDescription = nombreMarca,
+                            contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                            modifier = Modifier.size(80.dp),
+                        )
+                    }
                 } else {
                     LogoSania(
                         size = 80.dp,

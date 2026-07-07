@@ -51,6 +51,9 @@ kotlin {
             implementation(libs.androidx.browser)
             implementation(libs.kotlinx.coroutines.android)
             implementation(libs.ktor.client.okhttp)
+            // Engine Ktor de Android (Supabase lo usa en Android). Es platform-specific:
+            // va aquí, NO en commonMain, porque no tiene variante iOS (rompía el sync KMP).
+            implementation(libs.ktor.client.android)
             // Login Google nativo
             implementation(libs.androidx.credentials)
             implementation(libs.androidx.credentials.play.services)

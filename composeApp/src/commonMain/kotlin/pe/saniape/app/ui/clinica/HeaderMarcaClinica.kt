@@ -65,17 +65,8 @@ fun HeaderMarcaClinica(
             Modifier.clip(RoundedCornerShape(8.dp)).clickable { onCambiarClinica() }.padding(4.dp)
         } else Modifier
         Row(verticalAlignment = Alignment.CenterVertically, modifier = marcaMod) {
-            if (!ctx.logoUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = ctx.logoUrl,
-                    contentDescription = ctx.clinicaNombre,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)),
-                )
-            } else {
-                pe.saniape.app.ui.LogoSania(size = 24.dp)
-            }
-            Spacer(Modifier.width(8.dp))
+            LogoMarcaChica(ctx, tam = LOGO_MARCA_TAM)
+            Spacer(Modifier.width(10.dp))
             Text(ctx.clinicaNombre, color = c.sobreNavy, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             if (multiClinica && onCambiarClinica != null) {
                 Spacer(Modifier.width(4.dp))
@@ -111,21 +102,33 @@ fun HeaderMarcaClinica(
     }
 }
 
+/** Tamaño del chip del logo de marca en las barras superiores (uniforme en toda la app). */
+const val LOGO_MARCA_TAM = 44
+
 /**
- * Logo de marca CHICO (solo el ícono) para las barras de pantallas que ya tienen su propio
- * título (Agenda, Pacientes, Más): el logo de la clínica si lo configuró, si no la marca Sania.
- * Se pinta a la izquierda del título para que TODA la app se sienta de la clínica.
+ * Logo de marca (el ícono) para las barras de las pantallas de clínica: el logo de la
+ * clínica si lo configuró, si no la marca Sania. Se pinta a la izquierda del título para
+ * que TODA la app se sienta de la clínica. El logo va sobre un chip blanco redondeado para
+ * que se vea nítido aunque sea transparente/oscuro (como el avatar del sidebar web).
  */
 @Composable
-fun LogoMarcaChica(ctx: ContextoStaff, tam: Int = 24) {
+fun LogoMarcaChica(ctx: ContextoStaff, tam: Int = LOGO_MARCA_TAM) {
     if (!ctx.logoUrl.isNullOrBlank()) {
-        AsyncImage(
-            model = ctx.logoUrl,
-            contentDescription = ctx.clinicaNombre,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.size(tam.dp).clip(RoundedCornerShape(6.dp)),
-        )
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier.size(tam.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color.White)
+                .padding(4.dp),   // margen mínimo: el logo casi llena el cuadro blanco
+            contentAlignment = Alignment.Center,
+        ) {
+            AsyncImage(
+                model = ctx.logoUrl,
+                contentDescription = ctx.clinicaNombre,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size((tam - 8).dp),
+            )
+        }
     } else {
-        pe.saniape.app.ui.LogoSania(size = (tam - 4).dp)
+        pe.saniape.app.ui.LogoSania(size = (tam - 8).dp)
     }
 }
