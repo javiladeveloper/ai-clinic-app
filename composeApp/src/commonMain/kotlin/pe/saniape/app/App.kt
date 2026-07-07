@@ -57,14 +57,23 @@ fun App() {
                         val tp = meta?.get("tienePortal")?.jsonPrimitive?.booleanOrNull
                         tieneClinica = tc ?: (tipo != null && tipo != "paciente")
                         tienePortal = tp ?: (tipo == "paciente")
-                        // Modo: el guardado si es válido para sus roles; si no, por defecto.
+
+                        // La PUERTA por la que entró manda: si el login fue por "clínicas"
+                        // (usuario+contraseña), respetamos ese modo aunque app_metadata esté
+                        // vacío. Muchas cuentas de staff (creadas sin pasar por el callback
+                        // de Google) no tienen los flags — sin esto caían al portal de
+                        // paciente. La validación real la hace el servidor (RLS + /contexto);
+                        // si no es staff, ClinicaConTabs muestra "no es una clínica".
                         val guardado = Preferencias.modoActivo()
                         modo = when {
-                            guardado == "clinica" && tieneClinica -> "clinica"
+                            guardado == "clinica" -> "clinica"   // entró por la puerta de clínica
                             guardado == "paciente" && tienePortal -> "paciente"
                             tieneClinica -> "clinica"
                             else -> "paciente"
                         }
+                        // Coherencia: si la puerta fue de clínica, tratamos que tiene clínica
+                        // (el servidor decide de verdad; esto solo evita el rebote al portal).
+                        if (guardado == "clinica") tieneClinica = true
                         logueado = true
                     }
                     is SessionStatus.NotAuthenticated -> { logueado = false; modo = null }
