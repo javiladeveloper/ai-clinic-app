@@ -16,6 +16,11 @@ local.properties
 .DS_Store
 Thumbs.db
 
+# Xcode (archivos de usuario/estado local — NO commitear)
+xcuserdata/
+*.xcuserstate
+iosApp/iosApp.xcodeproj/project.xcworkspace/
+
 # Keystore de firma (NO commitear)
 *.jks
 *.keystore

@@ -22,6 +22,18 @@
 	<string>1</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- ATS: permite HTTP plano SOLO a recursos locales (localhost/loopback), para
+	     el backend Next.js local en debug (http://localhost:3000). Producción usa
+	     https://www.saniape.com, que no se ve afectado. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<!-- Compose Multiplatform lo exige: permite refresco alto (120Hz ProMotion).
+	     Sin esta clave, PlistSanityCheck lanza IllegalStateException al renderizar. -->
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
