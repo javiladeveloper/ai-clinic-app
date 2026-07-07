@@ -23,6 +23,40 @@ parecido posible al de la web**, no una versión recortada.
 
 ---
 
+## 🖥️ PRIMERA VEZ EN LA MAC — instalar antes de nada
+
+En la Mac (todavía sin herramientas). Orden:
+
+1. **Xcode** — App Store → buscar "Xcode" → instalar (~15 GB, tarda). Luego:
+   ```sh
+   sudo xcodebuild -license accept
+   xcode-select --install     # Command Line Tools (a veces ya vienen con Xcode)
+   ```
+2. **Homebrew** (gestor de paquetes de macOS):
+   ```sh
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+   ```
+3. **JDK 17** (Gradle lo necesita):
+   ```sh
+   brew install openjdk@17
+   sudo ln -sfn $(brew --prefix)/opt/openjdk@17/libexec/openjdk.jdk \
+     /Library/Java/JavaVirtualMachines/openjdk-17.jdk
+   ```
+4. **(Opcional) Android Studio** — solo si quieres editar Kotlin cómodo. Para iOS NO
+   es imprescindible: basta Xcode + el `./gradlew` del repo.
+5. **Clonar el repo:**
+   ```sh
+   git clone git@github.com:javiladeveloper/ai-clinic-app.git
+   cd ai-clinic-app        # branch master (ya es el default)
+   ```
+   > La primera `./gradlew` descarga el toolchain de Kotlin/Native para Apple
+   > (varios cientos de MB, solo la primera vez).
+
+**Cuenta Apple Developer:** NO hace falta para el simulador (Fase 1). Solo para
+iPhone físico + App Store (Fase 3).
+
+---
+
 ## 🍎 iOS — DÓNDE NOS QUEDAMOS (2026-07-07)
 
 Se agregó la plataforma **iOS** a la app (antes era Android-only). **Todo el andamiaje
