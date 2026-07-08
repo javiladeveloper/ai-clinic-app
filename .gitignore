@@ -40,3 +40,6 @@ output*.zip
 # Herramientas/artefactos de firma de Play Store (nunca al repo)
 pepk.jar
 upload_certificate.pem
+
+# Artefactos de build de Kotlin/Native (nunca al repo)
+.kotlin/
