@@ -137,8 +137,8 @@ fun ClinicaConTabs(
             NavigationBar(containerColor = c.superficie) {
                 tabs.forEach { t ->
                     NavigationBarItem(
-                        selected = tab == t && !verSesiones,
-                        onClick = { verSesiones = false; tab = t },
+                        selected = tab == t && !verSesiones && !verCaja,
+                        onClick = { verSesiones = false; verCaja = false; tab = t },
                         icon = { Icon(t.icono, contentDescription = t.titulo) },
                         label = { Text(t.titulo, fontSize = 11.sp) },
                         colors = NavigationBarItemDefaults.colors(
