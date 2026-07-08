@@ -2,8 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>es</string>
+	<key>CFBundleDisplayName</key>
+	<string>Sania</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -12,27 +16,10 @@
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>Sania</string>
-	<key>CFBundleDisplayName</key>
-	<string>Sania</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
 	<string>2.0.0</string>
-	<key>CFBundleVersion</key>
-	<string>1</string>
-	<key>LSRequiresIPhoneOS</key>
-	<true/>
-	<!-- Solo usa HTTPS/TLS estándar → exento de cifrado no-estándar. Evita la
-	     pregunta de "export compliance" en cada subida a TestFlight/App Store. -->
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
-	<!-- Google Sign-In (portal del paciente). GIDClientID = OAuth Client ID tipo iOS;
-	     GIDServerClientID = Web Client ID que valida Supabase (el mismo de Android).
-	     El URL scheme (REVERSED_CLIENT_ID) va en CFBundleURLTypes, más abajo. -->
-	<key>GIDClientID</key>
-	<string>942581341329-s46d5bonqtek5curcqjuj2rg51fpv639.apps.googleusercontent.com</string>
-	<key>GIDServerClientID</key>
-	<string>942581341329-7qfpdj6fsol2bkkhj2movknju4tets1q.apps.googleusercontent.com</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -42,18 +29,27 @@
 			</array>
 		</dict>
 	</array>
-	<!-- ATS: permite HTTP plano SOLO a recursos locales (localhost/loopback), para
-	     el backend Next.js local en debug (http://localhost:3000). Producción usa
-	     https://www.saniape.com, que no se ve afectado. -->
+	<key>CFBundleVersion</key>
+	<string>2</string>
+	<key>GIDClientID</key>
+	<string>942581341329-s46d5bonqtek5curcqjuj2rg51fpv639.apps.googleusercontent.com</string>
+	<key>GIDServerClientID</key>
+	<string>942581341329-7qfpdj6fsol2bkkhj2movknju4tets1q.apps.googleusercontent.com</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<!-- Compose Multiplatform lo exige: permite refresco alto (120Hz ProMotion).
-	     Sin esta clave, PlistSanityCheck lanza IllegalStateException al renderizar. -->
-	<key>CADisableMinimumFrameDurationOnPhone</key>
-	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Sania usa la cámara para tomar fotos clínicas (evolución del paciente).</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Sania usa tu ubicación para mostrarte clínicas cercanas.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Sania accede a tus fotos para adjuntar imágenes o documentos clínicos.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -72,13 +68,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<!-- Descripciones de permisos (para Fase 2: cámara y ubicación). Apple exige
-	     el texto aunque la función aún no esté cableada; dejarlas listas evita rechazos. -->
-	<key>NSCameraUsageDescription</key>
-	<string>Sania usa la cámara para tomar fotos clínicas (evolución del paciente).</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Sania accede a tus fotos para adjuntar imágenes o documentos clínicos.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Sania usa tu ubicación para mostrarte clínicas cercanas.</string>
 </dict>
 </plist>
