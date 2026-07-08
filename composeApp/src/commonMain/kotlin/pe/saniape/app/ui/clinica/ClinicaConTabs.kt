@@ -137,7 +137,10 @@ fun ClinicaConTabs(
             NavigationBar(containerColor = c.superficie) {
                 tabs.forEach { t ->
                     NavigationBarItem(
+                        // Un tab está "activo" solo si NO hay un overlay (Sesiones/Caja) encima.
                         selected = tab == t && !verSesiones && !verCaja,
+                        // Al tocar un tab hay que CERRAR los overlays sin tab propio; si no,
+                        // Caja/Sesiones quedaba tapando el contenido y no redirigía (bug conocido).
                         onClick = { verSesiones = false; verCaja = false; tab = t },
                         icon = { Icon(t.icono, contentDescription = t.titulo) },
                         label = { Text(t.titulo, fontSize = 11.sp) },
