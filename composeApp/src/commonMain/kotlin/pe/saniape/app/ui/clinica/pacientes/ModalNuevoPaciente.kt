@@ -98,7 +98,8 @@ fun ModalNuevoPaciente(
                     edad = edad.toIntOrNull(), diagnostico = motivo.trim().ifBlank { null },
                 )
                 guardando = false
-                if (creado != null) onCreado(creado) else error = "No se pudo crear. Revisa tu conexión."
+                if (creado != null) { pe.saniape.app.ui.Toaster.exito("Paciente registrado"); onCreado(creado) }
+                else error = "No se pudo crear. Revisa tu conexión."
             }
         },
     ) {

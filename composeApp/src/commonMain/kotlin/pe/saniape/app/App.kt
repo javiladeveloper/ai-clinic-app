@@ -1,7 +1,9 @@
 package pe.saniape.app
 
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -92,6 +94,7 @@ fun App() {
         }
 
         Surface(color = Sand) {
+          androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
             when {
                 !introLista -> IntroMarca(onFin = { introLista = true })
                 logueado == false -> PantallaLogin(onLogueado = { logueado = true })
@@ -116,6 +119,9 @@ fun App() {
                 )
                 else -> { /* esperando estado de sesión tras la intro */ }
             }
+            // Toast global (creado/guardado/error) sobre cualquier pantalla, salvo la intro.
+            if (introLista) pe.saniape.app.ui.ToastHost()
+          }
         }
     }
 }

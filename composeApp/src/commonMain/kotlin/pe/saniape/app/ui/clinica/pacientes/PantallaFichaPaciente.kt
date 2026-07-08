@@ -422,7 +422,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             onGuardar = { nuevo ->
                 creandoTratamiento = false
                 scope.launch {
-                    PacientesRepo.crearTratamiento(
+                    val ok = PacientesRepo.crearTratamiento(
                         pacienteId = paciente.id, procedimientoId = nuevo.procedimientoId,
                         terapeutaId = nuevo.terapeutaId, modalidad = nuevo.modalidad,
                         totalSesiones = nuevo.totalSesiones, precioPaquete = nuevo.precioPaquete,
@@ -432,6 +432,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         cantidadUnidades = nuevo.cantidadUnidades, precioUnitario = nuevo.precioUnitario,
                         tecnicasSugeridas = nuevo.tecnicasSugeridas,
                     )
+                    if (ok) pe.saniape.app.ui.Toaster.exito("Tratamiento creado") else pe.saniape.app.ui.Toaster.error("No se pudo crear el tratamiento")
                     // Si se usó una plantilla, contar el uso (ordena "más usadas primero").
                     nuevo.plantillaId?.let { PacientesRepo.contarUsoPlantilla(it) }
                     recargar()
@@ -450,10 +451,12 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             onGuardar = { fecha, hora, dur, terapeutaId, estado, costo, notas ->
                 crearSesionEn = null
                 scope.launch {
-                    PacientesRepo.crearSesion(
+                    val ok = PacientesRepo.crearSesion(
                         paciente.id, t.id, terapeutaId, fecha, hora,
                         duracion = dur, estado = estado, costo = costo, notas = notas,
                     )
+                    if (ok) pe.saniape.app.ui.Toaster.exito("Sesión registrada")
+                    else pe.saniape.app.ui.Toaster.error("No se pudo crear la sesión")
                     recargar()
                 }
             },
@@ -467,7 +470,11 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             onCancelar = { ampliarTratamiento = null },
             onConfirmar = { sesionesExtra, montoExtra, nota ->
                 ampliarTratamiento = null
-                scope.launch { PacientesRepo.ampliarTratamiento(t.id, sesionesExtra, montoExtra, nota); recargar() }
+                scope.launch {
+                    val ok = PacientesRepo.ampliarTratamiento(t.id, sesionesExtra, montoExtra, nota)
+                    if (ok) pe.saniape.app.ui.Toaster.exito("Tratamiento ampliado") else pe.saniape.app.ui.Toaster.error("No se pudo ampliar")
+                    recargar()
+                }
             },
         )
     }
@@ -480,8 +487,9 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             onGuardar = { totalSes, precioPaq, precioSes, precioAcord, diag, medic, proxControl, cantU, precioU ->
                 editarTratamiento = null
                 scope.launch {
-                    PacientesRepo.editarTratamiento(t.id, totalSes, precioPaq, precioSes, precioAcord,
+                    val ok = PacientesRepo.editarTratamiento(t.id, totalSes, precioPaq, precioSes, precioAcord,
                         diag, medic, proxControl, cantU, precioU)
+                    if (ok) pe.saniape.app.ui.Toaster.exito("Tratamiento actualizado") else pe.saniape.app.ui.Toaster.error("No se pudo guardar")
                     recargar()
                 }
             },

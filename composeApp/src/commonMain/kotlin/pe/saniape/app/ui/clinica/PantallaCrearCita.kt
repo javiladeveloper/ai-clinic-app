@@ -439,7 +439,8 @@ fun PantallaCrearCita(
                                 diagnostico = if (tipo == "Evaluación") diagnostico.ifBlank { null } else null,
                             )
                             guardando = false
-                            if (ok) onListo() else mensaje = "No se pudo agendar. Intenta de nuevo."
+                            if (ok) { pe.saniape.app.ui.Toaster.exito("Cita agendada"); onListo() }
+                            else mensaje = "No se pudo agendar. Intenta de nuevo."
                         }
                     },
                     enabled = !guardando,
