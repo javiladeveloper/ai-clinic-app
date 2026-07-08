@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import pe.saniape.app.auth.AuthStaff
+import pe.saniape.app.auth.recordarAppleAuthLauncher
 import pe.saniape.app.auth.recordarGoogleAuthLauncher
 
 /**
@@ -50,6 +51,7 @@ import pe.saniape.app.auth.recordarGoogleAuthLauncher
 @Composable
 fun PantallaLogin(onLogueado: () -> Unit) {
     val launcher = recordarGoogleAuthLauncher()
+    val appleLauncher = recordarAppleAuthLauncher()   // null en Android → sin botón Apple
     val scope = rememberCoroutineScope()
 
     var modoStaff by remember { mutableStateOf(false) }   // false = paciente (Google)
@@ -117,6 +119,29 @@ fun PantallaLogin(onLogueado: () -> Unit) {
                         Text("Conectando…", fontWeight = FontWeight.Bold)
                     } else {
                         Text("Continuar con Google", fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // ── Paciente: Apple (solo iOS; la App Store lo exige junto a Google) ──
+                if (appleLauncher != null) {
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            if (cargando) return@Button
+                            cargando = true; error = null
+                            pe.saniape.app.data.Preferencias.setModoActivo("paciente")
+                            appleLauncher.lanzar { exito, err ->
+                                cargando = false
+                                if (exito) onLogueado() else error = err
+                            }
+                        },
+                        enabled = !cargando,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Black, contentColor = Blanco),
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                    ) {
+                        //  renderiza el logo de Apple en dispositivos Apple.
+                        Text("  Continuar con Apple", fontWeight = FontWeight.Bold)
                     }
                 }
             } else {
