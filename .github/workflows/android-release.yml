@@ -53,8 +53,14 @@ jobs:
           chmod +x ./gradlew
           ./gradlew :composeApp:bundleRelease
 
-      - name: Instalar Fastlane
-        run: gem install fastlane --no-document
+      # Ruby + Bundler con caché. Instala Fastlane vía Gemfile sin problemas de
+      # permisos (a diferencia de 'gem install' global, que falla en el runner).
+      - name: Instalar Fastlane (Ruby + bundler)
+        # Pineado a SHA (seguridad): ruby/setup-ruby v1.207.0
+        uses: ruby/setup-ruby@354a1ad156761f5ee2b7b13fa8e09943a5e8d252
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
 
       # La cuenta de servicio de Google Play (JSON) se escribe a un archivo temporal.
       - name: Restaurar clave de Google Play
@@ -65,7 +71,7 @@ jobs:
       - name: Subir a Play Store
         env:
           PLAY_STORE_JSON_KEY_PATH: play-store-key.json
-        run: fastlane android ${{ github.event.inputs.track || 'internal' }}
+        run: bundle exec fastlane android ${{ github.event.inputs.track || 'internal' }}
 
       # Limpieza: borra los secretos materializados aunque el job falle.
       - name: Limpiar secretos del runner

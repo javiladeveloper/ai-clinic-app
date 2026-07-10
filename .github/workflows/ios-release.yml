@@ -23,8 +23,12 @@ jobs:
       - name: Seleccionar Xcode
         run: sudo xcode-select -s /Applications/Xcode_16.app || true
 
-      - name: Instalar Fastlane
-        run: gem install fastlane --no-document
+      - name: Instalar Fastlane (Ruby + bundler)
+        # Pineado a SHA (seguridad): ruby/setup-ruby v1.207.0
+        uses: ruby/setup-ruby@354a1ad156761f5ee2b7b13fa8e09943a5e8d252
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
 
       # Firma: instala el certificado de distribución + perfil desde secrets.
       # Alternativa recomendada a futuro: fastlane match (repo privado de certificados).
@@ -51,7 +55,7 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}   # .p8 en base64
-        run: fastlane ios beta
+        run: bundle exec fastlane ios beta
 
       - name: Limpiar secretos del runner
         if: always()
