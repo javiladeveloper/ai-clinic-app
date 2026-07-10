@@ -60,8 +60,8 @@ fun TarjetaCita(
             .clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
             .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)),
     ) {
-        // Barra de color por tipo (acento lateral más grueso, marca el tipo de un vistazo).
-        Box(Modifier.width(6.dp).fillMaxHeight().background(if (cerrada) c.borde else tipoColor.fg))
+        // Barra de color por tipo (acento lateral, marca el tipo de un vistazo).
+        Box(Modifier.width(Sania.dim.acento).fillMaxHeight().background(if (cerrada) c.borde else tipoColor.fg))
 
         Column(Modifier.fillMaxWidth().padding(Sania.dim.tarjeta)) {
             // Línea 1: CHIP de tipo prominente ····· badge de estado
@@ -89,7 +89,7 @@ fun TarjetaCita(
                     Spacer(Modifier.width(6.dp))
                     // WhatsApp con el RECORDATORIO de la cita prellenado (como el 📱 de la web):
                     // un toque y el mensaje sale listo para enviar.
-                    IconoContacto("💬", Color(0xFF25D366)) {
+                    IconoContacto("💬", pe.saniape.app.ui.theme.Paleta.WhatsApp) {
                         val n = tel.filter { ch -> ch.isDigit() }.let { if (it.length <= 9) "51$it" else it }
                         val nombre = cita.pacienteNombre?.trim()?.split(" ")?.firstOrNull() ?: ""
                         val msg = "Hola $nombre 👋 Te recordamos tu cita" +

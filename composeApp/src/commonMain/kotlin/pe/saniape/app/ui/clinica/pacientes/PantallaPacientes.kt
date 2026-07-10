@@ -137,11 +137,22 @@ fun PantallaPacientes(
                         }
                     }
                     vm.filtrados.isEmpty() -> item {
-                        Box(Modifier.fillMaxWidth().padding(Sania.dim.xxl), Alignment.Center) {
-                            Text(
-                                if (vm.pacientes.isEmpty()) "Aún no hay pacientes." else "No hay pacientes con esos filtros.",
-                                color = c.textoSuave, fontSize = Sania.txt.cuerpo,
-                            )
+                        Box(Modifier.fillMaxWidth().padding(Sania.dim.lg)) {
+                            if (vm.pacientes.isEmpty()) {
+                                pe.saniape.app.ui.clinica.EstadoVacio(
+                                    emoji = "👥",
+                                    titulo = "Aún no hay pacientes",
+                                    subtitulo = if (ctx.puede("pacientes")) "Registra el primero para empezar." else null,
+                                    textoAccion = if (ctx.puede("pacientes")) "+ Registrar paciente" else null,
+                                    onAccion = { nuevoAbierto = true },
+                                )
+                            } else {
+                                pe.saniape.app.ui.clinica.EstadoVacio(
+                                    emoji = "🔍",
+                                    titulo = "Sin resultados",
+                                    subtitulo = "No hay pacientes con esos filtros.",
+                                )
+                            }
                         }
                     }
                     else -> items(vm.filtrados, key = { it.id }) { p ->
@@ -234,13 +245,9 @@ private fun BarraProgreso(hechas: Int, total: Int) {
     val c = Sania.colors
     val frac = if (total > 0) (hechas.toFloat() / total).coerceIn(0f, 1f) else 0f
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            Modifier.weight(1f).height(5.dp).clip(RoundedCornerShape(3.dp)).background(c.chipBg),
-        ) {
-            Box(Modifier.fillMaxWidth(frac).height(5.dp).clip(RoundedCornerShape(3.dp)).background(c.ok))
-        }
-        Spacer(Modifier.width(6.dp))
-        Text("$hechas/$total", color = c.textoSuave, fontSize = 10.sp)
+        pe.saniape.app.ui.clinica.BarraProgreso(frac, modifier = Modifier.weight(1f))
+        Spacer(Modifier.width(Sania.dim.sm))
+        Text("$hechas/$total", color = c.textoSuave, fontSize = Sania.txt.mini)
     }
 }
 

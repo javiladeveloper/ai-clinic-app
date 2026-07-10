@@ -24,7 +24,9 @@ object Dimens {
 
     // Alturas de control
     val boton: Dp = 52.dp
-    val barraProgreso: Dp = 8.dp
+    val barraProgreso: Dp = 6.dp
+    // Grosor de la barra de acento lateral de las tarjetas (tipo/estado).
+    val acento: Dp = 5.dp
 }
 
 /** Radios de esquina. */

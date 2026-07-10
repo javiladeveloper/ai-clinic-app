@@ -43,6 +43,10 @@ internal object Paleta {
     val Teal = Color(0xFF0F766E)
     val TealBg = Color(0xFFCCFBF1)
 
+    // Verde de marca de WhatsApp (para el botón de contacto). Único color de una marca
+    // externa; vive aquí para no dejar Color(0x...) sueltos en las pantallas.
+    val WhatsApp = Color(0xFF25D366)
+
     // ── TEMA OSCURO (espeja el dark de la web: fondos navy profundos) ─
     val FondoOscuro = Color(0xFF0F1524)       // fondo de pantalla
     val SuperficieOscura = Color(0xFF1A2138)  // tarjetas

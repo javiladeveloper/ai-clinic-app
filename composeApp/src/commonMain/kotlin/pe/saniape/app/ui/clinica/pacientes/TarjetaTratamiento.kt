@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.pacientes
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
+import pe.saniape.app.ui.clinica.ChevronExpandible
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -125,9 +127,9 @@ fun TarjetaTratamiento(
             .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)),
     ) {
         // Barra de acento lateral (tipo de tratamiento)
-        Box(Modifier.width(5.dp).fillMaxHeight().background(if (cerrado) c.borde else acento))
+        Box(Modifier.width(Sania.dim.acento).fillMaxHeight().background(if (cerrado) c.borde else acento))
 
-      Column(Modifier.fillMaxWidth().padding(Sania.dim.tarjeta)) {
+      Column(Modifier.fillMaxWidth().padding(Sania.dim.tarjeta).animateContentSize()) {
         // Cabecera tocable (expande/colapsa). La barra de recorrido va aparte para que
         // tocar una bolita NO expanda la tarjeta (abre su nube de referencia).
         Column(Modifier.fillMaxWidth().clickable { expandido = !expandido }) {
@@ -150,7 +152,7 @@ fun TarjetaTratamiento(
                     Text(t.estado ?: "—", color = estado.fg, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.width(6.dp))
-                Text(if (expandido) "▴" else "▾", color = c.navy)
+                ChevronExpandible(expandido)
             }
 
             // CONSULTA (medicina/nutrición): diagnóstico + medicación + próximo control.
@@ -208,11 +210,10 @@ fun TarjetaTratamiento(
         // Resto de la zona-resumen, también tocable para expandir.
         Column(Modifier.fillMaxWidth().clickable { expandido = !expandido }) {
             if (!t.esConsulta && !t.esServicioUnico && t.totalSesiones > 0) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(Sania.dim.sm))
                 val frac = (t.sesionesCompletadas.toFloat() / t.totalSesiones).coerceIn(0f, 1f)
-                Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.chipBg)) {
-                    Box(Modifier.fillMaxWidth(frac).height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.ok))
-                }
+                // Progreso de SESIONES en navy (el verde se reserva a pago/completado).
+                pe.saniape.app.ui.clinica.BarraProgreso(frac, color = c.navy)
             }
             if (!expandido) {
                 Spacer(Modifier.height(8.dp))
@@ -568,7 +569,7 @@ private fun FilaSesion(
                 Text(ses.estado, color = estado.fg, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.width(6.dp))
-            Text(if (expandida) "▴" else "▾", color = c.textoSuave, fontSize = 12.sp)
+            ChevronExpandible(expandida)
         }
 
         // Detalle expandido (igual que la web): procedimientos, mejorías, etc.

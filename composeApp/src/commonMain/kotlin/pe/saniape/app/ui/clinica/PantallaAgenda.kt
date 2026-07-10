@@ -172,15 +172,23 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                         }
                     }
                     vm.citasFiltradas.isEmpty() -> item {
-                        Box(Modifier.fillMaxWidth().padding(Sania.dim.xxl), Alignment.Center) {
-                            Text(
-                                when {
-                                    vm.citas.isEmpty() && vm.verHistorial -> "No hay citas en el historial."
-                                    vm.citas.isEmpty() -> "No hay citas para este día."
-                                    else -> "No hay citas con esos filtros."
-                                },
-                                color = c.textoSuave, fontSize = Sania.txt.cuerpo,
-                            )
+                        Box(Modifier.fillMaxWidth().padding(Sania.dim.lg)) {
+                            when {
+                                vm.citas.isEmpty() && vm.verHistorial -> pe.saniape.app.ui.clinica.EstadoVacio(
+                                    emoji = "🗂", titulo = "Historial vacío",
+                                    subtitulo = "Aún no hay citas registradas.",
+                                )
+                                vm.citas.isEmpty() -> pe.saniape.app.ui.clinica.EstadoVacio(
+                                    emoji = "🌤", titulo = "Sin citas este día",
+                                    subtitulo = if (ctx.puede("agendar")) "Agenda la primera cita del día." else "No hay nada programado.",
+                                    textoAccion = if (ctx.puede("agendar")) "+ Nueva cita" else null,
+                                    onAccion = { creandoCita = true },
+                                )
+                                else -> pe.saniape.app.ui.clinica.EstadoVacio(
+                                    emoji = "🔍", titulo = "Sin resultados",
+                                    subtitulo = "No hay citas con esos filtros.",
+                                )
+                            }
                         }
                     }
                     else -> items(vm.citasFiltradas, key = { it.id }) { cita ->
