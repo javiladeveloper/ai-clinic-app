@@ -187,12 +187,20 @@ fun TarjetaTratamiento(
                 onRevertirServicio = {
                     if (accionando) return@BarraRecorrido
                     accionando = true
-                    scope.launch { PacientesRepo.revertirServicio(t.id); accionando = false; onCambioRealizado() }
+                    scope.launch {
+                        val ok = PacientesRepo.revertirServicio(t.id)
+                        if (ok) pe.saniape.app.ui.Toaster.exito("Servicio revertido") else pe.saniape.app.ui.Toaster.error("No se pudo revertir")
+                        accionando = false; onCambioRealizado()
+                    }
                 },
                 onDarAlta = {
                     if (accionando) return@BarraRecorrido
                     accionando = true
-                    scope.launch { PacientesRepo.darDeAlta(t.id); accionando = false; onCambioRealizado() }
+                    scope.launch {
+                        val ok = PacientesRepo.darDeAlta(t.id)
+                        if (ok) pe.saniape.app.ui.Toaster.exito("Tratamiento dado de alta") else pe.saniape.app.ui.Toaster.error("No se pudo dar de alta")
+                        accionando = false; onCambioRealizado()
+                    }
                 },
             )
         }
@@ -380,7 +388,11 @@ fun TarjetaTratamiento(
                         Spacer(Modifier.height(Sania.dim.sm))
                         BtnDarAlta(habilitado = !accionando) {
                             accionando = true
-                            scope.launch { PacientesRepo.darDeAlta(t.id); accionando = false; onCambioRealizado() }
+                            scope.launch {
+                                val ok = PacientesRepo.darDeAlta(t.id)
+                                if (ok) pe.saniape.app.ui.Toaster.exito("Tratamiento dado de alta") else pe.saniape.app.ui.Toaster.error("No se pudo dar de alta")
+                                accionando = false; onCambioRealizado()
+                            }
                         }
                     }
                 }
@@ -407,7 +419,12 @@ fun TarjetaTratamiento(
             cobrarSesion = null
             // La nota es SOLO la observación del cajero. El origen "Sesión #N" ya lo muestra
             // el chip (vía sesion_id), así que no se antepone para no duplicar.
-            scope.launch { PacientesRepo.cobrarSesion(t.id, ses.id, monto, metodo, obs?.trim()?.ifBlank { null }); recargarSesiones() }
+            scope.launch {
+                val ok = PacientesRepo.cobrarSesion(t.id, ses.id, monto, metodo, obs?.trim()?.ifBlank { null })
+                if (ok) pe.saniape.app.ui.Toaster.exito("Cobro registrado")
+                else pe.saniape.app.ui.Toaster.error("No se pudo cobrar. Verifica en caja antes de reintentar.")
+                recargarSesiones()
+            }
         })
     }
     borrarSesion?.let { ses ->
@@ -428,12 +445,18 @@ fun TarjetaTratamiento(
                 accionando = true
                 scope.launch {
                     // 1) Marca Completado + acumula la nota (server-side).
-                    PacientesRepo.registrarServicio(t.id, nota)
+                    val okServicio = PacientesRepo.registrarServicio(t.id, nota)
                     // 2) Aprender las técnicas usadas (se sugieren en futuras atenciones).
                     if (!nota.isNullOrBlank()) runCatching { pe.saniape.app.data.staff.TecnicasRepo.registrar(nota) }
                     // 3) Cobro opcional (pago + kardex + recálculo, server-side).
+                    var okCobro = true
                     if (cobrar && monto != null && monto > 0) {
-                        PacientesRepo.registrarPago(t.id, monto, metodo, notas = "Pago del servicio")
+                        okCobro = PacientesRepo.registrarPago(t.id, monto, metodo, notas = "Pago del servicio")
+                    }
+                    when {
+                        !okServicio -> pe.saniape.app.ui.Toaster.error("No se pudo registrar la atención")
+                        !okCobro -> pe.saniape.app.ui.Toaster.error("Atención registrada, pero el cobro falló. Revisa caja.")
+                        else -> pe.saniape.app.ui.Toaster.exito("Atención registrada")
                     }
                     accionando = false
                     cambioToken++

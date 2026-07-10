@@ -199,8 +199,15 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         if (accionando) return
         viewModelScope.launch {
             accionando = true
-            val ok = AgendaRepo.reprogramar(cita.id, fecha, hora)
+            // Pasa tipo/tratamiento/fecha previa para sincronizar la sesión vinculada.
+            val ok = AgendaRepo.reprogramar(
+                cita.id, fecha, hora,
+                tipo = cita.tipo, tratamientoId = cita.tratamientoId, fechaAntes = cita.fecha,
+            )
             recargarCitas()
+            recargarBanners()
+            if (ok) pe.saniape.app.ui.Toaster.exito("Cita reprogramada")
+            else pe.saniape.app.ui.Toaster.error("No se pudo reprogramar")
             accionando = false
             onFin(ok)
         }

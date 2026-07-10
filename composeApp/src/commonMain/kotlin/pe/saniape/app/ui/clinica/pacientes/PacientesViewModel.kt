@@ -18,6 +18,9 @@ import pe.saniape.app.data.staff.PacientesRepo
 class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
 
     var cargando by mutableStateOf(true); private set
+    // Distingue "falló la carga" (red/permiso) de "no hay pacientes" — así la UI ofrece
+    // reintentar en vez de mentir con "no hay pacientes".
+    var cargaFallo by mutableStateOf(false); private set
     var pacientes by mutableStateOf<List<PacienteStaff>>(emptyList()); private set
     var busqueda by mutableStateOf(""); private set
     var filtroEstado by mutableStateOf<String?>(null); private set
@@ -32,9 +35,11 @@ class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
 
     fun cargar() {
         viewModelScope.launch {
-            cargando = true
+            cargando = true; cargaFallo = false
             // Scope: si es profesional vinculado, solo sus pacientes.
-            pacientes = runCatching { PacientesRepo.listar(ctx.miTerapeutaId) }.getOrDefault(emptyList())
+            runCatching { PacientesRepo.listar(ctx.miTerapeutaId) }
+                .onSuccess { pacientes = it }
+                .onFailure { cargaFallo = true }
             cargando = false
         }
     }

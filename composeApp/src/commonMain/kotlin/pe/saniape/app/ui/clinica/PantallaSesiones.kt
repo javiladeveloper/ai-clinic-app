@@ -79,6 +79,8 @@ fun PantallaSesiones(
     var sesiones by remember { mutableStateOf<List<SesionGlobal>>(emptyList()) }
     var profesionales by remember { mutableStateOf<List<RefNombre>>(emptyList()) }
     var intento by remember { mutableStateOf(0) }
+    // Anti-doble-tap: mientras una acción de sesión corre, no se dispara otra.
+    var accionando by remember { mutableStateOf(false) }
 
     // Filtros
     var busqueda by remember { mutableStateOf("") }
@@ -99,6 +101,19 @@ fun PantallaSesiones(
             val r = runCatching { SesionesRepo.listar(soloTerapeutaId = ctx.miTerapeutaId) }
             r.onSuccess { sesiones = it }.onFailure { cargaFallo = true }
             cargando = false
+        }
+    }
+
+    // Ejecuta una acción de sesión con anti-doble-tap + toast de éxito/error + recarga.
+    fun accion(exito: String, bloque: suspend () -> Boolean) {
+        if (accionando) return
+        accionando = true
+        scope.launch {
+            val ok = runCatching { bloque() }.getOrDefault(false)
+            if (ok) pe.saniape.app.ui.Toaster.exito(exito)
+            else pe.saniape.app.ui.Toaster.error("No se pudo completar la acción")
+            accionando = false
+            recargar()
         }
     }
 
@@ -225,21 +240,15 @@ fun PantallaSesiones(
                             s = s, ctx = ctx,
                             onAbrirPaciente = onAbrirPaciente,
                             onCompletar = {
-                                scope.launch {
-                                    PacientesRepo.cambiarEstadoSesion(s.id, "Completada"); recargar()
-                                }
+                                accion("Sesión completada") { PacientesRepo.cambiarEstadoSesion(s.id, "Completada") }
                             },
                             onEstado = { est -> cambioEstado = s to est },
                             onReasignar = { reasignar = s },
                             onRevertir = {
-                                scope.launch {
-                                    PacientesRepo.cambiarEstadoSesion(s.id, "Planificada"); recargar()
-                                }
+                                accion("Sesión reabierta") { PacientesRepo.cambiarEstadoSesion(s.id, "Planificada") }
                             },
                             onReactivar = {
-                                scope.launch {
-                                    PacientesRepo.cambiarEstadoSesion(s.id, "Planificada", motivo = ""); recargar()
-                                }
+                                accion("Sesión reactivada") { PacientesRepo.cambiarEstadoSesion(s.id, "Planificada", motivo = "") }
                             },
                         )
                     }
@@ -254,10 +263,8 @@ fun PantallaSesiones(
             ses = ses, estado = est,
             onCancelar = { cambioEstado = null },
             onConfirmar = { motivo, fecha, hora ->
-                scope.launch {
-                    PacientesRepo.cambiarEstadoSesion(ses.id, est, motivo = motivo, fecha = fecha, hora = hora)
-                    cambioEstado = null; recargar()
-                }
+                cambioEstado = null
+                accion("Sesión actualizada") { PacientesRepo.cambiarEstadoSesion(ses.id, est, motivo = motivo, fecha = fecha, hora = hora) }
             },
         )
     }
@@ -268,9 +275,8 @@ fun PantallaSesiones(
             ses = ses, profesionales = profesionales,
             onCancelar = { reasignar = null },
             onConfirmar = { profId ->
-                scope.launch {
-                    PacientesRepo.reasignarSesion(ses.id, profId); reasignar = null; recargar()
-                }
+                reasignar = null
+                accion("Profesional reasignado") { PacientesRepo.reasignarSesion(ses.id, profId) }
             },
         )
     }

@@ -122,6 +122,20 @@ fun PantallaPacientes(
                             CircularProgressIndicator(color = c.navy)
                         }
                     }
+                    // Falló la carga (red/permiso): NO es lo mismo que "no hay pacientes".
+                    vm.cargaFallo -> item {
+                        Column(
+                            Modifier.fillMaxWidth().padding(Sania.dim.xxl),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text("No se pudo cargar la lista.", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                            Spacer(Modifier.height(Sania.dim.md))
+                            Box(
+                                Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
+                                    .clickable { vm.cargar() }.padding(horizontal = 20.dp, vertical = 10.dp),
+                            ) { Text("Reintentar", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
+                        }
+                    }
                     vm.filtrados.isEmpty() -> item {
                         Box(Modifier.fillMaxWidth().padding(Sania.dim.xxl), Alignment.Center) {
                             Text(

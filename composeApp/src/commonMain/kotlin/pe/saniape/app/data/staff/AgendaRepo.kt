@@ -142,11 +142,30 @@ object AgendaRepo {
         true
     } catch (_: Exception) { false }
 
-    /** Reprogramar (cambia fecha/hora). Sincroniza la sesión vinculada si es tipo Sesión. */
-    suspend fun reprogramar(citaId: String, fecha: String, hora: String): Boolean = try {
+    /**
+     * Reprogramar (cambia fecha/hora). Si la cita es tipo "Sesión", sincroniza también la
+     * fila de `sesiones` vinculada (misma fecha/hora), para que la ficha del paciente y la
+     * agenda no queden con fechas distintas para la misma sesión. La sesión se ubica por
+     * (tratamiento_id + fecha vieja), igual que la web (sesiones-acciones).
+     */
+    suspend fun reprogramar(
+        citaId: String, fecha: String, hora: String,
+        tipo: String? = null, tratamientoId: String? = null, fechaAntes: String? = null,
+    ): Boolean = try {
         Supabase.client.postgrest["citas"].update({
             set("fecha", fecha); set("hora", hora)
         }) { filter { eq("id", citaId) } }
+        // Sincronizar la sesión vinculada (solo tipo Sesión con tratamiento y fecha previa).
+        if (tipo == "Sesión" && tratamientoId != null && !fechaAntes.isNullOrBlank()) {
+            Supabase.client.postgrest["sesiones"].update({
+                set("fecha", fecha); set("hora", hora)
+            }) {
+                filter {
+                    eq("tratamiento_id", tratamientoId)
+                    eq("fecha", fechaAntes)
+                }
+            }
+        }
         true
     } catch (_: Exception) { false }
 

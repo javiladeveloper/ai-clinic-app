@@ -131,6 +131,9 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 } else {
                     pe.saniape.app.data.staff.SolicitudesRepo.registrarDocumento(paciente.id, archivo.nombre, path, tipo)
                 }
+                pe.saniape.app.ui.Toaster.exito("Documento subido")
+            } else {
+                pe.saniape.app.ui.Toaster.error("No se pudo subir el archivo")
             }
             subiendo = false
             recargar()
@@ -211,7 +214,9 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         modifier = Modifier.fillMaxWidth().clickable {
                             menuPaciente = false
                             scope.launch {
-                                PacientesRepo.cambiarEstadoPaciente(paciente.id, if (inactivo) "Nuevo" else "Inactivo")
+                                val ok = PacientesRepo.cambiarEstadoPaciente(paciente.id, if (inactivo) "Nuevo" else "Inactivo")
+                                if (ok) pe.saniape.app.ui.Toaster.exito(if (inactivo) "Paciente reactivado" else "Paciente dado de baja")
+                                else pe.saniape.app.ui.Toaster.error("No se pudo actualizar")
                                 recargar()
                             }
                         }.padding(horizontal = Sania.dim.xl, vertical = Sania.dim.md),
@@ -324,7 +329,11 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                             Text("✏", fontSize = 14.sp, modifier = Modifier.padding(horizontal = 6.dp)
                                 .clickable { notaRecModal = t.id to (t.notaRecepcion ?: "") })
                             Text("✕", fontSize = 14.sp, color = c.textoSuave, modifier = Modifier
-                                .clickable { scope.launch { PacientesRepo.guardarNotaRecepcion(t.id, null); recargar() } })
+                                .clickable { scope.launch {
+                                    val ok = PacientesRepo.guardarNotaRecepcion(t.id, null)
+                                    if (ok) pe.saniape.app.ui.Toaster.exito("Recordatorio borrado") else pe.saniape.app.ui.Toaster.error("No se pudo borrar")
+                                    recargar()
+                                } })
                         }
                     }
                 }
@@ -511,11 +520,12 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 registrarAtencion = null
                 scope.launch {
                     // Clínico + costo en el tratamiento; fecha/hora/notas en la cita (si hay).
-                    PacientesRepo.editarTratamiento(t.id, null, null, null, e.costo,
+                    val ok = PacientesRepo.editarTratamiento(t.id, null, null, null, e.costo,
                         e.diagnostico, e.medicacion, e.proximoControl)
                     citaConsulta?.let { ci ->
                         if (e.fecha.isNotBlank()) PacientesRepo.editarCitaHito(ci.id, e.fecha, e.hora, ci.notas)
                     }
+                    if (ok) pe.saniape.app.ui.Toaster.exito("Atención registrada") else pe.saniape.app.ui.Toaster.error("No se pudo guardar")
                     recargar()
                 }
             },
@@ -530,7 +540,9 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             onGuardar = { fecha, hora, notas ->
                 editarCitaHito = null
                 scope.launch {
-                    PacientesRepo.editarCitaHito(cita.id, fecha, hora, notas); recargar()
+                    val ok = PacientesRepo.editarCitaHito(cita.id, fecha, hora, notas)
+                    if (ok) pe.saniape.app.ui.Toaster.exito("Atención actualizada") else pe.saniape.app.ui.Toaster.error("No se pudo guardar")
+                    recargar()
                 }
             },
         )
@@ -547,9 +559,10 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             onGuardar = { desc, espDestinoId ->
                 derivarTrat = null
                 scope.launch {
-                    pe.saniape.app.data.staff.SolicitudesRepo.crearSolicitud(
+                    val ok = pe.saniape.app.data.staff.SolicitudesRepo.crearSolicitud(
                         paciente.id, "Derivacion", desc, ctx.miTerapeutaId, espDestinoId, tratamientoId = t.id,
                     )
+                    if (ok) pe.saniape.app.ui.Toaster.exito("Derivación registrada") else pe.saniape.app.ui.Toaster.error("No se pudo derivar")
                     recargar()
                 }
             },
@@ -564,7 +577,9 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             onGuardar = { diag, alergias, medic, antec ->
                 editarClinico = false
                 scope.launch {
-                    PacientesRepo.editarDatosClinicos(paciente.id, diag, alergias, medic, antec); recargar()
+                    val ok = PacientesRepo.editarDatosClinicos(paciente.id, diag, alergias, medic, antec)
+                    if (ok) pe.saniape.app.ui.Toaster.exito("Datos clínicos guardados") else pe.saniape.app.ui.Toaster.error("No se pudo guardar")
+                    recargar()
                 }
             },
         )
@@ -577,7 +592,11 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             onCancelar = { notaRecModal = null },
             onGuardar = { texto ->
                 notaRecModal = null
-                scope.launch { PacientesRepo.guardarNotaRecepcion(tratId, texto); recargar() }
+                scope.launch {
+                    val ok = PacientesRepo.guardarNotaRecepcion(tratId, texto)
+                    if (ok) pe.saniape.app.ui.Toaster.exito("Recordatorio guardado") else pe.saniape.app.ui.Toaster.error("No se pudo guardar")
+                    recargar()
+                }
             },
         )
     }
@@ -590,10 +609,11 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             onGuardar = { nombre, tel, ocup, edad, flag, diag, dni, email, pats, tipoPat ->
                 editandoPaciente = false
                 scope.launch {
-                    PacientesRepo.actualizarPaciente(
+                    val ok = PacientesRepo.actualizarPaciente(
                         paciente.id, nombre, tel, ocup, edad, flag, diag,
                         dni = dni, email = email, patologias = pats, tipoPatologia = tipoPat,
                         tocarExtra = true)
+                    if (ok) pe.saniape.app.ui.Toaster.exito("Paciente actualizado") else pe.saniape.app.ui.Toaster.error("No se pudo guardar")
                     recargar()
                 }
             },
@@ -609,12 +629,14 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             onConfirmar = { tecnicas, mejorias ->
                 completarSesion = null
                 scope.launch {
-                    PacientesRepo.cambiarEstadoSesion(
+                    val ok = PacientesRepo.cambiarEstadoSesion(
                         ses.id, "Completada",
                         notas = tecnicas,
                         // mejorías solo desde la sesión #2 ("" limpia, null = no tocar)
                         mejorias = if (ses.numero > 1) (mejorias ?: "") else null,
                     )
+                    if (ok) pe.saniape.app.ui.Toaster.exito("Sesión #${ses.numero} completada")
+                    else pe.saniape.app.ui.Toaster.error("No se pudo completar la sesión")
                     // Aprender las técnicas para sugerirlas la próxima vez (fire-and-forget).
                     tecnicas?.let { TecnicasRepo.registrar(it) }
                     recargar()

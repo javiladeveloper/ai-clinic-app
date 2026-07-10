@@ -82,7 +82,15 @@ fun App() {
                         if (guardado == "clinica") tieneClinica = true
                         logueado = true
                     }
-                    is SessionStatus.NotAuthenticated -> { logueado = false; modo = null }
+                    is SessionStatus.NotAuthenticated -> {
+                        // Limpieza CENTRAL al cerrar sesión (cualquier puerta): borra el contexto
+                        // cacheado de la clínica anterior + marca/modo, para que la próxima cuenta
+                        // no vea datos de la anterior ni caiga al panel equivocado.
+                        pe.saniape.app.data.staff.StaffContextoRepo.limpiar()
+                        Preferencias.setModoActivo(null)
+                        Preferencias.setLogoClinica(null); Preferencias.setNombreClinica(null)
+                        logueado = false; modo = null
+                    }
                     else -> { /* Loading: conserva estado */ }
                 }
             }
@@ -101,21 +109,15 @@ fun App() {
                 logueado == true && modo == "clinica" -> ClinicaConTabs(
                     puedeIrAPortal = tienePortal,
                     onIrAPortal = { irA("paciente") },
-                    onCerrarSesion = { scope.launch {
-                        // Olvidar la marca de la clínica al salir (la próxima intro vuelve a Sania).
-                        Preferencias.setLogoClinica(null); Preferencias.setNombreClinica(null)
-                        Supabase.client.auth.signOut()
-                    } },
+                    // La limpieza de contexto/marca/modo la hace NotAuthenticated (central).
+                    onCerrarSesion = { scope.launch { Supabase.client.auth.signOut() } },
                 )
                 logueado == true && modo == "paciente" -> PortalConTabs(
                     nombre = nombre,
                     puedeIrAClinica = tieneClinica,
                     onIrAClinica = { irA("clinica") },
-                    onCerrarSesion = { scope.launch {
-                        // Olvidar la marca de la clínica al salir (la próxima intro vuelve a Sania).
-                        Preferencias.setLogoClinica(null); Preferencias.setNombreClinica(null)
-                        Supabase.client.auth.signOut()
-                    } },
+                    // La limpieza de contexto/marca/modo la hace NotAuthenticated (central).
+                    onCerrarSesion = { scope.launch { Supabase.client.auth.signOut() } },
                 )
                 else -> { /* esperando estado de sesión tras la intro */ }
             }
