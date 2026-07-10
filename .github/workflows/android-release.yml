@@ -49,7 +49,9 @@ jobs:
           EOF
 
       - name: Compilar AAB de release (firmado)
-        run: ./gradlew :composeApp:bundleRelease
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :composeApp:bundleRelease
 
       - name: Instalar Fastlane
         run: gem install fastlane --no-document
