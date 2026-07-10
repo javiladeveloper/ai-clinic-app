@@ -312,7 +312,18 @@ fun TarjetaTratamiento(
                     } else if (s.isEmpty()) {
                         Text("Sin sesiones registradas.", color = c.textoSuave, fontSize = 12.sp)
                     } else {
-                        s.forEach { ses ->
+                        // Orden: PENDIENTES (por realizar) por fecha+hora ascendente (lo que toca
+                        // primero arriba) y el RESTO (completadas/anuladas) por número desc. Así, si
+                        // el fisio llena varias rápido con fechas distintas, se ven en orden real sin
+                        // renumerar (el #N se conserva). Respeta reprogramar (cambia la fecha → se
+                        // reubica) y no toca el máximo de sesiones del paquete.
+                        val esPend = { e: String -> e == "Planificada" || e == "En progreso" || e == "Reprogramada" }
+                        val ordenadas = run {
+                            val (pend, resto) = s.partition { esPend(it.estado) }
+                            pend.sortedBy { it.fecha + (it.hora ?: "") } +
+                                resto.sortedByDescending { it.numero }
+                        }
+                        ordenadas.forEach { ses ->
                             FilaSesion(
                                 ses = ses, verCosto = verPagos, puedeSesiones = puedeSesiones,
                                 puedePagos = verPagos, esAdmin = esAdmin, accionando = accionando,

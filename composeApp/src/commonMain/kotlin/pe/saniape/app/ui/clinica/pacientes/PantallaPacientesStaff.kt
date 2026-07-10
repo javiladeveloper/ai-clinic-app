@@ -15,11 +15,17 @@ import pe.saniape.app.data.staff.PacienteStaff
 @Composable
 fun PantallaPacientesStaff(ctx: ContextoStaff) {
     var fichaDe by remember { mutableStateOf<PacienteStaff?>(null) }
+    // Al volver de la ficha, la lista debe recargar (el progreso de sesiones cambió).
+    var recargarLista by remember { mutableStateOf(0) }
 
     val seleccionado = fichaDe
     if (seleccionado != null) {
-        PantallaFichaPaciente(ctx = ctx, pacienteInicial = seleccionado, onCerrar = { fichaDe = null })
+        PantallaFichaPaciente(
+            ctx = ctx,
+            pacienteInicial = seleccionado,
+            onCerrar = { fichaDe = null; recargarLista++ },   // fuerza refresco de la lista
+        )
     } else {
-        PantallaPacientes(ctx = ctx, onAbrirFicha = { fichaDe = it })
+        PantallaPacientes(ctx = ctx, onAbrirFicha = { fichaDe = it }, recargarTick = recargarLista)
     }
 }

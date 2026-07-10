@@ -52,10 +52,21 @@ private val ESTADOS = listOf("Nuevo", "Consultado", "Evaluado", "En tratamiento"
  */
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun PantallaPacientes(ctx: ContextoStaff, onAbrirFicha: (PacienteStaff) -> Unit) {
+fun PantallaPacientes(
+    ctx: ContextoStaff,
+    onAbrirFicha: (PacienteStaff) -> Unit,
+    // Cambia este valor para forzar una recarga de la lista (ej. al volver de la ficha,
+    // para que el progreso de sesiones se actualice sin pull-to-refresh).
+    recargarTick: Int = 0,
+) {
     val c = Sania.colors
     val vm: PacientesViewModel = viewModel(key = ctx.clinicaId) { PacientesViewModel(ctx) }
     var nuevoAbierto by remember { mutableStateOf(false) }
+
+    // Recargar cuando el contenedor pide (recargarTick > 0 = venimos de la ficha).
+    androidx.compose.runtime.LaunchedEffect(recargarTick) {
+        if (recargarTick > 0) vm.cargar()
+    }
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
