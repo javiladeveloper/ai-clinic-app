@@ -43,3 +43,12 @@ upload_certificate.pem
 
 # Artefactos de build de Kotlin/Native (nunca al repo)
 .kotlin/
+
+# CI/CD: secretos materializados en el runner (nunca al repo)
+play-store-key.json
+*.p12
+*.p8
+*.mobileprovision
+sania-release.jks
+fastlane/report.xml
+fastlane/README.md

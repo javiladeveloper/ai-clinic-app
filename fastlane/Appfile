@@ -1,0 +1,8 @@
+# Identidad de la app para Fastlane.
+app_identifier("pe.saniape.app")   # bundle id (Android package + iOS bundle)
+
+# iOS: el equipo de Apple Developer (Team ID). Se usa para firmar/subir a TestFlight.
+apple_dev_portal_id(ENV["ASC_APPLE_ID"]) if ENV["ASC_APPLE_ID"]
+team_id("KGZQMM72VX")
+
+# Android: la cuenta de servicio de Google Play llega por env var (JSON), no aquí.

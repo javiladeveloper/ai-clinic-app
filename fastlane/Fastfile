@@ -1,0 +1,64 @@
+# Fastlane — despliegue automático de Sania (Android + iOS).
+# Cada plataforma tiene sus lanes. Los secretos NUNCA van aquí: se inyectan por
+# variables de entorno desde GitHub Actions (ver .github/workflows/).
+
+# ─────────────────────────── ANDROID ───────────────────────────
+platform :android do
+  desc "Sube el AAB (ya compilado por Gradle) a Play Store, canal 'internal'"
+  lane :internal do
+    upload_to_play_store(
+      package_name: "pe.saniape.app",
+      track: "internal",                       # internal | alpha | beta | production
+      aab: "composeApp/build/outputs/bundle/release/composeApp-release.aab",
+      # La cuenta de servicio de Google Play (JSON) llega por env var como archivo temporal.
+      json_key: ENV["PLAY_STORE_JSON_KEY_PATH"],
+      release_status: "draft",                 # queda como borrador para que revises antes de publicar
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+    )
+  end
+
+  desc "Sube a producción (revisar antes de usar)"
+  lane :production do
+    upload_to_play_store(
+      package_name: "pe.saniape.app",
+      track: "production",
+      aab: "composeApp/build/outputs/bundle/release/composeApp-release.aab",
+      json_key: ENV["PLAY_STORE_JSON_KEY_PATH"],
+      release_status: "draft",
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+    )
+  end
+end
+
+# ─────────────────────────── iOS ───────────────────────────
+platform :ios do
+  desc "Compila el .ipa y lo sube a TestFlight"
+  lane :beta do
+    # La API Key de App Store Connect llega por env vars (issuer id, key id, key p8).
+    app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_content: ENV["ASC_KEY_CONTENT"],     # contenido del .p8 (base64 o crudo)
+      is_key_content_base64: true,
+    )
+
+    # Compila el framework Kotlin + el app iOS y produce el .ipa firmado.
+    # La firma la resuelve Xcode con el perfil/cert que instala el workflow (o match).
+    build_app(
+      project: "iosApp/iosApp.xcodeproj",
+      scheme: "iosApp",
+      configuration: "Release",
+      export_method: "app-store",
+      output_directory: "build/ios",
+      clean: true,
+    )
+
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true,  # no bloquea el runner esperando el procesado de Apple
+    )
+  end
+end

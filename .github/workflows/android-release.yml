@@ -1,0 +1,71 @@
+name: Android · Play Store
+
+# Se dispara a mano (workflow_dispatch) o al empujar un tag android-vX.Y.Z.
+# NO corre en cada push a master (para no gastar builds ni subir sin querer).
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: "Canal de Play Store"
+        required: true
+        default: "internal"
+        type: choice
+        options: [internal, production]
+  push:
+    tags:
+      - "android-v*"
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configurar Gradle (cache)
+        uses: gradle/actions/setup-gradle@v4
+
+      # Reconstruye el keystore de firma desde secrets (nunca vive en el repo).
+      # KEYSTORE_BASE64 = el .jks codificado en base64.
+      - name: Restaurar keystore de firma
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > sania-release.jks
+          cat > keystore.properties <<EOF
+          storeFile=sania-release.jks
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+      - name: Compilar AAB de release (firmado)
+        run: ./gradlew :composeApp:bundleRelease
+
+      - name: Instalar Fastlane
+        run: gem install fastlane --no-document
+
+      # La cuenta de servicio de Google Play (JSON) se escribe a un archivo temporal.
+      - name: Restaurar clave de Google Play
+        env:
+          PLAY_JSON: ${{ secrets.PLAY_STORE_JSON_KEY }}
+        run: echo "$PLAY_JSON" > play-store-key.json
+
+      - name: Subir a Play Store
+        env:
+          PLAY_STORE_JSON_KEY_PATH: play-store-key.json
+        run: fastlane android ${{ github.event.inputs.track || 'internal' }}
+
+      # Limpieza: borra los secretos materializados aunque el job falle.
+      - name: Limpiar secretos del runner
+        if: always()
+        run: rm -f sania-release.jks keystore.properties play-store-key.json
