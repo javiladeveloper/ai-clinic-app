@@ -111,8 +111,9 @@ android {
         targetSdk = 35
         // La TWA anterior (mismo packageId pe.saniape.app) llegó a versionCode 4;
         // esta app nativa debe subir con un código MAYOR para actualizar la ficha.
-        versionCode = 5
-        versionName = "2.0.0"
+        // v6: toasts, branding white-label, orden de sesiones, robustez (auditoría), pulido UI.
+        versionCode = 6
+        versionName = "2.1.0"
     }
     signingConfigs {
         create("release") {
