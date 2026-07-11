@@ -44,6 +44,18 @@ fun App() {
         var modo by remember { mutableStateOf<String?>(null) }
         val scope = rememberCoroutineScope()
 
+        // Aviso de nueva versión (sugerido): se consulta una vez por arranque, tras la intro.
+        // "Más tarde" lo descarta hasta el próximo arranque (no molesta en la misma sesión).
+        var urlActualizacion by remember { mutableStateOf<String?>(null) }
+        var avisoDescartado by remember { mutableStateOf(false) }
+        val acciones = pe.saniape.app.ui.recordarAcciones()
+        LaunchedEffect(introLista) {
+            if (introLista && urlActualizacion == null) {
+                val r = runCatching { pe.saniape.app.data.VersionRepo.chequear() }.getOrNull()
+                if (r?.hayActualizacion == true) urlActualizacion = r.urlTienda
+            }
+        }
+
         LaunchedEffect(Unit) {
             Supabase.client.auth.sessionStatus.collect { status ->
                 when (status) {
@@ -123,6 +135,14 @@ fun App() {
             }
             // Toast global (creado/guardado/error) sobre cualquier pantalla, salvo la intro.
             if (introLista) pe.saniape.app.ui.ToastHost()
+
+            // Aviso sugerido de nueva versión (solo si hay update y no se descartó aún).
+            urlActualizacion?.takeIf { !avisoDescartado }?.let { url ->
+                pe.saniape.app.ui.DialogoActualizacion(
+                    onActualizar = { acciones.abrirUrl(url); avisoDescartado = true },
+                    onMasTarde = { avisoDescartado = true },
+                )
+            }
           }
         }
     }
