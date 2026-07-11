@@ -62,6 +62,7 @@ fun TarjetaTratamiento(
     pacienteId: String = "",
     puedeFotos: Boolean = false,   // feature fotosEvolutivas (Premium)
     puedeIA: Boolean = false,      // feature ia (Plus): sugerencia de sesión
+    recargaToken: Int = 0,         // cambia tras cualquier acción de la ficha → refresca las sesiones
     consultaDone: Boolean = false,   // para la barra de recorrido (de los hitos del paciente)
     evalDone: Boolean = false,
     citaConsulta: pe.saniape.app.data.staff.CitaHito? = null,   // detalle para la nube de la bolita
@@ -114,6 +115,19 @@ fun TarjetaTratamiento(
                 .onFailure { cargaFallo = true }
             cambioToken++          // fuerza que la sección de pagos se recargue
             onCambioRealizado()
+        }
+    }
+
+    // Si la ficha se recargó por una acción EXTERNA a esta tarjeta (p. ej. crear una
+    // sesión desde el modal de la ficha), y esta tarjeta ya tenía sus sesiones cargadas,
+    // las volvemos a pedir para reflejar el cambio. Sin esto, la sesión recién creada no
+    // aparecía hasta colapsar y volver a expandir. Se salta el primer render (sesiones ==
+    // null → todavía no hay nada que refrescar) y NO llama a onCambioRealizado (evita bucles).
+    LaunchedEffect(recargaToken) {
+        if (sesiones != null) {
+            runCatching { PacientesRepo.sesionesDe(t.id) }
+                .onSuccess { sesiones = it; cargaFallo = false }
+                .onFailure { cargaFallo = true }
         }
     }
 

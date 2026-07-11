@@ -68,6 +68,10 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     // Recarga fresca por id (el inicial viene de la lista; aquí traemos lo último).
     var paciente by remember { mutableStateOf(pacienteInicial) }
     var cargando by remember { mutableStateOf(true) }
+    // true mientras se re-carga la ficha tras una acción (crear sesión, pago, etc.).
+    // A diferencia de `cargando` (primer load), esto mantiene visible el contenido y
+    // solo muestra un aviso "Actualizando…", para que nunca parezca que la app se colgó.
+    var actualizando by remember { mutableStateOf(false) }
     // Sesión a completar + su anterior (referencia de evolución para mejorías).
     var completarSesion by remember { mutableStateOf<Pair<SesionFicha, SesionFicha?>?>(null) }
     var editandoPaciente by remember { mutableStateOf(false) }
@@ -95,6 +99,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         especialidadesClinica = runCatching { PacientesRepo.especialidadesClinica() }.getOrDefault(emptyList())
     }
     LaunchedEffect(pacienteInicial.id, recargarToken) {
+        actualizando = true
         // porId (paciente + sus tratamientos) e hitosDe son INDEPENDIENTES entre sí, así
         // que se piden EN PARALELO (async) en vez de una tras otra. Antes, tras cada
         // acción (crear sesión, etc.) la recarga encadenaba porId → hitos → saldo, y la
@@ -109,6 +114,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         // Saldo general (todos los tratamientos del paciente): acordado − pagado.
         saldoPendiente = runCatching { PacientesRepo.saldoPendienteDe(paciente.tratamientos) }.getOrNull()
         cargando = false
+        actualizando = false
     }
     fun recargar() { recargarToken++ }
 
@@ -371,6 +377,17 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 }
                 Spacer(Modifier.height(Sania.dim.md))
 
+                // Aviso discreto mientras se re-carga tras una acción: el contenido sigue
+                // visible (no se vacía la ficha), solo señalamos que hay algo en curso para
+                // que no dé la impresión de que la app se quedó pegada.
+                if (actualizando && !cargando) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                        CircularProgressIndicator(color = c.navy, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Actualizando…", color = c.textoSuave, fontSize = Sania.txt.pequeno)
+                    }
+                }
+
                 if (cargando) {
                     Box(Modifier.fillMaxWidth().padding(Sania.dim.lg), Alignment.Center) {
                         CircularProgressIndicator(color = c.navy, strokeWidth = 2.dp)
@@ -378,6 +395,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 } else when (tab) {
                     "atenciones" -> ContenidoAtenciones(
                         ctx = ctx, paciente = paciente, hitos = hitos,
+                        recargaToken = recargarToken,
                         onCompletarSesion = { ses, anterior -> completarSesion = ses to anterior },
                         onRecargar = { recargar() },
                         onEditarTrat = { editarTratamiento = it },
@@ -1149,6 +1167,7 @@ private fun ContenidoAtenciones(
     ctx: ContextoStaff,
     paciente: PacienteStaff,
     hitos: pe.saniape.app.data.staff.HitosPaciente?,
+    recargaToken: Int,
     onCompletarSesion: (SesionFicha, SesionFicha?) -> Unit,
     onRecargar: () -> Unit,
     onEditarTrat: (TratamientoPaciente) -> Unit,
@@ -1194,6 +1213,7 @@ private fun ContenidoAtenciones(
             puedeSesiones = ctx.puede("sesiones"),
             pacienteId = paciente.id, puedeFotos = ctx.can("fotosEvolutivas"),
             puedeIA = ctx.can("ia"),
+            recargaToken = recargaToken,
             consultaDone = citaC != null, evalDone = citaE != null,
             citaConsulta = citaC, citaEvaluacion = citaE,
             onEditarCita = onEditarCita,
