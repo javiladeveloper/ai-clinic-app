@@ -98,8 +98,16 @@ fun ContenidoExamenes(
             examenes.forEach { s ->
                 FilaSolicitud(s, acciones,
                     onResultado = { resultadoDe = s },
-                    onCancelar = { scope.launch { SolicitudesRepo.cambiarEstado(s.id, "Cancelada"); recargar() } },
-                    onEliminar = { scope.launch { SolicitudesRepo.eliminarSolicitud(s.id); recargar() } },
+                    onCancelar = { scope.launch {
+                        val ok = SolicitudesRepo.cambiarEstado(s.id, "Cancelada")
+                        if (ok) pe.saniape.app.ui.Toaster.exito("Examen cancelado") else pe.saniape.app.ui.Toaster.error("No se pudo cancelar")
+                        recargar()
+                    } },
+                    onEliminar = { scope.launch {
+                        val ok = SolicitudesRepo.eliminarSolicitud(s.id)
+                        if (ok) pe.saniape.app.ui.Toaster.exito("Examen eliminado") else pe.saniape.app.ui.Toaster.error("No se pudo eliminar")
+                        recargar()
+                    } },
                     onAbrir = { path -> scope.launch { SolicitudesRepo.urlFirmada(path)?.let { acciones.abrirUrl(it) } } },
                 )
                 Spacer(Modifier.height(6.dp))
@@ -128,7 +136,11 @@ fun ContenidoExamenes(
                         maxLines = 1, modifier = Modifier.weight(1f)
                             .clickable { scope.launch { SolicitudesRepo.urlFirmada(d.archivoUrl)?.let { acciones.abrirUrl(it) } } })
                     Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable {
-                        scope.launch { SolicitudesRepo.eliminarDocumento(d.id); recargar() }
+                        scope.launch {
+                            val ok = SolicitudesRepo.eliminarDocumento(d.id)
+                            if (ok) pe.saniape.app.ui.Toaster.exito("Documento eliminado") else pe.saniape.app.ui.Toaster.error("No se pudo eliminar")
+                            recargar()
+                        }
                     })
                 }
                 Spacer(Modifier.height(6.dp))
@@ -144,11 +156,12 @@ fun ContenidoExamenes(
             onGuardar = { desc, lugar, areaId ->
                 nuevo = null
                 scope.launch {
-                    SolicitudesRepo.crearSolicitud(
+                    val ok = SolicitudesRepo.crearSolicitud(
                         pacienteId, "Examen", desc, ctx.miTerapeutaId,
                         especialidadDestinoId = if (lugar == "Interno") areaId else null,
                         lugar = lugar,
                     )
+                    if (ok) pe.saniape.app.ui.Toaster.exito("Examen solicitado") else pe.saniape.app.ui.Toaster.error("No se pudo solicitar")
                     recargar()
                 }
             },
@@ -163,7 +176,11 @@ fun ContenidoExamenes(
             onSubirArchivo = { onAbrirSubida("Resultado", s.id) },
             onGuardar = { nota ->
                 resultadoDe = null
-                scope.launch { SolicitudesRepo.registrarResultado(s.id, nota, null); recargar() }
+                scope.launch {
+                    val ok = SolicitudesRepo.registrarResultado(s.id, nota, null)
+                    if (ok) pe.saniape.app.ui.Toaster.exito("Resultado guardado") else pe.saniape.app.ui.Toaster.error("No se pudo guardar")
+                    recargar()
+                }
             },
         )
     }

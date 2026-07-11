@@ -348,7 +348,8 @@ fun TarjetaTratamiento(
                                     if (accionando) return@FilaSesion
                                     accionando = true
                                     scope.launch {
-                                        PacientesRepo.cambiarEstadoSesion(ses.id, nuevo)
+                                        val ok = PacientesRepo.cambiarEstadoSesion(ses.id, nuevo)
+                                        if (ok) pe.saniape.app.ui.Toaster.exito("Sesión actualizada") else pe.saniape.app.ui.Toaster.error("No se pudo actualizar")
                                         accionando = false; recargarSesiones()
                                     }
                                 },

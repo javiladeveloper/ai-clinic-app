@@ -187,7 +187,15 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                 AccionCita.Revertir -> AgendaRepo.revertir(cita.id)
                 AccionCita.Cancelar -> AgendaRepo.cancelar(cita.id)
             }
-            mensaje = if (ok) "✓ Listo" else "⚠ No se pudo, intenta de nuevo"
+            if (ok) {
+                val txt = when (accion) {
+                    AccionCita.Confirmar -> "Cita confirmada"
+                    AccionCita.Completar -> "Cita completada"
+                    AccionCita.Revertir -> "Cita revertida"
+                    AccionCita.Cancelar -> "Cita cancelada"
+                }
+                pe.saniape.app.ui.Toaster.exito(txt)
+            } else pe.saniape.app.ui.Toaster.error("No se pudo, intenta de nuevo")
             recargarCitas()
             recargarBanners()
             accionando = false

@@ -158,7 +158,8 @@ fun CamposCustomPaciente(
                     scope.launch {
                         val ok = PacientesRepo.guardarCamposCustom(pacienteId, campos, draft)
                         guardando = false
-                        if (ok) { valores = draft.filterValues { it.isNotBlank() }; editando = false }
+                        if (ok) { valores = draft.filterValues { it.isNotBlank() }; editando = false; pe.saniape.app.ui.Toaster.exito("Datos guardados") }
+                        else pe.saniape.app.ui.Toaster.error("No se pudo guardar")
                     }
                 }) { Text(if (guardando) "Guardando…" else "Guardar", color = c.navy, fontWeight = FontWeight.Bold) }
             },

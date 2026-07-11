@@ -134,9 +134,18 @@ fun GaleriaFotos(
                     Thumb(f, urlProvider = { urlDe(it) },
                         onAbrir = { scope.launch { urlDe(f.archivoUrl); lightbox = f } },
                         onVisible = {
-                            scope.launch { FotosRepo.cambiarVisible(f.id, !f.visiblePaciente); recargar() }
+                            scope.launch {
+                                val ok = FotosRepo.cambiarVisible(f.id, !f.visiblePaciente)
+                                if (ok) pe.saniape.app.ui.Toaster.exito(if (!f.visiblePaciente) "Visible para el paciente" else "Oculta al paciente")
+                                else pe.saniape.app.ui.Toaster.error("No se pudo cambiar")
+                                recargar()
+                            }
                         },
-                        onBorrar = { scope.launch { FotosRepo.borrarFoto(f.id); recargar() } })
+                        onBorrar = { scope.launch {
+                            val ok = FotosRepo.borrarFoto(f.id)
+                            if (ok) pe.saniape.app.ui.Toaster.exito("Foto eliminada") else pe.saniape.app.ui.Toaster.error("No se pudo eliminar")
+                            recargar()
+                        } })
                 }
             }
         }
@@ -160,6 +169,9 @@ fun GaleriaFotos(
                         FotosRepo.registrarFoto(
                             pacienteId, tratamientoId, sesionId, listo.nombre, path, tipo,
                             momento, nota, visible)
+                        pe.saniape.app.ui.Toaster.exito("Foto subida")
+                    } else {
+                        pe.saniape.app.ui.Toaster.error("No se pudo subir la foto")
                     }
                     subiendo = false; pendiente = null; recargar()
                 }

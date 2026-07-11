@@ -144,7 +144,9 @@ fun PantallaCrearCita(
     // Disponibilidad en vivo (igual que la web): bloquea si no disponible (futura),
     // advierte si hay solapamiento. Se recalcula al cambiar profesional/fecha/hora.
     var disponibilidad by remember { mutableStateOf<pe.saniape.app.data.staff.Disponibilidad?>(null) }
-    LaunchedEffect(terapeuta?.id, fecha, hora, tipo) {
+    // Depende también de paciente?.id: si no, el aviso de "el paciente ya tiene otra cita"
+    // no se recalcula al cambiar de paciente (quedaba obsoleto).
+    LaunchedEffect(terapeuta?.id, fecha, hora, tipo, paciente?.id) {
         val terId = terapeuta?.id ?: ctx.miTerapeutaId
         disponibilidad = if (terId != null) {
             runCatching {
@@ -422,8 +424,16 @@ fun PantallaCrearCita(
                         scope.launch {
                             // Flujo → Evaluación: completar primero la consulta origen
                             // (igual que handleEvalSave de la web), luego crear la cita.
-                            prefill?.citaOrigenId?.let { origenId ->
-                                runCatching { AgendaRepo.completar(origenId) }
+                            // Si completar falla, NO seguimos: dejaría la consulta origen a
+                            // medias y la evaluación creada suelta. Avisamos y abortamos.
+                            val origenId = prefill?.citaOrigenId
+                            if (origenId != null) {
+                                val okOrigen = runCatching { AgendaRepo.completar(origenId) }.getOrDefault(false)
+                                if (!okOrigen) {
+                                    guardando = false
+                                    mensaje = "No se pudo cerrar la consulta previa. Intenta de nuevo."
+                                    return@launch
+                                }
                             }
                             val terId = if (ctx.miTerapeutaId != null) ctx.miTerapeutaId else terapeuta?.id
                             // Especialidad: la elegida, o la del profesional si solo tiene una.

@@ -371,7 +371,11 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         onRecargar = { recargar() },
                         onEditarTrat = { editarTratamiento = it },
                         onAmpliarTrat = { ampliarTratamiento = it },
-                        onCambiarEstadoTrat = { tId, est -> scope.launch { PacientesRepo.cambiarEstadoTratamiento(tId, est); recargar() } },
+                        onCambiarEstadoTrat = { tId, est -> scope.launch {
+                            val ok = PacientesRepo.cambiarEstadoTratamiento(tId, est)
+                            if (ok) pe.saniape.app.ui.Toaster.exito("Tratamiento actualizado") else pe.saniape.app.ui.Toaster.error("No se pudo actualizar")
+                            recargar()
+                        } },
                         onCrearSesion = { crearSesionEn = it },
                         onNuevoTratamiento = { creandoTratamiento = true },
                         onEditarCita = { editarCitaHito = it },
