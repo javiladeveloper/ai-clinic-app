@@ -46,6 +46,8 @@ fun HeaderMarcaClinica(
     onCampana: (() -> Unit)? = null,
     // Si se pasa, muestra la lupa 🔍 (buscador global de paciente).
     onBuscar: (() -> Unit)? = null,
+    // Si se pasa, muestra 💰 (acceso rápido a la caja de hoy).
+    onCaja: (() -> Unit)? = null,
     // Si se pasa y hay más de una clínica, el bloque de marca es tocable (→ ir a cambiar).
     onCambiarClinica: (() -> Unit)? = null,
     // Muestra el rol a la derecha (ej. "Recepción", "Fisioterapeuta").
@@ -80,6 +82,11 @@ fun HeaderMarcaClinica(
             if (onBuscar != null) {
                 Text("🔍", fontSize = 18.sp,
                     modifier = Modifier.clip(RoundedCornerShape(50)).clickable { onBuscar() }.padding(6.dp))
+                Spacer(Modifier.width(2.dp))
+            }
+            if (onCaja != null) {
+                Text("💰", fontSize = 18.sp,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).clickable { onCaja() }.padding(6.dp))
                 Spacer(Modifier.width(2.dp))
             }
             if (onCampana != null) {

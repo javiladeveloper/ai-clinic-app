@@ -83,6 +83,7 @@ fun PantallaInicioStaff(
                 ctx = ctx,
                 noLeidas = noLeidas,
                 onBuscar = onBuscar,
+                onCaja = onAbrirCaja,
                 onCampana = {
                     verNotifs = true
                     if (noLeidas > 0) scope.launch {
