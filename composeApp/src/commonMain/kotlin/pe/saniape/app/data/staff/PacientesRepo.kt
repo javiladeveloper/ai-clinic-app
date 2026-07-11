@@ -2,6 +2,8 @@ package pe.saniape.app.data.staff
 
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
 import io.ktor.client.request.get
@@ -835,15 +837,36 @@ object PacientesRepo {
         resumenPagosDe(tratamientos).saldo
 
     /** Hitos del recorrido del paciente (para el FlujoGuiado y las stat cards de la ficha). */
-    suspend fun hitosDe(pacienteId: String): HitosPaciente {
-        val filas = runCatching {
-            Supabase.client.postgrest["citas"]
-                .select(Columns.raw("id, fecha, hora, tipo, estado, costo, notas, especialidad_id, tratamiento_id, terapeuta:terapeutas(nombre)")) {
-                    filter { eq("paciente_id", pacienteId) }
-                    order("fecha", Order.DESCENDING)
-                }
-                .decodeList<JsonObject>()
-        }.getOrDefault(emptyList())
+    suspend fun hitosDe(pacienteId: String): HitosPaciente = coroutineScope {
+        val hoy = pe.saniape.app.ui.clinica.agenda.hoyIso()
+        // Las citas y la próxima sesión son INDEPENDIENTES → se piden EN PARALELO (async),
+        // no una tras otra. Acelera la aparición de las stat cards de la ficha.
+        val citasD = async {
+            runCatching {
+                Supabase.client.postgrest["citas"]
+                    .select(Columns.raw("id, fecha, hora, tipo, estado, costo, notas, especialidad_id, tratamiento_id, terapeuta:terapeutas(nombre)")) {
+                        filter { eq("paciente_id", pacienteId) }
+                        order("fecha", Order.DESCENDING)
+                    }
+                    .decodeList<JsonObject>()
+            }.getOrDefault(emptyList())
+        }
+        val sesionProximaD = async {
+            runCatching {
+                Supabase.client.postgrest["sesiones"]
+                    .select(Columns.raw("fecha, hora, estado, tratamiento:tratamientos!inner(paciente_id)")) {
+                        filter {
+                            eq("tratamiento.paciente_id", pacienteId)
+                            gte("fecha", hoy)
+                            isIn("estado", listOf("Planificada", "En progreso", "Reprogramada"))
+                        }
+                        order("fecha", Order.ASCENDING)
+                        limit(1)
+                    }
+                    .decodeList<JsonObject>().firstOrNull()
+            }.getOrNull()
+        }
+        val filas = citasD.await()
 
         fun toHito(o: JsonObject) = CitaHito(
             id = o.str("id") ?: "",
@@ -857,7 +880,6 @@ object PacientesRepo {
             tratamientoId = o.str("tratamiento_id"),
         )
 
-        val hoy = pe.saniape.app.ui.clinica.agenda.hoyIso()
         val completadas = filas.filter { it.str("estado") == "Completada" }
         val consultas = completadas.filter { it.str("tipo") == "Consulta" }.map { toHito(it) }
         val evaluaciones = completadas.filter { it.str("tipo") == "Evaluación" }.map { toHito(it) }
@@ -867,19 +889,7 @@ object PacientesRepo {
         val citaProxima = filas
             .filter { (it.str("fecha") ?: "") >= hoy && it.str("estado") !in listOf("Cancelada", "Completada") }
             .minByOrNull { (it.str("fecha") ?: "") + (it.str("hora") ?: "") }
-        val sesionProxima = runCatching {
-            Supabase.client.postgrest["sesiones"]
-                .select(Columns.raw("fecha, hora, estado, tratamiento:tratamientos!inner(paciente_id)")) {
-                    filter {
-                        eq("tratamiento.paciente_id", pacienteId)
-                        gte("fecha", hoy)
-                        isIn("estado", listOf("Planificada", "En progreso", "Reprogramada"))
-                    }
-                    order("fecha", Order.ASCENDING)
-                    limit(1)
-                }
-                .decodeList<JsonObject>().firstOrNull()
-        }.getOrNull()
+        val sesionProxima = sesionProximaD.await()
         // Elegir la más cercana entre la cita y la sesión.
         val cf = citaProxima?.str("fecha"); val ch = citaProxima?.str("hora")?.take(5)
         val sf = sesionProxima?.str("fecha"); val sh = sesionProxima?.str("hora")?.take(5)
@@ -889,7 +899,7 @@ object PacientesRepo {
             else -> null to null
         }
         val ultima = completadas.firstOrNull()
-        return HitosPaciente(
+        HitosPaciente(
             consultaDone = consultas.isNotEmpty(),
             evaluacionDone = evaluaciones.isNotEmpty(),
             proximaCitaFecha = proxFecha,

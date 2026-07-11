@@ -21,6 +21,28 @@ parecido posible al de la web**, no una versión recortada.
 > `compileKotlinIosSimulatorArm64` en iOS). NO hacer `installDebug`, `screencap`, ni
 > abrir emuladores para "probar" salvo que el usuario lo pida explícitamente.
 
+## 🚀 CI/CD — Despliegue automático (LEER antes de tocar el CI)
+
+Android despliega solo: `git tag android-v2.x.y && git push origin android-v2.x.y` →
+GitHub Actions compila el AAB firmado y lo sube a Play Store (internal, borrador).
+**Antes:** subir `versionCode` en `composeApp/build.gradle.kts` (si no, la tienda rechaza).
+
+📖 **`docs/ci-cd-despliegue.md`** tiene TODO: los secrets a configurar, cómo se creó la
+cuenta de servicio de Google Play, y — clave — **los 4 errores que superamos** al montarlo
+(gradlew +x, gem permisos, "Invalid JWT Signature" → JSON en base64, "version code usado").
+Si vas a tocar el CI o montar iOS, léelo primero para no repetir los tropiezos.
+
+## ⚡ Patrón de FLUIDEZ (para que la app no se sienta lenta)
+
+Regla que seguimos al cargar datos, para que los flujos diarios se sientan rápidos:
+1. **Paralelizar `await`s independientes** con `coroutineScope { async {…} }` en vez de
+   pedirlos en serie (ej. `hitosDe` pide citas + próxima sesión en paralelo).
+2. **No vaciar la pantalla al recargar**: mantener el contenido visible + un aviso sutil
+   "Actualizando…" en vez de un spinner que borra todo (ver `PantallaFichaPaciente`).
+3. **Recarga parcial tras una acción de 1 ítem**: no re-cargar toda la ficha/lista por
+   completar una sesión; actualizar solo lo que cambió.
+Aplica este patrón a cualquier pantalla/repo nuevo con cargas.
+
 ---
 
 ## 🖥️ PRIMERA VEZ EN LA MAC — instalar antes de nada
