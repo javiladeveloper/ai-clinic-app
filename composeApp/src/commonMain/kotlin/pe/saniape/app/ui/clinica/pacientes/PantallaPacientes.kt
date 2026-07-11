@@ -116,6 +116,19 @@ fun PantallaPacientes(
                 modifier = Modifier.fillMaxSize(),
             ) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = Sania.dim.xl)) {
+                // Aviso sutil al refrescar/volver de ficha: mantiene la lista visible.
+                if (vm.recargando) {
+                    item {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = Sania.dim.lg, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(color = c.navy, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Actualizando…", color = c.textoSuave, fontSize = Sania.txt.mini)
+                        }
+                    }
+                }
                 when {
                     vm.cargando -> item {
                         Box(Modifier.fillMaxWidth().padding(Sania.dim.xxl), Alignment.Center) {

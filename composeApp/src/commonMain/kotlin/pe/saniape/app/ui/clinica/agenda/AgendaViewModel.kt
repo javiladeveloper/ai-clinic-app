@@ -5,6 +5,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DatePeriod
@@ -33,7 +35,8 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     // ── Estado expuesto (inmutable hacia afuera) ──
     val hoy: String = hoyIso()
     var fechaSel by mutableStateOf(hoy); private set
-    var cargando by mutableStateOf(true); private set
+    var cargando by mutableStateOf(true); private set   // spinner completo (solo 1ª carga)
+    var recargando by mutableStateOf(false); private set  // aviso sutil (cambios de día/refresh)
     var citas by mutableStateOf<List<CitaStaff>>(emptyList()); private set   // crudas del día
     var especialidades by mutableStateOf<List<EspecialidadRef>>(emptyList()); private set
     var banners by mutableStateOf<BannersAgenda?>(null); private set
@@ -131,31 +134,40 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
 
     private fun cargarDia(fecha: String) {
         viewModelScope.launch {
-            cargando = true
+            // Spinner completo solo si aún no hay nada; si ya hay citas (cambio de día),
+            // mantenemos la lista visible y mostramos "Actualizando…" (no parpadea a spinner).
+            if (citas.isEmpty()) cargando = true else recargando = true
             citas = runCatching { AgendaRepo.citasDelDia(fecha, ctx.miTerapeutaId) }.getOrDefault(emptyList())
-            cargando = false
+            cargando = false; recargando = false
         }
     }
 
     private fun cargarLista() {
         viewModelScope.launch {
-            cargando = true
+            if (citas.isEmpty()) cargando = true else recargando = true
             val r = runCatching {
                 AgendaRepo.citasPaginadas(verHistorial, pagina, ctx.miTerapeutaId, hoy)
             }.getOrDefault(emptyList())
             citas = r
             hayMasPaginas = r.size >= AgendaRepo.PAGE_SIZE
-            cargando = false
+            cargando = false; recargando = false
         }
     }
 
     private fun cargarAuxiliares() {
         viewModelScope.launch {
-            especialidades = runCatching { AgendaRepo.especialidades() }.getOrDefault(emptyList())
-            if (puedeFiltrarPorPersonal) {
-                terapeutas = runCatching { AgendaRepo.terapeutasActivos() }.getOrDefault(emptyList())
+            // Independientes → en paralelo (antes: especialidades → terapeutas → banners en serie).
+            coroutineScope {
+                val espD = async { runCatching { AgendaRepo.especialidades() }.getOrDefault(emptyList()) }
+                val terD = async {
+                    if (puedeFiltrarPorPersonal) runCatching { AgendaRepo.terapeutasActivos() }.getOrDefault(emptyList())
+                    else null
+                }
+                val banD = async { recargarBanners() }
+                especialidades = espD.await()
+                terD.await()?.let { terapeutas = it }
+                banD.await()
             }
-            recargarBanners()
         }
     }
 

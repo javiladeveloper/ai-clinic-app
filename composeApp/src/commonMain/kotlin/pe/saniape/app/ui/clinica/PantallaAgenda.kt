@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -165,6 +166,22 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                             citas = vm.citasSinProfesional,
                             onAsignar = { editar = it },
                         )
+                    }
+                }
+
+                // Aviso sutil al cambiar de día / refrescar: mantiene la lista visible
+                // (no parpadea a spinner completo).
+                if (vm.recargando) {
+                    item {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = Sania.dim.lg, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(color = c.navy, strokeWidth = 2.dp,
+                                modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Actualizando…", color = c.textoSuave, fontSize = Sania.txt.mini)
+                        }
                     }
                 }
 

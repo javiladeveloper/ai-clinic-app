@@ -17,7 +17,8 @@ import pe.saniape.app.data.staff.PacientesRepo
  */
 class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
 
-    var cargando by mutableStateOf(true); private set
+    var cargando by mutableStateOf(true); private set    // spinner completo (solo 1ª carga)
+    var recargando by mutableStateOf(false); private set   // aviso sutil (refresh/volver de ficha)
     // Distingue "falló la carga" (red/permiso) de "no hay pacientes" — así la UI ofrece
     // reintentar en vez de mentir con "no hay pacientes".
     var cargaFallo by mutableStateOf(false); private set
@@ -35,12 +36,15 @@ class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
 
     fun cargar() {
         viewModelScope.launch {
-            cargando = true; cargaFallo = false
+            // Spinner completo solo la 1ª vez; si ya hay lista (volver de ficha / refresh),
+            // se mantiene visible con aviso sutil "Actualizando…" (no parpadea a vacío).
+            if (pacientes.isEmpty()) cargando = true else recargando = true
+            cargaFallo = false
             // Scope: si es profesional vinculado, solo sus pacientes.
             runCatching { PacientesRepo.listar(ctx.miTerapeutaId) }
                 .onSuccess { pacientes = it }
                 .onFailure { cargaFallo = true }
-            cargando = false
+            cargando = false; recargando = false
         }
     }
 
