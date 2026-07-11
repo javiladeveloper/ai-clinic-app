@@ -24,13 +24,22 @@ parecido posible al de la web**, no una versión recortada.
 ## 🚀 CI/CD — Despliegue automático (LEER antes de tocar el CI)
 
 Android despliega solo: `git tag android-v2.x.y && git push origin android-v2.x.y` →
-GitHub Actions compila el AAB firmado y lo sube a Play Store (internal, borrador).
-**Antes:** subir `versionCode` en `composeApp/build.gradle.kts` (si no, la tienda rechaza).
+GitHub Actions compila el AAB firmado, lo sube a Play Store (internal, borrador) **y**
+actualiza `APP_ANDROID_LATEST` en Vercel con ese versionCode → el endpoint
+`/api/app/version` lo sirve y la app muestra el popup "nueva versión disponible" a los
+usuarios con versión vieja. **Circuito completo, cero pasos manuales.**
+**Antes de taggear:** subir `versionCode` en `composeApp/build.gradle.kts` (si no, la
+tienda rechaza con "version code usado"). Historial: v6=AAB manual, v7=1er CI, v8=actual.
 
-📖 **`docs/ci-cd-despliegue.md`** tiene TODO: los secrets a configurar, cómo se creó la
-cuenta de servicio de Google Play, y — clave — **los 4 errores que superamos** al montarlo
+📖 **`docs/ci-cd-despliegue.md`** tiene TODO: los secrets (Play + Vercel), cómo se creó la
+cuenta de servicio de Google Play, y — clave — **los errores que superamos** al montarlo
 (gradlew +x, gem permisos, "Invalid JWT Signature" → JSON en base64, "version code usado").
 Si vas a tocar el CI o montar iOS, léelo primero para no repetir los tropiezos.
+
+**Popup de nueva versión (cómo se activa):** el valor lo pone el CI en la env var
+`APP_ANDROID_LATEST` de Vercel (o a mano en Vercel si el CI no corre). La app compara con
+su propio versionCode (`VersionApp.codigo`) y muestra el diálogo si hay uno mayor. Para
+iOS es `APP_IOS_LATEST` (aún manual — el CI de iOS no está montado).
 
 ## ⚡ Patrón de FLUIDEZ (para que la app no se sienta lenta)
 
