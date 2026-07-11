@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import pe.saniape.app.data.Documento
+import pe.saniape.app.data.ResultadoPortal
 import pe.saniape.app.data.Saldo
 import pe.saniape.app.data.SaludRepo
 import pe.saniape.app.data.Tratamiento
@@ -60,7 +61,7 @@ fun PantallaSalud() {
 
     LaunchedEffect(Unit) {
         try {
-            tratamientos = SaludRepo.tratamientos()
+            tratamientos = (SaludRepo.tratamientos() as? ResultadoPortal.Ok)?.datos ?: emptyList()
             saldos = SaludRepo.saldos()
             documentos = SaludRepo.documentos()
         } catch (_: Exception) { /* secciones vacías */ }

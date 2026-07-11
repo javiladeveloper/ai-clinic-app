@@ -15,6 +15,17 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 
+/**
+ * Resultado de una carga del portal: distingue "cargó bien" (aunque sea vacío) de
+ * "falló" (red/sesión). Sin esto, un fallo se confundía con "no tienes datos" y — peor —
+ * disparaba un fallback directo por email que no valida identidad (riesgo de fuga entre
+ * clínicas). Con esto, el portal SOLO usa el camino API (seguro) y ante error avisa.
+ */
+sealed interface ResultadoPortal<out T> {
+    data class Ok<T>(val datos: T) : ResultadoPortal<T>
+    data object Error : ResultadoPortal<Nothing>
+}
+
 /** Un pago registrado del tratamiento (informativo para el paciente). */
 data class PagoInfo(val fecha: String, val monto: Double, val metodo: String?)
 
@@ -56,15 +67,17 @@ object SaludRepo {
      * La web los lee con service_role (la RLS de tratamientos/sesiones es solo de
      * staff), así que aquí NO se pueden leer directo de Supabase con anon key.
      */
-    suspend fun tratamientos(): List<Tratamiento> {
-        val tk = token() ?: return emptyList()
-        val resp = http.get("${Supabase.SITE_URL}/api/paciente/mi-tratamiento") {
-            header("Authorization", "Bearer $tk")
-        }
-        if (resp.status != HttpStatusCode.OK) return emptyList()
+    suspend fun tratamientos(): ResultadoPortal<List<Tratamiento>> {
+        val tk = token() ?: return ResultadoPortal.Error
+        val resp = runCatching {
+            http.get("${Supabase.SITE_URL}/api/paciente/mi-tratamiento") {
+                header("Authorization", "Bearer $tk")
+            }
+        }.getOrNull() ?: return ResultadoPortal.Error
+        if (resp.status != HttpStatusCode.OK) return ResultadoPortal.Error
         val arr = json.parseToJsonElement(resp.bodyAsText()).jsonObject["tratamientos"] as? JsonArray
-            ?: return emptyList()
-        return arr.mapNotNull { el ->
+            ?: JsonArray(emptyList())   // API respondió OK pero sin tratamientos = vacío legítimo
+        val lista = arr.mapNotNull { el ->
             val o = el.jsonObject
             val ses = (o["sesiones"] as? JsonArray ?: JsonArray(emptyList())).mapNotNull {
                 val s = it.jsonObject
@@ -87,6 +100,7 @@ object SaludRepo {
                 sesiones = ses,
             )
         }
+        return ResultadoPortal.Ok(lista)
     }
 
     /** Saldos por tratamiento_id (solo de clínicas que lo habilitaron). */
@@ -190,12 +204,14 @@ object SaludRepo {
     }
 
     /** Citas del portal desde el API web (email O DNI — no solo email). */
-    suspend fun misCitas(): Pair<List<CitaPortal>, List<CitaPortal>>? {
-        val tk = token() ?: return null
-        val resp = http.get("${Supabase.SITE_URL}/api/paciente/mis-citas") {
-            header("Authorization", "Bearer $tk")
-        }
-        if (resp.status != HttpStatusCode.OK) return null
+    suspend fun misCitas(): ResultadoPortal<Pair<List<CitaPortal>, List<CitaPortal>>> {
+        val tk = token() ?: return ResultadoPortal.Error
+        val resp = runCatching {
+            http.get("${Supabase.SITE_URL}/api/paciente/mis-citas") {
+                header("Authorization", "Bearer $tk")
+            }
+        }.getOrNull() ?: return ResultadoPortal.Error
+        if (resp.status != HttpStatusCode.OK) return ResultadoPortal.Error
         val root = json.parseToJsonElement(resp.bodyAsText()).jsonObject
         fun mapear(k: String): List<CitaPortal> =
             (root[k] as? JsonArray ?: JsonArray(emptyList())).mapNotNull {
@@ -211,6 +227,6 @@ object SaludRepo {
                     clinicaSlug = o.str("clinicaSlug"),
                 )
             }
-        return mapear("proximas") to mapear("pasadas")
+        return ResultadoPortal.Ok(mapear("proximas") to mapear("pasadas"))
     }
 }
