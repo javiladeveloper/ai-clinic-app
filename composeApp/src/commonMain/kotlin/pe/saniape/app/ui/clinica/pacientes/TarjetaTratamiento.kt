@@ -729,7 +729,6 @@ fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, on
     var editMetodo by remember { mutableStateOf("Efectivo") }
     var borrarId by remember { mutableStateOf<String?>(null) }   // confirmación de borrado
 
-    suspend fun recargar() { pagos = runCatching { PacientesRepo.pagosDe(t.id) }.getOrDefault(pagos ?: emptyList()) }
 
     // Recarga al montar y cada vez que cambia recargaToken (tras cobrar una sesión).
     LaunchedEffect(t.id, recargaToken) {
@@ -784,7 +783,9 @@ fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, on
                             scope.launch {
                                 val ok = PacientesRepo.editarPago(p.id, m, editMetodo)
                                 guardando = false
-                                if (ok) { editando = null; recargar(); onCambio() }
+                                // onCambio() ya re-dispara la recarga (evita doble query).
+                                if (ok) { editando = null; pe.saniape.app.ui.Toaster.exito("Pago actualizado"); onCambio() }
+                                else pe.saniape.app.ui.Toaster.error("No se pudo editar")
                             }
                         }
                         MiniBtn("Cancelar", c.textoSuave, !guardando) { editando = null }
@@ -832,7 +833,9 @@ fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, on
                             scope.launch {
                                 val ok = PacientesRepo.borrarPago(p.id)
                                 guardando = false
-                                if (ok) { borrarId = null; recargar(); onCambio() }
+                                // onCambio() ya re-dispara la recarga (evita doble query).
+                                if (ok) { borrarId = null; pe.saniape.app.ui.Toaster.exito("Pago eliminado"); onCambio() }
+                                else pe.saniape.app.ui.Toaster.error("No se pudo eliminar")
                             }
                         }
                         MiniBtn("No", c.textoSuave, !guardando) { borrarId = null }
@@ -876,9 +879,11 @@ fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, on
                     guardando = false
                     if (ok) {
                         monto = ""; notaPago = ""; agregando = false
-                        pagos = runCatching { PacientesRepo.pagosDe(t.id) }.getOrDefault(pagos ?: emptyList())
+                        pe.saniape.app.ui.Toaster.exito("Pago registrado")
+                        // NO recargamos pagos aquí: onCambio() → cambioToken++ ya re-dispara
+                        // el LaunchedEffect que recarga pagosDe (evita la doble query).
                         onCambio()
-                    }
+                    } else pe.saniape.app.ui.Toaster.error("No se pudo registrar el pago")
                 }
             }
             MiniBtn("Cancelar", c.textoSuave, !guardando) { agregando = false; monto = ""; notaPago = "" }
