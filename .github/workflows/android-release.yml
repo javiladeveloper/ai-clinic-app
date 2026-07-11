@@ -62,11 +62,13 @@ jobs:
           ruby-version: "3.2"
           bundler-cache: true
 
-      # La cuenta de servicio de Google Play (JSON) se escribe a un archivo temporal.
+      # La cuenta de servicio de Google Play. Se pasa en BASE64 para que la private_key
+      # (con sus \n) no se corrompa al guardarla como secret — la corrupción causa
+      # "Invalid JWT Signature". El secret PLAY_STORE_JSON_KEY_B64 = base64 del .json.
       - name: Restaurar clave de Google Play
         env:
-          PLAY_JSON: ${{ secrets.PLAY_STORE_JSON_KEY }}
-        run: echo "$PLAY_JSON" > play-store-key.json
+          PLAY_JSON_B64: ${{ secrets.PLAY_STORE_JSON_KEY_B64 }}
+        run: echo "$PLAY_JSON_B64" | base64 -d > play-store-key.json
 
       - name: Subir a Play Store
         env:
