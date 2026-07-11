@@ -29,6 +29,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -93,8 +95,17 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         especialidadesClinica = runCatching { PacientesRepo.especialidadesClinica() }.getOrDefault(emptyList())
     }
     LaunchedEffect(pacienteInicial.id, recargarToken) {
-        paciente = runCatching { PacientesRepo.porId(pacienteInicial.id) }.getOrNull() ?: pacienteInicial
-        hitos = runCatching { PacientesRepo.hitosDe(pacienteInicial.id) }.getOrNull()
+        // porId (paciente + sus tratamientos) e hitosDe son INDEPENDIENTES entre sí, así
+        // que se piden EN PARALELO (async) en vez de una tras otra. Antes, tras cada
+        // acción (crear sesión, etc.) la recarga encadenaba porId → hitos → saldo, y la
+        // ficha se sentía congelada hasta terminar. El saldo SÍ depende del paciente
+        // (usa sus tratamientos ya cargados), por lo que va después.
+        coroutineScope {
+            val pacienteD = async { runCatching { PacientesRepo.porId(pacienteInicial.id) }.getOrNull() }
+            val hitosD = async { runCatching { PacientesRepo.hitosDe(pacienteInicial.id) }.getOrNull() }
+            paciente = pacienteD.await() ?: pacienteInicial
+            hitos = hitosD.await()
+        }
         // Saldo general (todos los tratamientos del paciente): acordado − pagado.
         saldoPendiente = runCatching { PacientesRepo.saldoPendienteDe(paciente.tratamientos) }.getOrNull()
         cargando = false
