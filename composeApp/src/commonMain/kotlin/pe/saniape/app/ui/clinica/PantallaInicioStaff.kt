@@ -202,6 +202,27 @@ fun PantallaInicioStaff(
                         }
                     }
 
+                    // ── Resumen de la semana (profesional): motiva y da sentido de avance ──
+                    if (s.esProfesional && s.misSesionesSemana > 0) {
+                        item {
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+                                    .background(c.chipBg).padding(Sania.dim.lg),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("🏆", fontSize = 22.sp)
+                                Spacer(Modifier.width(Sania.dim.md))
+                                Column {
+                                    Text("Tu semana", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        "${s.misSesionesSemana} sesión${if (s.misSesionesSemana == 1) "" else "es"} completada${if (s.misSesionesSemana == 1) "" else "s"} en los últimos 7 días",
+                                        color = c.texto, fontSize = Sania.txt.pequeno, fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     // ── Agenda de hoy ──
                     item {
                         Row(

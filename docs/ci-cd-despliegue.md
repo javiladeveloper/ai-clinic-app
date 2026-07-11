@@ -91,3 +91,54 @@ git tag ios-v2.1.0 && git push origin ios-v2.1.0
   no dejar claves materializadas.
 - **Verifica los nombres del scheme iOS** (`iosApp`) — si el proyecto Xcode usa otro
   nombre de scheme, ajústalo en `fastlane/Fastfile` (lane `beta`, `build_app scheme:`).
+
+---
+
+## 🔧 Errores que superamos al montar Android (registro real, para otros agentes)
+
+El CI de Android **funciona** (probado 2026-07-11, versionCode 7 subió a Play Store internal).
+Estos fueron los tropiezos en orden, con su causa y fix. Si un agente futuro reconfigura
+o replica esto (ej. iOS, u otra app), que los tenga en cuenta:
+
+### 1. `./gradlew: Permission denied` (en el runner Ubuntu)
+- **Causa:** `gradlew` se commiteó desde Windows sin el bit de ejecutable; Linux no lo puede correr.
+- **Fix:** `git update-index --chmod=+x gradlew` (queda modo 100755 en git) + `chmod +x ./gradlew`
+  en el step del workflow como respaldo.
+
+### 2. `You don't have write permissions for /var/lib/gems/...` (al instalar Fastlane)
+- **Causa:** `gem install fastlane` global falla por permisos en el runner.
+- **Fix:** Fastlane vía **Gemfile** (`gem "fastlane"`) + action `ruby/setup-ruby` con
+  `bundler-cache: true`, e invocar con `bundle exec fastlane ...`. La action va **pineada
+  a un SHA** (no `@v1`) porque el linter de seguridad (Codacy) marca las actions de terceros
+  sin pinear como error.
+
+### 3. `Authorization failed: invalid_grant - Invalid JWT Signature` (al subir a Play Store)
+- **Causa (la más traicionera):** el JSON de la cuenta de servicio, pegado CRUDO en el secret
+  de GitHub, corrompe la `private_key` (sus `\n` se rompen) → el token JWT no firma.
+- **Fix:** pasar el JSON en **BASE64**. Secret `PLAY_STORE_JSON_KEY_B64` = `base64 -w0 key.json`;
+  el workflow lo decodifica con `echo "$B64" | base64 -d > play-store-key.json`. A prueba de
+  corrupción de saltos de línea. **NO usar el JSON crudo como secret.**
+
+### 4. `Version code X has already been used`
+- **Causa:** intentar subir un AAB con un `versionCode` que Play Store ya registró (aunque sea
+  de un intento fallido previo o un AAB manual).
+- **Fix:** subir `versionCode` en `composeApp/build.gradle.kts` antes de cada release. Ese
+  error, paradójicamente, **confirma que todo el pipeline funciona** (autenticó, conectó,
+  preparó el AAB) — solo faltaba el número nuevo.
+
+### Cómo se creó la cuenta de servicio de Google Play (no está en Play Console donde uno cree)
+- **"Acceso a la API" NO está dentro de la app** en Play Console: es config de la CUENTA de
+  desarrollador (salir de la app → vista de cuenta). Y en algunas cuentas ni aparece en el menú.
+- **Camino que sí funcionó:** crear la cuenta de servicio DIRECTO en Google Cloud Console:
+  1. Google Cloud → crear proyecto (ej. `sania-500102`).
+  2. Habilitar **"Google Play Android Developer API"** (imprescindible, se olvida).
+  3. IAM → Cuentas de servicio → crear → generar clave **JSON**.
+  4. Play Console → Usuarios y permisos → invitar el email de la cuenta de servicio con permiso
+     de **versiones** ("Lanzar en canales de prueba" + opcional "Lanzar a producción").
+  5. La propagación de permisos puede tardar ~minutos.
+
+### Regla de oro para cada release
+Subir el número de versión ANTES de taggear:
+- Android: `versionCode` en `composeApp/build.gradle.kts`.
+- iOS: `CFBundleVersion` en `iosApp/iosApp/Info.plist`.
+Si no, la tienda rechaza con "ya usado".
