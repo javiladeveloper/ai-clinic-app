@@ -142,3 +142,28 @@ Subir el número de versión ANTES de taggear:
 - Android: `versionCode` en `composeApp/build.gradle.kts`.
 - iOS: `CFBundleVersion` en `iosApp/iosApp/Info.plist`.
 Si no, la tienda rechaza con "ya usado".
+
+---
+
+## 🔄 Popup "nueva versión" automático (Vercel) — opcional
+
+El workflow de Android, tras subir el AAB, actualiza solo la env var `APP_ANDROID_LATEST`
+en Vercel con el `versionCode` recién subido. El endpoint `/api/app/version` la sirve y la
+app muestra el popup "nueva versión disponible" — **sin tocar Vercel a mano**.
+
+Requiere 2 secrets en GitHub (si faltan, el paso se omite sin romper el deploy):
+
+| Secret | Qué es | De dónde |
+|---|---|---|
+| `VERCEL_TOKEN` | Token de API de Vercel | Vercel → Account Settings → Tokens → Create Token |
+| `VERCEL_PROJECT_ID` | ID del proyecto (la web `ai-clinic-dashboard`) | Vercel → el proyecto → Settings → General → "Project ID" |
+
+Cómo obtenerlos:
+1. **Token:** https://vercel.com/account/tokens → "Create" → scope al team/proyecto, sin
+   expiración o la que prefieras. Cópialo (solo se ve una vez).
+2. **Project ID:** entra al proyecto de la web en Vercel → Settings → General → copia el
+   "Project ID" (empieza con `prj_...`).
+3. Pégalos como secrets en GitHub (repo de la app).
+
+Después de configurarlos: cada `git tag android-v*` sube el AAB **y** actualiza la versión
+en Vercel → los usuarios con versión vieja ven el popup al abrir la app. Cero pasos manuales.

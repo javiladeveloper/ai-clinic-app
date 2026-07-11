@@ -75,6 +75,38 @@ jobs:
           PLAY_STORE_JSON_KEY_PATH: play-store-key.json
         run: bundle exec fastlane android ${{ github.event.inputs.track || 'internal' }}
 
+      # Actualiza en Vercel la ÚLTIMA versión disponible (APP_ANDROID_LATEST) al versionCode
+      # recién subido → el endpoint /api/app/version la sirve y la app muestra el popup
+      # "nueva versión disponible" sin que nadie toque Vercel a mano.
+      # Requiere secrets: VERCEL_TOKEN y VERCEL_PROJECT_ID (ver docs/ci-cd-despliegue.md).
+      # Se salta silenciosamente si los secrets no están configurados (no rompe el deploy).
+      - name: Actualizar versión en Vercel (popup de actualización)
+        if: ${{ github.event.inputs.track != 'production' }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "VERCEL_TOKEN/VERCEL_PROJECT_ID no configurados — se omite (config manual)."
+            exit 0
+          fi
+          # versionCode del build.gradle.kts (la línea 'versionCode = N').
+          VC=$(grep -oE 'versionCode[[:space:]]*=[[:space:]]*[0-9]+' composeApp/build.gradle.kts | grep -oE '[0-9]+' | head -1)
+          echo "Actualizando APP_ANDROID_LATEST = $VC en Vercel…"
+          # 1) Buscar el id de la env var existente (si existe) para actualizarla.
+          ENV_ID=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID/env" \
+            | grep -o '"id":"[^"]*","key":"APP_ANDROID_LATEST"' | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+          if [ -n "$ENV_ID" ]; then
+            curl -s -X PATCH -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" \
+              "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID/env/$ENV_ID" \
+              -d "{\"value\":\"$VC\"}" > /dev/null && echo "✓ actualizada."
+          else
+            curl -s -X POST -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" \
+              "https://api.vercel.com/v10/projects/$VERCEL_PROJECT_ID/env" \
+              -d "{\"key\":\"APP_ANDROID_LATEST\",\"value\":\"$VC\",\"type\":\"plain\",\"target\":[\"production\"]}" > /dev/null && echo "✓ creada."
+          fi
+
       # Limpieza: borra los secretos materializados aunque el job falle.
       - name: Limpiar secretos del runner
         if: always()
