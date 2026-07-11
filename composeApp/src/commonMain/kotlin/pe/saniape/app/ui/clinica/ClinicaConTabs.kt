@@ -65,6 +65,9 @@ fun ClinicaConTabs(
     // Sub-pantallas accesibles desde "Más" (módulos sin tab propio).
     var verSesiones by remember { mutableStateOf(false) }
     var verCaja by remember { mutableStateOf(false) }
+    // Buscador global de paciente (desde el header) + ficha que abre.
+    var verBuscador by remember { mutableStateOf(false) }
+    var fichaBuscada by remember { mutableStateOf<pe.saniape.app.data.staff.PacienteStaff?>(null) }
 
     LaunchedEffect(intento) {
         cargando = true; error = null
@@ -163,6 +166,7 @@ fun ClinicaConTabs(
                     onIrAgenda = { tab = TabClinica.Agenda },
                     onIrPacientes = { tab = TabClinica.Pacientes },
                     onAbrirCaja = if (contexto.puede("pagos")) ({ verCaja = true }) else null,
+                    onBuscar = if (verPacientes) ({ verBuscador = true }) else null,
                 )
                 TabClinica.Agenda -> PantallaAgenda(contexto)
                 TabClinica.Pacientes -> PantallaPacientesStaff(contexto)
@@ -187,6 +191,23 @@ fun ClinicaConTabs(
             if (verCaja && contexto.puede("pagos")) {
                 Box(Modifier.fillMaxSize().background(c.fondo)) {
                     PantallaCajaHoy(ctx = contexto)
+                }
+            }
+            // Buscador global (header) → al elegir, abre la ficha en overlay.
+            if (verBuscador) {
+                Box(Modifier.fillMaxSize().background(c.fondo)) {
+                    PantallaBuscarPaciente(
+                        ctx = contexto,
+                        onAbrirFicha = { fichaBuscada = it; verBuscador = false },
+                        onCerrar = { verBuscador = false },
+                    )
+                }
+            }
+            fichaBuscada?.let { pac ->
+                Box(Modifier.fillMaxSize().background(c.fondo)) {
+                    pe.saniape.app.ui.clinica.pacientes.PantallaFichaPaciente(
+                        ctx = contexto, pacienteInicial = pac, onCerrar = { fichaBuscada = null },
+                    )
                 }
             }
         }

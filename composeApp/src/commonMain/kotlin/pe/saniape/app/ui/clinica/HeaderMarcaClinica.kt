@@ -44,6 +44,8 @@ fun HeaderMarcaClinica(
     // Si se pasa, muestra la campana con el badge de no leídas y la hace tocable.
     noLeidas: Int = 0,
     onCampana: (() -> Unit)? = null,
+    // Si se pasa, muestra la lupa 🔍 (buscador global de paciente).
+    onBuscar: (() -> Unit)? = null,
     // Si se pasa y hay más de una clínica, el bloque de marca es tocable (→ ir a cambiar).
     onCambiarClinica: (() -> Unit)? = null,
     // Muestra el rol a la derecha (ej. "Recepción", "Fisioterapeuta").
@@ -75,6 +77,11 @@ fun HeaderMarcaClinica(
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
+            if (onBuscar != null) {
+                Text("🔍", fontSize = 18.sp,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).clickable { onBuscar() }.padding(6.dp))
+                Spacer(Modifier.width(2.dp))
+            }
             if (onCampana != null) {
                 Box(
                     Modifier.clip(RoundedCornerShape(50)).clickable { onCampana() }.padding(6.dp),

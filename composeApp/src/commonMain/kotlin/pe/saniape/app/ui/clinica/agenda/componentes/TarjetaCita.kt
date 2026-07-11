@@ -149,7 +149,7 @@ fun TarjetaCita(
     }
 }
 
-enum class AccionTarjeta { Confirmar, Completar, Cancelar, Revertir, Editar, PasarEvaluacion }
+enum class AccionTarjeta { Confirmar, Completar, Cancelar, Revertir, Editar, PasarEvaluacion, Repetir }
 
 /** Acciones disponibles según estado/tipo (espeja accionesCita de la web). */
 @Composable
@@ -161,6 +161,9 @@ private fun accionesPara(estado: String, tipo: String?): List<Triple<String, Acc
     if (tipo == "Consulta" && activa) lista.add(Triple("→ Evaluación", AccionTarjeta.PasarEvaluacion, c.info))
     if (activa) lista.add(Triple("✓ Completar", AccionTarjeta.Completar, c.navy))
     if (estado == "Completada" || estado == "Cancelada") lista.add(Triple("↩ Revertir", AccionTarjeta.Revertir, c.pend))
+    // Repetir: agendar la SIGUIENTE cita del mismo paciente en 1 toque (misma info,
+    // fecha propuesta a futuro). Muy usado para citar la próxima sesión/control.
+    if (estado == "Completada") lista.add(Triple("🔁 Repetir", AccionTarjeta.Repetir, c.teal))
     if (estado != "Cancelada" && estado != "Completada") {
         lista.add(Triple("✏ Editar", AccionTarjeta.Editar, c.textoSuave))
         lista.add(Triple("✕ Cancelar", AccionTarjeta.Cancelar, c.error))

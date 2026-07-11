@@ -1,5 +1,8 @@
 package pe.saniape.app.ui.clinica
 
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.plus
+import kotlinx.datetime.toLocalDateTime
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -207,6 +210,7 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                                         AccionTarjeta.Revertir -> confirmar = cita to AccionCita.Revertir
                                         AccionTarjeta.Editar -> editar = cita
                                         AccionTarjeta.PasarEvaluacion -> pasarEval = cita
+                                        AccionTarjeta.Repetir -> prefillEval = repetirDesde(cita)
                                     }
                                 },
                             )
@@ -320,4 +324,27 @@ private fun BotonPagina(texto: String, habilitado: Boolean, onClick: () -> Unit)
         Text(texto, color = if (habilitado) c.sobreNavy else c.textoSuave,
             fontSize = 12.sp, fontWeight = FontWeight.Bold)
     }
+}
+/**
+ * Construye el prefill para REPETIR una cita: mismo paciente, profesional, tipo,
+ * tratamiento y especialidad, con la fecha propuesta a +7 días de la original (o de
+ * hoy si la original ya pasó). El staff solo confirma/ajusta y guarda: 1 toque para
+ * citar la próxima sesión/control.
+ */
+private fun repetirDesde(cita: pe.saniape.app.data.staff.CitaStaff): pe.saniape.app.ui.clinica.PrefillCita {
+    val hoy = kotlinx.datetime.Clock.System.now()
+        .toLocalDateTime(kotlinx.datetime.TimeZone.currentSystemDefault()).date
+    val base = runCatching { kotlinx.datetime.LocalDate.parse(cita.fecha) }.getOrDefault(hoy)
+    val desde = if (base < hoy) hoy else base
+    val proxima = desde.plus(7, kotlinx.datetime.DateTimeUnit.DAY)
+    return pe.saniape.app.ui.clinica.PrefillCita(
+        tipo = cita.tipo ?: "Sesión",
+        pacienteId = cita.pacienteId,
+        pacienteNombre = cita.pacienteNombre,
+        fecha = proxima.toString(),
+        hora = cita.hora.takeIf { it.isNotBlank() } ?: "09:00",
+        terapeutaId = cita.terapeutaId,
+        especialidadId = cita.especialidadId,
+        tratamientoId = cita.tratamientoId,
+    )
 }

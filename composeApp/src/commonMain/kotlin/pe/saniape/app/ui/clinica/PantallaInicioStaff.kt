@@ -57,6 +57,7 @@ fun PantallaInicioStaff(
     onIrAgenda: () -> Unit = {},
     onIrPacientes: () -> Unit = {},
     onAbrirCaja: (() -> Unit)? = null,
+    onBuscar: (() -> Unit)? = null,
 ) {
     val c = Sania.colors
     var cargando by remember { mutableStateOf(true) }
@@ -81,6 +82,7 @@ fun PantallaInicioStaff(
             HeaderMarcaClinica(
                 ctx = ctx,
                 noLeidas = noLeidas,
+                onBuscar = onBuscar,
                 onCampana = {
                     verNotifs = true
                     if (noLeidas > 0) scope.launch {
