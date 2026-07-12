@@ -47,12 +47,16 @@ import pe.saniape.app.data.staff.TratamientoPaciente
 import pe.saniape.app.ui.ManejarAtras
 import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.recordarAcciones
+import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.ui.theme.EstadosColor
 import pe.saniape.app.ui.theme.Sania
 
 /** Petición de subir un archivo: documento suelto o resultado de una solicitud. */
 data class SubidaDoc(val categoria: String, val solicitudId: String?)
+
+/** Datos para el modal de completar sesión: la sesión, la anterior (evolución), las técnicas del plan y el tratamiento (para ofrecer agendar la próxima). */
+data class CompletarSesionReq(val ses: SesionFicha, val anterior: SesionFicha?, val tecnicasSugeridas: String?, val trat: TratamientoPaciente)
 
 /**
  * Ficha del paciente (staff). Resumen + tratamientos con su progreso. Acciones de
@@ -72,8 +76,10 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     // A diferencia de `cargando` (primer load), esto mantiene visible el contenido y
     // solo muestra un aviso "Actualizando…", para que nunca parezca que la app se colgó.
     var actualizando by remember { mutableStateOf(false) }
-    // Sesión a completar + su anterior (referencia de evolución para mejorías).
-    var completarSesion by remember { mutableStateOf<Pair<SesionFicha, SesionFicha?>?>(null) }
+    // Sesión a completar + su anterior (referencia de evolución) + técnicas del plan (precarga).
+    var completarSesion by remember { mutableStateOf<CompletarSesionReq?>(null) }
+    // Tras completar una sesión con paquete no terminado: ofrecer agendar la próxima en 1 tap.
+    var ofrecerAgendarProxima by remember { mutableStateOf<TratamientoPaciente?>(null) }
     var editandoPaciente by remember { mutableStateOf(false) }
     var menuPaciente by remember { mutableStateOf(false) }
     var crearSesionEn by remember { mutableStateOf<TratamientoPaciente?>(null) }
@@ -396,7 +402,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     "atenciones" -> ContenidoAtenciones(
                         ctx = ctx, paciente = paciente, hitos = hitos,
                         recargaToken = recargarToken,
-                        onCompletarSesion = { ses, anterior -> completarSesion = ses to anterior },
+                        onCompletarSesion = { ses, anterior, tecSug, trat -> completarSesion = CompletarSesionReq(ses, anterior, tecSug, trat) },
                         onRecargar = { recargar() },
                         onEditarTrat = { editarTratamiento = it },
                         onAmpliarTrat = { ampliarTratamiento = it },
@@ -654,10 +660,13 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     }
 
     // Modal "Completar sesión": técnicas (autocomplete) + mejorías (desde la #2).
-    completarSesion?.let { (ses, anterior) ->
+    completarSesion?.let { req ->
+        val ses = req.ses
+        val anterior = req.anterior
         ModalCompletarSesion(
             ses = ses,
             anterior = anterior,
+            tecnicasSugeridas = req.tecnicasSugeridas,
             onCancelar = { completarSesion = null },
             onConfirmar = { tecnicas, mejorias ->
                 completarSesion = null
@@ -673,8 +682,42 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     // Aprender las técnicas para sugerirlas la próxima vez (fire-and-forget).
                     tecnicas?.let { TecnicasRepo.registrar(it) }
                     recargar()
+                    // Si es paquete y aún quedan sesiones por hacer, ofrecer agendar la próxima
+                    // en 1 tap (evita ir a agenda → +Nueva → buscar paciente → tipo → fecha).
+                    val tr = req.trat
+                    if (ok && tr.usaSesiones && (tr.sesionesCompletadas + 1) < tr.totalSesiones) {
+                        ofrecerAgendarProxima = tr
+                    }
                 }
             },
+        )
+    }
+
+    // Ofrecer agendar la próxima sesión tras completar (1 tap → form pre-llenado a +7 días).
+    ofrecerAgendarProxima?.let { tr ->
+        val hoy = kotlinx.datetime.Clock.System.now()
+            .toLocalDateTime(kotlinx.datetime.TimeZone.currentSystemDefault()).date
+        val proxima = hoy.plus(7, kotlinx.datetime.DateTimeUnit.DAY)
+        val proximaIso = "${proxima.year}-${proxima.monthNumber.toString().padStart(2, '0')}-${proxima.dayOfMonth.toString().padStart(2, '0')}"
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { ofrecerAgendarProxima = null },
+            title = { Text("¿Agendar la próxima sesión?", fontWeight = FontWeight.Bold) },
+            text = { Text("Quedan ${tr.totalSesiones - (tr.sesionesCompletadas + 1)} sesión(es). Puedes agendarla para dentro de una semana ($proximaIso) y ajustar la hora.", color = c.textoSuave, fontSize = 13.sp) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    ofrecerAgendarProxima = null
+                    crearCita = pe.saniape.app.ui.clinica.PrefillCita(
+                        tipo = "Sesión",
+                        pacienteId = paciente.id, pacienteNombre = paciente.nombre,
+                        fecha = proximaIso, hora = pe.saniape.app.ui.proximaHoraEnPunto(),
+                        terapeutaId = tr.terapeutaId,
+                        especialidadId = tr.especialidadId,
+                        tratamientoId = tr.id,
+                    )
+                }) { Text("Agendar (+7 días)", color = c.navy, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { ofrecerAgendarProxima = null }) { Text("Ahora no", color = c.textoSuave) } },
+            containerColor = c.superficie,
         )
     }
 }
@@ -684,15 +727,33 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
  * autocompletado (TecnicasInput) y, desde la sesión #2, "Mejorías / evolución".
  * Muestra la sesión anterior como referencia.
  */
+/** Chip pequeño tocable usado en el modal de completar (repetir técnicas / mejoría rápida). */
+@Composable
+private fun ChipCompletar(texto: String, onClick: () -> Unit) {
+    val c = Sania.colors
+    Text(
+        texto, color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .clip(RoundedCornerShape(Sania.shape.pill.dp))
+            .background(c.chipBg)
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    )
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun ModalCompletarSesion(
     ses: SesionFicha,
     anterior: SesionFicha?,
+    tecnicasSugeridas: String?,
     onCancelar: () -> Unit,
     onConfirmar: (tecnicas: String?, mejorias: String?) -> Unit,
 ) {
     val c = Sania.colors
-    var tecnicas by remember { mutableStateOf(ses.notas ?: "") }
+    // Precarga de técnicas: lo que ya tenga la sesión → si no, las técnicas del plan del
+    // tratamiento (así el fisio no reteclea "TENS + ultrasonido" en cada sesión del paquete).
+    var tecnicas by remember { mutableStateOf(ses.notas?.takeIf { it.isNotBlank() } ?: tecnicasSugeridas ?: "") }
     var mejorias by remember { mutableStateOf(ses.mejorias ?: "") }
     val muestraMejorias = ses.numero > 1
 
@@ -726,6 +787,11 @@ private fun ModalCompletarSesion(
             pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
                 value = tecnicas, onChange = { tecnicas = it },
             )
+            // 1-tap: copiar las técnicas de la sesión anterior (evita reteclear lo mismo).
+            anterior?.notas?.takeIf { it.isNotBlank() && it != tecnicas }?.let { previas ->
+                Spacer(Modifier.height(8.dp))
+                ChipCompletar("↩ Repetir sesión #${anterior.numero}") { tecnicas = previas }
+            }
         }
 
         if (muestraMejorias) {
@@ -736,6 +802,18 @@ private fun ModalCompletarSesion(
                     placeholder = { Text("Ej: Menos dolor al caminar, mayor rango…", color = c.textoSuave) },
                     modifier = Modifier.fillMaxWidth(), minLines = 2,
                 )
+                // Chips rápidos: los añaden al texto en vez de teclear (evolución típica).
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    listOf("Menos dolor", "Mayor rango", "Más fuerza", "Sin cambios", "Mejor movilidad").forEach { chip ->
+                        ChipCompletar(chip) {
+                            mejorias = if (mejorias.isBlank()) chip else "$mejorias, $chip"
+                        }
+                    }
+                }
             }
         }
     }
@@ -762,7 +840,7 @@ private fun ModalCrearSesion(
     val c = Sania.colors
     val esPaquete = t.modalidad == "Paquete"
     var fecha by remember { mutableStateOf(pe.saniape.app.ui.clinica.agenda.hoyIso()) }
-    var hora by remember { mutableStateOf("09:00") }
+    var hora by remember { mutableStateOf(pe.saniape.app.ui.proximaHoraEnPunto()) }
     var duracion by remember { mutableStateOf(45) }
     var estado by remember { mutableStateOf("Planificada") }
     // En suelta el costo se pre-llena con el precio por sesión; en paquete es informativo (0).
@@ -1169,7 +1247,7 @@ private fun ContenidoAtenciones(
     paciente: PacienteStaff,
     hitos: pe.saniape.app.data.staff.HitosPaciente?,
     recargaToken: Int,
-    onCompletarSesion: (SesionFicha, SesionFicha?) -> Unit,
+    onCompletarSesion: (SesionFicha, SesionFicha?, String?, TratamientoPaciente) -> Unit,
     onRecargar: () -> Unit,
     onEditarTrat: (TratamientoPaciente) -> Unit,
     onAmpliarTrat: (TratamientoPaciente) -> Unit,

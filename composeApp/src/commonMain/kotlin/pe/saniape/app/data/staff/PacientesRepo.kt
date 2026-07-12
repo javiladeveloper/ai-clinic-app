@@ -56,6 +56,8 @@ data class TratamientoPaciente(
     val diagnostico: String?,
     val medicacion: String?,
     val proximoControl: String?,
+    /** Técnicas del plan que se precargan al completar cada sesión ("TENS + ultrasonido"). */
+    val tecnicasSugeridas: String? = null,
     val especialidadNombre: String?,
     val especialidadId: String? = null,
     val notaRecepcion: String? = null,   // recordatorio de recepción (se limpia al pagar)
@@ -288,7 +290,7 @@ object PacientesRepo {
             id, modalidad, estado, estado_pago, total_sesiones, sesiones_completadas,
             precio_paquete, precio_por_sesion, precio_acordado, terapeuta_id,
             cantidad_unidades, precio_unitario,
-            diagnostico, medicacion, proximo_control, nota_recepcion,
+            diagnostico, medicacion, proximo_control, nota_recepcion, tecnicas_sugeridas,
             procedimiento:procedimientos(nombre, especialidad_id, modo_cobro, precio, unidad_label, especialidad:especialidades(nombre, usa_sesiones)),
             terapeuta:terapeutas(id, nombre, especialidades:terapeuta_especialidades(especialidad:especialidades(id, nombre)))
         )
@@ -961,6 +963,7 @@ object PacientesRepo {
                 diagnostico = t.str("diagnostico"),
                 medicacion = t.str("medicacion"),
                 proximoControl = t.str("proximo_control"),
+                tecnicasSugeridas = t.str("tecnicas_sugeridas"),
                 especialidadNombre = espNombre,
                 especialidadId = espId,
                 notaRecepcion = t.str("nota_recepcion"),

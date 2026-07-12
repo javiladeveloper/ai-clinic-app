@@ -122,7 +122,7 @@ fun PantallaCrearCita(
     var terapeuta by remember { mutableStateOf<TerapeutaRef?>(null) }
     var especialidad by remember { mutableStateOf<EspecialidadRef?>(null) }
     var fecha by remember { mutableStateOf(prefill?.fecha ?: fechaInicial) }
-    var hora by remember { mutableStateOf(prefill?.hora ?: "09:00") }
+    var hora by remember { mutableStateOf(prefill?.hora ?: pe.saniape.app.ui.proximaHoraEnPunto()) }
     var costo by remember { mutableStateOf("0") }
     var diagnostico by remember { mutableStateOf("") }
     var notas by remember { mutableStateOf("") }

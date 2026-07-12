@@ -68,7 +68,7 @@ fun TarjetaTratamiento(
     citaConsulta: pe.saniape.app.data.staff.CitaHito? = null,   // detalle para la nube de la bolita
     citaEvaluacion: pe.saniape.app.data.staff.CitaHito? = null,
     onEditarCita: (pe.saniape.app.data.staff.CitaHito) -> Unit = {},
-    onCompletarSesion: (SesionFicha, anterior: SesionFicha?) -> Unit,   // abre modal (con sesión previa de referencia)
+    onCompletarSesion: (SesionFicha, anterior: SesionFicha?, tecnicasSugeridas: String?, trat: TratamientoPaciente) -> Unit,   // abre modal (con sesión previa + técnicas + tratamiento)
     onCambioRealizado: () -> Unit,               // refrescar ficha tras acción
     onEditar: (TratamientoPaciente) -> Unit = {},
     onAmpliar: (TratamientoPaciente) -> Unit = {},
@@ -355,7 +355,7 @@ fun TarjetaTratamiento(
                                 onCompletar = {
                                     // Sesión anterior (numero-1) como referencia de evolución en el modal.
                                     val anterior = s.filter { it.numero < ses.numero }.maxByOrNull { it.numero }
-                                    onCompletarSesion(ses, anterior)
+                                    onCompletarSesion(ses, anterior, t.tecnicasSugeridas, t)
                                 },
                                 onEstado = { nuevo ->
                                     menuDe = null
@@ -848,7 +848,11 @@ fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, on
     // Registrar pago
     Spacer(Modifier.height(8.dp))
     if (!agregando) {
-        MiniBtn(if (saldo > 0.005) "+ Registrar pago" else "+ Pago adicional", c.navy, !guardando) { agregando = true }
+        MiniBtn(if (saldo > 0.005) "+ Registrar pago" else "+ Pago adicional", c.navy, !guardando) {
+            // Precarga el monto con el SALDO pendiente: registrar el pago completo = 1 confirmación.
+            monto = if (saldo > 0.005) formato2(saldo) else ""
+            agregando = true
+        }
     } else {
         androidx.compose.material3.OutlinedTextField(
             value = monto, onValueChange = { monto = it.filter { ch -> ch.isDigit() || ch == '.' } },
