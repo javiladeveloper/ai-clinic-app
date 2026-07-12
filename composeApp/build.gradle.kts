@@ -115,8 +115,10 @@ android {
         // buscador, caja, resumen semanal), fluidez, popup actualización, seguridad portal.
         // v9 = fix buscador fisio-gestor, form nueva sesión sin #N, versión en pantalla Más.
         // v10 = prueba del circuito CI completo con VERCEL_DEPLOY_HOOK ya configurado.
-        versionCode = 10
-        versionName = "2.3.1"
+        // v11 = agilizar flujo del fisio (técnicas precargadas, chips, agendar próxima 1-tap,
+        //       hora próxima, monto=saldo) + buscador de paciente al crear cita.
+        versionCode = 11
+        versionName = "2.4.0"
     }
     signingConfigs {
         create("release") {
