@@ -114,8 +114,9 @@ android {
         // v6 = AAB manual; v7 = primer deploy CI/CD; v8 = mejoras staff (repetir cita,
         // buscador, caja, resumen semanal), fluidez, popup actualización, seguridad portal.
         // v9 = fix buscador fisio-gestor, form nueva sesión sin #N, versión en pantalla Más.
-        versionCode = 9
-        versionName = "2.3.0"
+        // v10 = prueba del circuito CI completo con VERCEL_DEPLOY_HOOK ya configurado.
+        versionCode = 10
+        versionName = "2.3.1"
     }
     signingConfigs {
         create("release") {
