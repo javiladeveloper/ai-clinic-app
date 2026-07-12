@@ -118,8 +118,9 @@ android {
         // v11 = agilizar flujo del fisio (técnicas precargadas, chips, agendar próxima 1-tap,
         //       hora próxima, monto=saldo) + buscador de paciente al crear cita.
         // v12 = fix CI: publicar en PRUEBAS CERRADAS (track alpha, completed), no en interna.
-        versionCode = 12
-        versionName = "2.4.1"
+        // v13 = Inicio no recarga ni parpadea al volver de otro tab (fluidez).
+        versionCode = 13
+        versionName = "2.4.2"
     }
     signingConfigs {
         create("release") {
