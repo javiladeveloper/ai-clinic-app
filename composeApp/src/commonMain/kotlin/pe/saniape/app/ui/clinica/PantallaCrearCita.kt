@@ -284,12 +284,11 @@ fun PantallaCrearCita(
                 }
                 Spacer(Modifier.height(Sania.dim.md))
 
-                // Paciente
+                // Paciente — con BUSCADOR (escribir nombre filtra), no scroll uno por uno.
                 Etiqueta("Paciente")
-                SelectorLista(
-                    items = pacientes, elegido = paciente, etiqueta = { it.nombre },
+                SelectorPacienteBuscable(
+                    items = pacientes, elegido = paciente,
                     onElegir = { paciente = it; terapeuta = null; tratamiento = null },
-                    placeholder = "Elegir paciente",
                 )
 
                 // Tratamiento (solo Sesión)
@@ -531,6 +530,59 @@ private fun <T> SelectorLista(
                     Text(etiqueta(item), color = c.texto, fontSize = Sania.txt.cuerpo,
                         modifier = Modifier.fillMaxWidth().clickable { onElegir(item); abierto = false }
                             .padding(horizontal = 14.dp, vertical = 12.dp))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Selector de paciente con BUSCADOR: al abrir muestra un campo de texto; escribir
+ * filtra por nombre (en cliente). Evita scrollear una lista larga uno por uno.
+ * Al elegir, muestra el nombre fijo con opción de cambiar.
+ */
+@Composable
+private fun SelectorPacienteBuscable(
+    items: List<RefNombre>, elegido: RefNombre?, onElegir: (RefNombre) -> Unit,
+) {
+    val c = Sania.colors
+    var abierto by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+
+    Column {
+        SelectorBoton(elegido?.nombre ?: "Buscar paciente por nombre…") {
+            abierto = !abierto
+            if (abierto) query = ""
+        }
+        if (abierto) {
+            Column(Modifier.fillMaxWidth().padding(top = 4.dp)
+                .clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.superficie)
+                .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                .padding(8.dp)) {
+                OutlinedTextField(
+                    value = query, onValueChange = { query = it },
+                    placeholder = { Text("Escribe un nombre…", color = c.textoSuave) },
+                    singleLine = true, modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(6.dp))
+                val filtrados = remember(query, items) {
+                    val q = query.trim()
+                    if (q.isBlank()) items.take(30)
+                    else items.filter { it.nombre.contains(q, ignoreCase = true) }.take(40)
+                }
+                Column(Modifier.fillMaxWidth().heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
+                    if (filtrados.isEmpty()) {
+                        Text(
+                            if (query.isBlank()) "Escribe para buscar." else "Sin coincidencias.",
+                            color = c.textoSuave, fontSize = Sania.txt.pequeno,
+                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                        )
+                    } else filtrados.forEach { item ->
+                        Text(item.nombre, color = c.texto, fontSize = Sania.txt.cuerpo,
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { onElegir(item); abierto = false; query = "" }
+                                .padding(horizontal = 10.dp, vertical = 12.dp))
+                    }
                 }
             }
         }
