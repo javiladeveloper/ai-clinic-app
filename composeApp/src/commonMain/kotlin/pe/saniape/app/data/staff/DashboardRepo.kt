@@ -43,6 +43,16 @@ object DashboardRepo {
     private val http = crearHttpClient()
     private suspend fun token(): String? = Supabase.client.auth.currentSessionOrNull()?.accessToken
 
+    /**
+     * Últimos stats cargados. Sobreviven al cambio de tab (Inicio se remonta al volver):
+     * la pantalla los muestra al instante y refresca en segundo plano, sin spinner que
+     * borre todo. Se limpia al cerrar sesión ([[dev-vivo-app-nativa]] patrón de fluidez).
+     */
+    var cache: StatsDashboard? = null
+        private set
+
+    fun limpiarCache() { cache = null }
+
     private fun JsonObject.str(k: String): String? =
         (this[k] as? JsonPrimitive)?.content?.takeIf { it != "null" }
     private fun JsonObject.intp(k: String): Int =
@@ -80,6 +90,6 @@ object DashboardRepo {
             pacientesNuevosSemana = o.intp("pacientesNuevosSemana"),
             derivacionesPend = o.intp("derivacionesPend"),
             agendaHoy = agenda,
-        )
+        ).also { cache = it }   // guarda el último resultado para mostrarlo al instante al volver
     }
 }

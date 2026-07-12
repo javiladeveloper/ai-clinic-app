@@ -60,15 +60,19 @@ fun PantallaInicioStaff(
     onBuscar: (() -> Unit)? = null,
 ) {
     val c = Sania.colors
-    var cargando by remember { mutableStateOf(true) }
-    var stats by remember { mutableStateOf<StatsDashboard?>(null) }
+    // Muestra al instante lo último cargado (sobrevive al cambio de tab) y refresca en
+    // segundo plano. Spinner de pantalla completa SOLO la primera vez (sin caché).
+    var stats by remember { mutableStateOf(DashboardRepo.cache) }
+    var cargando by remember { mutableStateOf(DashboardRepo.cache == null) }
     // 🔔 Notificaciones in-app (misma tabla que la campanita web). No es push (eso será FCM).
     var notifs by remember { mutableStateOf<List<pe.saniape.app.data.staff.NotificacionClinica>>(emptyList()) }
     var verNotifs by remember { mutableStateOf(false) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
-        try { stats = DashboardRepo.stats() } catch (_: Exception) {}
+        // Refresca aunque haya caché (para traer lo nuevo), pero sin borrar la pantalla:
+        // si ya hay stats visibles, el spinner no aparece (cargando ya es false).
+        try { DashboardRepo.stats()?.let { stats = it } } catch (_: Exception) {}
         cargando = false
         notifs = runCatching { pe.saniape.app.data.staff.NotificacionesRepo.listar() }.getOrDefault(emptyList())
     }

@@ -99,6 +99,7 @@ fun App() {
                         // cacheado de la clínica anterior + marca/modo, para que la próxima cuenta
                         // no vea datos de la anterior ni caiga al panel equivocado.
                         pe.saniape.app.data.staff.StaffContextoRepo.limpiar()
+                        pe.saniape.app.data.staff.DashboardRepo.limpiarCache()
                         Preferencias.setModoActivo(null)
                         Preferencias.setLogoClinica(null); Preferencias.setNombreClinica(null)
                         logueado = false; modo = null
