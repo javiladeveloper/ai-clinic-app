@@ -772,13 +772,11 @@ private fun ModalCrearSesion(
     var mostrarFecha by remember { mutableStateOf(false) }
     var mostrarHora by remember { mutableStateOf(false) }
 
-    // Profesionales de la(s) especialidad(es) del tratamiento + número de sesión informativo.
+    // Profesionales de la(s) especialidad(es) del tratamiento. (El número de sesión ya no
+    // se calcula aquí: lo asigna el servidor por fecha al guardar; evita una consulta extra.)
     var terapeutas by remember { mutableStateOf<List<pe.saniape.app.data.staff.TerapeutaConEsp>>(emptyList()) }
-    var numeroInfo by remember { mutableStateOf(t.sesionesCompletadas + 1) }
     LaunchedEffect(t.id) {
         terapeutas = runCatching { PacientesRepo.terapeutasConEspecialidad() }.getOrDefault(emptyList())
-        val ses = runCatching { PacientesRepo.sesionesDe(t.id) }.getOrDefault(emptyList())
-        numeroInfo = (ses.maxOfOrNull { it.numero } ?: t.sesionesCompletadas).coerceAtLeast(t.sesionesCompletadas) + 1
     }
     // Especialidades del profesional actual del tratamiento → filtra colegas de la misma especialidad.
     val espsDelTrat = terapeutas.find { it.id == t.terapeutaId }?.especialidadIds ?: emptyList()
@@ -826,7 +824,10 @@ private fun ModalCrearSesion(
     }
 
     DialogoForm(
-        titulo = "Nueva sesión #$numeroInfo",
+        // Sin "#N": el número lo asigna el servidor por ORDEN CRONOLÓGICO al guardar
+        // (renumerarSesionesPorFecha). Mostrarlo aquí engañaba: una sesión con fecha
+        // anterior a otras ya creadas terminaba con un número distinto al del título.
+        titulo = "Nueva sesión",
         subtitulo = if (esPaquete) "Incluida en el paquete" else "Sesión suelta",
         textoAccion = "Agendar sesión",
         accionHabilitada = fecha.isNotBlank() && hora.isNotBlank(),

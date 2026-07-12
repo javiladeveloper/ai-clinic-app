@@ -55,7 +55,10 @@ fun PantallaBuscarPaciente(
     pe.saniape.app.ui.ManejarAtras(activo = true, onAtras = onCerrar)
 
     LaunchedEffect(Unit) {
-        pacientes = runCatching { PacientesRepo.listar(ctx.miTerapeutaId) }.getOrDefault(emptyList())
+        // scopePacientes: si el fisio tiene permiso de pacientes ve TODA la clínica
+        // (como recepción); solo en modo clínico se acota a los suyos. Antes filtraba
+        // siempre por miTerapeutaId → un fisio-gestor no encontraba a nadie aquí.
+        pacientes = runCatching { PacientesRepo.listar(ctx.scopePacientes) }.getOrDefault(emptyList())
     }
 
     val filtrados = remember(query, pacientes) {

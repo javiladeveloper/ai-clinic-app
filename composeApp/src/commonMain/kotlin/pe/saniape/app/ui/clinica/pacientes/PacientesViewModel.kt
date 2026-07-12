@@ -40,8 +40,9 @@ class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
             // se mantiene visible con aviso sutil "Actualizando…" (no parpadea a vacío).
             if (pacientes.isEmpty()) cargando = true else recargando = true
             cargaFallo = false
-            // Scope: si es profesional vinculado, solo sus pacientes.
-            runCatching { PacientesRepo.listar(ctx.miTerapeutaId) }
+            // Scope: gestor (permiso pacientes) ve toda la clínica; en modo clínico,
+            // solo los suyos. Ver ContextoStaff.scopePacientes.
+            runCatching { PacientesRepo.listar(ctx.scopePacientes) }
                 .onSuccess { pacientes = it }
                 .onFailure { cargaFallo = true }
             cargando = false; recargando = false

@@ -68,6 +68,16 @@ data class ContextoStaff(
 
     /** ¿Puedo filtrar por personal? Solo si no estoy vinculado a una agenda. */
     val puedeFiltrarPorPersonal: Boolean get() = miTerapeutaId == null
+
+    /**
+     * Scope para listar PACIENTES (lista y buscador). Si tengo permiso de pacientes
+     * ([esGestor]) veo TODOS los de la clínica aunque esté vinculado a un terapeuta
+     * (mismo criterio que la web: fisio con permiso pacientes = ve todo, como recepción).
+     * Solo si NO soy gestor (modo clínico) se acota a mis pacientes ([miTerapeutaId]).
+     * Antes se pasaba siempre miTerapeutaId → un fisio-gestor no veía a nadie en el
+     * buscador (los pacientes en Consulta/Evaluación aún no tienen tratamiento suyo).
+     */
+    val scopePacientes: String? get() = if (esGestor) null else miTerapeutaId
 }
 
 data class Permisos(
