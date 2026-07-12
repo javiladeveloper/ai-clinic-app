@@ -117,8 +117,9 @@ android {
         // v10 = prueba del circuito CI completo con VERCEL_DEPLOY_HOOK ya configurado.
         // v11 = agilizar flujo del fisio (técnicas precargadas, chips, agendar próxima 1-tap,
         //       hora próxima, monto=saldo) + buscador de paciente al crear cita.
-        versionCode = 11
-        versionName = "2.4.0"
+        // v12 = fix CI: publicar en PRUEBAS CERRADAS (track alpha, completed), no en interna.
+        versionCode = 12
+        versionName = "2.4.1"
     }
     signingConfigs {
         create("release") {

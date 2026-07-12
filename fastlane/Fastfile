@@ -4,15 +4,20 @@
 
 # ─────────────────────────── ANDROID ───────────────────────────
 platform :android do
-  desc "Sube el AAB (ya compilado por Gradle) a Play Store, canal 'internal'"
+  # OJO: sube al canal de PRUEBAS CERRADAS (Closed testing), cuyo track en la API de
+  # Google se llama "alpha" (el nombre por defecto del canal cerrado). NO es "internal"
+  # (Prueba interna) — ese es otro canal distinto y era donde llegaban antes los AAB
+  # sin que aparecieran en Pruebas cerradas. La lane se sigue llamando :internal solo
+  # porque el workflow la invoca así (fastlane android internal); lo que manda es el track.
+  desc "Sube el AAB (ya compilado por Gradle) a Play Store, canal 'alpha' (Pruebas cerradas)"
   lane :internal do
     upload_to_play_store(
       package_name: "pe.saniape.app",
-      track: "internal",                       # internal | alpha | beta | production
+      track: "alpha",                          # alpha = canal de PRUEBAS CERRADAS
       aab: "composeApp/build/outputs/bundle/release/composeApp-release.aab",
       # La cuenta de servicio de Google Play (JSON) llega por env var como archivo temporal.
       json_key: ENV["PLAY_STORE_JSON_KEY_PATH"],
-      release_status: "draft",                 # queda como borrador para que revises antes de publicar
+      release_status: "completed",             # publica directo a los testers cerrados (estamos en pruebas cerradas)
       skip_upload_metadata: true,
       skip_upload_images: true,
       skip_upload_screenshots: true,

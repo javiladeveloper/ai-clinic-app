@@ -3,7 +3,11 @@
 Con esto, publicar la app deja de ser un ritual manual: empujas un **tag** (o le das a
 "Run workflow" en GitHub) y GitHub Actions compila, firma y sube a la tienda.
 
-- **Android** → Play Store (canal `internal` por defecto, como borrador para que revises).
+- **Android** → Play Store, canal **`alpha` = PRUEBAS CERRADAS**, publicado directo
+  (`release_status: completed`) a los testers cerrados. ⚠️ NO es el canal "internal"
+  (Prueba interna): son canales distintos. Antes subía a `internal` y por eso los AAB
+  "no aparecían" en Pruebas cerradas (estaban en otro canal). El track en la API de Google
+  para el canal cerrado por defecto se llama `alpha`.
 - **iOS** → TestFlight.
 
 Los secretos NUNCA viven en el repo: se guardan en **GitHub → Settings → Secrets and
