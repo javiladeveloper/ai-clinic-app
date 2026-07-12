@@ -24,10 +24,12 @@ parecido posible al de la web**, no una versión recortada.
 ## 🚀 CI/CD — Despliegue automático (LEER antes de tocar el CI)
 
 Android despliega solo: `git tag android-v2.x.y && git push origin android-v2.x.y` →
-GitHub Actions compila el AAB firmado, lo sube a Play Store (internal, borrador) **y**
-actualiza `APP_ANDROID_LATEST` en Vercel con ese versionCode → el endpoint
-`/api/app/version` lo sirve y la app muestra el popup "nueva versión disponible" a los
-usuarios con versión vieja. **Circuito completo, cero pasos manuales.**
+GitHub Actions compila el AAB firmado, lo sube a Play Store (internal, borrador), actualiza
+`APP_ANDROID_LATEST` en Vercel con ese versionCode **y re-despliega la web** (Deploy Hook)
+para que ese valor entre en vigor → el endpoint `/api/app/version` lo sirve y la app muestra
+el popup "nueva versión disponible". **OJO:** Vercel congela las env vars al deploy, así que
+sin el re-deploy la var cambia pero el endpoint sigue sirviendo el valor viejo (nos pasó:
+var en 8, endpoint en 6). Requiere el secret `VERCEL_DEPLOY_HOOK` además de token+project.
 **Antes de taggear:** subir `versionCode` en `composeApp/build.gradle.kts` (si no, la
 tienda rechaza con "version code usado"). Historial: v6=AAB manual, v7=1er CI, v8=actual.
 

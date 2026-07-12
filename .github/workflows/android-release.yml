@@ -85,6 +85,7 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
         run: |
           if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
             echo "VERCEL_TOKEN/VERCEL_PROJECT_ID no configurados — se omite (config manual)."
@@ -105,6 +106,14 @@ jobs:
             curl -s -X POST -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" \
               "https://api.vercel.com/v10/projects/$VERCEL_PROJECT_ID/env" \
               -d "{\"key\":\"APP_ANDROID_LATEST\",\"value\":\"$VC\",\"type\":\"plain\",\"target\":[\"production\"]}" > /dev/null && echo "✓ creada."
+          fi
+          # Vercel CONGELA las env vars al momento del deploy: cambiar la var NO afecta al
+          # deployment vivo hasta un nuevo deploy. El Deploy Hook re-despliega producción
+          # con el valor fresco → el endpoint /api/app/version pasa a servir el nuevo número.
+          if [ -n "$VERCEL_DEPLOY_HOOK" ]; then
+            curl -s -X POST "$VERCEL_DEPLOY_HOOK" > /dev/null && echo "✓ redeploy de la web disparado (deploy hook)."
+          else
+            echo "⚠ VERCEL_DEPLOY_HOOK no configurado — la var quedó guardada pero el popup NO se activa hasta el próximo deploy de la web. Configúralo (ver docs/ci-cd-despliegue.md)."
           fi
 
       # Limpieza: borra los secretos materializados aunque el job falle.

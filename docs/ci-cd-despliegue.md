@@ -147,23 +147,40 @@ Si no, la tienda rechaza con "ya usado".
 
 ## 🔄 Popup "nueva versión" automático (Vercel) — opcional
 
-El workflow de Android, tras subir el AAB, actualiza solo la env var `APP_ANDROID_LATEST`
-en Vercel con el `versionCode` recién subido. El endpoint `/api/app/version` la sirve y la
-app muestra el popup "nueva versión disponible" — **sin tocar Vercel a mano**.
+El workflow de Android, tras subir el AAB: (1) actualiza la env var `APP_ANDROID_LATEST`
+en Vercel con el `versionCode` recién subido y (2) **dispara un re-deploy de la web** para
+que ese valor entre en vigor. El endpoint `/api/app/version` lo sirve y la app muestra el
+popup "nueva versión disponible" — **sin tocar Vercel a mano**.
 
-Requiere 2 secrets en GitHub (si faltan, el paso se omite sin romper el deploy):
+> ⚠️ **Por qué el paso (2) es imprescindible:** Vercel **congela** las env vars al momento
+> del deploy. Cambiar `APP_ANDROID_LATEST` en Settings NO afecta al deployment vivo — el
+> endpoint sigue sirviendo el valor viejo hasta que haya un **nuevo deploy**. Por eso, tras
+> actualizar la var, el CI hace POST a un **Deploy Hook** que re-despliega producción. Sin
+> este hook el popup NO se activa (nos pasó: la var quedó en 8 pero el endpoint seguía en 6).
+
+Requiere 3 secrets en GitHub (si faltan, el paso se omite sin romper el deploy):
 
 | Secret | Qué es | De dónde |
 |---|---|---|
 | `VERCEL_TOKEN` | Token de API de Vercel | Vercel → Account Settings → Tokens → Create Token |
 | `VERCEL_PROJECT_ID` | ID del proyecto (la web `ai-clinic-dashboard`) | Vercel → el proyecto → Settings → General → "Project ID" |
+| `VERCEL_DEPLOY_HOOK` | URL que re-despliega producción | Vercel → el proyecto → Settings → Git → **Deploy Hooks** → crear uno (nombre libre, branch `main`) → copiar la URL |
 
 Cómo obtenerlos:
 1. **Token:** https://vercel.com/account/tokens → "Create" → scope al team/proyecto, sin
    expiración o la que prefieras. Cópialo (solo se ve una vez).
 2. **Project ID:** entra al proyecto de la web en Vercel → Settings → General → copia el
    "Project ID" (empieza con `prj_...`).
-3. Pégalos como secrets en GitHub (repo de la app).
+3. **Deploy Hook:** proyecto de la web → Settings → Git → Deploy Hooks → "Create Hook"
+   (nombre p.ej. `ci-app-version`, branch `main`) → copia la URL completa
+   (`https://api.vercel.com/v1/integrations/deploy/prj_.../...`). Es una llave: guárdala
+   solo como secret.
+4. Pégalos como secrets en GitHub (repo de la app).
 
-Después de configurarlos: cada `git tag android-v*` sube el AAB **y** actualiza la versión
-en Vercel → los usuarios con versión vieja ven el popup al abrir la app. Cero pasos manuales.
+Después de configurarlos: cada `git tag android-v*` sube el AAB, actualiza la versión en
+Vercel **y** re-despliega la web → los usuarios con versión vieja ven el popup al abrir la
+app. Cero pasos manuales.
+
+**Si solo faltaba el Deploy Hook** (la var ya está en 8 pero el endpoint sirve 6): basta
+un re-deploy manual de la web en Vercel (Deployments → ⋯ → Redeploy) para que tome el valor;
+a partir de ahí, configura el hook para que el CI lo haga solo en los próximos releases.
