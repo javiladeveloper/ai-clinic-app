@@ -113,8 +113,9 @@ android {
         // esta app nativa debe subir con un código MAYOR para actualizar la ficha.
         // v6 = AAB manual; v7 = primer deploy CI/CD; v8 = mejoras staff (repetir cita,
         // buscador, caja, resumen semanal), fluidez, popup actualización, seguridad portal.
-        versionCode = 8
-        versionName = "2.2.0"
+        // v9 = fix buscador fisio-gestor, form nueva sesión sin #N, versión en pantalla Más.
+        versionCode = 9
+        versionName = "2.3.0"
     }
     signingConfigs {
         create("release") {
