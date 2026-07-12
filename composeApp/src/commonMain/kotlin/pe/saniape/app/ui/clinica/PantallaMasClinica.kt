@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import pe.saniape.app.data.Preferencias
+import pe.saniape.app.data.VersionApp
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.ModoRepo
 import pe.saniape.app.data.staff.StaffContextoRepo
@@ -220,6 +221,15 @@ fun PantallaMasClinica(
                     Text("Cerrar sesión", color = c.error, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
                     Text("→", color = c.error, fontSize = Sania.txt.cuerpo)
                 }
+
+                // Versión de la app (para soporte y para que el usuario sepa qué tiene).
+                Spacer(Modifier.height(Sania.dim.xl))
+                Text(
+                    "Sania · versión ${VersionApp.nombre} (${VersionApp.codigo})",
+                    color = c.textoSuave, fontSize = Sania.txt.mini,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
                 Spacer(Modifier.height(Sania.dim.xl))
             }
         }

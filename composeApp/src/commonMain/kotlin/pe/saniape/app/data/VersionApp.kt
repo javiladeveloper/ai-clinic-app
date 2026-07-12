@@ -9,6 +9,9 @@ expect object VersionApp {
     /** Código de versión de esta build (Android versionCode / iOS CFBundleVersion). */
     val codigo: Int
 
+    /** Nombre legible para el usuario ("2.2.0"). Android versionName / iOS CFBundleShortVersionString. */
+    val nombre: String
+
     /** "android" | "ios" — para elegir qué comparar y a qué tienda mandar. */
     val plataforma: String
 }
