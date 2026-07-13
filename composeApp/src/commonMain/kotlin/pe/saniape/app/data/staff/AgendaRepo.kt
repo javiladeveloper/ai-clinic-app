@@ -11,6 +11,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import kotlinx.datetime.plus
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -428,11 +429,18 @@ object AgendaBanners {
             }
             .decodeList<JsonObject>().map { mapCita(it) }
 
-        // Vencidas: fecha < hoy + estado Pendiente/Confirmada.
+        // Vencidas: fecha < hoy y >= hace 7 días + estado Pendiente/Confirmada. Las más
+        // viejas (>7 días) las cierra solo el cron de la web (/api/cron/cerrar-citas-viejas),
+        // igual que en la web → el banner no acumula ruido histórico.
+        val hace7 = runCatching {
+            kotlinx.datetime.LocalDate.parse(hoy)
+                .plus(-7, kotlinx.datetime.DateTimeUnit.DAY).toString()
+        }.getOrDefault(hoy)
         val vencidas = Supabase.client.postgrest["citas"]
             .select(Columns.raw(SEL)) {
                 filter {
                     lt("fecha", hoy)
+                    gte("fecha", hace7)
                     isIn("estado", listOf("Pendiente", "Confirmada"))
                     if (miTerapeutaId != null) eq("terapeuta_id", miTerapeutaId)
                 }
