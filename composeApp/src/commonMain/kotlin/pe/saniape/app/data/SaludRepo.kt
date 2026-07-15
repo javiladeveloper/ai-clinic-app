@@ -74,6 +74,10 @@ object SaludRepo {
                 header("Authorization", "Bearer $tk")
             }
         }.getOrNull() ?: return ResultadoPortal.Error
+        // 403 = la cuenta aún NO está vinculada a ninguna ficha de paciente (cuenta nueva
+        // de Google que todavía no reservó ni canjeó código). NO es un fallo → vacío, para
+        // que el portal muestre "vincúlate / reserva" en vez de un error rojo alarmante.
+        if (resp.status == HttpStatusCode.Forbidden) return ResultadoPortal.Ok(emptyList())
         if (resp.status != HttpStatusCode.OK) return ResultadoPortal.Error
         val arr = json.parseToJsonElement(resp.bodyAsText()).jsonObject["tratamientos"] as? JsonArray
             ?: JsonArray(emptyList())   // API respondió OK pero sin tratamientos = vacío legítimo
@@ -211,6 +215,8 @@ object SaludRepo {
                 header("Authorization", "Bearer $tk")
             }
         }.getOrNull() ?: return ResultadoPortal.Error
+        // 403 = cuenta aún no vinculada a ninguna ficha → vacío (no error). Ver tratamientos().
+        if (resp.status == HttpStatusCode.Forbidden) return ResultadoPortal.Ok(emptyList<CitaPortal>() to emptyList())
         if (resp.status != HttpStatusCode.OK) return ResultadoPortal.Error
         val root = json.parseToJsonElement(resp.bodyAsText()).jsonObject
         fun mapear(k: String): List<CitaPortal> =

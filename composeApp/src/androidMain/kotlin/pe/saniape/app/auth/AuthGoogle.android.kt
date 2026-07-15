@@ -5,7 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.Google
@@ -30,10 +30,11 @@ actual class GoogleAuthLauncher(
     actual fun lanzar(onResultado: (exito: Boolean, error: String?) -> Unit) {
         scope.launch {
             try {
-                val opcion = GetGoogleIdOption.Builder()
-                    .setFilterByAuthorizedAccounts(false)
-                    .setServerClientId(WEB_CLIENT_ID)
-                    .setAutoSelectEnabled(false)
+                // GetSignInWithGoogleOption (botón oficial "Iniciar sesión con Google")
+                // SIEMPRE muestra el selector COMPLETO de cuentas del dispositivo, incluidas
+                // las que nunca han usado la app. GetGoogleIdOption (aun con
+                // filterByAuthorizedAccounts=false) a veces mostraba solo 1-2 cuentas.
+                val opcion = GetSignInWithGoogleOption.Builder(WEB_CLIENT_ID)
                     .build()
 
                 val request = GetCredentialRequest.Builder()
