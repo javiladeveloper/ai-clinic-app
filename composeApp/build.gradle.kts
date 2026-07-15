@@ -119,8 +119,9 @@ android {
         //       hora próxima, monto=saldo) + buscador de paciente al crear cita.
         // v12 = fix CI: publicar en PRUEBAS CERRADAS (track alpha, completed), no en interna.
         // v13 = Inicio no recarga ni parpadea al volver de otro tab (fluidez).
-        versionCode = 13
-        versionName = "2.4.2"
+        // v14 = banner citas 7 días, login Google todas las cuentas, portal sin error si no vinculado.
+        versionCode = 14
+        versionName = "2.5.0"
     }
     signingConfigs {
         create("release") {
