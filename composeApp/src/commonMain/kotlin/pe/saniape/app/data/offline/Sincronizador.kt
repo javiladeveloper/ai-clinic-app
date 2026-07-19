@@ -35,6 +35,23 @@ import pe.saniape.app.ui.Toaster
  * Cada operación lleva su `idempotency_key`, que el servidor honra: si un
  * reintento llega dos veces, no se duplica (crítico en pagos → kardex).
  */
+/** Resultado de intentar enviar una operación al servidor. */
+enum class ResultadoEnvio {
+    /** El servidor la aceptó. */
+    OK,
+    /** No se pudo llegar (sin señal, timeout, sin sesión, 409): reintentable → encolar. */
+    SIN_RED,
+    /** El servidor la rechazó (validación, permisos…): reintentar daría lo mismo. */
+    RECHAZADO,
+}
+
+/**
+ * Cuántas veces se reintenta una operación antes de darla por fallida. Los ciclos
+ * se disparan al volver la señal y al abrir la app, así que 20 cubre días de mala
+ * conectividad sin dejar nada pendiente para siempre.
+ */
+private const val MAX_INTENTOS = 20
+
 object Sincronizador {
     private val http = crearHttpClient()
     private val mutex = Mutex()
@@ -52,9 +69,14 @@ object Sincronizador {
      * tanto conviene encolarla. Así, con conexión, todo se comporta igual que antes
      * de la cola: la pantalla puede recargar y ya ve su cambio.
      */
-    suspend fun enviarAhora(endpoint: String, cuerpo: JsonObject, idemKey: String): Boolean {
+    suspend fun enviarAhora(endpoint: String, cuerpo: JsonObject, idemKey: String): ResultadoEnvio {
         val conClave = JsonObject(cuerpo + ("idempotency_key" to JsonPrimitive(idemKey)))
-        return enviar(endpoint, conClave)?.exito == true
+        val r = enviar(endpoint, conClave)
+        return when {
+            r == null -> ResultadoEnvio.SIN_RED   // reintentable → encolar
+            r.exito -> ResultadoEnvio.OK
+            else -> ResultadoEnvio.RECHAZADO      // el servidor dijo que no → no encolar
+        }
     }
 
     suspend fun sincronizar() {
@@ -85,11 +107,18 @@ object Sincronizador {
                 val r = enviar(op.endpoint, cuerpo)
                 when {
                     r == null -> {
-                        // Fallo de RED: sigue pendiente, se reintenta en el próximo ciclo
+                        // Fallo de RED: sigue pendiente y se reintenta en el próximo ciclo
                         // (al volver la señal o al reabrir la app). No se avisa aquí: el
-                        // aviso ya lo dio quien encoló (si no, al abrir la app sin señal
-                        // saldría un error sin que el usuario hiciera nada).
-                        ColaRepo.volverAPendiente(op.id, "sin conexión")
+                        // aviso ya lo dio quien encoló.
+                        // TOPE de intentos: sin esto, una operación irreenviable (sesión
+                        // cerrada, servidor caído para siempre) quedaría pendiente eterna
+                        // y el chip nunca bajaría a 0.
+                        if (op.intentos + 1 >= MAX_INTENTOS) {
+                            ColaRepo.marcarFallida(op.id, "no se pudo enviar tras $MAX_INTENTOS intentos")
+                            Toaster.error("No se pudo registrar «${op.tipo}» — revisa tu conexión")
+                        } else {
+                            ColaRepo.volverAPendiente(op.id, "sin conexión")
+                        }
                     }
                     r.exito -> {
                         ColaRepo.marcarHecha(op.id)

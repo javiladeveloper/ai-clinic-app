@@ -79,32 +79,23 @@ object ColaRepo {
     }
 
     /**
-     * Error definitivo del servidor: no se reintenta. Marca también EN CASCADA las
-     * operaciones que dependían de esta (por `depende_de` o porque usaban su id
-     * temporal): si el paciente no se pudo crear, su cita/tratamiento nunca podrían
-     * enviarse — sin esto quedarían pendientes para siempre y el chip nunca bajaría.
+     * Error definitivo: no se reintenta. Marca también EN CASCADA las operaciones
+     * que quedarían huérfanas — las que referencian el id temporal de esta: si el
+     * paciente no se pudo crear, su cita/tratamiento NUNCA podrían enviarse (su
+     * `tmp-` jamás tendrá id real). Sin esto quedarían pendientes para siempre y el
+     * chip nunca bajaría a 0.
+     *
+     * La detección es por el id temporal dentro del payload (no por `depende_de`,
+     * que hoy nadie setea: las operaciones se encolan sueltas y el orden por id +
+     * la traducción de temporales son lo que garantiza la secuencia correcta).
      */
     suspend fun marcarFallida(id: Long, error: String) = withContext(Dispatchers.Default) {
         q.marcarEstado("fallida", error, id)
-        val fallida = q.porId(id).executeAsOneOrNull()
-        val tmp = fallida?.id_temporal
+        val tmp = q.porId(id).executeAsOneOrNull()?.id_temporal ?: return@withContext
         q.pendientes().executeAsList().forEach { op ->
-            val dependePorId = op.depende_de == id
-            val dependePorTmp = tmp != null && op.payload.contains(tmp)
-            if (dependePorId || dependePorTmp) {
+            if (op.payload.contains(tmp)) {
                 q.marcarEstado("fallida", "depende de una operación que falló: $error", op.id)
             }
-        }
-    }
-
-    /** Operaciones que fallaron definitivamente (para avisar al usuario). */
-    suspend fun fallidas(): List<OpPendiente> = withContext(Dispatchers.Default) {
-        q.todas().executeAsList().filter { it.estado == "fallida" }.map {
-            OpPendiente(
-                id = it.id, idemKey = it.idempotency_key, tipo = it.tipo, endpoint = it.endpoint,
-                payload = it.payload, dependeDe = it.depende_de, idTemporal = it.id_temporal,
-                intentos = it.intentos.toInt(),
-            )
         }
     }
 

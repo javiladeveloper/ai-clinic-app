@@ -400,7 +400,10 @@ object PacientesRepo {
         val idemKey = nuevaIdemKey()
         val idReal = runCatching { crearPacienteEnServidor(cuerpo, idemKey) }.getOrNull()
         if (idReal != null) {
-            return porId(idReal) ?: PacienteStaff(
+            // runCatching: el paciente YA se creó en el servidor. Si la relectura
+            // falla (red intermitente), NO propagar el error — devolvemos el objeto
+            // mínimo. Propagar haría que el usuario reintente y duplique.
+            return runCatching { porId(idReal) }.getOrNull() ?: PacienteStaff(
                 id = idReal, nombre = nombre.trim(),
                 dni = dni?.trim()?.takeIf { it.isNotBlank() }, edad = edad,
                 telefono = telefono?.trim()?.takeIf { it.isNotBlank() }, ocupacion = null,

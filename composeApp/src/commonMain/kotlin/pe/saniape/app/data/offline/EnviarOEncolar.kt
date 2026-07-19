@@ -31,8 +31,15 @@ suspend fun enviarOEncolar(
     // el servidor no los conoce. Va directo a la cola, que los traducirá.
     val tieneTemporales = cuerpo.toString().contains("tmp-")
     if (!tieneTemporales) {
-        val ok = runCatching { Sincronizador.enviarAhora(endpoint, cuerpo, idemKey) }.getOrDefault(false)
-        if (ok) return true
+        when (runCatching { Sincronizador.enviarAhora(endpoint, cuerpo, idemKey) }.getOrNull()) {
+            ResultadoEnvio.OK -> return true
+            // RECHAZO del servidor (400/403…): NO encolar. Reintentarlo daría el mismo
+            // error una y otra vez, y decirle al usuario "se registrará al volver la
+            // señal" sería mentirle: el problema no es la conexión.
+            ResultadoEnvio.RECHAZADO -> return false
+            // Fallo de red (o excepción) → sigue abajo y se encola.
+            else -> Unit
+        }
     }
 
     return runCatching {
