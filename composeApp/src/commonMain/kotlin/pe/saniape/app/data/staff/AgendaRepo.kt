@@ -19,6 +19,10 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import pe.saniape.app.data.Supabase
 import pe.saniape.app.data.crearHttpClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import pe.saniape.app.data.offline.ColaRepo
+import pe.saniape.app.data.offline.Sincronizador
 
 /** Una cita del staff (lista de agenda), con joins de paciente/terapeuta/tratamiento. */
 data class CitaStaff(
@@ -177,30 +181,33 @@ object AgendaRepo {
         diagnostico: String? = null,
         derivarEspecialidadId: String? = null,
     ): Boolean {
-        val tk = token() ?: return false
         val cuerpo = buildJsonObject {
             put("citaId", citaId)
             if (observaciones != null) put("observaciones", observaciones)
             if (!diagnostico.isNullOrBlank()) put("diagnostico", diagnostico)
             if (!derivarEspecialidadId.isNullOrBlank()) put("derivarEspecialidadId", derivarEspecialidadId)
         }
-        val resp = http.post("${Supabase.SITE_URL}/api/staff/cita/completar") {
-            header("Authorization", "Bearer $tk")
-            contentType(ContentType.Application.Json)
-            setBody(cuerpo.toString())
-        }
-        return resp.status == HttpStatusCode.OK
+        return encolarCita("completar", cuerpo)
     }
 
-    private suspend fun postSimple(ruta: String, citaId: String): Boolean {
-        val tk = token() ?: return false
-        val resp = http.post("${Supabase.SITE_URL}/api/staff/cita/$ruta") {
-            header("Authorization", "Bearer $tk")
-            contentType(ContentType.Application.Json)
-            setBody(buildJsonObject { put("citaId", citaId) }.toString())
-        }
-        return resp.status == HttpStatusCode.OK
+    /**
+     * ENCOLA un POST de cita (no lo envía directo): queda guardado en el
+     * dispositivo aunque no haya señal y el Sincronizador lo manda al volver la
+     * conexión, sin duplicar (idempotency_key). Antes, un fallo de red perdía
+     * la operación en silencio.
+     */
+    private suspend fun encolarCita(ruta: String, cuerpo: JsonObject): Boolean {
+        ColaRepo.encolar(
+            tipo = "cita:$ruta",
+            endpoint = "/api/staff/cita/$ruta",
+            payload = cuerpo,
+        )
+        Sincronizador.disparar(CoroutineScope(Dispatchers.Default))
+        return true
     }
+
+    private suspend fun postSimple(ruta: String, citaId: String): Boolean =
+        encolarCita(ruta, buildJsonObject { put("citaId", citaId) })
 
     suspend fun revertir(citaId: String) = postSimple("revertir", citaId)
     suspend fun cancelar(citaId: String) = postSimple("cancelar", citaId)
@@ -366,12 +373,7 @@ object AgendaRepo {
             put("duracion", duracion)
             if (!notas.isNullOrBlank()) put("notas", notas)
         }
-        val resp = http.post("${Supabase.SITE_URL}/api/staff/cita/crear") {
-            header("Authorization", "Bearer $tk")
-            contentType(ContentType.Application.Json)
-            setBody(cuerpo.toString())
-        }
-        return resp.status == HttpStatusCode.OK
+        return encolarCita("crear", cuerpo)
     }
 }
 
