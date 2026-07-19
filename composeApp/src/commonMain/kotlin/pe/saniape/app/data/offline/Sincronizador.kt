@@ -9,6 +9,8 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -36,15 +38,28 @@ import pe.saniape.app.ui.Toaster
 object Sincronizador {
     private val http = crearHttpClient()
     private val mutex = Mutex()
+    /** Scope propio del sincronizador (vive lo que la app; no se crea uno por operación). */
+    private val scopePropio = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /** Lanza un ciclo de sincronización sin bloquear a quien llama. */
-    fun disparar(scope: CoroutineScope) {
+    fun disparar(scope: CoroutineScope = scopePropio) {
         scope.launch { sincronizar() }
     }
 
+    /**
+     * Intenta enviar UNA operación de inmediato (camino feliz con señal).
+     * Devuelve true si el servidor la aceptó; false si falló (red o rechazo) y por
+     * tanto conviene encolarla. Así, con conexión, todo se comporta igual que antes
+     * de la cola: la pantalla puede recargar y ya ve su cambio.
+     */
+    suspend fun enviarAhora(endpoint: String, cuerpo: JsonObject, idemKey: String): Boolean {
+        val conClave = JsonObject(cuerpo + ("idempotency_key" to JsonPrimitive(idemKey)))
+        return enviar(endpoint, conClave)?.exito == true
+    }
+
     suspend fun sincronizar() {
-        if (mutex.isLocked) return // ya hay un ciclo en curso
-        mutex.withLock {
+        if (!mutex.tryLock()) return // ya hay un ciclo en curso
+        try {
             val ops = ColaRepo.pendientes()
             if (ops.isEmpty()) {
                 EstadoSync.actualizar(0)
@@ -71,12 +86,10 @@ object Sincronizador {
                 when {
                     r == null -> {
                         // Fallo de RED: sigue pendiente, se reintenta en el próximo ciclo
-                        // (al volver la señal o al reabrir la app).
+                        // (al volver la señal o al reabrir la app). No se avisa aquí: el
+                        // aviso ya lo dio quien encoló (si no, al abrir la app sin señal
+                        // saldría un error sin que el usuario hiciera nada).
                         ColaRepo.volverAPendiente(op.id, "sin conexión")
-                        if (!avisadoSinRed) {
-                            avisadoSinRed = true
-                            Toaster.error("Sin conexión — se guardó y se registrará al volver la señal")
-                        }
                     }
                     r.exito -> {
                         ColaRepo.marcarHecha(op.id)
@@ -89,7 +102,13 @@ object Sincronizador {
                             mapa[op.idTemporal] = r.id
                         }
                     }
-                    else -> ColaRepo.marcarFallida(op.id, r.error ?: "error del servidor")
+                    else -> {
+                        // Rechazo del servidor: no se reintenta. Se marca en cascada a
+                        // sus dependientes y SE AVISA (antes quedaba muerto en silencio,
+                        // con la UI habiendo dicho "guardado").
+                        ColaRepo.marcarFallida(op.id, r.error ?: "error del servidor")
+                        Toaster.error("No se pudo registrar «${op.tipo}»: ${r.error ?: "error del servidor"}")
+                    }
                 }
             }
 
@@ -99,6 +118,8 @@ object Sincronizador {
                 ColaRepo.limpiarHechas()
                 if (sincronizoAlgo) Toaster.exito("Todo sincronizado")
             }
+        } finally {
+            mutex.unlock()
         }
     }
 

@@ -39,9 +39,12 @@ object ColaRepo {
         payload: JsonObject,
         idTemporal: String? = null,
         dependeDe: Long? = null,
+        // Si el envío inline ya usó una clave, se reusa aquí: así el reintento no
+        // duplica si aquel sí había llegado al servidor.
+        idemKey: String? = null,
     ): Long = withContext(Dispatchers.Default) {
         q.encolar(
-            idempotency_key = nuevaIdemKey(),
+            idempotency_key = idemKey ?: nuevaIdemKey(),
             tipo = tipo,
             endpoint = endpoint,
             payload = payload.toString(),
@@ -75,9 +78,34 @@ object ColaRepo {
         q.marcarEstado("hecha", null, id)
     }
 
-    /** Error definitivo del servidor: no se reintenta (sus dependientes quedan bloqueados). */
+    /**
+     * Error definitivo del servidor: no se reintenta. Marca también EN CASCADA las
+     * operaciones que dependían de esta (por `depende_de` o porque usaban su id
+     * temporal): si el paciente no se pudo crear, su cita/tratamiento nunca podrían
+     * enviarse — sin esto quedarían pendientes para siempre y el chip nunca bajaría.
+     */
     suspend fun marcarFallida(id: Long, error: String) = withContext(Dispatchers.Default) {
         q.marcarEstado("fallida", error, id)
+        val fallida = q.porId(id).executeAsOneOrNull()
+        val tmp = fallida?.id_temporal
+        q.pendientes().executeAsList().forEach { op ->
+            val dependePorId = op.depende_de == id
+            val dependePorTmp = tmp != null && op.payload.contains(tmp)
+            if (dependePorId || dependePorTmp) {
+                q.marcarEstado("fallida", "depende de una operación que falló: $error", op.id)
+            }
+        }
+    }
+
+    /** Operaciones que fallaron definitivamente (para avisar al usuario). */
+    suspend fun fallidas(): List<OpPendiente> = withContext(Dispatchers.Default) {
+        q.todas().executeAsList().filter { it.estado == "fallida" }.map {
+            OpPendiente(
+                id = it.id, idemKey = it.idempotency_key, tipo = it.tipo, endpoint = it.endpoint,
+                payload = it.payload, dependeDe = it.depende_de, idTemporal = it.id_temporal,
+                intentos = it.intentos.toInt(),
+            )
+        }
     }
 
     /** Fallo de red: sigue pendiente y se reintenta en el próximo ciclo. */

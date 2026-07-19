@@ -19,10 +19,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import pe.saniape.app.data.Supabase
 import pe.saniape.app.data.crearHttpClient
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import pe.saniape.app.data.offline.ColaRepo
-import pe.saniape.app.data.offline.Sincronizador
+import pe.saniape.app.data.offline.enviarOEncolar
 
 /** Una cita del staff (lista de agenda), con joins de paciente/terapeuta/tratamiento. */
 data class CitaStaff(
@@ -196,15 +193,8 @@ object AgendaRepo {
      * conexión, sin duplicar (idempotency_key). Antes, un fallo de red perdía
      * la operación en silencio.
      */
-    private suspend fun encolarCita(ruta: String, cuerpo: JsonObject): Boolean {
-        ColaRepo.encolar(
-            tipo = "cita:$ruta",
-            endpoint = "/api/staff/cita/$ruta",
-            payload = cuerpo,
-        )
-        Sincronizador.disparar(CoroutineScope(Dispatchers.Default))
-        return true
-    }
+    private suspend fun encolarCita(ruta: String, cuerpo: JsonObject): Boolean =
+        enviarOEncolar("cita:$ruta", "/api/staff/cita/$ruta", cuerpo)
 
     private suspend fun postSimple(ruta: String, citaId: String): Boolean =
         encolarCita(ruta, buildJsonObject { put("citaId", citaId) })

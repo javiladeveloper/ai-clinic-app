@@ -27,6 +27,10 @@ import pe.saniape.app.data.Supabase
 import pe.saniape.app.data.crearHttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import pe.saniape.app.data.offline.enviarOEncolar
+import pe.saniape.app.data.offline.nuevaIdemKey
+import pe.saniape.app.ui.Toaster
+import kotlinx.serialization.json.jsonObject
 import pe.saniape.app.data.offline.ColaRepo
 import pe.saniape.app.data.offline.Sincronizador
 import pe.saniape.app.data.offline.nuevoIdTemporal
@@ -276,9 +280,29 @@ object PacientesRepo {
      */
     private suspend fun postStaff(path: String, cuerpo: JsonObject): Boolean {
         val tipo = path.removePrefix("/api/staff/").replace('/', ':')
-        ColaRepo.encolar(tipo = tipo, endpoint = path, payload = cuerpo)
-        Sincronizador.disparar(CoroutineScope(Dispatchers.Default))
-        return true
+        return enviarOEncolar(tipo, path, cuerpo)
+    }
+
+    /**
+     * Crea el paciente en el servidor y devuelve su id REAL (el endpoint deduplica
+     * por DNI, así que puede ser el de uno ya existente). null si no hubo conexión
+     * o el servidor lo rechazó → el llamador encola.
+     */
+    private suspend fun crearPacienteEnServidor(cuerpo: JsonObject, idemKey: String): String? = try {
+        val tk = token()
+        if (tk == null) null else {
+            val conClave = JsonObject(cuerpo + ("idempotency_key" to JsonPrimitive(idemKey)))
+            val resp = http.post("${Supabase.SITE_URL}/api/staff/paciente/crear") {
+                header("Authorization", "Bearer $tk")
+                contentType(ContentType.Application.Json)
+                setBody(conClave.toString())
+            }
+            if (resp.status != HttpStatusCode.OK) null
+            else Json.parseToJsonElement(resp.bodyAsText()).jsonObject["id"]
+                ?.let { (it as? JsonPrimitive)?.content }?.takeIf { it.isNotBlank() }
+        }
+    } catch (e: Exception) {
+        null
     }
 
     private fun JsonObject.str(k: String): String? =
@@ -363,7 +387,6 @@ object PacientesRepo {
         // idempotencia) en vez de insertar directo: así no se pierde sin señal ni
         // se duplica al reintentar. Devolvemos ya un paciente con id temporal para
         // que la UI lo muestre al instante; al sincronizar se mapea al id real.
-        val idTmp = nuevoIdTemporal()
         val cuerpo = buildJsonObject {
             put("nombre", nombre.trim())
             dni?.trim()?.takeIf { it.isNotBlank() }?.let { put("dni", it) }
@@ -371,13 +394,31 @@ object PacientesRepo {
             if (edad != null) put("edad", edad)
             diagnostico?.trim()?.takeIf { it.isNotBlank() }?.let { put("diagnostico", it) }
         }
+
+        // Con señal: se crea de verdad y devolvemos el paciente con su id REAL, así
+        // la ficha funciona igual que siempre. Sin señal: id temporal + cola.
+        val idemKey = nuevaIdemKey()
+        val idReal = runCatching { crearPacienteEnServidor(cuerpo, idemKey) }.getOrNull()
+        if (idReal != null) {
+            return porId(idReal) ?: PacienteStaff(
+                id = idReal, nombre = nombre.trim(),
+                dni = dni?.trim()?.takeIf { it.isNotBlank() }, edad = edad,
+                telefono = telefono?.trim()?.takeIf { it.isNotBlank() }, ocupacion = null,
+                diagnostico = diagnostico?.trim()?.takeIf { it.isNotBlank() },
+                estado = "Nuevo", flag = null, tratamientos = emptyList(),
+            )
+        }
+
+        val idTmp = nuevoIdTemporal()
         ColaRepo.encolar(
             tipo = "paciente:crear",
             endpoint = "/api/staff/paciente/crear",
             payload = cuerpo,
             idTemporal = idTmp,
+            idemKey = idemKey,
         )
-        Sincronizador.disparar(CoroutineScope(Dispatchers.Default))
+        Toaster.exito("Paciente guardado — se registrará al volver la señal")
+        Sincronizador.disparar()
         return PacienteStaff(
             id = idTmp,
             nombre = nombre.trim(),

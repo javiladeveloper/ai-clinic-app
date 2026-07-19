@@ -31,6 +31,9 @@ SELECT last_insert_rowid();
 pendientes:
 SELECT * FROM cola_operaciones WHERE estado = 'pendiente' ORDER BY id ASC;
 
+todas:
+SELECT * FROM cola_operaciones ORDER BY id ASC;
+
 porId:
 SELECT * FROM cola_operaciones WHERE id = ?;
 

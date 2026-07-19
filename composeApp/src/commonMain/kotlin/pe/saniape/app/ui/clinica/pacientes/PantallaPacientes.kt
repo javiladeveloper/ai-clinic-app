@@ -187,7 +187,10 @@ fun PantallaPacientes(
             onCreado = { p ->
                 nuevoAbierto = false
                 vm.cargar()
-                onAbrirFicha(p)
+                // Si se creó SIN señal, su id es temporal: la ficha no podría leer
+                // nada del servidor con ese id. Se queda en la lista (ya aparece) y
+                // el aviso de "se registrará al volver la señal" ya se mostró.
+                if (!pe.saniape.app.data.offline.esTemporal(p.id)) onAbrirFicha(p)
             },
         )
     }
