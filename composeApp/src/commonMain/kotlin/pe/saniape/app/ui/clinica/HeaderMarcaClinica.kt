@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -79,6 +81,22 @@ fun HeaderMarcaClinica(
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // Cola offline: si hay escrituras sin sincronizar (se registraron sin
+            // señal), avisar que están guardadas y pendientes de subir.
+            val pendientes by pe.saniape.app.data.offline.EstadoSync.pendientes.collectAsState()
+            if (pendientes > 0L) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color(0xFFFEF3C7))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                ) {
+                    Text("🕐 $pendientes", color = Color(0xFF92400E), fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(6.dp))
+            }
             if (onBuscar != null) {
                 Text("🔍", fontSize = 18.sp,
                     modifier = Modifier.clip(RoundedCornerShape(50)).clickable { onBuscar() }.padding(6.dp))

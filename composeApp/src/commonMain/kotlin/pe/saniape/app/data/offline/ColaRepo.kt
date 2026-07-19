@@ -49,6 +49,9 @@ object ColaRepo {
             id_temporal = idTemporal,
             created_at = ahoraMs(),
         )
+        // La UI muestra el pendiente YA (aunque la sincronización aún no corra):
+        // así el usuario ve al instante que su registro quedó guardado.
+        EstadoSync.actualizar(q.contarPendientes().executeAsOne())
         q.ultimoId().executeAsOne()
     }
 
