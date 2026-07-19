@@ -25,6 +25,11 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import pe.saniape.app.data.Supabase
 import pe.saniape.app.data.crearHttpClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import pe.saniape.app.data.offline.ColaRepo
+import pe.saniape.app.data.offline.Sincronizador
+import pe.saniape.app.data.offline.nuevoIdTemporal
 
 /**
  * TIPO de tratamiento (Strategy, espejo de lib/tipos-tratamiento.ts de la web).
@@ -259,20 +264,21 @@ object PacientesRepo {
     private suspend fun token(): String? = Supabase.client.auth.currentSessionOrNull()?.accessToken
 
     /**
-     * POST a un endpoint de staff con Bearer. Centraliza el try/catch: si la red falla
-     * (timeout, server caído), devuelve false en vez de PROPAGAR la excepción y crashear
-     * la app. Antes cada método hacía http.post suelto y un SocketTimeout reventaba la app.
+     * ENCOLA un POST a un endpoint de staff (no lo envía directo).
+     *
+     * La operación se guarda primero en la cola local: sobrevive a la falta de
+     * señal y al cierre de la app, y el Sincronizador la manda cuando hay red
+     * (sin duplicar, gracias al idempotency_key que el servidor honra). Antes,
+     * si la red fallaba, esto devolvía false y el registro SE PERDÍA sin rastro.
+     *
+     * Devuelve true = "quedó registrado" (localmente). El envío real puede ser
+     * inmediato (con señal) o diferido.
      */
-    private suspend fun postStaff(path: String, cuerpo: JsonObject): Boolean = try {
-        val tk = token() ?: return false
-        val resp = http.post("${Supabase.SITE_URL}$path") {
-            header("Authorization", "Bearer $tk")
-            contentType(ContentType.Application.Json)
-            setBody(cuerpo.toString())
-        }
-        resp.status == HttpStatusCode.OK
-    } catch (e: Exception) {
-        false
+    private suspend fun postStaff(path: String, cuerpo: JsonObject): Boolean {
+        val tipo = path.removePrefix("/api/staff/").replace('/', ':')
+        ColaRepo.encolar(tipo = tipo, endpoint = path, payload = cuerpo)
+        Sincronizador.disparar(CoroutineScope(Dispatchers.Default))
+        return true
     }
 
     private fun JsonObject.str(k: String): String? =
@@ -352,18 +358,39 @@ object PacientesRepo {
      */
     suspend fun crearPaciente(
         nombre: String, dni: String?, telefono: String?, edad: Int?, diagnostico: String?,
-    ): PacienteStaff? = try {
-        val fila = Supabase.client.postgrest["pacientes"].insert(buildJsonObject {
+    ): PacienteStaff? {
+        // Se ENCOLA contra /api/staff/paciente/crear (que hace dedup por DNI e
+        // idempotencia) en vez de insertar directo: así no se pierde sin señal ni
+        // se duplica al reintentar. Devolvemos ya un paciente con id temporal para
+        // que la UI lo muestre al instante; al sincronizar se mapea al id real.
+        val idTmp = nuevoIdTemporal()
+        val cuerpo = buildJsonObject {
             put("nombre", nombre.trim())
             dni?.trim()?.takeIf { it.isNotBlank() }?.let { put("dni", it) }
             telefono?.trim()?.takeIf { it.isNotBlank() }?.let { put("telefono", it) }
             if (edad != null) put("edad", edad)
             diagnostico?.trim()?.takeIf { it.isNotBlank() }?.let { put("diagnostico", it) }
-            put("estado", "Nuevo")
-        }) { select(Columns.raw(SELECT)) }
-            .decodeList<JsonObject>().firstOrNull()
-        fila?.let { mapear(it) }
-    } catch (_: Exception) { null }
+        }
+        ColaRepo.encolar(
+            tipo = "paciente:crear",
+            endpoint = "/api/staff/paciente/crear",
+            payload = cuerpo,
+            idTemporal = idTmp,
+        )
+        Sincronizador.disparar(CoroutineScope(Dispatchers.Default))
+        return PacienteStaff(
+            id = idTmp,
+            nombre = nombre.trim(),
+            dni = dni?.trim()?.takeIf { it.isNotBlank() },
+            edad = edad,
+            telefono = telefono?.trim()?.takeIf { it.isNotBlank() },
+            ocupacion = null,
+            diagnostico = diagnostico?.trim()?.takeIf { it.isNotBlank() },
+            estado = "Nuevo",
+            flag = null,
+            tratamientos = emptyList(),
+        )
+    }
 
     suspend fun actualizarPaciente(
         id: String, nombre: String, telefono: String?, ocupacion: String?,
