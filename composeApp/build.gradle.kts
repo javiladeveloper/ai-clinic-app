@@ -16,6 +16,17 @@ plugins {
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.kotlinSerialization)
+    alias(libs.plugins.sqldelight)
+}
+
+// Base de datos local (cola offline): genera SaniaDb a partir de los .sq de
+// composeApp/src/commonMain/sqldelight.
+sqldelight {
+    databases {
+        create("SaniaDb") {
+            packageName.set("pe.saniape.app.db")
+        }
+    }
 }
 
 kotlin {
@@ -48,6 +59,8 @@ kotlin {
             implementation(compose.preview)
             implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.core.ktx)
+            // Driver de la BD local (cola offline)
+            implementation(libs.sqldelight.android)
             implementation(libs.androidx.browser)
             implementation(libs.kotlinx.coroutines.android)
             implementation(libs.ktor.client.okhttp)
@@ -71,6 +84,9 @@ kotlin {
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)
+            // Cola offline: base local para que ninguna escritura se pierda sin señal
+            implementation(libs.sqldelight.runtime)
+            implementation(libs.sqldelight.coroutines)
             implementation(compose.ui)
             implementation(compose.components.resources)
             implementation(compose.components.uiToolingPreview)
@@ -97,6 +113,8 @@ kotlin {
         iosMain.dependencies {
             // Ktor con engine Darwin (NSURLSession) — el que usa Supabase en iOS.
             implementation(libs.ktor.client.darwin)
+            // Driver nativo de la BD local (cola offline)
+            implementation(libs.sqldelight.native)
         }
     }
 }

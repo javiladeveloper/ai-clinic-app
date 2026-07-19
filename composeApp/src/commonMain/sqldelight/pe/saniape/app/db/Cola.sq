@@ -1,0 +1,53 @@
+-- Cola de escrituras pendientes de sincronizar (offline-first).
+-- Toda escritura de la app se guarda aquí primero: sobrevive el cierre de la app
+-- y la falta de señal. El Sincronizador la vacía contra /api/staff/* cuando hay red.
+CREATE TABLE cola_operaciones (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  idempotency_key  TEXT NOT NULL,
+  tipo             TEXT NOT NULL,
+  endpoint         TEXT NOT NULL,
+  payload          TEXT NOT NULL,
+  estado           TEXT NOT NULL DEFAULT 'pendiente',
+  depende_de       INTEGER,
+  id_temporal      TEXT,
+  intentos         INTEGER NOT NULL DEFAULT 0,
+  ultimo_error     TEXT,
+  created_at       INTEGER NOT NULL
+);
+
+-- Mapa de IDs temporales (tmp-*) a los reales que asignó el servidor.
+CREATE TABLE mapa_ids (
+  id_temporal TEXT NOT NULL PRIMARY KEY,
+  id_real     TEXT NOT NULL
+);
+
+encolar:
+INSERT INTO cola_operaciones (idempotency_key, tipo, endpoint, payload, estado, depende_de, id_temporal, created_at)
+VALUES (?, ?, ?, ?, 'pendiente', ?, ?, ?);
+
+ultimoId:
+SELECT last_insert_rowid();
+
+pendientes:
+SELECT * FROM cola_operaciones WHERE estado = 'pendiente' ORDER BY id ASC;
+
+porId:
+SELECT * FROM cola_operaciones WHERE id = ?;
+
+marcarEstado:
+UPDATE cola_operaciones SET estado = ?, ultimo_error = ? WHERE id = ?;
+
+sumarIntento:
+UPDATE cola_operaciones SET intentos = intentos + 1, ultimo_error = ? WHERE id = ?;
+
+contarPendientes:
+SELECT count(*) FROM cola_operaciones WHERE estado IN ('pendiente', 'sincronizando');
+
+guardarMapa:
+INSERT OR REPLACE INTO mapa_ids (id_temporal, id_real) VALUES (?, ?);
+
+todoElMapa:
+SELECT * FROM mapa_ids;
+
+limpiarHechas:
+DELETE FROM cola_operaciones WHERE estado = 'hecha';
