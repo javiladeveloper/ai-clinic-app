@@ -142,8 +142,10 @@ android {
         // v12 = fix CI: publicar en PRUEBAS CERRADAS (track alpha, completed), no en interna.
         // v13 = Inicio no recarga ni parpadea al volver de otro tab (fluidez).
         // v14 = banner citas 7 días, login Google todas las cuentas, portal sin error si no vinculado.
-        versionCode = 14
-        versionName = "2.5.0"
+        // v15 = OFFLINE: cola local (SQLDelight) para que ninguna escritura se pierda sin
+        //       señal; se envía inline si hay red y se encola solo si falla; chip de pendientes.
+        versionCode = 15
+        versionName = "2.6.0"
     }
     signingConfigs {
         create("release") {
