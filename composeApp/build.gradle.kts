@@ -116,6 +116,10 @@ kotlin {
             // Driver nativo de la BD local (cola offline)
             implementation(libs.sqldelight.native)
         }
+        // Tests de la lógica pura crítica (traducción de ids temporales, orden de la cola).
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
     }
 }
 
