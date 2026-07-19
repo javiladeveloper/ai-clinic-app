@@ -14,8 +14,9 @@ class SaniaApplication : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
         Preferencias.init(this)
-        // Cola offline: el driver de la BD local necesita el Context.
+        // Cola offline: el driver de la BD local y el monitor de red necesitan el Context.
         pe.saniape.app.data.offline.DriverFactory.init(this)
+        pe.saniape.app.data.offline.RedMonitor.init(this)
         // Toca el cliente para inicializarlo y que restaure la sesión guardada.
         Supabase.client
         // FCM (notificaciones del celular): no-op hasta pegar los valores en FirebaseCfg.

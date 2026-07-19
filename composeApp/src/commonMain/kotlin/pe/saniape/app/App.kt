@@ -44,6 +44,15 @@ fun App() {
         var modo by remember { mutableStateOf<String?>(null) }
         val scope = rememberCoroutineScope()
 
+        // Cola offline: vaciar lo que quedó pendiente al abrir la app, y quedar
+        // atentos a que vuelva la señal para sincronizar sin que el usuario haga nada.
+        LaunchedEffect(Unit) {
+            pe.saniape.app.data.offline.Sincronizador.disparar(scope)
+            pe.saniape.app.data.offline.RedMonitor.iniciar {
+                pe.saniape.app.data.offline.Sincronizador.disparar(scope)
+            }
+        }
+
         // Aviso de nueva versión (sugerido): se consulta una vez por arranque, tras la intro.
         // "Más tarde" lo descarta hasta el próximo arranque (no molesta en la misma sesión).
         var urlActualizacion by remember { mutableStateOf<String?>(null) }
