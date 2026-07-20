@@ -24,6 +24,21 @@ suspend fun enviarOEncolar(
     cuerpo: JsonObject,
     idTemporal: String? = null,
     dependeDe: Long? = null,
+): Boolean = pe.saniape.app.ui.conIndicador {
+    enviarOEncolarInterno(tipo, endpoint, cuerpo, idTemporal, dependeDe)
+}
+
+/**
+ * Toda escritura pasa por aquí, así que envolverla con el indicador cubre TODAS
+ * las gestiones de la app (sesiones, pagos, citas, tratamientos) de una vez, sin
+ * tener que acordarse en cada pantalla.
+ */
+private suspend fun enviarOEncolarInterno(
+    tipo: String,
+    endpoint: String,
+    cuerpo: JsonObject,
+    idTemporal: String?,
+    dependeDe: Long?,
 ): Boolean {
     val idemKey = nuevaIdemKey()
 

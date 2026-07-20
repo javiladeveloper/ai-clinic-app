@@ -398,7 +398,11 @@ object PacientesRepo {
         // Con señal: se crea de verdad y devolvemos el paciente con su id REAL, así
         // la ficha funciona igual que siempre. Sin señal: id temporal + cola.
         val idemKey = nuevaIdemKey()
-        val idReal = runCatching { crearPacienteEnServidor(cuerpo, idemKey) }.getOrNull()
+        // conIndicador: crear el paciente no pasa por enviarOEncolar, así que se
+        // envuelve aquí para que también muestre el "Guardando…".
+        val idReal = pe.saniape.app.ui.conIndicador {
+            runCatching { crearPacienteEnServidor(cuerpo, idemKey) }.getOrNull()
+        }
         if (idReal != null) {
             // runCatching: el paciente YA se creó en el servidor. Si la relectura
             // falla (red intermitente), NO propagar el error — devolvemos el objeto

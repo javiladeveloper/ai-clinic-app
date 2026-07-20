@@ -81,6 +81,28 @@ fun HeaderMarcaClinica(
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // "Guardando…": las gestiones encadenan varias operaciones y tardan un
+            // par de segundos; sin esto la pantalla parecía colgada.
+            val guardando by pe.saniape.app.ui.EstadoGuardando.enCurso.collectAsState()
+            if (guardando > 0) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color.White.copy(alpha = 0.18f))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(12.dp),
+                        color = c.sobreNavy,
+                        strokeWidth = 2.dp,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Guardando…", color = c.sobreNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(6.dp))
+            }
+
             // Cola offline: si hay escrituras sin sincronizar (se registraron sin
             // señal), avisar que están guardadas y pendientes de subir.
             val pendientes by pe.saniape.app.data.offline.EstadoSync.pendientes.collectAsState()
