@@ -444,10 +444,15 @@ fun TarjetaTratamiento(
         })
     }
     borrarSesion?.let { ses ->
-        ModalBorrarSesion(ses, onCancelar = { borrarSesion = null }, onBorrar = { borrarPagos ->
-            borrarSesion = null
-            scope.launch { PacientesRepo.borrarSesion(ses.id, borrarPagos); recargarSesiones() }
-        })
+        ModalBorrarSesion(
+            ses,
+            hoy = pe.saniape.app.ui.clinica.agenda.hoyIso(),
+            onCancelar = { borrarSesion = null },
+            onBorrar = { borrarPagos ->
+                borrarSesion = null
+                scope.launch { PacientesRepo.borrarSesion(ses.id, borrarPagos); recargarSesiones() }
+            },
+        )
     }
     // SERVICIO ÚNICO: registrar la atención (qué se hizo + cobro opcional en el mismo paso).
     if (registrarServicioAbierto) {
@@ -1031,23 +1036,45 @@ private fun ModalCobrar(ses: SesionFicha, onCancelar: () -> Unit, onConfirmar: (
     )
 }
 
+/**
+ * Confirmación de borrado de una sesión.
+ *
+ * El pago SIEMPRE se borra con la sesión (un pago sin sesión queda huérfano, no
+ * sirve para nada y estorba al recrearla). Lo único que cambia es el aviso:
+ *  - Sin pago            → confirmación simple.
+ *  - Pago de HOY         → se borra todo; la caja del día aún no se cuadró.
+ *  - Pago de días previos→ se avisa la fecha, porque ese ingreso pudo entrar ya
+ *                          en un cierre de caja y borrarlo lo descuadraría.
+ */
 @Composable
-private fun ModalBorrarSesion(ses: SesionFicha, onCancelar: () -> Unit, onBorrar: (borrarPagos: Boolean) -> Unit) {
+private fun ModalBorrarSesion(
+    ses: SesionFicha,
+    hoy: String,
+    onCancelar: () -> Unit,
+    onBorrar: (borrarPagos: Boolean) -> Unit,
+) {
     val c = Sania.colors
+    val pagoDeOtroDia = ses.pagada && ses.fecha.take(10) != hoy
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onCancelar,
         title = { Text("🗑 Borrar sesión #${ses.numero}", fontWeight = FontWeight.Bold) },
         text = {
-            Text("¿Seguro? Si la sesión tiene pagos, elige qué hacer con ellos.",
-                color = c.texto, fontSize = Sania.txt.cuerpo)
+            Text(
+                when {
+                    pagoDeOtroDia ->
+                        "Esta sesión tiene un pago del ${ses.fecha.take(10)}, que ya pudo entrar en un " +
+                            "cierre de caja. Al borrarla se elimina también ese cobro y su ingreso, y la " +
+                            "caja de ese día cambiará. ¿Continuar?"
+                    ses.pagada ->
+                        "Se borrará la sesión y también su pago (y el ingreso en caja). ¿Continuar?"
+                    else -> "¿Seguro que quieres borrar esta sesión?"
+                },
+                color = c.texto, fontSize = Sania.txt.cuerpo,
+            )
         },
         confirmButton = {
-            Column(horizontalAlignment = Alignment.End) {
-                BotonModalP("Borrar (conservar pagos)") { onBorrar(false) }
-                Spacer(Modifier.height(6.dp))
-                androidx.compose.material3.TextButton(onClick = { onBorrar(true) }) {
-                    Text("Borrar también el pago", color = c.error, fontWeight = FontWeight.Bold)
-                }
+            androidx.compose.material3.TextButton(onClick = { onBorrar(true) }) {
+                Text("Borrar", color = c.error, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
