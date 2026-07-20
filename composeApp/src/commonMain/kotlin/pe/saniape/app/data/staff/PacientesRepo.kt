@@ -117,6 +117,12 @@ data class SesionFicha(
     val terapeutaNombre: String?,
     val motivoEstado: String?,
     val pagada: Boolean = false,   // tiene algún pago vinculado (sesion_id)
+    /**
+     * Fecha del PAGO vinculado (no la de la sesión: el pago tiene la suya y un
+     * Admin puede reasignarla). Se usa para avisar, al borrar, si ese cobro pudo
+     * entrar ya en un cierre de caja de un día anterior.
+     */
+    val fechaPago: String? = null,
 ) {
     val pendiente: Boolean
         get() = estado == "Planificada" || estado == "En progreso" || estado == "Reprogramada"
@@ -475,14 +481,20 @@ object PacientesRepo {
         val filas = Supabase.client.postgrest["sesiones"]
             .select(Columns.raw(
                 "id, numero, fecha, hora, estado, costo, notas, mejorias, duracion, motivo_estado, " +
-                    "terapeuta:terapeutas(nombre), pagos:pagos_tratamiento(id)"
+                    "terapeuta:terapeutas(nombre), pagos:pagos_tratamiento(id, fecha)"
             )) {
                 filter { eq("tratamiento_id", tratamientoId) }
                 order("numero", Order.DESCENDING)
             }
             .decodeList<JsonObject>()
         return filas.mapNotNull { o ->
-            val tienePago = (o["pagos"] as? kotlinx.serialization.json.JsonArray)?.isNotEmpty() == true
+            val pagosArr = o["pagos"] as? kotlinx.serialization.json.JsonArray
+            val tienePago = pagosArr?.isNotEmpty() == true
+            // Fecha del pago (la más antigua si hubiera varios): es la que decide si
+            // ese cobro pudo entrar ya en un cierre de caja de un día anterior.
+            val fechaDelPago = pagosArr
+                ?.mapNotNull { (it as? JsonObject)?.str("fecha") }
+                ?.minOrNull()
             val terNombre = (o["terapeuta"] as? JsonObject)?.str("nombre")
             SesionFicha(
                 id = o.str("id") ?: return@mapNotNull null,
@@ -497,6 +509,7 @@ object PacientesRepo {
                 terapeutaNombre = terNombre,
                 motivoEstado = o.str("motivo_estado"),
                 pagada = tienePago,
+                fechaPago = fechaDelPago,
             )
         }
     }

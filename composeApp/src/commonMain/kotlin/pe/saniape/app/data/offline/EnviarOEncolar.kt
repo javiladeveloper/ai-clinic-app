@@ -1,5 +1,7 @@
 package pe.saniape.app.data.offline
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.JsonPrimitive
@@ -35,7 +37,8 @@ suspend fun enviarOEncolar(
     // Si esa MISMA gestión ya está en curso, no se manda otra vez: sin esto, el
     // usuario que no ve respuesta vuelve a tocar y se crean DOS sesiones/cobros
     // (la idempotencia no lo evita: cada toque genera su propia clave).
-    if (!enVuelo.add(claveLogica)) {
+    val reservada = mutexEnVuelo.withLock { enVuelo.add(claveLogica) }
+    if (!reservada) {
         Toaster.error("Esta operación se está guardando — espera unos segundos, no la repitas")
         return false
     }
@@ -44,12 +47,17 @@ suspend fun enviarOEncolar(
             enviarOEncolarInterno(tipo, endpoint, cuerpo, idTemporal, dependeDe)
         }
     } finally {
-        enVuelo.remove(claveLogica)
+        mutexEnVuelo.withLock { enVuelo.remove(claveLogica) }
     }
 }
 
-/** Gestiones en curso (por clave lógica), para no repetirlas con un segundo toque. */
+/**
+ * Gestiones en curso (por clave lógica), para no repetirlas con un segundo toque.
+ * Con mutex: hoy las gestiones salen del hilo principal, pero el sincronizador ya
+ * corre en Dispatchers.Default y no conviene depender de esa invariante.
+ */
 private val enVuelo = mutableSetOf<String>()
+private val mutexEnVuelo = Mutex()
 
 /**
  * Toda escritura pasa por aquí, así que envolverla con el indicador cubre TODAS

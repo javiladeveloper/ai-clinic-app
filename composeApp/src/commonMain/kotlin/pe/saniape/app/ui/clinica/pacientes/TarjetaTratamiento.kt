@@ -1054,7 +1054,10 @@ private fun ModalBorrarSesion(
     onBorrar: (borrarPagos: Boolean) -> Unit,
 ) {
     val c = Sania.colors
-    val pagoDeOtroDia = ses.pagada && ses.fecha.take(10) != hoy
+    // OJO: se compara la fecha del PAGO (no la de la sesión: el pago tiene la suya
+    // y puede reasignarse). Si no la tenemos, se asume el peor caso y se avisa.
+    val fechaDelPago = ses.fechaPago?.take(10)
+    val pagoDeOtroDia = ses.pagada && fechaDelPago != hoy
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onCancelar,
         title = { Text("🗑 Borrar sesión #${ses.numero}", fontWeight = FontWeight.Bold) },
@@ -1062,9 +1065,9 @@ private fun ModalBorrarSesion(
             Text(
                 when {
                     pagoDeOtroDia ->
-                        "Esta sesión tiene un pago del ${ses.fecha.take(10)}, que ya pudo entrar en un " +
-                            "cierre de caja. Al borrarla se elimina también ese cobro y su ingreso, y la " +
-                            "caja de ese día cambiará. ¿Continuar?"
+                        "Esta sesión tiene un pago${fechaDelPago?.let { " del $it" } ?: " de otro día"}, " +
+                            "que ya pudo entrar en un cierre de caja. Al borrarla se elimina también ese " +
+                            "cobro y su ingreso, y la caja de ese día cambiará. ¿Continuar?"
                     ses.pagada ->
                         "Se borrará la sesión y también su pago (y el ingreso en caja). ¿Continuar?"
                     else -> "¿Seguro que quieres borrar esta sesión?"
