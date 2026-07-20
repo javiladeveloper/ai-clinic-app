@@ -3,22 +3,23 @@ package pe.saniape.app.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,32 +73,42 @@ suspend fun <T> conIndicador(bloque: suspend () -> T): T {
  * justo donde más se espera— el estado se encendía pero no había nada que lo
  * dibujara. Por eso "no aparecía el loader" aunque la lógica fuera correcta.
  *
- * Va ARRIBA porque los toasts salen abajo (ToastHost) y se taparían.
+ * Va al CENTRO, sobre un velo: la gestión bloquea (el usuario está esperando el
+ * resultado), y un chip arriba se lee como aviso de fondo, algo que pasa "por
+ * detrás". En el centro queda claro que la app está ocupada y que hay que
+ * aguardar. El velo además evita toques sobre datos que están por cambiar.
  */
 @Composable
 fun IndicadorGuardandoHost() {
     val enCurso by EstadoGuardando.enCurso.collectAsState()
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        AnimatedVisibility(
-            visible = enCurso > 0,
-            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+    AnimatedVisibility(visible = enCurso > 0, enter = fadeIn(), exit = fadeOut()) {
+        Box(
+            // Velo tenue: atenúa el fondo sin ocultarlo. `clickable` sin efecto visual
+            // se traga los toques mientras dura la gestión (evita doble envío y que se
+            // toque una fila que está a punto de desaparecer).
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.28f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) { /* absorbe el toque */ },
+            contentAlignment = Alignment.Center,
         ) {
-            Row(
+            Column(
                 Modifier
-                    .padding(top = 48.dp)   // bajo la barra de estado
-                    .clip(RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(Color(0xFF1E2D5E))
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(horizontal = 28.dp, vertical = 22.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(14.dp),
+                    modifier = Modifier.size(34.dp),
                     color = Color.White,
-                    strokeWidth = 2.dp,
+                    strokeWidth = 3.dp,
                 )
-                Spacer(Modifier.width(8.dp))
-                Text("Guardando…", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(14.dp))
+                Text("Guardando…", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
