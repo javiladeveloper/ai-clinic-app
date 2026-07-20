@@ -2,7 +2,10 @@
 
 **Fecha:** 2026-07-19
 **Repo:** `ai-clinic-app` (branch `master`) · afecta a la versión **2.6.0 / versionCode 15**
-**Estado:** problema identificado y verificado en el código; **NO corregido todavía**.
+**Estado:** ✅ **RESUELTO** el 2026-07-20. Se añadió el bloqueo por clave lógica en
+`EnviarOEncolar.kt` (set `enVuelo`): si la misma gestión ya está en curso, el segundo toque
+no se manda y se avisa *"Esta operación se está guardando — espera unos segundos, no la
+repitas"*. Este documento queda como registro de por qué la idempotencia no bastaba.
 
 ## El problema en una frase
 

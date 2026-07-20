@@ -1,6 +1,8 @@
 package pe.saniape.app.data.offline
 
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.JsonPrimitive
 import pe.saniape.app.ui.Toaster
 
 /**
@@ -24,9 +26,30 @@ suspend fun enviarOEncolar(
     cuerpo: JsonObject,
     idTemporal: String? = null,
     dependeDe: Long? = null,
-): Boolean = pe.saniape.app.ui.conIndicador {
-    enviarOEncolarInterno(tipo, endpoint, cuerpo, idTemporal, dependeDe)
+): Boolean {
+    // Clave LÓGICA de la operación ("qué se está haciendo", no "qué envío es"):
+    // tipo + el id sobre el que actúa. Dos toques del mismo botón comparten clave.
+    val claveLogica = "$tipo|" + listOf("sesionId", "citaId", "pagoId", "tratamientoId", "pacienteId")
+        .firstNotNullOfOrNull { k -> (cuerpo[k] as? JsonPrimitive)?.contentOrNull }.orEmpty()
+
+    // Si esa MISMA gestión ya está en curso, no se manda otra vez: sin esto, el
+    // usuario que no ve respuesta vuelve a tocar y se crean DOS sesiones/cobros
+    // (la idempotencia no lo evita: cada toque genera su propia clave).
+    if (!enVuelo.add(claveLogica)) {
+        Toaster.error("Esta operación se está guardando — espera unos segundos, no la repitas")
+        return false
+    }
+    try {
+        return pe.saniape.app.ui.conIndicador {
+            enviarOEncolarInterno(tipo, endpoint, cuerpo, idTemporal, dependeDe)
+        }
+    } finally {
+        enVuelo.remove(claveLogica)
+    }
 }
+
+/** Gestiones en curso (por clave lógica), para no repetirlas con un segundo toque. */
+private val enVuelo = mutableSetOf<String>()
 
 /**
  * Toda escritura pasa por aquí, así que envolverla con el indicador cubre TODAS
