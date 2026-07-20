@@ -113,7 +113,9 @@ fun TarjetaTratamiento(
             // conIndicador: recargar la lista es la parte LENTA de cada gestión (borrar,
             // editar, cobrar…). Sin esto el indicador se apagaba al terminar la acción y
             // la espera larga quedaba muda: la pantalla parecía colgada.
-            pe.saniape.app.ui.conIndicador {
+            // CARGANDO: en sí misma es una lectura. Cuando acompaña a una escritura, la
+            // gestión de esa escritura (Eliminando/Guardando) tiene prioridad en el rótulo.
+            pe.saniape.app.ui.conIndicador(pe.saniape.app.ui.Gestion.CARGANDO) {
                 runCatching { PacientesRepo.sesionesDe(t.id) }
                     .onSuccess { sesiones = it; cargaFallo = false }
                     .onFailure { cargaFallo = true }
@@ -377,7 +379,12 @@ fun TarjetaTratamiento(
                                     menuDe = null
                                     if (accionando) return@FilaSesion
                                     accionando = true
-                                    scope.launch { PacientesRepo.revertirSesion(ses.id); accionando = false; recargarSesiones() }
+                                    scope.launch {
+                                        pe.saniape.app.ui.conIndicador(pe.saniape.app.ui.Gestion.ACTUALIZANDO) {
+                                            PacientesRepo.revertirSesion(ses.id)
+                                        }
+                                        accionando = false; recargarSesiones()
+                                    }
                                 },
                                 onBorrar = { borrarSesion = ses; menuDe = null },
                                 onReasignar = { reasignarSesion = ses; menuDe = null },
@@ -426,13 +433,23 @@ fun TarjetaTratamiento(
     editarSesion?.let { ses ->
         ModalEditarSesion(ses, onCancelar = { editarSesion = null }, onGuardar = { fecha, hora, dur, costo, notas ->
             editarSesion = null
-            scope.launch { PacientesRepo.editarSesion(ses.id, fecha, hora, dur, costo, notas); recargarSesiones() }
+            scope.launch {
+                pe.saniape.app.ui.conIndicador(pe.saniape.app.ui.Gestion.ACTUALIZANDO) {
+                    PacientesRepo.editarSesion(ses.id, fecha, hora, dur, costo, notas)
+                }
+                recargarSesiones()
+            }
         })
     }
     reasignarSesion?.let { ses ->
         ModalReasignar(onCancelar = { reasignarSesion = null }, onElegir = { terId ->
             reasignarSesion = null
-            scope.launch { PacientesRepo.reasignarSesion(ses.id, terId); recargarSesiones() }
+            scope.launch {
+                pe.saniape.app.ui.conIndicador(pe.saniape.app.ui.Gestion.ACTUALIZANDO) {
+                    PacientesRepo.reasignarSesion(ses.id, terId)
+                }
+                recargarSesiones()
+            }
         })
     }
     cobrarSesion?.let { ses ->
@@ -455,7 +472,12 @@ fun TarjetaTratamiento(
             onCancelar = { borrarSesion = null },
             onBorrar = { borrarPagos ->
                 borrarSesion = null
-                scope.launch { PacientesRepo.borrarSesion(ses.id, borrarPagos); recargarSesiones() }
+                scope.launch {
+                    pe.saniape.app.ui.conIndicador(pe.saniape.app.ui.Gestion.ELIMINANDO) {
+                        PacientesRepo.borrarSesion(ses.id, borrarPagos)
+                    }
+                    recargarSesiones()
+                }
             },
         )
     }
@@ -791,7 +813,9 @@ fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, on
                             if (m == null || m <= 0 || guardando) return@MiniBtn
                             guardando = true
                             scope.launch {
-                                val ok = PacientesRepo.editarPago(p.id, m, editMetodo)
+                                val ok = pe.saniape.app.ui.conIndicador(pe.saniape.app.ui.Gestion.ACTUALIZANDO) {
+                                    PacientesRepo.editarPago(p.id, m, editMetodo)
+                                }
                                 guardando = false
                                 // onCambio() ya re-dispara la recarga (evita doble query).
                                 if (ok) { editando = null; pe.saniape.app.ui.Toaster.exito("Pago actualizado"); onCambio() }
@@ -841,7 +865,9 @@ fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, on
                             if (guardando) return@MiniBtn
                             guardando = true
                             scope.launch {
-                                val ok = PacientesRepo.borrarPago(p.id)
+                                val ok = pe.saniape.app.ui.conIndicador(pe.saniape.app.ui.Gestion.ELIMINANDO) {
+                                    PacientesRepo.borrarPago(p.id)
+                                }
                                 guardando = false
                                 // onCambio() ya re-dispara la recarga (evita doble query).
                                 if (ok) { borrarId = null; pe.saniape.app.ui.Toaster.exito("Pago eliminado"); onCambio() }

@@ -111,7 +111,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         // la ficha ya hay un spinner propio, y mostrar "Guardando…" ahí confundiría. Tras
         // una gestión, en cambio, esta recarga es la espera larga que quedaba muda.
         val recarga = recargarToken > 0
-        if (recarga) pe.saniape.app.ui.EstadoGuardando.inicio()
+        if (recarga) pe.saniape.app.ui.EstadoGuardando.inicio(pe.saniape.app.ui.Gestion.CARGANDO)
         try {
         // porId (paciente + sus tratamientos) e hitosDe son INDEPENDIENTES entre sí, así
         // que se piden EN PARALELO (async) en vez de una tras otra. Antes, tras cada
@@ -129,7 +129,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         cargando = false
         actualizando = false
         } finally {
-            if (recarga) pe.saniape.app.ui.EstadoGuardando.fin()
+            if (recarga) pe.saniape.app.ui.EstadoGuardando.fin(pe.saniape.app.ui.Gestion.CARGANDO)
         }
     }
     fun recargar() { recargarToken++ }

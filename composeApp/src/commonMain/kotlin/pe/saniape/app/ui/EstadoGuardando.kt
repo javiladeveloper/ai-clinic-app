@@ -42,26 +42,60 @@ import kotlinx.coroutines.flow.StateFlow
  * parte superior mientras dura, y la apaga al terminar. Un solo lugar en la UI
  * cubre TODAS las gestiones, sin tocar cada modal.
  */
+/** Qué está haciendo la app. El rótulo debe decir la VERDAD: "Guardando…" al abrir
+ *  una ficha hace pensar que se modificó algo que no se tocó. */
+enum class Gestion(val rotulo: String) {
+    GUARDANDO("Guardando…"),
+    ELIMINANDO("Eliminando…"),
+    ACTUALIZANDO("Actualizando…"),
+    CARGANDO("Cargando…"),
+}
+
 object EstadoGuardando {
     private val _enCurso = MutableStateFlow(0)
 
-    /** Cuántas operaciones se están guardando ahora mismo (0 = nada en curso). */
+    /** Cuántas operaciones hay en curso (0 = nada). */
     val enCurso: StateFlow<Int> = _enCurso
 
-    fun inicio() { _enCurso.value = _enCurso.value + 1 }
-    fun fin() { _enCurso.value = (_enCurso.value - 1).coerceAtLeast(0) }
+    // Pila de gestiones activas: el rótulo visible es el de la MÁS específica en curso.
+    // Al borrar, por ejemplo, se solapan el borrado y la recarga de la lista; mostrar
+    // "Eliminando…" durante todo el bloque es más claro que alternar los textos.
+    private val activas = mutableListOf<Gestion>()
+
+    private val _rotulo = MutableStateFlow(Gestion.GUARDANDO.rotulo)
+    /** Texto a mostrar, acorde a lo que realmente está ocurriendo. */
+    val rotulo: StateFlow<String> = _rotulo
+
+    // Orden de prioridad: una escritura manda sobre la recarga que la acompaña.
+    private val prioridad = listOf(Gestion.ELIMINANDO, Gestion.GUARDANDO, Gestion.ACTUALIZANDO, Gestion.CARGANDO)
+
+    private fun recalcular() {
+        _rotulo.value = (prioridad.firstOrNull { it in activas } ?: Gestion.GUARDANDO).rotulo
+    }
+
+    fun inicio(gestion: Gestion = Gestion.GUARDANDO) {
+        _enCurso.value = _enCurso.value + 1
+        activas += gestion
+        recalcular()
+    }
+
+    fun fin(gestion: Gestion = Gestion.GUARDANDO) {
+        _enCurso.value = (_enCurso.value - 1).coerceAtLeast(0)
+        activas.remove(gestion)
+        recalcular()
+    }
 }
 
 /**
  * Envuelve una gestión para que muestre el indicador mientras dura.
  * Se apaga siempre, incluso si la operación falla.
  */
-suspend fun <T> conIndicador(bloque: suspend () -> T): T {
-    EstadoGuardando.inicio()
+suspend fun <T> conIndicador(gestion: Gestion = Gestion.GUARDANDO, bloque: suspend () -> T): T {
+    EstadoGuardando.inicio(gestion)
     try {
         return bloque()
     } finally {
-        EstadoGuardando.fin()
+        EstadoGuardando.fin(gestion)
     }
 }
 
@@ -81,6 +115,7 @@ suspend fun <T> conIndicador(bloque: suspend () -> T): T {
 @Composable
 fun IndicadorGuardandoHost() {
     val enCurso by EstadoGuardando.enCurso.collectAsState()
+    val rotulo by EstadoGuardando.rotulo.collectAsState()
     AnimatedVisibility(visible = enCurso > 0, enter = fadeIn(), exit = fadeOut()) {
         Box(
             // Velo tenue: atenúa el fondo sin ocultarlo. `clickable` sin efecto visual
@@ -108,7 +143,7 @@ fun IndicadorGuardandoHost() {
                     strokeWidth = 3.dp,
                 )
                 Spacer(Modifier.height(14.dp))
-                Text("Guardando…", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text(rotulo, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
