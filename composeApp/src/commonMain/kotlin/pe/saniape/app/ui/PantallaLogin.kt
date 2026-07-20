@@ -163,7 +163,9 @@ fun PantallaLogin(onLogueado: () -> Unit) {
                     singleLine = true,
                     colors = coloresCampo,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
-                    modifier = Modifier.fillMaxWidth(),
+                    // autofill: deja que el gestor de contraseñas del celular ofrezca la
+                    // cuenta guardada, en vez de tener que escribirla cada vez.
+                    modifier = Modifier.fillMaxWidth().autofill(TipoCampo.USUARIO) { email = it },
                 )
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
@@ -183,7 +185,7 @@ fun PantallaLogin(onLogueado: () -> Unit) {
                         )
                     },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().autofill(TipoCampo.CONTRASENA) { password = it },
                 )
                 Spacer(Modifier.height(16.dp))
                 Button(
