@@ -17,9 +17,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,32 +61,42 @@ object EstadoGuardando {
     /** Cuántas operaciones hay en curso (0 = nada). */
     val enCurso: StateFlow<Int> = _enCurso
 
-    // Pila de gestiones activas: el rótulo visible es el de la MÁS específica en curso.
-    // Al borrar, por ejemplo, se solapan el borrado y la recarga de la lista; mostrar
-    // "Eliminando…" durante todo el bloque es más claro que alternar los textos.
-    private val activas = mutableListOf<Gestion>()
-
     private val _rotulo = MutableStateFlow(Gestion.GUARDANDO.rotulo)
     /** Texto a mostrar, acorde a lo que realmente está ocurriendo. */
     val rotulo: StateFlow<String> = _rotulo
 
-    // Orden de prioridad: una escritura manda sobre la recarga que la acompaña.
+    // Prioridad: una escritura manda sobre las lecturas que la acompañan.
     private val prioridad = listOf(Gestion.ELIMINANDO, Gestion.GUARDANDO, Gestion.ACTUALIZANDO, Gestion.CARGANDO)
 
-    private fun recalcular() {
-        _rotulo.value = (prioridad.firstOrNull { it in activas } ?: Gestion.GUARDANDO).rotulo
-    }
+    // Gestión que MANDA durante toda la ráfaga actual.
+    //
+    // Una sola acción del usuario encadena varias operaciones (borrar sesión →
+    // recargar lista → recargar pagos → recargar ficha). Si el rótulo se recalculara
+    // en cada una, se leería "Eliminando…" y luego un desfile de textos cambiando
+    // solos: parece que la app hace cosas raras por su cuenta.
+    //
+    // Se fija con la PRIMERA gestión de la ráfaga y solo se suelta cuando el contador
+    // vuelve a 0 (todo terminó). Si durante la ráfaga aparece una de más prioridad
+    // (la recarga arrancó primero y luego entra el borrado), asciende — nunca baja.
+    private var dominante: Gestion? = null
 
     fun inicio(gestion: Gestion = Gestion.GUARDANDO) {
         _enCurso.value = _enCurso.value + 1
-        activas += gestion
-        recalcular()
+        val actual = dominante
+        // Asciende solo si la nueva es más prioritaria (índice menor).
+        if (actual == null || prioridad.indexOf(gestion) < prioridad.indexOf(actual)) {
+            dominante = gestion
+            _rotulo.value = gestion.rotulo
+        }
     }
 
     fun fin(gestion: Gestion = Gestion.GUARDANDO) {
         _enCurso.value = (_enCurso.value - 1).coerceAtLeast(0)
-        activas.remove(gestion)
-        recalcular()
+        // Fin de la ráfaga: se suelta la dominante para que la próxima acción fije la
+        // suya. OJO: NO se toca _rotulo — el velo tarda ~180ms en desvanecerse y
+        // reescribirlo aquí mostraría "Guardando…" durante la salida de un borrado.
+        // El texto correcto lo pone el siguiente inicio().
+        if (_enCurso.value == 0) dominante = null
     }
 }
 
@@ -116,7 +130,18 @@ suspend fun <T> conIndicador(gestion: Gestion = Gestion.GUARDANDO, bloque: suspe
 fun IndicadorGuardandoHost() {
     val enCurso by EstadoGuardando.enCurso.collectAsState()
     val rotulo by EstadoGuardando.rotulo.collectAsState()
-    AnimatedVisibility(visible = enCurso > 0, enter = fadeIn(), exit = fadeOut()) {
+
+    // El contador toca 0 un instante ENTRE sub-operaciones de la misma acción (borrar
+    // → recargar lista → recargar pagos). Sin este colchón el velo se apaga y enciende
+    // varias veces: parpadeo feo. Se espera un poco antes de ocultar; si en ese lapso
+    // arranca la siguiente, no llega a desaparecer y se ve como una sola espera.
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(enCurso) {
+        if (enCurso > 0) visible = true
+        else { delay(180); visible = false }
+    }
+
+    AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut()) {
         Box(
             // Velo tenue: atenúa el fondo sin ocultarlo. `clickable` sin efecto visual
             // se traga los toques mientras dura la gestión (evita doble envío y que se
