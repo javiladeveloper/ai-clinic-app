@@ -150,6 +150,10 @@ fun App() {
             // Toast global (creado/guardado/error) sobre cualquier pantalla, salvo la intro.
             if (introLista) pe.saniape.app.ui.ToastHost()
 
+            // "Guardando…" global. Antes vivía dentro del header de Inicio, así que en la
+            // ficha del paciente —donde más se espera al borrar/crear sesiones— no se veía.
+            if (introLista) pe.saniape.app.ui.IndicadorGuardandoHost()
+
             // Aviso sugerido de nueva versión (solo si hay update y no se descartó aún).
             urlActualizacion?.takeIf { !avisoDescartado }?.let { url ->
                 pe.saniape.app.ui.DialogoActualizacion(
