@@ -23,6 +23,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -106,6 +107,12 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     }
     LaunchedEffect(pacienteInicial.id, recargarToken) {
         actualizando = true
+        // conIndicador solo en las RECARGAS (token > 0), no en la carga inicial: al abrir
+        // la ficha ya hay un spinner propio, y mostrar "Guardando…" ahí confundiría. Tras
+        // una gestión, en cambio, esta recarga es la espera larga que quedaba muda.
+        val recarga = recargarToken > 0
+        if (recarga) pe.saniape.app.ui.EstadoGuardando.inicio()
+        try {
         // porId (paciente + sus tratamientos) e hitosDe son INDEPENDIENTES entre sí, así
         // que se piden EN PARALELO (async) en vez de una tras otra. Antes, tras cada
         // acción (crear sesión, etc.) la recarga encadenaba porId → hitos → saldo, y la
@@ -121,8 +128,16 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         saldoPendiente = runCatching { PacientesRepo.saldoPendienteDe(paciente.tratamientos) }.getOrNull()
         cargando = false
         actualizando = false
+        } finally {
+            if (recarga) pe.saniape.app.ui.EstadoGuardando.fin()
+        }
     }
     fun recargar() { recargarToken++ }
+
+    // Al volver la señal, repoblar la ficha: si se abrió (o se recargó) sin red, quedó
+    // con datos a medias y no se arreglaba sola hasta salir y entrar.
+    val tokenRed by pe.saniape.app.data.offline.EstadoRed.token.collectAsState()
+    LaunchedEffect(tokenRed) { if (tokenRed > 0) recargar() }
 
     // Crear cita (control que nace de un tratamiento) — pantalla completa.
     crearCita?.let { prefill ->

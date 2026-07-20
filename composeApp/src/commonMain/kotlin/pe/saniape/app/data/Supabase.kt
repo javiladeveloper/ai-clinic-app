@@ -4,6 +4,7 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.postgrest.Postgrest
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Cliente Supabase compartido — apunta a la MISMA base que la web (saniape.com).
@@ -29,6 +30,12 @@ object Supabase {
             supabaseUrl = URL,
             supabaseKey = ANON_KEY,
         ) {
+            // 6s en vez de los 10s por defecto. Sin señal, CADA lectura esperaba 10s antes
+            // de rendirse, y una pantalla dispara varias: la app se sentía congelada casi
+            // medio minuto. 6s sigue alcanzando de sobra en una red móvil lenta real (las
+            // consultas normales responden en <1s), pero el fallo se nota rápido y la
+            // pantalla puede ofrecer "Reintentar" en vez de quedarse muda.
+            requestTimeout = 6.seconds
             install(Auth)
             install(Postgrest)
         }

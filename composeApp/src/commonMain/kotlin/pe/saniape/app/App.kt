@@ -50,6 +50,10 @@ fun App() {
             pe.saniape.app.data.offline.Sincronizador.disparar(scope)
             pe.saniape.app.data.offline.RedMonitor.iniciar {
                 pe.saniape.app.data.offline.Sincronizador.disparar(scope)
+                // Además de reenviar lo pendiente, avisar a las PANTALLAS: las lecturas
+                // que fallaron sin señal dejaron listas vacías ("no cargan los pacientes")
+                // aunque los datos estén intactos. Con esto se repueblan solas.
+                pe.saniape.app.data.offline.EstadoRed.volvioLaRed()
             }
         }
 

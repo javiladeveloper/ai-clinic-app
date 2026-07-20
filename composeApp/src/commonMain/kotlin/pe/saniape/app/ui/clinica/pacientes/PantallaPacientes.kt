@@ -26,6 +26,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,6 +67,14 @@ fun PantallaPacientes(
     // Recargar cuando el contenedor pide (recargarTick > 0 = venimos de la ficha).
     androidx.compose.runtime.LaunchedEffect(recargarTick) {
         if (recargarTick > 0) vm.cargar()
+    }
+
+    // …y también al VOLVER LA SEÑAL: si la lista se quedó vacía porque las lecturas
+    // fallaron sin red, se repuebla sola. Sin esto el usuario ve "no hay pacientes"
+    // y cree que se perdieron, cuando están intactos en el servidor.
+    val tokenRed by pe.saniape.app.data.offline.EstadoRed.token.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(tokenRed) {
+        if (tokenRed > 0) vm.cargar()
     }
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {

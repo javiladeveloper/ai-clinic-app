@@ -110,9 +110,14 @@ fun TarjetaTratamiento(
 
     fun recargarSesiones() {
         scope.launch {
-            runCatching { PacientesRepo.sesionesDe(t.id) }
-                .onSuccess { sesiones = it; cargaFallo = false }
-                .onFailure { cargaFallo = true }
+            // conIndicador: recargar la lista es la parte LENTA de cada gestión (borrar,
+            // editar, cobrar…). Sin esto el indicador se apagaba al terminar la acción y
+            // la espera larga quedaba muda: la pantalla parecía colgada.
+            pe.saniape.app.ui.conIndicador {
+                runCatching { PacientesRepo.sesionesDe(t.id) }
+                    .onSuccess { sesiones = it; cargaFallo = false }
+                    .onFailure { cargaFallo = true }
+            }
             cambioToken++          // fuerza que la sección de pagos se recargue
             onCambioRealizado()
         }
