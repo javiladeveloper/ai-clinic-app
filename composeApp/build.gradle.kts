@@ -144,8 +144,14 @@ android {
         // v14 = banner citas 7 días, login Google todas las cuentas, portal sin error si no vinculado.
         // v15 = OFFLINE: cola local (SQLDelight) para que ninguna escritura se pierda sin
         //       señal; se envía inline si hay red y se encola solo si falla; chip de pendientes.
-        versionCode = 15
-        versionName = "2.6.0"
+        // v16 = indicador de carga visible en TODAS las pantallas (antes solo vivía en el
+        //       header de Inicio, así que al borrar/crear en la ficha no se veía nada), con
+        //       rótulo honesto (Cargando/Guardando/Eliminando/Actualizando) y estable durante
+        //       toda la ráfaga; las pantallas se recargan solas al volver la señal (antes la
+        //       lista quedaba vacía y parecía que se habían perdido los datos); borrar sesión
+        //       borra también su pago, avisando si es de un día ya cerrado en caja.
+        versionCode = 16
+        versionName = "2.6.1"
     }
     signingConfigs {
         create("release") {
