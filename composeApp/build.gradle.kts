@@ -152,8 +152,12 @@ android {
         //       toda la ráfaga; las pantallas se recargan solas al volver la señal (antes la
         //       lista quedaba vacía y parecía que se habían perdido los datos); borrar sesión
         //       borra también su pago, avisando si es de un día ya cerrado en caja.
-        versionCode = 16
-        versionName = "2.6.1"
+        // v17 = Android 16 (SDK 36), que Google Play EXIGE desde el 30/08/2026 — sin
+        //       esto rechaza cualquier actualización. Además: autofill del gestor de
+        //       contraseñas en el login, y "Eliminar mi cuenta" en el portal del
+        //       paciente (requisito de Apple 5.1.1(v) para poder enviar a la App Store).
+        versionCode = 17
+        versionName = "2.6.2"
     }
     signingConfigs {
         create("release") {
