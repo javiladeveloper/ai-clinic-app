@@ -51,6 +51,14 @@ platform :ios do
       is_key_content_base64: true,
     )
 
+    # Build number único = (último de TestFlight) + 1, para no chocar en cada corrida.
+    # El versionName (CFBundleShortVersionString) queda como esté en el Info.plist.
+    ultimo = latest_testflight_build_number(
+      app_identifier: "pe.saniape.app",
+      initial_build_number: 6,   # ya subimos hasta el 6 a mano
+    ) rescue 6
+    set_info_plist_value(path: "iosApp/iosApp/Info.plist", key: "CFBundleVersion", value: (ultimo + 1).to_s)
+
     # Compila el framework Kotlin + el app iOS y produce el .ipa firmado.
     # La firma la resuelve Xcode con el perfil/cert que instala el workflow (o match).
     build_app(
