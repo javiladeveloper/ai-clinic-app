@@ -68,6 +68,9 @@ fun PantallaMas(
     var mensaje by remember { mutableStateOf<String?>(null) }
     var mensajeOk by remember { mutableStateOf(false) }
     var confirmarDni by remember { mutableStateOf(false) }
+    // Eliminar cuenta (Apple 5.1.1(v)). Dos pasos: confirmar y, mientras borra, bloquear.
+    var confirmarBorrado by remember { mutableStateOf(false) }
+    var borrando by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         try {
@@ -245,6 +248,25 @@ fun PantallaMas(
                         Text("Cerrar sesión", color = c.error, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
                         Text("→", color = c.error, fontSize = Sania.txt.cuerpo)
                     }
+
+                    // ── Eliminar cuenta ──
+                    // Obligatorio para publicar en el App Store (5.1.1(v)): si la app deja
+                    // crear cuenta, tiene que dejar borrarla. Va en menos peso visual que
+                    // "Cerrar sesión" para no confundirlos: uno es diario, el otro definitivo.
+                    // No se ofrece al staff: el servidor lo rechazaría igualmente, pero es
+                    // mejor no mostrar un camino que no lleva a ninguna parte.
+                    if (!puedeIrAClinica) {
+                        Spacer(Modifier.height(Sania.dim.md))
+                        Text(
+                            "Eliminar mi cuenta",
+                            color = c.textoSuave,
+                            fontSize = Sania.txt.pequeno,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .clickable(enabled = !borrando) { confirmarBorrado = true }
+                                .padding(Sania.dim.md),
+                        )
+                    }
                     Spacer(Modifier.height(Sania.dim.xl))
                 }
             }
@@ -271,6 +293,64 @@ fun PantallaMas(
             dismissButton = {
                 TextButton(onClick = { confirmarDni = false }) {
                     Text("Revisar", color = c.textoSuave)
+                }
+            },
+            containerColor = c.superficie,
+        )
+    }
+
+    // Confirmación de eliminar la cuenta (irreversible).
+    if (confirmarBorrado) {
+        AlertDialog(
+            onDismissRequest = { if (!borrando) confirmarBorrado = false },
+            title = { Text("¿Eliminar tu cuenta?") },
+            text = {
+                Column {
+                    Text(
+                        "Se eliminará tu cuenta y no podrás volver a entrar con ella. " +
+                            "Esta acción no se puede deshacer.",
+                        color = c.texto, fontSize = Sania.txt.cuerpo,
+                    )
+                    Spacer(Modifier.height(Sania.dim.md))
+                    // Decirlo explícitamente evita dos malentendidos: creer que se borra
+                    // el historial médico (no se puede: la clínica debe conservarlo por
+                    // ley) y creer que se cancelan citas ya agendadas.
+                    Text(
+                        "Tu historial de atenciones queda en la clínica que te atendió, " +
+                            "como exige la normativa de historias clínicas. Si tienes citas " +
+                            "próximas, avísale a la clínica.",
+                        color = c.textoSuave, fontSize = Sania.txt.pequeno,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !borrando,
+                    onClick = {
+                        borrando = true
+                        scope.launch {
+                            when (val r = pe.saniape.app.data.PerfilRepo.eliminarCuenta()) {
+                                is ResultadoPerfil.Ok -> {
+                                    confirmarBorrado = false
+                                    // La cuenta ya no existe: cerrar sesión limpia el estado
+                                    // local y devuelve al login.
+                                    onCerrarSesion()
+                                }
+                                is ResultadoPerfil.Error -> {
+                                    borrando = false
+                                    confirmarBorrado = false
+                                    Toaster.error(r.mensaje)
+                                }
+                            }
+                        }
+                    },
+                ) {
+                    Text(if (borrando) "Eliminando…" else "Sí, eliminar", color = c.error, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(enabled = !borrando, onClick = { confirmarBorrado = false }) {
+                    Text("Cancelar", color = c.textoSuave)
                 }
             },
             containerColor = c.superficie,

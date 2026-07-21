@@ -13,29 +13,45 @@ repetir ciclos cuando Sania pueda enviarse al App Store (bloqueada hasta tener c
 | Botón "Sign in with Apple" no visible en iPad (Guideline 4) | 🟡 Bajo — login **ya scrollea**; se añadió `safeDrawingPadding` | ✅ Hecho |
 | Lenguaje "próximamente/Pronto" (Guideline 2.1) | ❌ No hay en Sania | OK |
 | CI compila con SDK viejo (Xcode 16 → iOS 18) | ✅ Sí, mismo bug | ✅ Corregido a Xcode 26 |
-| **Eliminar cuenta desde la app** (5.1.1(v)) | ✅ **Sí — FALTA** | 🔴 Pendiente (abajo) |
+| **Eliminar cuenta desde la app** (5.1.1(v)) | ✅ Sí | ✅ **Hecho** 2026-07-20 (abajo) |
 | Modelo de negocio / IAP (Guideline 2.1(b)) | 🟡 Posible (pagos) | Respuesta lista (abajo) |
 | Demo account con contenido (2.1(a)) | ✅ Ya existe | `admin_test@admin.com` |
 
 ---
 
-## 🔴 PENDIENTE — Eliminar cuenta desde la app (para el agente)
+## ✅ HECHO — Eliminar cuenta desde la app (2026-07-20)
 
-Los **pacientes** inician sesión con Google/Apple; eso **crea** un usuario en Supabase Auth
-→ Apple exige poder **eliminar la cuenta** desde la app. Sania hoy NO lo tiene. Sin esto,
-el envío al App Store rebota (igual que FitCore).
+**Qué borra:** el ACCESO (usuario de auth + `paciente_cuentas` + `portal_vinculos`).
+**Qué NO borra:** la ficha del paciente, historia clínica, citas, pagos y documentos.
+Decisión del dueño, y es lo legalmente correcto: esos datos son del establecimiento de
+salud, obligado a conservarlos. Apple exige borrar la CUENTA, no destruir historias
+clínicas. El diálogo se lo dice al paciente con todas las letras.
 
-**Backend (repo web `ai-clinic-dashboard`, aplicar en Supabase):**
-- RPC `eliminar_mi_cuenta()` autenticada (Bearer del propio usuario, RLS, sin admin) que
-  borra/anonimiza la identidad de auth + la PII del paciente (nombre, contacto, documento,
-  foto). Historias clínicas/citas: anonimizar o soft-delete según reglas de la clínica;
-  documentar qué se conserva por normativa.
-- ⚠️ Solo para el rol **paciente/portal** (no borrar staff de una clínica desde aquí).
+**Backend:** `POST /api/paciente/eliminar-cuenta` (no RPC: hace falta `service_role` para
+`auth.admin.deleteUser`, que RLS no puede hacer).
+- Guarda anti-staff: si la cuenta tiene fila en `perfiles` → **409 `ES_STAFF`**. En Sania
+  toda cuenta puede usar el portal (el callback hace upsert incondicional), y como
+  `perfiles.id` cascadea desde `auth.users`, sin esta guarda un Admin se autodestruiría
+  el acceso al panel y podría dejar la clínica sin administrador.
+- La guarda consulta con `service_role`, no con el cliente de sesión: un paciente no puede
+  leer `perfiles`, así que con RLS la consulta volvería vacía y la guarda no protegería nada.
+- Limpieza explícita de `portal_vinculos` (su `auth_user_id` NO tiene FK, no cascadea) y
+  `portal_invitaciones.usado_por` → NULL (se conserva el rastro del canje, desligado).
+- Borra el usuario de auth de verdad: un borrado "a medias" sería un no-op, porque el
+  callback y el layout del portal recrean `paciente_cuentas` en el siguiente login.
+- Rate limit 3/hora por usuario.
 
-**App (commonMain):**
-- En el portal del paciente (Perfil/Ajustes): botón **"Eliminar mi cuenta"** (rojo) →
-  diálogo de confirmación ("acción permanente") → llama la RPC → `signOut`.
-- Referencia: https://developer.apple.com/support/offering-account-deletion-in-your-app
+**App:** `PerfilRepo.eliminarCuenta()` + enlace "Eliminar mi cuenta" en la pantalla
+**Mi cuenta** (`PantallasTabs.kt`), con diálogo de confirmación. No se muestra si la cuenta
+es staff (`puedeIrAClinica`). Al terminar llama `onCerrarSesion()`.
+
+**Verificado end-to-end contra la base real:**
+- Admin intentando borrarse → 409, y sus perfiles **intactos**.
+- Paciente de prueba → usuario de auth, cuenta de portal y vínculos a **0**; las 260 fichas
+  clínicas **sin tocar**.
+
+Ruta para las notas del revisor: **Mi cuenta → Eliminar mi cuenta**.
+Referencia: https://developer.apple.com/support/offering-account-deletion-in-your-app
 
 ---
 
@@ -52,7 +68,7 @@ el envío al App Store rebota (igual que FitCore).
 ## Notas para el revisor (cuando se envíe)
 - Demo: `admin_test@admin.com` / `Admin-Test-2026` (Admin de "Clinica Test", con datos).
 - Login: paciente con Apple/Google (nativo, sin navegador); clínica con correo/contraseña.
-- Eliminar cuenta: (ruta cuando el agente la implemente).
+- Eliminar cuenta: **Mi cuenta → Eliminar mi cuenta** (portal del paciente).
 - Categoría en la ficha: **Negocios** (no Medicina) — se reposicionó para el 5.1.1(ix).
 
 ## Lo ya hecho en esta pasada (iOS/plataforma)

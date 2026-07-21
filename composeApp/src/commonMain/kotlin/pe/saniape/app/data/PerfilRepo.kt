@@ -4,6 +4,7 @@ import io.github.jan.supabase.auth.auth
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.patch
+import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
@@ -67,5 +68,27 @@ object PerfilRepo {
             (json.parseToJsonElement(resp.bodyAsText()) as? JsonObject)?.str("error")
         }.getOrNull()
         return ResultadoPerfil.Error(err ?: "No se pudo guardar. Intenta de nuevo.")
+    }
+
+    /**
+     * Elimina la cuenta del paciente (requisito de Apple 5.1.1(v)).
+     *
+     * Borra el ACCESO: la cuenta con la que inicia sesión y su vínculo con el portal.
+     * NO borra su historia clínica ni sus citas: esos datos son de la clínica, que está
+     * obligada por ley a conservarlos.
+     *
+     * El servidor RECHAZA (409) si la cuenta también es de personal de una clínica —
+     * borrarla dejaría a esa clínica sin su acceso al panel.
+     */
+    suspend fun eliminarCuenta(): ResultadoPerfil {
+        val tk = token() ?: return ResultadoPerfil.Error("Sesión expirada. Vuelve a entrar.")
+        val resp = http.post("${Supabase.SITE_URL}/api/paciente/eliminar-cuenta") {
+            header("Authorization", "Bearer $tk")
+        }
+        if (resp.status == HttpStatusCode.OK) return ResultadoPerfil.Ok
+        val err = runCatching {
+            (json.parseToJsonElement(resp.bodyAsText()) as? JsonObject)?.str("error")
+        }.getOrNull()
+        return ResultadoPerfil.Error(err ?: "No se pudo eliminar la cuenta. Intenta de nuevo.")
     }
 }
