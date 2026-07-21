@@ -125,12 +125,14 @@ kotlin {
 
 android {
     namespace = "pe.saniape.app"
-    compileSdk = 35
+    // SDK 36 (Android 16): Google Play EXIGE apuntar aquí desde el 30/08/2026 — sin
+    // esto rechaza cualquier actualización, incluidas las correcciones urgentes.
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "pe.saniape.app"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         // La TWA anterior (mismo packageId pe.saniape.app) llegó a versionCode 4;
         // esta app nativa debe subir con un código MAYOR para actualizar la ficha.
         // v6 = AAB manual; v7 = primer deploy CI/CD; v8 = mejoras staff (repetir cita,
