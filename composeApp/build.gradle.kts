@@ -160,8 +160,12 @@ android {
         //       para que el fisio reconozca que es de Sania) + popup de resumen clínico
         //       al tocar el paciente en la agenda (motivo, diagnóstico, tratamiento en
         //       curso e historial — consume /api/staff/paciente/resumen-clinico).
-        versionCode = 18
-        versionName = "2.6.3"
+        // v19/2.6.4 = fix del build de iOS: el linker nuevo de Xcode 26 (ld-prime) se
+        //       colgaba 51 min enlazando el binario (framework KMP + libs de Google).
+        //       -ld_classic + DEBUG_INFORMATION_FORMAT=dwarf (sin dSYM) en el pbxproj.
+        //       Solo afecta iOS; Android no cambia (mismo AAB).
+        versionCode = 19
+        versionName = "2.6.4"
     }
     signingConfigs {
         create("release") {
