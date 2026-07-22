@@ -46,6 +46,7 @@ fun TarjetaCita(
     puedeVerCosto: Boolean,
     accionando: Boolean,
     onAccion: (AccionTarjeta) -> Unit,
+    onVerResumen: (String) -> Unit = {},
 ) {
     val c = Sania.colors
     val acciones = recordarAcciones()
@@ -83,7 +84,9 @@ fun TarjetaCita(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(cita.pacienteNombre ?: "Paciente", color = c.texto,
                     fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f))
+                    // Tocar el nombre abre el resumen clínico (motivo/diagnóstico/tratamiento).
+                    modifier = Modifier.weight(1f)
+                        .clickable { cita.pacienteId?.let(onVerResumen) })
                 cita.pacienteTelefono?.takeIf { it.isNotBlank() }?.let { tel ->
                     IconoContacto("📞", c.navy) { acciones.abrirUrl("tel:${tel.filter { ch -> ch.isDigit() }}") }
                     Spacer(Modifier.width(6.dp))

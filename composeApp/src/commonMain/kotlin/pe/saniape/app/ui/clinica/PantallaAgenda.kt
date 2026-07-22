@@ -47,6 +47,12 @@ import pe.saniape.app.ui.clinica.agenda.modales.ConfirmacionAccion
 import pe.saniape.app.ui.clinica.agenda.modales.ModalCompletar
 import pe.saniape.app.ui.clinica.agenda.modales.ModalEditarCita
 import pe.saniape.app.ui.clinica.agenda.modales.ModalPasarEvaluacion
+import pe.saniape.app.ui.clinica.agenda.modales.ResumenClinicoSheet
+import pe.saniape.app.ui.clinica.pacientes.PantallaFichaPaciente
+import pe.saniape.app.data.staff.PacienteStaff
+import pe.saniape.app.data.staff.PacientesRepo
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import pe.saniape.app.ui.theme.Sania
 
 /**
@@ -67,6 +73,11 @@ fun PantallaAgenda(ctx: ContextoStaff) {
     var confirmar by remember { mutableStateOf<Pair<CitaStaff, AccionCita>?>(null) }
     var editar by remember { mutableStateOf<CitaStaff?>(null) }
     var pasarEval by remember { mutableStateOf<CitaStaff?>(null) }
+    // Resumen clínico (popup al tocar el nombre) + ficha completa que abre desde ahí.
+    var resumenPacienteId by remember { mutableStateOf<String?>(null) }
+    var fichaPaciente by remember { mutableStateOf<PacienteStaff?>(null) }
+    var cargandoFicha by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     if (creandoCita || prefillEval != null) {
         PantallaCrearCita(
@@ -230,6 +241,7 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                                         AccionTarjeta.Repetir -> prefillEval = repetirDesde(cita)
                                     }
                                 },
+                                onVerResumen = { resumenPacienteId = it },
                             )
                         }
                     }
@@ -296,6 +308,33 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                 pasarEval = null
             },
         )
+    }
+
+    // Popup de resumen clínico (tocar el nombre en una tarjeta). "Ver ficha" carga el
+    // paciente por id y abre la ficha completa como overlay (misma pantalla que la web).
+    resumenPacienteId?.let { pid ->
+        ResumenClinicoSheet(
+            pacienteId = pid,
+            onCerrar = { resumenPacienteId = null },
+            onVerFicha = {
+                resumenPacienteId = null
+                cargandoFicha = true
+                scope.launch {
+                    fichaPaciente = PacientesRepo.porId(pid)
+                    cargandoFicha = false
+                }
+            },
+        )
+    }
+    if (cargandoFicha) {
+        Box(Modifier.fillMaxSize().background(c.fondo.copy(alpha = 0.6f)), Alignment.Center) {
+            CircularProgressIndicator(color = c.navy)
+        }
+    }
+    fichaPaciente?.let { pac ->
+        Box(Modifier.fillMaxSize().background(c.fondo)) {
+            PantallaFichaPaciente(ctx = ctx, pacienteInicial = pac, onCerrar = { fichaPaciente = null })
+        }
     }
 }
 

@@ -156,8 +156,12 @@ android {
         //       esto rechaza cualquier actualización. Además: autofill del gestor de
         //       contraseñas en el login, y "Eliminar mi cuenta" en el portal del
         //       paciente (requisito de Apple 5.1.1(v) para poder enviar a la App Store).
-        versionCode = 17
-        versionName = "2.6.2"
+        // v18 = sonido propio de Sania en las notificaciones (mismo acorde que la intro,
+        //       para que el fisio reconozca que es de Sania) + popup de resumen clínico
+        //       al tocar el paciente en la agenda (motivo, diagnóstico, tratamiento en
+        //       curso e historial — consume /api/staff/paciente/resumen-clinico).
+        versionCode = 18
+        versionName = "2.6.3"
     }
     signingConfigs {
         create("release") {
