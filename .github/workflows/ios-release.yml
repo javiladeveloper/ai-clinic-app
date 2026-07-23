@@ -115,7 +115,12 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           echo "$PROVISION_PROFILE_BASE64" | base64 -d > ~/Library/MobileDevice/Provisioning\ Profiles/sania.mobileprovision
 
+      # Timeout POR PASO (no solo por job): si la compilación se arrastra, este paso muere
+      # a los 55 min pero el JOB SIGUE VIVO → los pasos "Guardar caché" corren normal y el
+      # progreso queda banqueado para la siguiente corrida (efecto trinquete: cada corrida
+      # llega más lejos). Con el timeout solo a nivel job, el corte cancelaba todo.
       - name: Compilar y subir a TestFlight
+        timeout-minutes: 55
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
