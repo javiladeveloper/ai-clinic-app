@@ -60,8 +60,24 @@ jobs:
       # xcodebuild no encuentra ningún destino de dispositivo ("iOS 18.2 is not installed").
       # Esto la descarga e instala (unos minutos la primera vez). Es lo que faltaba: con
       # esto el destination generic/platform=iOS ya tiene un SDK real contra el cual archivar.
-      - name: Instalar plataforma iOS (SDK del simulador/dispositivo)
-        run: xcodebuild -downloadPlatform iOS -quiet || xcodebuild -downloadPlatform iOS
+      #
+      # El download a veces falla transitoriamente ("Unable to connect to simulator",
+      # exit 70) en runners fríos. Se reintenta 3 veces; y al final se VERIFICA que el
+      # SDK de dispositivo (iphoneos) esté disponible — que es lo único que necesitamos
+      # (no el simulador). Si el SDK ya está, seguimos aunque el download reporte ruido.
+      - name: Instalar plataforma iOS (SDK de dispositivo)
+        run: |
+          for i in 1 2 3; do
+            echo "Intento $i de descargar la plataforma iOS…"
+            xcodebuild -downloadPlatform iOS && break || echo "Falló el intento $i, reintentando…"
+            sleep 20
+          done
+          # Lo que de verdad importa: que exista el SDK de dispositivo para archivar.
+          if xcodebuild -showsdks | grep -qi "iphoneos"; then
+            echo "✓ SDK iphoneos disponible."
+          else
+            echo "✗ No hay SDK iphoneos tras los reintentos." && exit 1
+          fi
 
       - name: Instalar Fastlane (Ruby + bundler)
         # Pineado a SHA (seguridad): ruby/setup-ruby v1.207.0
