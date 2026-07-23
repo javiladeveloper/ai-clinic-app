@@ -166,8 +166,8 @@ android {
         //       (que FitCore/controlgym NO tiene, por eso ese si compilaba en el runner
         //       gratis). Solucion: Xcode 16.2 (linker clasico ld64) en el CI + sin dSYM.
         //       Runner sigue siendo el gratis (macos-15). Solo iOS; Android no cambia.
-        versionCode = 20
-        versionName = "2.6.5"
+        versionCode = 21
+        versionName = "2.6.6"
     }
     signingConfigs {
         create("release") {
