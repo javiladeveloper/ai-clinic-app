@@ -62,21 +62,31 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          key: ios-deriveddata-xc26-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'iosApp/iosApp.xcodeproj/project.pbxproj') }}
+          key: ios-deriveddata-xc162-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'iosApp/iosApp.xcodeproj/project.pbxproj') }}
           restore-keys: |
             ios-deriveddata-${{ runner.os }}-
 
-      # Xcode 26 (latest-stable), IGUAL que FitCore que compila en ~10 min. Su linker
-      # nuevo (ld-prime) es RÁPIDO. Antes bajamos a Xcode 16.2 porque ese linker se
-      # colgaba CON GoogleSignIn-iOS (+ Firebase/AppCheck). Pero ya QUITAMOS GoogleSignIn
-      # (ahora Google login usa ASWebAuthenticationSession, framework del sistema), así que
-      # la razón para usar 16.2 desapareció. Con 26: linker rápido + SDK ya incluido (NO
-      # hace falta downloadPlatform, que costaba ~4 min y a veces fallaba) + sin el rechazo
-      # de Apple por "built with iOS 18 SDK". Exactamente la config de FitCore.
-      - name: Seleccionar Xcode latest-stable (26)
+      # Xcode 16.2 (linker clásico ld64). PROBADO: el linker NUEVO de Xcode 26 (ld-prime)
+      # se cuelga (>40 min) con el framework KMP ESTÁTICO grande de Sania — y NO era solo
+      # GoogleSignIn (quitarlo no bastó; con Xcode 26 seguía colgado). FitCore no se cuelga
+      # en 26 porque su framework KMP es más chico. Para Sania, 16.2 es la única versión que
+      # compila sin colgarse. Es más lento, PERO con el caché (DerivedData, guardado con
+      # if:always) la 2da corrida en adelante baja a ~10 min. Esta es la config estable.
+      - name: Seleccionar Xcode 16.2
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: "16.2"
+
+      # Xcode 16.2 no trae la plataforma iOS descargada → hay que instalarla para tener el
+      # SDK de dispositivo. Reintentos por el fallo transitorio "Unable to connect to
+      # simulator"; verifica que el SDK iphoneos quede disponible (lo único que necesitamos).
+      - name: Instalar plataforma iOS (SDK de dispositivo)
+        run: |
+          for i in 1 2 3; do
+            xcodebuild -downloadPlatform iOS && break || echo "Reintento $i…"
+            sleep 20
+          done
+          xcodebuild -showsdks | grep -qi "iphoneos" && echo "✓ SDK iphoneos OK" || { echo "✗ sin SDK iphoneos"; exit 1; }
 
       - name: Instalar Fastlane (Ruby + bundler)
         # Pineado a SHA (seguridad): ruby/setup-ruby v1.207.0
@@ -132,7 +142,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          key: ios-deriveddata-xc26-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'iosApp/iosApp.xcodeproj/project.pbxproj') }}
+          key: ios-deriveddata-xc162-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'iosApp/iosApp.xcodeproj/project.pbxproj') }}
 
       - name: Limpiar secretos del runner
         if: always()

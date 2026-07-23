@@ -67,15 +67,15 @@ platform :ios do
     # OJO: NO pasar `sdk:` junto a un destination genérico — xcodebuild no puede casar
     # `-sdk iphoneos` con `-destination generic/platform=iOS` y declara el destino
     # "ineligible". El destination genérico solo YA significa dispositivo; el sdk sobra.
-    # Con Xcode 26 gym resuelve el destino solo (igual que FitCore, que NO especifica
-    # destination y compila bien). El `destination: generic/platform=iOS` era un parche
-    # para Xcode 16.2; con 26 sobra. Sin clean para aprovechar el caché de DerivedData.
+    # Xcode 16.2 necesita el destino explícito (dispositivo). Sin clean, para reusar el
+    # caché de DerivedData entre corridas (es lo que hace el build rápido).
     build_app(
       project: "iosApp/iosApp.xcodeproj",
       scheme: "iosApp",
       configuration: "Release",
       export_method: "app-store",
       output_directory: "build/ios",
+      destination: "generic/platform=iOS",
     )
 
     upload_to_testflight(
