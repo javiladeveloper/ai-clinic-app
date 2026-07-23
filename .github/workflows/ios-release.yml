@@ -14,9 +14,11 @@ jobs:
     # Xcode 26 (ld-prime) enlazando GoogleSignIn-iOS + su árbol Firebase/AppAuth/AppCheck
     # (que FitCore no tiene). Con Xcode 16 (linker clásico) el link termina normal.
     runs-on: macos-15
-    # Sin esto, un cuelgue del linker consume el tope de GitHub (6h). Con timeout, si algo
-    # se vuelve a trabar, el job muere a los 45 min y deja el log accesible para diagnosticar.
-    timeout-minutes: 45
+    # Tope de seguridad. El linker CLÁSICO de Xcode 16.2 compila de verdad (no se cuelga
+    # como el ld-prime de Xcode 26), pero es LENTO con todo el árbol KMP + Firebase +
+    # GoogleSignIn: la compilación real toma ~40 min. 45 min lo cortaba justo antes de
+    # terminar el link. 90 da margen de sobra y sigue matando cualquier cuelgue real.
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
