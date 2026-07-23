@@ -41,6 +41,16 @@ data class Saldo(
 /** Documento del paciente visible en su portal. */
 data class Documento(val id: String, val nombre: String, val categoria: String, val path: String, val fecha: String)
 
+/** Una clínica donde el paciente tiene historial. `puedeReservar` = plan Plus + reservas on. */
+data class ClinicaPaciente(
+    val clinicaId: String,
+    val nombre: String,
+    val slug: String?,
+    val logoUrl: String?,
+    val colorPrincipal: String?,
+    val puedeReservar: Boolean,
+)
+
 /**
  * Datos de la pestaña Salud que NO se pueden leer con anon key (usan service_role
  * en la web: firmar URLs de storage, leer config de saldo). Se piden al API web
@@ -105,6 +115,33 @@ object SaludRepo {
             )
         }
         return ResultadoPortal.Ok(lista)
+    }
+
+    /**
+     * Clínicas donde el paciente tiene historial (fichas). El flujo del portal muestra
+     * estas y solo en las `puedeReservar` (Plus) permite agendar. Error → null (la UI
+     * distingue "sin historial" de "falló la carga").
+     */
+    suspend fun misClinicas(): List<ClinicaPaciente>? {
+        val tk = token() ?: return null
+        val resp = runCatching {
+            http.get("${Supabase.SITE_URL}/api/paciente/mis-clinicas") {
+                header("Authorization", "Bearer $tk")
+            }
+        }.getOrNull() ?: return null
+        if (resp.status != HttpStatusCode.OK) return null
+        val arr = json.parseToJsonElement(resp.bodyAsText()).jsonObject["clinicas"] as? JsonArray ?: return emptyList()
+        return arr.mapNotNull {
+            val o = it.jsonObject
+            ClinicaPaciente(
+                clinicaId = o.str("clinica_id") ?: return@mapNotNull null,
+                nombre = o.str("nombre") ?: "Clínica",
+                slug = o.str("slug"),
+                logoUrl = o.str("logo_url"),
+                colorPrincipal = o.str("color_principal"),
+                puedeReservar = o.bool("puedeReservar"),
+            )
+        }
     }
 
     /** Saldos por tratamiento_id (solo de clínicas que lo habilitaron). */

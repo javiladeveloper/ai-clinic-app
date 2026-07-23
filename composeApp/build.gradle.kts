@@ -170,8 +170,12 @@ android {
         //       una cita desde la web u otro dispositivo, la agenda del fisio se actualiza
         //       sola sin recargar. + Campo "Diagnóstico / Motivo" con typeahead que APRENDE
         //       de lo que se escribe (tabla diagnosticos_frecuentes, como las técnicas).
-        versionCode = 25
-        versionName = "2.7.0"
+        // v26/2.8.0 = NUEVO FLUJO DEL PACIENTE: tras entrar con Google se pide el DNI SÍ o SÍ
+        //       (llave de su historial); luego "Mis clínicas" (solo donde tiene atenciones,
+        //       SIN mapa ni directorio de terceros). En las clínicas Plus puede reservar; en
+        //       las demás solo ve su historial (pestaña Salud). Endpoint /api/paciente/mis-clinicas.
+        versionCode = 26
+        versionName = "2.8.0"
     }
     signingConfigs {
         create("release") {
