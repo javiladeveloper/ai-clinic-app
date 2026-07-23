@@ -62,10 +62,11 @@ platform :ios do
     # Compila el framework Kotlin + el app iOS y produce el .ipa firmado.
     # La firma la resuelve Xcode con el perfil/cert que instala el workflow (o match).
     #
-    # destination + sdk fuerzan DISPOSITIVO real (iphoneos). Sin esto, con Xcode 16.2 gym
-    # intentaba archivar para el SIMULADOR (iphonesimulator) y fallaba: "No simulator
-    # runtime version available" (el runner no trae runtimes de simulador instalados).
-    # Para TestFlight siempre se archiva para dispositivo, nunca simulador.
+    # destination fuerza DISPOSITIVO real (cualquier iPhone). Sin esto, con Xcode 16.2 gym
+    # intentaba archivar para el SIMULADOR y fallaba ("No simulator runtime version").
+    # OJO: NO pasar `sdk:` junto a un destination genérico — xcodebuild no puede casar
+    # `-sdk iphoneos` con `-destination generic/platform=iOS` y declara el destino
+    # "ineligible". El destination genérico solo YA significa dispositivo; el sdk sobra.
     build_app(
       project: "iosApp/iosApp.xcodeproj",
       scheme: "iosApp",
@@ -73,7 +74,6 @@ platform :ios do
       export_method: "app-store",
       output_directory: "build/ios",
       destination: "generic/platform=iOS",
-      sdk: "iphoneos",
       clean: true,
     )
 
