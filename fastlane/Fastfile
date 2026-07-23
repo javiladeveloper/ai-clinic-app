@@ -74,7 +74,8 @@ platform :ios do
       export_method: "app-store",
       output_directory: "build/ios",
       destination: "generic/platform=iOS",
-      clean: true,
+      # Sin clean: el runner de CI ya arranca limpio, y el clean solo tiraba a la
+      # basura lo poco que el caché de Gradle/Konan logra reusar entre corridas.
     )
 
     upload_to_testflight(

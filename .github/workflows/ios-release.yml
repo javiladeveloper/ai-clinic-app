@@ -29,6 +29,22 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # Caché de Kotlin/Native (~/.konan: toolchain ~1GB + deps nativas) y de Gradle.
+      # Sin esto cada corrida descargaba el toolchain completo y recompilaba TODAS las
+      # dependencias desde cero (~10-20 min extra). La clave rota cuando cambian las
+      # versiones (libs.versions.toml / *.gradle.kts); restore-keys reusa el caché
+      # anterior como base aunque la clave exacta no coincida.
+      - name: Caché Gradle + Kotlin/Native
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.konan
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ios-konan-gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ios-konan-gradle-${{ runner.os }}-
+
       # Xcode 16.2: su linker clásico (ld64) enlaza GoogleSignIn-iOS + KMP sin colgarse,
       # a diferencia del ld-prime de Xcode 26 (que dejaba el build pegado horas en
       # "Linking Sania"). Es el mismo Xcode con el que FitCore compila bien.
