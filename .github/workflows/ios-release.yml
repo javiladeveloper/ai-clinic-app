@@ -33,13 +33,18 @@ jobs:
       # Sin esto cada corrida descargaba el toolchain completo y recompilaba TODAS las
       # dependencias desde cero (~40 min extra).
       #
-      # OJO: la clave depende SOLO de las DEPENDENCIAS (libs.versions.toml + wrapper), NO
+      # OJO 1: la clave depende SOLO de las DEPENDENCIAS (libs.versions.toml + wrapper), NO
       # de los *.gradle.kts. Antes incluía **/*.gradle.kts, y como el versionCode/versionName
-      # vive en build.gradle.kts, CADA release cambiaba la clave → el caché nunca se reusaba
-      # y el build volvía a ~80 min desde cero. Las versiones de las libs (lo que de verdad
-      # decide qué se compila) están en libs.versions.toml, no en el versionCode.
-      - name: Caché Gradle + Kotlin/Native
-        uses: actions/cache@v4
+      # vive en build.gradle.kts, CADA release cambiaba la clave → el caché nunca se reusaba.
+      #
+      # OJO 2 (lo importante): se usa RESTORE aquí + SAVE con `if: always()` AL FINAL del job.
+      # Con el `actions/cache` normal, el guardado solo ocurre si el job TERMINA BIEN — y como
+      # todas las corridas fallaban/se cancelaban antes, el caché NUNCA se guardaba (Post Cache
+      # salía "skipped") → siempre se recompilaba desde cero. Con save `if: always()`, el caché
+      # se guarda aunque el build falle, rompiendo el círculo vicioso.
+      - name: Restaurar caché Gradle + Kotlin/Native
+        id: cache-gradle
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.konan
@@ -49,12 +54,12 @@ jobs:
           restore-keys: |
             ios-konan-gradle-${{ runner.os }}-
 
-      # Caché del DerivedData de Xcode: aquí vive lo COMPILADO de GoogleSignIn/Firebase/
-      # AppCheck/etc. Es lo que de verdad tarda (~40 min). Sin este caché, aunque las deps
-      # ya estén descargadas, Xcode las RECOMPILA todas desde cero cada vez. Con él, la 2da
-      # corrida reusa los .o y baja el build a ~10-15 min. Clave por libs (no por versionCode).
-      - name: Caché DerivedData de Xcode
-        uses: actions/cache@v4
+      # Caché del DerivedData de Xcode: aquí vive lo COMPILADO del framework KMP + libs. Es lo
+      # que de verdad tarda. Con él (una vez guardado), la 2da corrida reusa los .o y baja
+      # el build a ~5-10 min. Mismo esquema restore + save always.
+      - name: Restaurar caché DerivedData de Xcode
+        id: cache-derived
+        uses: actions/cache/restore@v4
         with:
           path: ~/Library/Developer/Xcode/DerivedData
           key: ios-deriveddata-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'iosApp/iosApp.xcodeproj/project.pbxproj') }}
@@ -128,6 +133,28 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}   # .p8 en base64
         run: bundle exec fastlane ios beta
+
+      # Guardar el caché SIEMPRE (aunque el build falle). Esto es lo que rompe el círculo
+      # vicioso: antes el caché solo se guardaba si el job terminaba bien, y como fallaba
+      # siempre, nunca se guardaba y cada corrida recompilaba desde cero. Con `if: always()`
+      # el trabajo de compilación queda cacheado y la SIGUIENTE corrida es rápida.
+      # `hashFiles` en la key: se re-evalúa igual que en el restore (misma clave).
+      - name: Guardar caché Gradle + Kotlin/Native
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.konan
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ios-konan-gradle-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+
+      - name: Guardar caché DerivedData de Xcode
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: ios-deriveddata-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'iosApp/iosApp.xcodeproj/project.pbxproj') }}
 
       - name: Limpiar secretos del runner
         if: always()
