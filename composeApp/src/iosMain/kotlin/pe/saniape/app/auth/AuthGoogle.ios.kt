@@ -2,7 +2,6 @@ package pe.saniape.app.auth
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.handleDeeplinks
 import kotlinx.coroutines.CoroutineScope
 import platform.Foundation.NSURL
@@ -49,7 +48,8 @@ actual class GoogleAuthLauncher(
                     val url = NSURL(string = callbackUrl)
                     if (url != null) {
                         // Completa la sesión con los tokens del callback (mismo handler del deep link).
-                        Supabase.client.auth.handleDeeplinks(url)
+                        // handleDeeplinks es extensión de SupabaseClient (NO de .auth).
+                        Supabase.client.handleDeeplinks(url)
                         onResultado(true, null)
                     } else {
                         onResultado(false, "No se pudo completar el inicio de sesión con Google.")
