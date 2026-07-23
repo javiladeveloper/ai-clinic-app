@@ -1,5 +1,4 @@
 import SwiftUI
-import GoogleSignIn
 import CryptoKit
 import AuthenticationServices
 import ComposeApp
@@ -7,7 +6,7 @@ import ComposeApp
 @main
 struct iOSApp: App {
     init() {
-        installGoogleSignInBridge()
+        installGoogleWebAuthBridge()
         installAppleSignInBridge()
     }
 
@@ -16,43 +15,20 @@ struct iOSApp: App {
             ContentView()
                 .ignoresSafeArea(.all)         // Compose dibuja hasta los bordes (edge-to-edge).
                 .ignoresSafeArea(.keyboard)    // el teclado lo maneja Compose.
-                .onOpenURL { url in
-                    GIDSignIn.sharedInstance.handle(url)   // callback OAuth de Google
-                }
         }
     }
 
-    /// Conecta el flujo nativo GoogleSignIn (SDK iOS) con el puente Kotlin
-    /// (GoogleSignInPuente en AuthGoogle.ios.kt). GIDSignIn lee GIDClientID/GIDServerClientID
-    /// del Info.plist.
-    ///
-    /// NONCE: GoTrue valida sha256(nonce_enviado) == nonce_del_token. Generamos un nonce
-    /// crudo, mandamos su SHA-256 a Google (que lo devuelve en el idToken) y pasamos el crudo
-    /// a Kotlin para Supabase. Así ambos lados coinciden.
-    private func installGoogleSignInBridge() {
-        GoogleSignInPuente.shared.proveedorIdToken = { callback in
-            guard let root = topViewController() else {
-                callback(nil, nil, "No se pudo presentar el login de Google.")
-                return
-            }
-            let rawNonce = randomNonceString()
-            let hashedNonce = sha256(rawNonce)
-            GIDSignIn.sharedInstance.signIn(
-                withPresenting: root,
-                hint: nil,
-                additionalScopes: nil,
-                nonce: hashedNonce
-            ) { result, error in
-                if let error = error {
-                    callback(nil, nil, error.localizedDescription)
-                    return
-                }
-                guard let idToken = result?.user.idToken?.tokenString else {
-                    callback(nil, nil, "No se obtuvo el idToken de Google.")
-                    return
-                }
-                callback(idToken, rawNonce, nil)   // idToken + nonce CRUDO para Supabase
-            }
+    /// Conecta el login de Google EN-APP (ASWebAuthenticationSession, framework del sistema)
+    /// con el puente Kotlin (GoogleWebAuthPuente en AuthGoogle.ios.kt). Reemplaza al SDK
+    /// GoogleSignIn (que arrastraba Firebase/AppCheck/etc. y hacía el build ~40 min más lento).
+    /// Abre la hoja de autenticación del sistema (Apple lo exige, Guideline 4) y devuelve la
+    /// URL de callback (saniape://login#access_token=...) para que handleDeeplinks la complete.
+    private func installGoogleWebAuthBridge() {
+        GoogleWebAuthPuente.shared.iniciar = { authUrl, callbackScheme, onResult in
+            let coordinator = GoogleWebAuthCoordinator(onResult: { callbackUrl, error in
+                _ = onResult(callbackUrl, error)
+            })
+            coordinator.start(authUrl: authUrl, callbackScheme: callbackScheme)
         }
     }
 
@@ -67,31 +43,59 @@ struct iOSApp: App {
             coordinator.start()
         }
     }
+}
 
-    private func topViewController() -> UIViewController? {
+/// Ejecuta el login de Google dentro de la app con ASWebAuthenticationSession (Apple lo exige
+/// en Guideline 4 en lugar de abrir el Safari externo). Al terminar, entrega a Kotlin la URL de
+/// callback (`saniape://login#access_token=...`) para que handleDeeplinks complete la sesión.
+/// Se retiene a sí mismo hasta que el sistema responde.
+final class GoogleWebAuthCoordinator: NSObject, ASWebAuthenticationPresentationContextProviding {
+
+    private let onResult: (String?, String?) -> Void
+    private var session: ASWebAuthenticationSession?
+    private var selfRetain: GoogleWebAuthCoordinator?
+
+    init(onResult: @escaping (String?, String?) -> Void) {
+        self.onResult = onResult
+        super.init()
+        self.selfRetain = self   // vivo hasta que responda el sistema
+    }
+
+    func start(authUrl: String, callbackScheme: String) {
+        guard let url = URL(string: authUrl) else {
+            finish(nil, "URL de autorización inválida.")
+            return
+        }
+        let session = ASWebAuthenticationSession(url: url, callbackURLScheme: callbackScheme) { [weak self] callbackURL, error in
+            if let error = error {
+                let nsErr = error as NSError
+                // Cancelación del usuario: sin token y sin error visible.
+                if nsErr.domain == ASWebAuthenticationSessionErrorDomain
+                    && nsErr.code == ASWebAuthenticationSessionError.canceledLogin.rawValue {
+                    self?.finish(nil, nil)
+                } else {
+                    self?.finish(nil, error.localizedDescription)
+                }
+                return
+            }
+            self?.finish(callbackURL?.absoluteString, nil)
+        }
+        session.presentationContextProvider = self
+        session.prefersEphemeralWebBrowserSession = false
+        self.session = session
+        session.start()
+    }
+
+    private func finish(_ callbackUrl: String?, _ error: String?) {
+        onResult(callbackUrl, error)
+        session = nil
+        selfRetain = nil
+    }
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         let scene = UIApplication.shared.connectedScenes
             .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene
-        var vc = scene?.keyWindow?.rootViewController
-        while let presented = vc?.presentedViewController { vc = presented }
-        return vc
-    }
-
-    /// Nonce aleatorio (crudo) para el flujo OIDC.
-    private func randomNonceString(length: Int = 32) -> String {
-        let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._")
-        var result = ""
-        var bytes = [UInt8](repeating: 0, count: length)
-        _ = SecRandomCopyBytes(kSecRandomDefault, length, &bytes)
-        for b in bytes {
-            result.append(charset[Int(b) % charset.count])
-        }
-        return result
-    }
-
-    /// SHA-256 en hexadecimal (lo que espera GoTrue del claim `nonce`).
-    private func sha256(_ input: String) -> String {
-        let digest = SHA256.hash(data: Data(input.utf8))
-        return digest.map { String(format: "%02x", $0) }.joined()
+        return scene?.keyWindow ?? ASPresentationAnchor()
     }
 }
 

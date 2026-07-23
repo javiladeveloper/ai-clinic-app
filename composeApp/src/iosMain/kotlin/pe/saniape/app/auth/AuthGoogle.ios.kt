@@ -3,63 +3,60 @@ package pe.saniape.app.auth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import io.github.jan.supabase.auth.auth
-import io.github.jan.supabase.auth.providers.Google
-import io.github.jan.supabase.auth.providers.builtin.IDToken
+import io.github.jan.supabase.auth.handleDeeplinks
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import platform.Foundation.NSURL
 import pe.saniape.app.data.Supabase
 
 /**
- * Login con Google en iOS mediante un PUENTE hacia Swift.
+ * Login con Google en iOS DENTRO de la app, con ASWebAuthenticationSession (la hoja de
+ * autenticación del sistema), NO el SDK GoogleSignIn ni el Safari externo.
  *
- * El SDK GoogleSignIn (GIDSignIn) es dependencia del proyecto Xcode; el flujo nativo lo
- * ejecuta Swift y aquí recibimos el `idToken` + el `nonce` CRUDO. El idToken se intercambia
- * con Supabase (signInWith(IDToken)) igual que en Android.
+ * POR QUÉ ASÍ (y no el SDK GoogleSignIn): el SDK arrastra todo Firebase/AppCheck/AppAuth/
+ * GTMSessionFetcher — cientos de archivos que Xcode compila desde cero (~40 min por build).
+ * ASWebAuthenticationSession es un framework del SISTEMA (cero descarga, cero compilación),
+ * y Apple lo EXIGE (Guideline 4) en vez de abrir el navegador externo. Mismo enfoque que
+ * usa FitCore, que por esto compila en ~10 min. El login de Google sigue funcionando igual.
  *
- * NONCE: GoTrue valida `sha256(nonce_enviado) == nonce_del_token`. Por eso Swift genera un
- * nonce crudo, manda su SHA-256 a Google (que lo devuelve en el token) y nos pasa el crudo
- * para Supabase. Así ambos lados cuadran.
+ * Flujo: construimos la URL de autorización de GoTrue (flujo implícito); Swift la abre en
+ * ASWebAuthenticationSession con callbackScheme "saniape"; al volver, el callback trae los
+ * tokens en el fragment y los completa handleDeeplinks (el mismo handler del deep link).
  */
-object GoogleSignInPuente {
+object GoogleWebAuthPuente {
     /**
-     * Swift inyecta aquí el flujo GIDSignIn. Debe llamar al callback con
-     * (idToken, nonceCrudo, error): idToken+nonce no nulos si el login fue OK; error si falló.
+     * Swift inyecta el arranque de ASWebAuthenticationSession:
+     * (urlAutorizacion, callbackScheme, onResult(callbackUrl, error)).
      */
-    var proveedorIdToken: ((callback: (idToken: String?, nonce: String?, error: String?) -> Unit) -> Unit)? = null
+    var iniciar: ((authUrl: String, callbackScheme: String, onResult: (callbackUrl: String?, error: String?) -> Unit) -> Unit)? = null
 }
 
 actual class GoogleAuthLauncher(
-    private val scope: CoroutineScope,
+    @Suppress("unused") private val scope: CoroutineScope,
 ) {
     actual fun lanzar(onResultado: (exito: Boolean, error: String?) -> Unit) {
-        val proveedor = GoogleSignInPuente.proveedorIdToken
-        if (proveedor == null) {
-            onResultado(
-                false,
-                "El acceso con Google en iOS estará disponible pronto. Mientras tanto, ingresa como clínica con tu usuario y contraseña.",
-            )
+        val iniciar = GoogleWebAuthPuente.iniciar
+        if (iniciar == null) {
+            onResultado(false, "El acceso con Google no está disponible. Ingresa con tu usuario y contraseña.")
             return
         }
-        proveedor { idToken, nonce, error ->
-            if (idToken.isNullOrBlank()) {
-                onResultado(false, error ?: "No se pudo iniciar sesión con Google.")
-                return@proveedor
-            }
-            scope.launch {
-                try {
-                    withContext(Dispatchers.Default) {
-                        Supabase.client.auth.signInWith(IDToken) {
-                            this.idToken = idToken
-                            provider = Google
-                            this.nonce = nonce   // nonce CRUDO; GoTrue lo hashea y compara
-                        }
+        // URL de autorización OAuth de Supabase (flujo implícito): vuelve a saniape://login
+        // con los tokens en el fragment.
+        val authUrl = "${Supabase.URL}/auth/v1/authorize?provider=google&redirect_to=saniape://login"
+        iniciar(authUrl, "saniape") { callbackUrl, error ->
+            when {
+                error != null -> onResultado(false, error)
+                callbackUrl != null -> {
+                    val url = NSURL(string = callbackUrl)
+                    if (url != null) {
+                        // Completa la sesión con los tokens del callback (mismo handler del deep link).
+                        Supabase.client.auth.handleDeeplinks(url)
+                        onResultado(true, null)
+                    } else {
+                        onResultado(false, "No se pudo completar el inicio de sesión con Google.")
                     }
-                    onResultado(true, null)
-                } catch (e: Exception) {
-                    onResultado(false, e.message ?: "No se pudo iniciar sesión con Google")
                 }
+                // callbackUrl y error null = el usuario canceló la hoja: sin acción de error.
+                else -> onResultado(false, null)
             }
         }
     }
