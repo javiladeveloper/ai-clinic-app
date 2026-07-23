@@ -79,46 +79,14 @@ fun ModalCompletar(
                 if (esEvaluacion) {
                     Text("Diagnóstico / Motivo", color = c.textoSuave, fontSize = Sania.txt.mini,
                         fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
-                    OutlinedTextField(
-                        value = texto, onValueChange = { texto = it },
-                        placeholder = { Text("Ej. Lumbalgia mecánica…", color = c.textoSuave) },
-                        modifier = Modifier.fillMaxWidth(), minLines = 3,
-                        shape = RoundedCornerShape(Sania.shape.sm.dp),
-                    )
-                    // Chips de PATOLOGÍA por especialidad (como la web): tocar agrega/quita.
+                    // Campo con TYPEAHEAD + chips, igual que la web: al escribir sugiere las
+                    // patologías de la especialidad que coinciden; tocar una la completa.
                     val espNombre = especialidades.find { it.id == cita.especialidadId }?.nombre
                         ?: especialidades.singleOrNull()?.nombre
                     val chips = pe.saniape.app.ui.clinica.chipsDeEspecialidad(espNombre).tipos
-                    if (chips.isNotEmpty()) {
-                        Spacer(Modifier.height(6.dp))
-                        androidx.compose.foundation.layout.FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            chips.forEach { chip ->
-                                val puesto = texto.contains(chip, ignoreCase = true)
-                                Box(
-                                    Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
-                                        .background(if (puesto) c.navy else c.chipBg)
-                                        .border(1.dp, if (puesto) c.navy else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
-                                        .clickable {
-                                            texto = if (puesto) {
-                                                texto.split(",").map { it.trim() }
-                                                    .filterNot { it.equals(chip, ignoreCase = true) }
-                                                    .filter { it.isNotBlank() }.joinToString(", ")
-                                            } else {
-                                                if (texto.isBlank()) chip else "${texto.trim().trimEnd(',')}, $chip"
-                                            }
-                                        }
-                                        .padding(horizontal = 10.dp, vertical = 5.dp),
-                                ) {
-                                    Text("${if (puesto) "✓" else "+"} $chip",
-                                        color = if (puesto) c.sobreNavy else c.textoSuave,
-                                        fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
+                    pe.saniape.app.ui.clinica.agenda.componentes.DiagnosticoInput(
+                        value = texto, onChange = { texto = it }, opciones = chips,
+                    )
                     Text("Se guardará en la ficha del paciente.", color = c.textoSuave,
                         fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
                 } else {

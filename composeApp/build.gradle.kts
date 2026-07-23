@@ -166,8 +166,12 @@ android {
         //       (que FitCore/controlgym NO tiene, por eso ese si compilaba en el runner
         //       gratis). Solucion: Xcode 16.2 (linker clasico ld64) en el CI + sin dSYM.
         //       Runner sigue siendo el gratis (macos-15). Solo iOS; Android no cambia.
-        versionCode = 24
-        versionName = "2.6.9"
+        // v25/2.7.0 = Agenda en TIEMPO REAL (Supabase Realtime): si agendan/cambian/cancelan
+        //       una cita desde la web u otro dispositivo, la agenda del fisio se actualiza
+        //       sola sin recargar. + Campo "Diagnóstico / Motivo" con typeahead que APRENDE
+        //       de lo que se escribe (tabla diagnosticos_frecuentes, como las técnicas).
+        versionCode = 25
+        versionName = "2.7.0"
     }
     signingConfigs {
         create("release") {

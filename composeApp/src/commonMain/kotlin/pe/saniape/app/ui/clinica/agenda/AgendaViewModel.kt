@@ -16,6 +16,7 @@ import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.data.staff.AgendaBanners
 import pe.saniape.app.data.staff.AgendaRepo
+import pe.saniape.app.data.staff.RealtimeAgenda
 import pe.saniape.app.data.staff.BannersAgenda
 import pe.saniape.app.data.staff.CitaStaff
 import pe.saniape.app.data.staff.ContextoStaff
@@ -108,9 +109,23 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     fun cambiarFiltroTerapeuta(v: String?) { filtroTerapeuta = v }
     fun cambiarFiltroEspecialidad(v: String?) { filtroEspecialidad = v }
 
+    // Suscripción Realtime a la tabla `citas`: mantiene la agenda al día sin recargar.
+    private var realtimeJob: kotlinx.coroutines.Job? = null
+
     init {
         cargarDia(fechaSel)
         cargarAuxiliares()
+        // Auto-refresco en vivo: si desde la web se agenda/cambia/cancela una cita, la
+        // agenda visible se recarga sola. Best-effort — si no conecta, no pasa nada.
+        realtimeJob = RealtimeAgenda.suscribir(viewModelScope) {
+            // Recarga lo que esté visible ahora mismo (día concreto o lista), sin spinner.
+            if (verHistorial) cargarLista() else cargarDia(fechaSel)
+        }
+    }
+
+    override fun onCleared() {
+        realtimeJob?.cancel()
+        super.onCleared()
     }
 
     // ── Intents ──
@@ -200,6 +215,12 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                 AccionCita.Cancelar -> AgendaRepo.cancelar(cita.id)
             }
             if (ok) {
+                // Aprende el diagnóstico escrito (para sugerirlo luego, como las técnicas).
+                if (accion == AccionCita.Completar && !diagnostico.isNullOrBlank()) {
+                    runCatching {
+                        pe.saniape.app.data.staff.DiagnosticosRepo.registrar(diagnostico, cita.especialidadId)
+                    }
+                }
                 val txt = when (accion) {
                     AccionCita.Confirmar -> "Cita confirmada"
                     AccionCita.Completar -> "Cita completada"
