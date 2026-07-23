@@ -6,6 +6,12 @@ on:
   push:
     tags:
       - "ios-v*"
+    # ⏳ TEMPORAL (verificación del fix de codesign, jul-2026): dispara el CI al empujar
+    # a la branch de trabajo, para poder validar el build sin crear un tag ni tener que
+    # seleccionar la branch desde el móvil. QUITAR estas dos líneas cuando el fix esté
+    # confirmado en verde.
+    branches:
+      - "claude/hola-hxmjl1"
 
 jobs:
   build-and-upload:
