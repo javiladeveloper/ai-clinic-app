@@ -31,9 +31,13 @@ jobs:
 
       # Caché de Kotlin/Native (~/.konan: toolchain ~1GB + deps nativas) y de Gradle.
       # Sin esto cada corrida descargaba el toolchain completo y recompilaba TODAS las
-      # dependencias desde cero (~10-20 min extra). La clave rota cuando cambian las
-      # versiones (libs.versions.toml / *.gradle.kts); restore-keys reusa el caché
-      # anterior como base aunque la clave exacta no coincida.
+      # dependencias desde cero (~40 min extra).
+      #
+      # OJO: la clave depende SOLO de las DEPENDENCIAS (libs.versions.toml + wrapper), NO
+      # de los *.gradle.kts. Antes incluía **/*.gradle.kts, y como el versionCode/versionName
+      # vive en build.gradle.kts, CADA release cambiaba la clave → el caché nunca se reusaba
+      # y el build volvía a ~80 min desde cero. Las versiones de las libs (lo que de verdad
+      # decide qué se compila) están en libs.versions.toml, no en el versionCode.
       - name: Caché Gradle + Kotlin/Native
         uses: actions/cache@v4
         with:
@@ -41,9 +45,21 @@ jobs:
             ~/.konan
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ios-konan-gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          key: ios-konan-gradle-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
             ios-konan-gradle-${{ runner.os }}-
+
+      # Caché del DerivedData de Xcode: aquí vive lo COMPILADO de GoogleSignIn/Firebase/
+      # AppCheck/etc. Es lo que de verdad tarda (~40 min). Sin este caché, aunque las deps
+      # ya estén descargadas, Xcode las RECOMPILA todas desde cero cada vez. Con él, la 2da
+      # corrida reusa los .o y baja el build a ~10-15 min. Clave por libs (no por versionCode).
+      - name: Caché DerivedData de Xcode
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: ios-deriveddata-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'iosApp/iosApp.xcodeproj/project.pbxproj') }}
+          restore-keys: |
+            ios-deriveddata-${{ runner.os }}-
 
       # Xcode 16.2: su linker clásico (ld64) enlaza GoogleSignIn-iOS + KMP sin colgarse,
       # a diferencia del ld-prime de Xcode 26 (que dejaba el build pegado horas en
