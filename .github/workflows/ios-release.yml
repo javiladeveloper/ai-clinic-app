@@ -38,6 +38,13 @@ jobs:
         with:
           xcode-version: "16.2"
 
+      # Xcode 16.2 en el runner viene SIN la plataforma iOS 18.2 descargada, así que
+      # xcodebuild no encuentra ningún destino de dispositivo ("iOS 18.2 is not installed").
+      # Esto la descarga e instala (unos minutos la primera vez). Es lo que faltaba: con
+      # esto el destination generic/platform=iOS ya tiene un SDK real contra el cual archivar.
+      - name: Instalar plataforma iOS (SDK del simulador/dispositivo)
+        run: xcodebuild -downloadPlatform iOS -quiet || xcodebuild -downloadPlatform iOS
+
       - name: Instalar Fastlane (Ruby + bundler)
         # Pineado a SHA (seguridad): ruby/setup-ruby v1.207.0
         uses: ruby/setup-ruby@354a1ad156761f5ee2b7b13fa8e09943a5e8d252
