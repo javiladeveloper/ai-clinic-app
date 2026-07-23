@@ -149,6 +149,33 @@ Si no, la tienda rechaza con "ya usado".
 
 ---
 
+## 🍎 Errores que superamos al montar iOS (registro real, para otros agentes)
+
+### 1. El build "se cuelga 60-90 min" → NO era el linker, era `codesign`
+- **Síntoma:** el runner corría hasta el timeout (subimos 45→90 min sin éxito) y el job
+  terminaba en `cancelled`, no `failure`. Se probó Xcode 26→16.2, `-ld_classic`, quitar
+  dSYM, runner distinto... nada. **Todas esas teorías del linker eran falsos culpables.**
+- **Diagnóstico real (leer el log hasta el final):** el build COMPILA y ENLAZA bien en
+  ~20 min. El log muestra `Linking Sania` (2s) y luego `Signing Sania.app` — y ahí se
+  queda pegado ~64 min hasta el timeout. En el cleanup: `Terminate orphan process:
+  codesign`. → **el que cuelga es `codesign`.**
+- **Causa:** el keychain temporal **se auto-bloquea** (~5 min por defecto) mientras corre
+  el paso largo "Compile Kotlin Framework" (~19 min). Cuando `codesign` firma DESPUÉS, el
+  keychain está bloqueado y espera un desbloqueo **interactivo** que en un runner headless
+  nunca llega → cuelga indefinidamente.
+- **Fix (en `ios-release.yml`, paso "Instalar certificado y perfil de firma"):**
+  1. `security set-keychain-settings -lut 21600 "$KEYCHAIN"` → desactiva el auto-lock
+     (6h > timeout del job). **Este es el fix clave.**
+  2. Meter el keychain en la **lista de búsqueda** (`security list-keychains -s`), no solo
+     `default-keychain`.
+  3. `set-key-partition-list` con una contraseña **no vacía** (con `""` a veces falla en
+     silencio y codesign vuelve a pedir prompt).
+- **Moraleja:** si un build de iOS en CI "tarda muchísimo" o muere por timeout, **lee el
+  log hasta la última línea antes del timeout**. Si la última acción es `Signing` y hay un
+  `codesign` huérfano en el cleanup, es el keychain — no toques el linker.
+
+---
+
 ## 🔄 Popup "nueva versión" automático (Vercel) — opcional
 
 El workflow de Android, tras subir el AAB: (1) actualiza la env var `APP_ANDROID_LATEST`
