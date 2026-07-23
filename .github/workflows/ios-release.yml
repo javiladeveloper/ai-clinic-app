@@ -9,7 +9,14 @@ on:
 
 jobs:
   build-and-upload:
+    # Runner estándar gratis (repos públicos). Alcanza de sobra: otra app KMP (FitCore)
+    # compila aquí sin problemas. El cuelgue de Sania NO era el runner, era el linker de
+    # Xcode 26 (ld-prime) enlazando GoogleSignIn-iOS + su árbol Firebase/AppAuth/AppCheck
+    # (que FitCore no tiene). Con Xcode 16 (linker clásico) el link termina normal.
     runs-on: macos-15
+    # Sin esto, un cuelgue del linker consume el tope de GitHub (6h). Con timeout, si algo
+    # se vuelve a trabar, el job muere a los 45 min y deja el log accesible para diagnosticar.
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,12 +27,16 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      # Apple exige compilar con el SDK de iOS 26 (Xcode 26). Forzamos la última
-      # estable; con Xcode 16 el upload rebota "built with the iOS 18 SDK".
-      - name: Seleccionar Xcode 26
+      # Xcode 16.2: su linker clásico (ld64) enlaza GoogleSignIn-iOS + KMP sin colgarse,
+      # a diferencia del ld-prime de Xcode 26 (que dejaba el build pegado horas en
+      # "Linking Sania"). Es el mismo Xcode con el que FitCore compila bien.
+      # OJO: si Apple rebota el upload exigiendo el SDK de iOS 26 ("built with iOS 18 SDK"),
+      # subir a 26.x — pero entonces hay que resolver el linker de otra forma (runner
+      # xlarge, o mover Google login a OAuth web para aligerar el link).
+      - name: Seleccionar Xcode 16.2
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: "16.2"
 
       - name: Instalar Fastlane (Ruby + bundler)
         # Pineado a SHA (seguridad): ruby/setup-ruby v1.207.0

@@ -160,12 +160,14 @@ android {
         //       para que el fisio reconozca que es de Sania) + popup de resumen clínico
         //       al tocar el paciente en la agenda (motivo, diagnóstico, tratamiento en
         //       curso e historial — consume /api/staff/paciente/resumen-clinico).
-        // v19/2.6.4 = fix del build de iOS: el linker nuevo de Xcode 26 (ld-prime) se
-        //       colgaba 51 min enlazando el binario (framework KMP + libs de Google).
-        //       -ld_classic + DEBUG_INFORMATION_FORMAT=dwarf (sin dSYM) en el pbxproj.
-        //       Solo afecta iOS; Android no cambia (mismo AAB).
-        versionCode = 19
-        versionName = "2.6.4"
+        // v19/2.6.4 = intento fix iOS con -ld_classic (no basto, seguia colgado).
+        // v20/2.6.5 = fix REAL del build iOS: el cuelgue era el linker ld-prime de
+        //       Xcode 26 enlazando GoogleSignIn-iOS + su arbol Firebase/AppAuth/AppCheck
+        //       (que FitCore/controlgym NO tiene, por eso ese si compilaba en el runner
+        //       gratis). Solucion: Xcode 16.2 (linker clasico ld64) en el CI + sin dSYM.
+        //       Runner sigue siendo el gratis (macos-15). Solo iOS; Android no cambia.
+        versionCode = 20
+        versionName = "2.6.5"
     }
     signingConfigs {
         create("release") {

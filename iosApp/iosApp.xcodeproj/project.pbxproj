@@ -308,7 +308,6 @@
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-lsqlite3",
-					"-ld_classic",
 				);
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
