@@ -174,8 +174,8 @@ android {
         //       (llave de su historial); luego "Mis clínicas" (solo donde tiene atenciones,
         //       SIN mapa ni directorio de terceros). En las clínicas Plus puede reservar; en
         //       las demás solo ve su historial (pestaña Salud). Endpoint /api/paciente/mis-clinicas.
-        versionCode = 32
-        versionName = "2.9.2"
+        versionCode = 33
+        versionName = "2.9.3"
     }
     signingConfigs {
         create("release") {
