@@ -44,11 +44,23 @@ platform :ios do
   desc "Compila el .ipa y lo sube a TestFlight"
   lane :beta do
     # La API Key de App Store Connect llega por env vars (issuer id, key id, key p8).
+    #
+    # ⚠️ ERROR "Authentication credentials are missing or invalid" en el upload:
+    # casi siempre es un MISMATCH de formato del .p8 en el secret ASC_KEY_CONTENT — el
+    # gemelo iOS del "Invalid JWT Signature" de Android (pegar crudo en vez de base64).
+    # Antes forzábamos is_key_content_base64: true; si el secret venía como .p8 CRUDO
+    # (PEM con "-----BEGIN PRIVATE KEY-----"), fastlane lo base64-decodificaba → clave
+    # basura → token JWT inválido → Apple rechaza. Ahora AUTO-DETECTAMOS: si el contenido
+    # trae el header PEM es crudo (is_key_content_base64=false); si no, es base64. Así el
+    # upload funciona sin importar en qué formato esté guardado el secret. key_id/issuer
+    # con .strip por si el secret arrastra un salto de línea.
+    asc_key = ENV["ASC_KEY_CONTENT"].to_s
+    asc_key_is_b64 = !asc_key.include?("PRIVATE KEY")
     app_store_connect_api_key(
-      key_id: ENV["ASC_KEY_ID"],
-      issuer_id: ENV["ASC_ISSUER_ID"],
-      key_content: ENV["ASC_KEY_CONTENT"],     # contenido del .p8 (base64 o crudo)
-      is_key_content_base64: true,
+      key_id: ENV["ASC_KEY_ID"].to_s.strip,
+      issuer_id: ENV["ASC_ISSUER_ID"].to_s.strip,
+      key_content: asc_key,
+      is_key_content_base64: asc_key_is_b64,
     )
 
     # Build number único = (último de TestFlight) + 1, para no chocar en cada corrida.
