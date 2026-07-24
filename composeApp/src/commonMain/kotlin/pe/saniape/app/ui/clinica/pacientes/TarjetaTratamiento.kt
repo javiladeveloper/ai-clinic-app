@@ -795,7 +795,7 @@ fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, on
             if (editando == p.id) {
                 // Edición inline (solo Admin)
                 Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                    androidx.compose.material3.OutlinedTextField(
+                    androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(), 
                         value = editMonto, onValueChange = { editMonto = it.filter { ch -> ch.isDigit() || ch == '.' } },
                         placeholder = { Text("Monto", color = c.textoSuave) }, singleLine = true,
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
@@ -890,7 +890,7 @@ fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, on
             agregando = true
         }
     } else {
-        androidx.compose.material3.OutlinedTextField(
+        androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(), 
             value = monto, onValueChange = { monto = it.filter { ch -> ch.isDigit() || ch == '.' } },
             placeholder = { Text("Monto", color = c.textoSuave) },
             singleLine = true,
@@ -903,7 +903,7 @@ fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, on
             METODOS_PAGO.forEach { m -> ChipMetodo(m, metodo == m) { metodo = m } }
         }
         Spacer(Modifier.height(6.dp))
-        androidx.compose.material3.OutlinedTextField(
+        androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(), 
             value = notaPago, onValueChange = { notaPago = it },
             placeholder = { Text("Observación (opcional)", color = c.textoSuave) },
             minLines = 1, modifier = Modifier.fillMaxWidth(),
@@ -1122,7 +1122,7 @@ private fun CampoTexto(
 ) {
     val c = Sania.colors
     Text(label, color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
-    androidx.compose.material3.OutlinedTextField(
+    androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(), 
         value = value,
         onValueChange = { if (soloNumero) onChange(it.filter { ch -> ch.isDigit() || ch == '.' }) else onChange(it) },
         singleLine = !multilinea, minLines = if (multilinea) 2 else 1,

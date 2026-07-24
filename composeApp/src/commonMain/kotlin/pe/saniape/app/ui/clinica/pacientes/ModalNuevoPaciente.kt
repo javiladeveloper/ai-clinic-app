@@ -106,7 +106,7 @@ fun ModalNuevoPaciente(
         TarjetaForm(titulo = "Identidad", icono = "🪪") {
             EtqForm("DNI (busca el nombre en el padrón)")
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
+                OutlinedTextField(colors = coloresCampoForm(), 
                     value = dni,
                     onValueChange = { dni = it.filter { ch -> ch.isDigit() }.take(8); avisoDni = null; existente = null },
                     placeholder = { Text("8 dígitos", color = c.textoSuave) },
@@ -140,7 +140,7 @@ fun ModalNuevoPaciente(
 
             Spacer(Modifier.height(10.dp))
             EtqForm("Nombre completo *")
-            OutlinedTextField(value = nombre, onValueChange = { nombre = it },
+            OutlinedTextField(colors = coloresCampoForm(), value = nombre, onValueChange = { nombre = it },
                 placeholder = { Text("Nombres y apellidos", color = c.textoSuave) },
                 singleLine = true, modifier = Modifier.fillMaxWidth())
 
@@ -148,13 +148,13 @@ fun ModalNuevoPaciente(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(2f)) {
                     EtqForm("Teléfono")
-                    OutlinedTextField(value = telefono, onValueChange = { telefono = it.filter { ch -> ch.isDigit() || ch == '+' } },
+                    OutlinedTextField(colors = coloresCampoForm(), value = telefono, onValueChange = { telefono = it.filter { ch -> ch.isDigit() || ch == '+' } },
                         singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                         modifier = Modifier.fillMaxWidth())
                 }
                 Column(Modifier.weight(1f)) {
                     EtqForm("Edad")
-                    OutlinedTextField(value = edad, onValueChange = { edad = it.filter { ch -> ch.isDigit() }.take(3) },
+                    OutlinedTextField(colors = coloresCampoForm(), value = edad, onValueChange = { edad = it.filter { ch -> ch.isDigit() }.take(3) },
                         singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth())
                 }
@@ -162,7 +162,7 @@ fun ModalNuevoPaciente(
 
             Spacer(Modifier.height(10.dp))
             EtqForm("Motivo (por qué viene) — opcional")
-            OutlinedTextField(value = motivo, onValueChange = { motivo = it },
+            OutlinedTextField(colors = coloresCampoForm(), value = motivo, onValueChange = { motivo = it },
                 placeholder = { Text("Ej. dolor lumbar, evaluación general…", color = c.textoSuave) },
                 minLines = 2, modifier = Modifier.fillMaxWidth())
 

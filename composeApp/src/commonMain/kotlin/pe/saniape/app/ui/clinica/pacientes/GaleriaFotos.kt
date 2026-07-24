@@ -354,7 +354,7 @@ private fun ModalSubirFoto(
 
             Spacer(Modifier.height(12.dp))
             EtqForm("Nota (opcional)")
-            OutlinedTextField(value = nota, onValueChange = { nota = it },
+            OutlinedTextField(colors = coloresCampoForm(), value = nota, onValueChange = { nota = it },
                 placeholder = { Text("Ej. Inflamación de rodilla derecha", color = c.textoSuave) },
                 modifier = Modifier.fillMaxWidth(), singleLine = true)
 

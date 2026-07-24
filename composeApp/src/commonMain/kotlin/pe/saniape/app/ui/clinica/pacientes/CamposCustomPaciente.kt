@@ -130,7 +130,7 @@ fun CamposCustomPaciente(
                                         ) { Text(op, color = if (sel) c.sobreNavy else c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                                     }
                                 }
-                                else -> OutlinedTextField(
+                                else -> OutlinedTextField(colors = coloresCampoForm(), 
                                     value = draft[campo.id] ?: "",
                                     onValueChange = { nuevo ->
                                         draft = draft + (campo.id to

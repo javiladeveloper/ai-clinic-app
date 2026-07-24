@@ -102,7 +102,7 @@ fun PantallaPacientes(
 
             // Búsqueda + filtros de estado
             Column(Modifier.fillMaxWidth().padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm)) {
-                OutlinedTextField(
+                OutlinedTextField(colors = coloresCampoForm(), 
                     value = vm.busqueda, onValueChange = { vm.cambiarBusqueda(it) },
                     placeholder = { Text("🔍 Buscar paciente…", color = c.textoSuave) },
                     singleLine = true, modifier = Modifier.fillMaxWidth(),

@@ -250,7 +250,7 @@ fun ModalCrearTratamiento(
                     }
 
                     Etq("Diagnóstico")
-                    OutlinedTextField(value = diagnostico, onValueChange = { diagnostico = it },
+                    OutlinedTextField(colors = coloresCampoForm(), value = diagnostico, onValueChange = { diagnostico = it },
                         placeholder = { Text("Diagnóstico que motiva este tratamiento", color = c.textoSuave) },
                         minLines = 2, modifier = Modifier.fillMaxWidth())
                     if (!diagnosticoPrevio.isNullOrBlank() || evaluacion != null) {
@@ -471,7 +471,7 @@ fun ModalAmpliarTratamiento(
             EtqForm("Monto adicional (S/) — opcional"); CampoNum(monto) { monto = it }
             Spacer(Modifier.height(10.dp))
             EtqForm("Motivo / acuerdo — opcional")
-            OutlinedTextField(value = nota, onValueChange = { nota = it }, minLines = 2,
+            OutlinedTextField(colors = coloresCampoForm(), value = nota, onValueChange = { nota = it }, minLines = 2,
                 modifier = Modifier.fillMaxWidth())
         }
     }
@@ -698,12 +698,12 @@ fun ModalEditarConsulta(
 
                 Tarjeta(titulo = "Atención", icono = "📝") {
                     Etq("Diagnóstico")
-                    OutlinedTextField(value = diagnostico, onValueChange = { diagnostico = it },
+                    OutlinedTextField(colors = coloresCampoForm(), value = diagnostico, onValueChange = { diagnostico = it },
                         placeholder = { Text("Hallazgos / diagnóstico", color = c.textoSuave) },
                         minLines = 2, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(10.dp))
                     Etq("Medicación / receta")
-                    OutlinedTextField(value = medicacion, onValueChange = { medicacion = it },
+                    OutlinedTextField(colors = coloresCampoForm(), value = medicacion, onValueChange = { medicacion = it },
                         placeholder = { Text("Indicaciones, receta…", color = c.textoSuave) },
                         minLines = 2, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(10.dp))
@@ -770,7 +770,7 @@ private fun Etq(t: String) {
 
 @Composable
 private fun CampoNum(value: String, onChange: (String) -> Unit) {
-    OutlinedTextField(
+    OutlinedTextField(colors = coloresCampoForm(), 
         value = value, onValueChange = { onChange(it.filter { ch -> ch.isDigit() || ch == '.' }) },
         singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth(),

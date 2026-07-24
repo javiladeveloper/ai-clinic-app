@@ -812,7 +812,7 @@ private fun ModalCompletarSesion(
         if (muestraMejorias) {
             Spacer(Modifier.height(12.dp))
             TarjetaForm(titulo = "Mejorías / evolución", icono = "↗") {
-                androidx.compose.material3.OutlinedTextField(
+                androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(), 
                     value = mejorias, onValueChange = { mejorias = it },
                     placeholder = { Text("Ej: Menos dolor al caminar, mayor rango…", color = c.textoSuave) },
                     modifier = Modifier.fillMaxWidth(), minLines = 2,
@@ -1210,7 +1210,7 @@ private fun CampoFicha(
 ) {
     val c = Sania.colors
     Text(label, color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
-    androidx.compose.material3.OutlinedTextField(
+    androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(), 
         value = value,
         onValueChange = { if (soloNumero) onChange(it.filter { ch -> ch.isDigit() }) else onChange(it) },
         singleLine = !multilinea, minLines = if (multilinea) 2 else 1,
@@ -1831,7 +1831,7 @@ private fun ModalNotaRecepcion(
         onAccion = { onGuardar(texto.trim().ifBlank { null }) },
     ) {
         TarjetaForm(titulo = "Nota", icono = "📌") {
-            androidx.compose.material3.OutlinedTextField(
+            androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(), 
                 value = texto, onValueChange = { texto = it },
                 placeholder = { Text("Ej. El paciente debe traer su receta / pagó la mitad…", color = c.textoSuave) },
                 modifier = Modifier.fillMaxWidth(), minLines = 2,

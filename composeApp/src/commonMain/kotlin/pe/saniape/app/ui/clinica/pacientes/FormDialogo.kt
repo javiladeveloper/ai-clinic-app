@@ -17,8 +17,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -100,6 +102,23 @@ fun TarjetaForm(titulo: String, icono: String, contenido: @Composable ColumnScop
         }
         contenido()
     }
+}
+
+/**
+ * Colores estándar de los campos de texto del flujo de pacientes. Sin esto,
+ * OutlinedTextField usa el colorScheme por defecto de Material3 (no el tema
+ * Sania): el texto tecleado quedaba lavado/casi invisible — se veía "borroso",
+ * sobre todo en tema oscuro (reporte DALU 2026-07-23, campo DNI del alta).
+ */
+@Composable
+fun coloresCampoForm(): TextFieldColors {
+    val c = Sania.colors
+    return OutlinedTextFieldDefaults.colors(
+        focusedTextColor = c.texto, unfocusedTextColor = c.texto,
+        cursorColor = c.navy,
+        focusedBorderColor = c.navy, unfocusedBorderColor = c.borde,
+        focusedContainerColor = c.superficie, unfocusedContainerColor = c.superficie,
+    )
 }
 
 /** Etiqueta de campo (MAYÚSCULAS, espaciado) — esquema estándar. */

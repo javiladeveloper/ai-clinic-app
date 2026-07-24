@@ -324,7 +324,7 @@ private fun ModalSolicitarExamen(
     ) {
         TarjetaForm(titulo = "Examen", icono = "🔬") {
             EtqForm("Examen solicitado")
-            OutlinedTextField(value = descripcion, onValueChange = { descripcion = it },
+            OutlinedTextField(colors = coloresCampoForm(), value = descripcion, onValueChange = { descripcion = it },
                 placeholder = { Text("Ej. Ecografía abdominal, hemograma…", color = c.textoSuave) },
                 minLines = 2, modifier = Modifier.fillMaxWidth())
         }
@@ -416,7 +416,7 @@ private fun ModalResultado(
     ) {
         TarjetaForm(titulo = "Resultado", icono = "📋") {
             EtqForm("Conclusión / nota")
-            OutlinedTextField(value = nota, onValueChange = { nota = it },
+            OutlinedTextField(colors = coloresCampoForm(), value = nota, onValueChange = { nota = it },
                 placeholder = { Text("Ej. Hígado normal, sin lesiones…", color = c.textoSuave) },
                 minLines = 3, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
@@ -459,7 +459,7 @@ fun ModalDerivar(
     ) {
         TarjetaForm(titulo = "Derivación", icono = "↗") {
             EtqForm("Motivo de la derivación")
-            OutlinedTextField(value = descripcion, onValueChange = { descripcion = it },
+            OutlinedTextField(colors = coloresCampoForm(), value = descripcion, onValueChange = { descripcion = it },
                 placeholder = { Text("Ej. Evaluar por cardiología", color = c.textoSuave) },
                 minLines = 2, modifier = Modifier.fillMaxWidth())
 
