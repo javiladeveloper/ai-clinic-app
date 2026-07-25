@@ -23,6 +23,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -139,6 +140,15 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     // con datos a medias y no se arreglaba sola hasta salir y entrar.
     val tokenRed by pe.saniape.app.data.offline.EstadoRed.token.collectAsState()
     LaunchedEffect(tokenRed) { if (tokenRed > 0) recargar() }
+
+    // Realtime: si el fisio crea/completa sesiones (o cambia un tratamiento) desde la web
+    // u otro dispositivo, la ficha ABIERTA se refresca sola — antes el cambio solo se veía
+    // saliendo y volviendo a entrar. Best-effort (si Realtime no conecta, no pasa nada);
+    // se corta al cerrar la ficha.
+    DisposableEffect(pacienteInicial.id) {
+        val job = pe.saniape.app.data.staff.RealtimeFicha.suscribir(scope) { recargar() }
+        onDispose { job.cancel() }
+    }
 
     // Crear cita (control que nace de un tratamiento) — pantalla completa.
     crearCita?.let { prefill ->
