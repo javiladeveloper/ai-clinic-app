@@ -113,6 +113,8 @@ data class SesionFicha(
     val costo: Double?,
     val notas: String?,        // procedimientos realizados en la sesión
     val mejorias: String?,     // evolución/observaciones (desde la sesión #2)
+    /** El paciente quedó con una RX/orden pendiente; se le recuerda en la siguiente sesión. */
+    val rxPendiente: Boolean = false,
     val duracion: Int?,
     val terapeutaNombre: String?,
     val motivoEstado: String?,
@@ -317,6 +319,8 @@ object PacientesRepo {
         (this[k] as? JsonPrimitive)?.content?.toIntOrNull()
     private fun JsonObject.dbl(k: String): Double? =
         (this[k] as? JsonPrimitive)?.content?.toDoubleOrNull()
+    private fun JsonObject.bool(k: String): Boolean? =
+        (this[k] as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
 
     private const val SELECT = """
         id, nombre, dni, edad, telefono, email, ocupacion, diagnostico, estado, flag,
@@ -480,7 +484,7 @@ object PacientesRepo {
     suspend fun sesionesDe(tratamientoId: String): List<SesionFicha> {
         val filas = Supabase.client.postgrest["sesiones"]
             .select(Columns.raw(
-                "id, numero, fecha, hora, estado, costo, notas, mejorias, duracion, motivo_estado, " +
+                "id, numero, fecha, hora, estado, costo, notas, mejorias, rx_pendiente, duracion, motivo_estado, " +
                     "terapeuta:terapeutas(nombre), pagos:pagos_tratamiento(id, fecha)"
             )) {
                 filter { eq("tratamiento_id", tratamientoId) }
@@ -505,6 +509,7 @@ object PacientesRepo {
                 costo = o.dbl("costo"),
                 notas = o.str("notas"),
                 mejorias = o.str("mejorias"),
+                rxPendiente = o.bool("rx_pendiente") == true,
                 duracion = o.int("duracion"),
                 terapeutaNombre = terNombre,
                 motivoEstado = o.str("motivo_estado"),
@@ -518,7 +523,7 @@ object PacientesRepo {
     suspend fun cambiarEstadoSesion(
         sesionId: String, estado: String,
         motivo: String? = null, fecha: String? = null, hora: String? = null,
-        notas: String? = null, mejorias: String? = null,
+        notas: String? = null, mejorias: String? = null, rxPendiente: Boolean? = null,
     ): Boolean = postStaff("/api/staff/sesion/estado", buildJsonObject {
         put("sesionId", sesionId)
         put("estado", estado)
@@ -528,6 +533,9 @@ object PacientesRepo {
         if (!notas.isNullOrBlank()) put("notas", notas)
         // mejorías: se manda siempre si no es null (cadena vacía = limpiar en el server)
         if (mejorias != null) put("mejorias", mejorias)
+        // RX pendiente: columna propia en la BD (antes iba escondido como texto
+        // dentro de la evolución, que ensuciaba la historia clínica).
+        if (rxPendiente != null) put("rxPendiente", rxPendiente)
     })
 
     /** Pagos registrados de un tratamiento (para la PagoCard de la ficha). */

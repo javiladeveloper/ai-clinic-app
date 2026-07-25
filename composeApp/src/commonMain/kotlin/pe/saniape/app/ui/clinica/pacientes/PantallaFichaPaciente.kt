@@ -687,18 +687,13 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             onConfirmar = { tecnicas, mejorias, dejoRx ->
                 completarSesion = null
                 scope.launch {
-                    // Evolución + marcador RX. Si el paciente dejó RX se envía la evolución
-                    // (con el marcador) SIEMPRE, aunque sea la sesión #1; si no, se respeta
-                    // la regla de la web: mejorías solo desde la #2 ("" limpia, null = no tocar).
-                    val mejoriasFinal = when {
-                        dejoRx -> AvisoRx.aplicar(mejorias, true)
-                        ses.numero > 1 -> AvisoRx.aplicar(mejorias, false)
-                        else -> null
-                    }
+                    // Evolución: solo desde la sesión #2 ("" limpia, null = no tocar),
+                    // igual que la web. El aviso de RX viaja aparte, en su propia columna.
                     val ok = PacientesRepo.cambiarEstadoSesion(
                         ses.id, "Completada",
                         notas = tecnicas,
-                        mejorias = mejoriasFinal,
+                        mejorias = if (ses.numero > 1) mejorias.orEmpty() else null,
+                        rxPendiente = dejoRx,
                     )
                     if (ok) pe.saniape.app.ui.Toaster.exito("Sesión #${ses.numero} completada")
                     else pe.saniape.app.ui.Toaster.error("No se pudo completar la sesión")
@@ -777,14 +772,13 @@ private fun ModalCompletarSesion(
     // Precarga de técnicas: lo que ya tenga la sesión → si no, las técnicas del plan del
     // tratamiento (así el fisio no reteclea "TENS + ultrasonido" en cada sesión del paquete).
     var tecnicas by remember { mutableStateOf(ses.notas?.takeIf { it.isNotBlank() } ?: tecnicasSugeridas ?: "") }
-    // La evolución se muestra SIN el marcador RX; el marcador lo gobierna el checkbox.
-    var mejorias by remember { mutableStateOf(AvisoRx.limpiar(ses.mejorias)) }
+    var mejorias by remember { mutableStateOf(ses.mejorias.orEmpty()) }
     var dejoRx by remember { mutableStateOf(AvisoRx.dejoRx(ses)) }
     val muestraMejorias = ses.numero > 1
 
-    // Referencia de la sesión anterior (evolución), ya sin el marcador RX.
+    // Referencia de lo registrado en la sesión anterior.
     val notasPrev = anterior?.notas?.takeIf { it.isNotBlank() }
-    val mejoriasPrev = anterior?.let { AvisoRx.limpiar(it.mejorias) }?.takeIf { it.isNotBlank() }
+    val mejoriasPrev = anterior?.mejorias?.takeIf { it.isNotBlank() }
 
     DialogoForm(
         titulo = "Completar sesión #${ses.numero}",
