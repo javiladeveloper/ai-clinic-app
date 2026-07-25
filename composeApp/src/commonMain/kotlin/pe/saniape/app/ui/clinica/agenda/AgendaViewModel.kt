@@ -103,6 +103,25 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     val citasSinProfesional: List<CitaStaff>
         get() = citasFiltradas.filter { it.terapeutaId == null && it.estado != "Cancelada" }
 
+    /**
+     * Conteo de SOLAPAMIENTO por franja/profesional: para cada cita, cuántas citas
+     * ACTIVAS comparten su misma hora de inicio (`hora.take(5)`) y su mismo
+     * profesional (`terapeutaId`). Sirve para colorear la agenda (2 = ámbar, 3+ =
+     * rojo). Se calcula sobre `citas` SIN aplicar el filtro de profesional, para no
+     * perder solapamientos reales cuando el gestor filtra por uno. Se excluyen las
+     * canceladas (ya no ocupan la franja) y las sin profesional (no forman "franja").
+     * Clave = id de la cita → conteo (1 si no solapa con nadie).
+     */
+    val conteosFranja: Map<String, Int>
+        get() {
+            val m = HashMap<String, Int>()
+            citas.asSequence()
+                .filter { it.estado != "Cancelada" && it.terapeutaId != null }
+                .groupBy { it.terapeutaId to it.hora.take(5) }
+                .forEach { (_, grupo) -> grupo.forEach { m[it.id] = grupo.size } }
+            return m
+        }
+
     fun cambiarBusqueda(v: String) { busqueda = v }
     fun cambiarFiltroEstado(v: String?) { filtroEstado = v }
     fun cambiarFiltroTipo(v: String?) { filtroTipo = v }

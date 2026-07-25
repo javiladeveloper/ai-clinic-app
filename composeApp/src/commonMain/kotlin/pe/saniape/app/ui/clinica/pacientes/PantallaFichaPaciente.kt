@@ -39,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import pe.saniape.app.data.staff.AvisoRx
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.PacienteStaff
 import pe.saniape.app.data.staff.PacientesRepo
@@ -683,14 +684,21 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             anterior = anterior,
             tecnicasSugeridas = req.tecnicasSugeridas,
             onCancelar = { completarSesion = null },
-            onConfirmar = { tecnicas, mejorias ->
+            onConfirmar = { tecnicas, mejorias, dejoRx ->
                 completarSesion = null
                 scope.launch {
+                    // Evolución + marcador RX. Si el paciente dejó RX se envía la evolución
+                    // (con el marcador) SIEMPRE, aunque sea la sesión #1; si no, se respeta
+                    // la regla de la web: mejorías solo desde la #2 ("" limpia, null = no tocar).
+                    val mejoriasFinal = when {
+                        dejoRx -> AvisoRx.aplicar(mejorias, true)
+                        ses.numero > 1 -> AvisoRx.aplicar(mejorias, false)
+                        else -> null
+                    }
                     val ok = PacientesRepo.cambiarEstadoSesion(
                         ses.id, "Completada",
                         notas = tecnicas,
-                        // mejorías solo desde la sesión #2 ("" limpia, null = no tocar)
-                        mejorias = if (ses.numero > 1) (mejorias ?: "") else null,
+                        mejorias = mejoriasFinal,
                     )
                     if (ok) pe.saniape.app.ui.Toaster.exito("Sesión #${ses.numero} completada")
                     else pe.saniape.app.ui.Toaster.error("No se pudo completar la sesión")
@@ -763,35 +771,59 @@ private fun ModalCompletarSesion(
     anterior: SesionFicha?,
     tecnicasSugeridas: String?,
     onCancelar: () -> Unit,
-    onConfirmar: (tecnicas: String?, mejorias: String?) -> Unit,
+    onConfirmar: (tecnicas: String?, mejorias: String?, dejoRx: Boolean) -> Unit,
 ) {
     val c = Sania.colors
     // Precarga de técnicas: lo que ya tenga la sesión → si no, las técnicas del plan del
     // tratamiento (así el fisio no reteclea "TENS + ultrasonido" en cada sesión del paquete).
     var tecnicas by remember { mutableStateOf(ses.notas?.takeIf { it.isNotBlank() } ?: tecnicasSugeridas ?: "") }
-    var mejorias by remember { mutableStateOf(ses.mejorias ?: "") }
+    // La evolución se muestra SIN el marcador RX; el marcador lo gobierna el checkbox.
+    var mejorias by remember { mutableStateOf(AvisoRx.limpiar(ses.mejorias)) }
+    var dejoRx by remember { mutableStateOf(AvisoRx.dejoRx(ses)) }
     val muestraMejorias = ses.numero > 1
+
+    // Referencia de la sesión anterior (evolución), ya sin el marcador RX.
+    val notasPrev = anterior?.notas?.takeIf { it.isNotBlank() }
+    val mejoriasPrev = anterior?.let { AvisoRx.limpiar(it.mejorias) }?.takeIf { it.isNotBlank() }
 
     DialogoForm(
         titulo = "Completar sesión #${ses.numero}",
         subtitulo = "Registra lo realizado en la sesión",
         textoAccion = "✓ Completar",
         onCancelar = onCancelar,
-        onAccion = { onConfirmar(tecnicas.trim().ifBlank { null }, mejorias.trim().ifBlank { null }) },
+        onAccion = { onConfirmar(tecnicas.trim().ifBlank { null }, mejorias.trim().ifBlank { null }, dejoRx) },
     ) {
+        // Aviso: el paciente dejó RX pendiente en la sesión anterior (se recuerda aquí).
+        if (anterior != null && AvisoRx.dejoRx(anterior)) {
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .background(c.pendBg).border(1.dp, c.pend, RoundedCornerShape(Sania.shape.sm.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("⚕️", fontSize = 18.sp)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Este paciente dejaba RX", color = c.pend, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text("Quedó pendiente en la sesión #${anterior.numero}. Recuérdaselo.",
+                        color = c.texto, fontSize = 11.sp, modifier = Modifier.padding(top = 1.dp))
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+
         // Referencia: qué se hizo la sesión anterior (evolución).
-        if (muestraMejorias && anterior != null &&
-            (!anterior.notas.isNullOrBlank() || !anterior.mejorias.isNullOrBlank())) {
+        if (muestraMejorias && (notasPrev != null || mejoriasPrev != null)) {
             Column(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
                     .background(c.chipBg).padding(10.dp),
             ) {
-                Text("Sesión anterior (#${anterior.numero})", color = c.textoSuave,
+                Text("Sesión anterior (#${anterior?.numero})", color = c.textoSuave,
                     fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                anterior.notas?.takeIf { it.isNotBlank() }?.let {
+                notasPrev?.let {
                     Text(it, color = c.texto, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp))
                 }
-                anterior.mejorias?.takeIf { it.isNotBlank() }?.let {
+                mejoriasPrev?.let {
                     Text("↗ $it", color = c.ok, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
                 }
             }
@@ -830,6 +862,32 @@ private fun ModalCompletarSesion(
                     }
                 }
             }
+        }
+
+        // Toggle "El paciente dejó RX": marca que quedó con una RX pendiente, para
+        // avisarlo al abrir su próxima sesión. Disponible en cualquier sesión (incl. #1).
+        Spacer(Modifier.height(12.dp))
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                .background(if (dejoRx) c.pendBg else c.fondo)
+                .border(1.dp, if (dejoRx) c.pend else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                .clickable { dejoRx = !dejoRx }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.size(22.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .background(if (dejoRx) c.pend else c.superficie)
+                    .border(1.dp, if (dejoRx) c.pend else c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
+                contentAlignment = Alignment.Center,
+            ) { if (dejoRx) Text("✓", color = c.sobreNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("El paciente dejó RX", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text("Se le avisará al abrir su próxima sesión", color = c.textoSuave, fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 1.dp))
+            }
+            Text("⚕️", fontSize = 16.sp)
         }
     }
 }

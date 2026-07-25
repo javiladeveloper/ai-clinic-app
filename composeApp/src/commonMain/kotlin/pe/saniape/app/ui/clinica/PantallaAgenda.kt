@@ -242,6 +242,7 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                                     }
                                 },
                                 onVerResumen = { resumenPacienteId = it },
+                                conteoFranja = vm.conteosFranja[cita.id] ?: 1,
                             )
                         }
                     }

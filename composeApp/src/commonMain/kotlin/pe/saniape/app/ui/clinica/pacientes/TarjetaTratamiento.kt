@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
+import pe.saniape.app.data.staff.AvisoRx
 import pe.saniape.app.data.staff.PacientesRepo
 import pe.saniape.app.data.staff.SesionFicha
 import pe.saniape.app.data.staff.TratamientoPaciente
@@ -354,9 +355,12 @@ fun TarjetaTratamiento(
                                 resto.sortedByDescending { it.numero }
                         }
                         ordenadas.forEach { ses ->
+                            // ¿La sesión inmediatamente anterior (por número) dejó RX pendiente?
+                            val anteriorSes = s.filter { it.numero < ses.numero }.maxByOrNull { it.numero }
                             FilaSesion(
                                 ses = ses, verCosto = verPagos, puedeSesiones = puedeSesiones,
                                 puedePagos = verPagos, esAdmin = esAdmin, accionando = accionando,
+                                avisoRxPrevia = ses.pendiente && AvisoRx.dejoRx(anteriorSes),
                                 menuAbierto = menuDe?.id == ses.id,
                                 onToggleMenu = { menuDe = if (menuDe?.id == ses.id) null else ses },
                                 onCompletar = {
@@ -584,6 +588,7 @@ private fun FilaSesion(
     puedePagos: Boolean,
     esAdmin: Boolean,
     accionando: Boolean,
+    avisoRxPrevia: Boolean,
     menuAbierto: Boolean,
     onToggleMenu: () -> Unit,
     onCompletar: () -> Unit,
@@ -608,6 +613,14 @@ private fun FilaSesion(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("Sesión #${ses.numero}", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            // Aviso: la sesión anterior dejó una RX pendiente (recordatorio antes de abrirla).
+            if (avisoRxPrevia) {
+                Spacer(Modifier.width(6.dp))
+                Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.pendBg)
+                    .padding(horizontal = 7.dp, vertical = 2.dp)) {
+                    Text("⚕️ RX", color = c.pend, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                }
+            }
             Spacer(Modifier.width(8.dp))
             Text("${ses.fecha} ${ses.hora?.let { hora12(it) } ?: ""}".trim(), color = c.textoSuave, fontSize = 11.sp,
                 modifier = Modifier.weight(1f))

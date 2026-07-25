@@ -47,6 +47,7 @@ fun TarjetaCita(
     accionando: Boolean,
     onAccion: (AccionTarjeta) -> Unit,
     onVerResumen: (String) -> Unit = {},
+    conteoFranja: Int = 1,
 ) {
     val c = Sania.colors
     val acciones = recordarAcciones()
@@ -56,13 +57,18 @@ fun TarjetaCita(
     // Atenuar las cerradas (completada/cancelada) para que las activas resalten.
     val cerrada = cita.estado == "Completada" || cita.estado == "Cancelada"
 
+    // Solapamiento en la franja (misma hora + mismo profesional): 2 = ámbar, 3+ = rojo.
+    // Solo tinta las citas ACTIVAS (las cerradas ya se atenúan y no deben "gritar").
+    val solape = EstadosColor.solape(conteoFranja).takeUnless { cerrada }
+
     Row(
         Modifier.fillMaxWidth().height(IntrinsicSize.Min)
-            .clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
-            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)),
+            .clip(RoundedCornerShape(Sania.shape.md.dp)).background(solape?.bg ?: c.superficie)
+            .border(1.dp, solape?.fg ?: c.borde, RoundedCornerShape(Sania.shape.md.dp)),
     ) {
-        // Barra de color por tipo (acento lateral, marca el tipo de un vistazo).
-        Box(Modifier.width(Sania.dim.acento).fillMaxHeight().background(if (cerrada) c.borde else tipoColor.fg))
+        // Barra de color lateral: el solapamiento manda (ámbar/rojo); si no, el tipo.
+        Box(Modifier.width(Sania.dim.acento).fillMaxHeight()
+            .background(when { cerrada -> c.borde; solape != null -> solape.fg; else -> tipoColor.fg }))
 
         Column(Modifier.fillMaxWidth().padding(Sania.dim.tarjeta)) {
             // Línea 1: CHIP de tipo prominente ····· badge de estado
@@ -120,6 +126,11 @@ fun TarjetaCita(
                 }
                 if (cita.origen == "online") add(Triple("🌐 Web", c.purple, c.purpleBg))
                 if (cita.terapeutaId == null && cita.origen == "online") add(Triple("⚠ Asignar", c.pend, c.pendBg))
+                // Solapamiento: N citas en la misma hora del mismo profesional.
+                if (!cerrada && solape != null) {
+                    val icono = if (conteoFranja >= 3) "⛔" else "⚠"
+                    add(Triple("$icono $conteoFranja en esta hora", solape.fg, solape.bg))
+                }
             }
             if (chips.isNotEmpty()) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 8.dp)) {

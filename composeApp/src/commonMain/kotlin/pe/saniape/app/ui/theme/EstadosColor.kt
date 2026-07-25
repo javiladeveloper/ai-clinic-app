@@ -72,6 +72,24 @@ object EstadosColor {
         }
     }
 
+    /**
+     * Color de SOLAPAMIENTO de citas en una misma franja (misma hora + mismo
+     * profesional). Avisa de un vistazo cuántas citas coinciden:
+     *   1  → sin aviso (null, color normal por tipo/estado),
+     *   2  → ámbar (posible sobrecupo),
+     *   3+ → rojo (franja saturada).
+     * Devuelve null cuando no hay solapamiento (1 sola cita), para no tintar nada.
+     */
+    @Composable
+    fun solape(conteo: Int): ColorEstado? {
+        val c = Sania.colors
+        return when {
+            conteo >= 3 -> ColorEstado(c.error, c.errorBg)   // rojo
+            conteo == 2 -> ColorEstado(c.pend, c.pendBg)     // ámbar
+            else -> null
+        }
+    }
+
     /** Icono del tipo de cita. */
     fun iconoTipo(tipo: String?): String = when (tipo) {
         "Evaluación" -> "🔍"
