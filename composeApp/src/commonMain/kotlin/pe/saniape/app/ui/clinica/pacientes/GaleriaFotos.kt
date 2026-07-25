@@ -105,6 +105,14 @@ fun GaleriaFotos(
 
     val delTratamiento = fotos?.filter { it.tratamientoId == tratamientoId } ?: emptyList()
 
+    // COMPARADOR antes/después: se ofrece SOLO si hay material que comparar (una foto
+    // del "Antes" y otra del "Después"). Es lo que el profesional le muestra al paciente
+    // para que vea su avance — el mejor motivador para que termine el tratamiento.
+    var comparar by remember { mutableStateOf(false) }
+    val fotoAntes = delTratamiento.filter { it.momento == "Antes" }.minByOrNull { it.createdAt ?: "" }
+    val fotoDespues = delTratamiento.filter { it.momento == "Despues" }.maxByOrNull { it.createdAt ?: "" }
+    val puedeComparar = fotoAntes != null && fotoDespues != null
+
     Column(Modifier.fillMaxWidth().padding(top = 12.dp)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
         Spacer(Modifier.height(10.dp))
@@ -114,6 +122,16 @@ fun GaleriaFotos(
                 fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
             // Tomar con la cámara (lo natural en consultorio) o elegir de la galería.
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Solo aparece cuando hay un antes y un después que comparar.
+                if (puedeComparar) {
+                    Text("⇄ Comparar", color = c.ok, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable {
+                            scope.launch {
+                                urlDe(fotoAntes!!.archivoUrl); urlDe(fotoDespues!!.archivoUrl)
+                                comparar = true
+                            }
+                        })
+                }
                 Text("📸 Tomar foto", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.clickable(enabled = !subiendo) { abrirCamara() })
                 Text("🖼 Galería", color = c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold,
@@ -227,6 +245,65 @@ fun GaleriaFotos(
                         Text("›", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+            }
+        }
+    }
+
+    // COMPARADOR: el antes y el después juntos, para mostrárselo al paciente.
+    if (comparar && fotoAntes != null && fotoDespues != null) {
+        Dialog(onDismissRequest = { comparar = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Box(Modifier.fillMaxSize().background(Color(0xF2000000)).clickable { comparar = false },
+                contentAlignment = Alignment.Center) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(16.dp),
+                ) {
+                    Text("Tu evolución", color = Color.White, fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(14.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        LadoComparador("ANTES", fotoAntes.createdAt?.take(10),
+                            urls[fotoAntes.archivoUrl], Modifier.weight(1f))
+                        LadoComparador("DESPUÉS", fotoDespues.createdAt?.take(10),
+                            urls[fotoDespues.archivoUrl], Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Text("Cerrar ✕", color = Color(0xB3FFFFFF), fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable { comparar = false })
+                }
+            }
+        }
+    }
+}
+
+/** Un lado del comparador: etiqueta, fecha y la foto. */
+@Composable
+private fun LadoComparador(
+    etiqueta: String,
+    fecha: String?,
+    url: String?,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(etiqueta, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp)
+        fecha?.let {
+            Text(it, color = Color(0x99FFFFFF), fontSize = 10.sp,
+                modifier = Modifier.padding(top = 1.dp))
+        }
+        Spacer(Modifier.height(6.dp))
+        if (url != null) {
+            AsyncImage(model = url, contentDescription = etiqueta,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)))
+        } else {
+            Box(Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp)
             }
         }
     }
