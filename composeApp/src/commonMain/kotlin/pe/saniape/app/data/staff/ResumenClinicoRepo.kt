@@ -27,6 +27,15 @@ data class TratamientoResumen(
  * Resumen clínico rápido de un paciente: lo que el fisio necesita para atender sin abrir
  * la ficha completa (motivo, diagnóstico, tratamiento en curso e historial).
  */
+/** Lo último que se le hizo: la referencia para atender sin abrir la ficha. */
+data class UltimaSesionResumen(
+    val numero: Int,
+    val fecha: String,
+    val notas: String?,      // procedimientos aplicados
+    val mejorias: String?,   // cómo evolucionó
+    val rxPendiente: Boolean,
+)
+
 data class ResumenClinico(
     val nombre: String,
     val edad: Int?,
@@ -36,6 +45,7 @@ data class ResumenClinico(
     val motivo: String?,
     val tratamientoActivo: TratamientoResumen?,
     val tratamientos: List<TratamientoResumen>,
+    val ultimaSesion: UltimaSesionResumen? = null,
 )
 
 /**
@@ -89,6 +99,15 @@ object ResumenClinicoRepo {
             motivo = o.str("motivo"),
             tratamientoActivo = (o["tratamientoActivo"] as? JsonObject)?.let(::tratamiento),
             tratamientos = trats,
+            ultimaSesion = (o["ultimaSesion"] as? JsonObject)?.let { u ->
+                UltimaSesionResumen(
+                    numero = u.int("numero") ?: 0,
+                    fecha = u.str("fecha") ?: "",
+                    notas = u.str("notas"),
+                    mejorias = u.str("mejorias"),
+                    rxPendiente = (u["rxPendiente"] as? JsonPrimitive)?.content == "true",
+                )
+            },
         )
     }
 }

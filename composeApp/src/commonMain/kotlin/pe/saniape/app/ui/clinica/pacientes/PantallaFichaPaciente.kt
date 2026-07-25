@@ -779,9 +779,21 @@ private fun ModalCompletarSesion(
     onConfirmar: (tecnicas: String?, mejorias: String?, dejoRx: Boolean) -> Unit,
 ) {
     val c = Sania.colors
-    // Precarga de técnicas: lo que ya tenga la sesión → si no, las técnicas del plan del
-    // tratamiento (así el fisio no reteclea "TENS + ultrasonido" en cada sesión del paquete).
-    var tecnicas by remember { mutableStateOf(ses.notas?.takeIf { it.isNotBlank() } ?: tecnicasSugeridas ?: "") }
+    // Precarga de técnicas, por orden de utilidad real:
+    //  1. lo que YA tenga esta sesión (se está editando),
+    //  2. lo que se le hizo la SESIÓN ANTERIOR — es lo que de verdad se repite: el
+    //     tratamiento evoluciona (cambian parámetros, se suman ejercicios) y el plan
+    //     original queda viejo a la tercera sesión,
+    //  3. las técnicas del plan del tratamiento (primera sesión, aún sin historia).
+    // Así el caso normal es LEER y confirmar, no teclear.
+    var tecnicas by remember {
+        mutableStateOf(
+            ses.notas?.takeIf { it.isNotBlank() }
+                ?: anterior?.notas?.takeIf { it.isNotBlank() }
+                ?: tecnicasSugeridas
+                ?: ""
+        )
+    }
     var mejorias by remember { mutableStateOf(ses.mejorias.orEmpty()) }
     var dejoRx by remember { mutableStateOf(AvisoRx.dejoRx(ses)) }
     val muestraMejorias = ses.numero > 1
@@ -817,7 +829,9 @@ private fun ModalCompletarSesion(
         }
 
         // Referencia: qué se hizo la sesión anterior (evolución).
-        if (muestraMejorias && (notasPrev != null || mejoriasPrev != null)) {
+        // Referencia de la sesión anterior: se muestra SIEMPRE que exista (antes se
+        // ataba a `muestraMejorias` y desaparecía en casos donde igual era útil).
+        if (notasPrev != null || mejoriasPrev != null) {
             Column(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
                     .background(c.chipBg).padding(10.dp),
@@ -838,10 +852,28 @@ private fun ModalCompletarSesion(
             pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
                 value = tecnicas, onChange = { tecnicas = it },
             )
-            // 1-tap: copiar las técnicas de la sesión anterior (evita reteclear lo mismo).
-            anterior?.notas?.takeIf { it.isNotBlank() && it != tecnicas }?.let { previas ->
-                Spacer(Modifier.height(8.dp))
-                ChipCompletar("↩ Repetir sesión #${anterior.numero}") { tecnicas = previas }
+            // De dónde viene lo que ya está escrito: que el fisio sepa que lo trajo el
+            // sistema (para leerlo y ajustar), no que lo tecleó él.
+            val vienePrevia = anterior?.notas?.takeIf { it.isNotBlank() } == tecnicas && tecnicas.isNotBlank()
+            if (vienePrevia && anterior != null) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "↩ Es lo mismo de la sesión #${anterior.numero}. Ajusta si cambió algo.",
+                    color = c.textoSuave, fontSize = 11.sp,
+                )
+            }
+            // Atajos: volver a lo anterior (si lo borró) o al plan del tratamiento.
+            Spacer(Modifier.height(8.dp))
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                anterior?.notas?.takeIf { it.isNotBlank() && it != tecnicas }?.let { previas ->
+                    ChipCompletar("↩ Repetir sesión #${anterior.numero}") { tecnicas = previas }
+                }
+                tecnicasSugeridas?.takeIf { it.isNotBlank() && it != tecnicas }?.let { plan ->
+                    ChipCompletar("📋 Plan del tratamiento") { tecnicas = plan }
+                }
             }
         }
 

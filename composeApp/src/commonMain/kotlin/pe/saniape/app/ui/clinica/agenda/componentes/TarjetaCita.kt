@@ -88,11 +88,18 @@ fun TarjetaCita(
 
             // Línea: nombre del paciente + iconos de contacto a la derecha
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(cita.pacienteNombre ?: "Paciente", color = c.texto,
-                    fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold,
-                    // Tocar el nombre abre el resumen clínico (motivo/diagnóstico/tratamiento).
-                    modifier = Modifier.weight(1f)
-                        .clickable { cita.pacienteId?.let(onVerResumen) })
+                // Tocar el nombre abre el resumen clínico (qué le hice la última vez,
+                // motivo, diagnóstico, progreso). El "›" lo hace descubrible: antes
+                // nada indicaba que fuera tocable y el fisio no lo encontraba.
+                Row(
+                    Modifier.weight(1f).clickable { cita.pacienteId?.let(onVerResumen) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(cita.pacienteNombre ?: "Paciente", color = c.texto,
+                        fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
+                    Text(" ›", color = c.textoSuave, fontSize = Sania.txt.cuerpo,
+                        fontWeight = FontWeight.Bold)
+                }
                 cita.pacienteTelefono?.takeIf { it.isNotBlank() }?.let { tel ->
                     IconoContacto("📞", c.navy) { acciones.abrirUrl("tel:${tel.filter { ch -> ch.isDigit() }}") }
                     Spacer(Modifier.width(6.dp))

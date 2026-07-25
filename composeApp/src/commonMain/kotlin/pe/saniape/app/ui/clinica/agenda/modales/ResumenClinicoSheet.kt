@@ -115,6 +115,33 @@ fun ResumenClinicoSheet(
 private fun Contenido(r: ResumenClinico) {
     val c = Sania.colors
 
+    // LA ÚLTIMA VEZ — va PRIMERO: es lo que el profesional necesita en los 10
+    // segundos antes de que el paciente entre (qué le hice, cómo iba, si dejó RX).
+    // El motivo y el diagnóstico ya los sabe; esto es lo que no recuerda.
+    r.ultimaSesion?.let { u ->
+        Seccion("LA ÚLTIMA VEZ · SESIÓN #${u.numero}") {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .background(c.chipBg).padding(Sania.dim.md),
+            ) {
+                Text(u.fecha, color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                u.notas?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, color = c.texto, fontSize = Sania.txt.cuerpo,
+                        modifier = Modifier.padding(top = 4.dp))
+                }
+                u.mejorias?.takeIf { it.isNotBlank() }?.let {
+                    Text("↗ $it", color = c.ok, fontSize = Sania.txt.cuerpo,
+                        modifier = Modifier.padding(top = 3.dp))
+                }
+                if (u.rxPendiente) {
+                    Text("⚕️ Quedó con RX pendiente — recuérdaselo", color = c.pend,
+                        fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 5.dp))
+                }
+            }
+        }
+    }
+
     // MOTIVO DE CONSULTA (destacado): por qué vino el paciente.
     Seccion("MOTIVO DE CONSULTA") {
         Box(
