@@ -176,8 +176,14 @@ android {
         //       las demás solo ve su historial (pestaña Salud). Endpoint /api/paciente/mis-clinicas.
         // v37/2.9.7 = legibilidad: los campos de texto del flujo de pacientes se veían
         //       "borrosos" (contraste bajo) en varias pantallas; se unificaron los colores.
-        versionCode = 37
-        versionName = "2.9.7"
+        // v38/2.9.8 = EL FISIO LLEGA SABIENDO Y REGISTRA LEYENDO: la ficha se actualiza sola
+        //       (Realtime en sesiones/citas/tratamientos: lo que hace recepción en la web
+        //       aparece en el celular sin recargar); la nueva sesión llega precargada con lo
+        //       que se hizo LA VEZ ANTERIOR (no con el plan del tratamiento); el aviso de RX
+        //       tiene columna propia y ya no ensucia la evolución; comparador ANTES/DESPUÉS
+        //       de fotos para mostrarle al paciente su avance; colores por solapamiento en agenda.
+        versionCode = 38
+        versionName = "2.9.8"
     }
     signingConfigs {
         create("release") {
