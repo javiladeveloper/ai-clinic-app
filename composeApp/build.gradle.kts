@@ -182,8 +182,12 @@ android {
         //       que se hizo LA VEZ ANTERIOR (no con el plan del tratamiento); el aviso de RX
         //       tiene columna propia y ya no ensucia la evolución; comparador ANTES/DESPUÉS
         //       de fotos para mostrarle al paciente su avance; colores por solapamiento en agenda.
-        versionCode = 38
-        versionName = "2.9.8"
+        // v39/2.9.9 = ABRE MÁS RÁPIDO: la lista de pacientes pedía al servidor cuatro niveles de
+        //       datos anidados que después descartaba (19 ms → 0,8 ms). Además guarda en el
+        //       teléfono lo último que se vio, así la pantalla pinta al instante y se refresca
+        //       por detrás: con señal irregular ya no se espera a la red mirando una lista vacía.
+        versionCode = 39
+        versionName = "2.9.9"
     }
     signingConfigs {
         create("release") {
