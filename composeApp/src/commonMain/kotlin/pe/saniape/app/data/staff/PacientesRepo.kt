@@ -18,6 +18,9 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import pe.saniape.app.data.offline.CacheLectura
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -322,6 +325,22 @@ object PacientesRepo {
     private fun JsonObject.bool(k: String): Boolean? =
         (this[k] as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
 
+    /**
+     * SELECT de la LISTA: solo lo que la tarjeta pinta (nombre, contacto, estado,
+     * "N activos" y el procedimiento del primero) + `terapeuta_id`, que se usa
+     * para el scope del profesional. El SELECT completo trae 4 niveles de joins
+     * anidados —precios, especialidades del terapeuta, medicación, notas— que la
+     * lista DESCARTA: medido en producción, 19 ms contra 0,8 ms por página
+     * (2026-07-31). La ficha sigue usando el completo, que ahí sí hace falta.
+     */
+    private const val SELECT_LISTA = """
+        id, nombre, dni, edad, telefono, email, diagnostico, estado, flag,
+        tratamientos:tratamientos(
+            id, estado, terapeuta_id,
+            procedimiento:procedimientos(nombre)
+        )
+    """
+
     private const val SELECT = """
         id, nombre, dni, edad, telefono, email, ocupacion, diagnostico, estado, flag,
         talla, peso, fecha_ingreso, alergias, medicacion_actual, antecedentes, patologias, tipo_patologia,
@@ -343,14 +362,34 @@ object PacientesRepo {
      */
     suspend fun listar(soloTerapeutaId: String? = null): List<PacienteStaff> {
         val filas = Supabase.client.postgrest["pacientes"]
-            .select(Columns.raw(SELECT)) {
+            .select(Columns.raw(SELECT_LISTA)) {
                 order("created_at", Order.DESCENDING)
             }
             .decodeList<JsonObject>()
+        // Se guarda para pintar al instante la próxima vez (ver `listarDeCache`).
+        runCatching {
+            CacheLectura.guardar(
+                CacheLectura.claveListaPacientes(soloTerapeutaId),
+                Json.encodeToString(JsonArray.serializer(), JsonArray(filas)),
+            )
+        }
         val pacientes = filas.map { mapear(it) }
         return if (soloTerapeutaId == null) pacientes
         else pacientes.filter { p -> p.tratamientos.any { it.terapeutaId == soloTerapeutaId } }
     }
+
+    /**
+     * Lo último que se vio, SIN tocar la red. La pantalla lo pinta al instante
+     * mientras `listar()` trae lo actual por detrás: así nunca arranca en blanco.
+     * Devuelve lista vacía si no hay nada guardado o si el formato cambió.
+     */
+    fun listarDeCache(soloTerapeutaId: String? = null): List<PacienteStaff> = runCatching {
+        val crudo = CacheLectura.leer(CacheLectura.claveListaPacientes(soloTerapeutaId)) ?: return emptyList()
+        val filas = Json.parseToJsonElement(crudo).jsonArray.map { it.jsonObject }
+        val pacientes = filas.map { mapear(it) }
+        if (soloTerapeutaId == null) pacientes
+        else pacientes.filter { p -> p.tratamientos.any { it.terapeutaId == soloTerapeutaId } }
+    }.getOrDefault(emptyList())
 
     /** Un paciente por id (para la ficha). */
     suspend fun porId(id: String): PacienteStaff? {

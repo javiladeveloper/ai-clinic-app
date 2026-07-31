@@ -38,7 +38,15 @@ class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
         viewModelScope.launch {
             // Spinner completo solo la 1ª vez; si ya hay lista (volver de ficha / refresh),
             // se mantiene visible con aviso sutil "Actualizando…" (no parpadea a vacío).
-            if (pacientes.isEmpty()) cargando = true else recargando = true
+            // MOSTRAR Y REFRESCAR: si no hay nada en pantalla, se pinta al
+            // instante lo último que se vio (caché local) y se refresca por
+            // detrás. Sin esto la pantalla arranca en blanco y el fisio espera
+            // a la red, que en una clínica es lo peor que se siente.
+            if (pacientes.isEmpty()) {
+                val deCache = PacientesRepo.listarDeCache(ctx.scopePacientes)
+                if (deCache.isNotEmpty()) { pacientes = deCache; recargando = true }
+                else cargando = true
+            } else recargando = true
             cargaFallo = false
             // Scope: gestor (permiso pacientes) ve toda la clínica; en modo clínico,
             // solo los suyos. Ver ContextoStaff.scopePacientes.

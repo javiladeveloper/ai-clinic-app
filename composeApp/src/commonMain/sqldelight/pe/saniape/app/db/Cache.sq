@@ -1,0 +1,30 @@
+-- CACHÉ DE LECTURA: lo último que vio el profesional, guardado tal cual.
+--
+-- La app pinta esto AL INSTANTE al abrir una pantalla y refresca por detrás con
+-- el servidor. Sin esto, cada pantalla arranca en blanco y el fisio espera a la
+-- red — en una clínica con señal irregular eso se siente lento aunque el
+-- servidor responda rápido.
+--
+-- Se guarda el JSON crudo de la respuesta: si el SELECT cambia, no hay que
+-- migrar columnas. La caché NUNCA es la verdad — es lo último conocido, y el
+-- servidor siempre la corrige.
+
+CREATE TABLE cache_lectura (
+  clave        TEXT NOT NULL PRIMARY KEY,  -- "pacientes:lista", "ficha:<id>", "agenda:2026-08-01"
+  payload      TEXT NOT NULL,              -- JSON crudo de la respuesta
+  guardado_en  INTEGER NOT NULL            -- epoch ms, para saber qué tan viejo es
+);
+
+guardar:
+INSERT OR REPLACE INTO cache_lectura (clave, payload, guardado_en)
+VALUES (?, ?, ?);
+
+leer:
+SELECT payload, guardado_en FROM cache_lectura WHERE clave = ?;
+
+borrar:
+DELETE FROM cache_lectura WHERE clave = ?;
+
+-- Limpieza: lo que nadie miró en mucho tiempo no merece ocupar espacio.
+purgarViejo:
+DELETE FROM cache_lectura WHERE guardado_en < ?;
