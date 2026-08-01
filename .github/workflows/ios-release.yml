@@ -1,11 +1,25 @@
-name: iOS · TestFlight
+name: iOS · TestFlight y App Store
 
-# Se dispara a mano o al empujar un tag ios-vX.Y.Z. Corre en macOS (Xcode requiere Mac).
+# El PREFIJO del tag decide a dónde va:
+#   ios-v*      → TestFlight (testers)
+#   ios-prod-*  → App Store: ENVÍA A REVISIÓN de Apple; al aprobar publica solo
+#
+# OJO iOS ≠ Android: lo máximo automatizable es ENVIAR A REVISIÓN. Apple revisa
+# (horas/días) y PUEDE RECHAZAR. Verde = "enviada a revisión", NO "publicada".
+# Corre en macOS (Xcode requiere Mac).
 on:
   workflow_dispatch:
+    inputs:
+      canal:
+        description: "Destino en Apple"
+        required: true
+        default: "testflight"
+        type: choice
+        options: [testflight, produccion]
   push:
     tags:
       - "ios-v*"
+      - "ios-prod-*"
 
 jobs:
   build-and-upload:
@@ -19,6 +33,24 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # Resuelve el destino desde el prefijo del tag o del input manual.
+      - name: Determinar canal
+        id: canal
+        run: |
+          if [ -n "${{ github.event.inputs.canal }}" ]; then
+            CANAL="${{ github.event.inputs.canal }}"
+          else
+            # ios-prod-* va PRIMERO: ambos empiezan por "ios-", y con el orden
+            # inverso un ios-prod-* caería en la rama de TestFlight.
+            case "${GITHUB_REF_NAME}" in
+              ios-prod-*) CANAL="produccion" ;;
+              ios-v*)     CANAL="testflight" ;;
+              *) echo "::error::Tag '${GITHUB_REF_NAME}' no coincide con ios-v* ni ios-prod-*"; exit 1 ;;
+            esac
+          fi
+          echo "canal=$CANAL" >> "$GITHUB_OUTPUT"
+          echo "Destino en Apple: $CANAL (ref ${GITHUB_REF_NAME})"
 
       - name: Configurar JDK 17
         uses: actions/setup-java@v4
@@ -151,13 +183,20 @@ jobs:
       # a los 55 min pero el JOB SIGUE VIVO → los pasos "Guardar caché" corren normal y el
       # progreso queda banqueado para la siguiente corrida (efecto trinquete: cada corrida
       # llega más lejos). Con el timeout solo a nivel job, el corte cancelaba todo.
-      - name: Compilar y subir a TestFlight
+      # testflight → lane 'beta'       (testers, sin revisión de Apple)
+      # produccion → lane 'production' (ENVÍA A REVISIÓN; al aprobar publica solo)
+      - name: Compilar y subir a Apple
         timeout-minutes: 55
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}   # .p8 (base64 o crudo, se auto-detecta en el Fastfile)
-        run: bundle exec fastlane ios beta
+          CANAL: ${{ steps.canal.outputs.canal }}
+        run: |
+          case "$CANAL" in
+            produccion) bundle exec fastlane ios production ;;
+            *)          bundle exec fastlane ios beta ;;
+          esac
 
       # Guardar el caché SIEMPRE (aunque el build falle). Esto es lo que rompe el círculo
       # vicioso: antes el caché solo se guardaba si el job terminaba bien, y como fallaba

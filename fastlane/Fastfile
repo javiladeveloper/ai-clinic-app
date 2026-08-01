@@ -94,4 +94,56 @@ platform :ios do
       skip_waiting_for_build_processing: true,  # no bloquea el runner esperando el procesado de Apple
     )
   end
+
+  # Producción (App Store). La dispara el tag ios-prod-*.
+  #
+  # OJO — iOS NO es como Android. Un tag de producción en Android publica al
+  # instante; aquí lo máximo automatizable es ENVIAR A REVISIÓN. Apple revisa
+  # (horas o días) y PUEDE RECHAZAR. Que este lane termine en verde significa
+  # "enviada a revisión", NO "publicada".
+  #
+  # Con `automatic_release: true`, en cuanto Apple aprueba sale sola a todos.
+  desc "Compila y ENVÍA A REVISIÓN de Apple; al aprobar se publica solo"
+  lane :production do
+    # Mismo bloque de API key que beta (auto-detect del formato del .p8).
+    asc_key = ENV["ASC_KEY_CONTENT"].to_s
+    asc_key_is_b64 = !asc_key.include?("PRIVATE KEY")
+    app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"].to_s.strip,
+      issuer_id: ENV["ASC_ISSUER_ID"].to_s.strip,
+      key_content: asc_key,
+      is_key_content_base64: asc_key_is_b64,
+    )
+
+    # Build number único y creciente (TestFlight y App Store comparten la numeración).
+    ultimo = latest_testflight_build_number(
+      app_identifier: "pe.saniape.app",
+      initial_build_number: 6,
+    ) rescue 6
+    set_info_plist_value(path: "iosApp/iosApp/Info.plist", key: "CFBundleVersion", value: (ultimo + 1).to_s)
+
+    build_app(
+      project: "iosApp/iosApp.xcodeproj",
+      scheme: "iosApp",
+      configuration: "Release",
+      export_method: "app-store",
+      output_directory: "build/ios",
+      destination: "generic/platform=iOS",
+    )
+
+    upload_to_app_store(
+      submit_for_review: true,   # envía a revisión (sin esto se queda quieto esperando el botón)
+      automatic_release: true,   # al aprobar, publica solo
+      skip_metadata: true,       # la ficha se gestiona en App Store Connect, no desde CI
+      skip_screenshots: true,
+      force: true,               # sin confirmación interactiva (runner headless)
+      precheck_include_in_app_purchases: false,
+      submission_information: {
+        # Declaración estándar: solo HTTPS. Sin esto Apple para la revisión a
+        # preguntar y el envío automático se queda colgado.
+        export_compliance_uses_encryption: false,
+        add_id_info_uses_idfa: false,
+      },
+    )
+  end
 end
