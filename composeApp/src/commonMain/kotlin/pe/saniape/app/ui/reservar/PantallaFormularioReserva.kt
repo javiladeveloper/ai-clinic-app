@@ -49,6 +49,7 @@ import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.data.ClinicaDir
+import pe.saniape.app.ui.clinica.pacientes.coloresCampoForm
 import pe.saniape.app.data.InfoReserva
 import pe.saniape.app.data.ProfReserva
 import pe.saniape.app.data.ReservaRepo
@@ -284,6 +285,7 @@ private fun Campo(
         placeholder = { Text(placeholder, color = Sania.colors.textoSuave) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = tipo, imeAction = ImeAction.Next),
+        colors = coloresCampoForm(),
         modifier = Modifier.fillMaxWidth().padding(bottom = Sania.dim.sm),
     )
 }

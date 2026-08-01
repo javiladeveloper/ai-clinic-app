@@ -17,6 +17,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,12 +39,9 @@ import pe.saniape.app.data.ClinicaDir
 import pe.saniape.app.data.ClinicaPaciente
 import pe.saniape.app.data.SaludRepo
 import pe.saniape.app.ui.Blanco
-import pe.saniape.app.ui.BorderColor
 import pe.saniape.app.ui.ManejarAtras
-import pe.saniape.app.ui.Muted
 import pe.saniape.app.ui.Navy
-import pe.saniape.app.ui.Sand
-import pe.saniape.app.ui.TextoPrincipal
+import pe.saniape.app.ui.theme.Sania
 
 /**
  * "Mis clínicas": SOLO las clínicas donde el paciente tiene historial (por su DNI).
@@ -55,11 +54,14 @@ fun PantallaMisClinicas() {
     // Paso interno: lista de clínicas ↔ formulario de reserva de una clínica Plus.
     var reservando by remember { mutableStateOf<ClinicaDir?>(null) }
 
+    val c = Sania.colors
     var cargando by remember { mutableStateOf(true) }
     var clinicas by remember { mutableStateOf<List<ClinicaPaciente>>(emptyList()) }
     var error by remember { mutableStateOf(false) }
+    // Cambiarlo relanza el LaunchedEffect: es el "reintentar" sin salir de la pantalla.
+    var intento by remember { mutableStateOf(0) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(intento) {
         cargando = true; error = false
         val r = runCatching { SaludRepo.misClinicas() }.getOrNull()
         if (r == null) error = true else clinicas = r
@@ -74,16 +76,23 @@ fun PantallaMisClinicas() {
         return
     }
 
-    Column(Modifier.fillMaxSize().background(Sand).verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Text("Mis clínicas", color = TextoPrincipal, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+    Column(Modifier.fillMaxSize().background(c.fondo).verticalScroll(rememberScrollState()).padding(16.dp)) {
+        Text("Mis clínicas", color = c.texto, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Text("Donde te has atendido. En las que lo permiten, puedes reservar tu próxima cita.",
-            color = Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp, bottom = 14.dp))
+            color = c.textoSuave, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp, bottom = 14.dp))
 
         when {
             cargando -> Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Navy)
             }
-            error -> MensajeVacio("😕", "No se pudo cargar", "Revisa tu conexión e inténtalo de nuevo.")
+            error -> Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                MensajeVacio("😕", "No pudimos cargar tus clínicas", "Puede ser la conexión. Vuelve a intentarlo.")
+                Button(
+                    onClick = { intento++ },
+                    colors = ButtonDefaults.buttonColors(containerColor = Navy),
+                    shape = RoundedCornerShape(12.dp),
+                ) { Text("Reintentar", color = Blanco, fontWeight = FontWeight.Bold) }
+            }
             clinicas.isEmpty() -> MensajeVacio(
                 "📋", "Aún no tienes historial",
                 "Cuando te atiendas en una clínica que use Sania, aparecerá aquí.",
@@ -107,11 +116,12 @@ fun PantallaMisClinicas() {
 
 @Composable
 private fun TarjetaClinicaPaciente(cl: ClinicaPaciente, onReservar: () -> Unit) {
+    val c = Sania.colors
     val color = runCatching { Color(("ff" + (cl.colorPrincipal ?: "#2c3e7a").removePrefix("#")).toLong(16)) }
         .getOrDefault(Navy)
     Column(
-        Modifier.fillMaxWidth().background(Blanco, RoundedCornerShape(16.dp))
-            .border(1.dp, BorderColor, RoundedCornerShape(16.dp)).padding(16.dp),
+        Modifier.fillMaxWidth().background(c.superficie, RoundedCornerShape(16.dp))
+            .border(1.dp, c.borde, RoundedCornerShape(16.dp)).padding(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             // Logo o inicial
@@ -125,10 +135,10 @@ private fun TarjetaClinicaPaciente(cl: ClinicaPaciente, onReservar: () -> Unit) 
             }
             Spacer(Modifier.size(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(cl.nombre, color = TextoPrincipal, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text(cl.nombre, color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 Text(
                     if (cl.puedeReservar) "Puedes reservar tu cita" else "Ver tu historial en Salud",
-                    color = if (cl.puedeReservar) color else Muted, fontSize = 12.sp,
+                    color = if (cl.puedeReservar) color else c.textoSuave, fontSize = 12.sp,
                 )
             }
         }
@@ -143,22 +153,23 @@ private fun TarjetaClinicaPaciente(cl: ClinicaPaciente, onReservar: () -> Unit) 
             // No-Plus: no se reserva online. Solo se indica dónde ver su historial.
             Box(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                    .border(1.dp, BorderColor, RoundedCornerShape(12.dp)).padding(vertical = 12.dp),
+                    .border(1.dp, c.borde, RoundedCornerShape(12.dp)).padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center,
-            ) { Text("Tu historial está en la pestaña Salud", color = Muted, fontSize = 13.sp) }
+            ) { Text("Tu historial está en la pestaña Salud", color = c.textoSuave, fontSize = 13.sp) }
         }
     }
 }
 
 @Composable
 private fun MensajeVacio(emoji: String, titulo: String, detalle: String) {
+    val c = Sania.colors
     Column(
         Modifier.fillMaxWidth().padding(top = 40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(emoji, fontSize = 44.sp)
-        Text(titulo, color = TextoPrincipal, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-        Text(detalle, color = Muted, fontSize = 13.sp, modifier = Modifier.fillMaxWidth())
+        Text(titulo, color = c.texto, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        Text(detalle, color = c.textoSuave, fontSize = 13.sp, modifier = Modifier.fillMaxWidth())
     }
 }

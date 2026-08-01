@@ -129,6 +129,11 @@ object SaludRepo {
                 header("Authorization", "Bearer $tk")
             }
         }.getOrNull() ?: return null
+        // 403 = la cuenta todavía no está vinculada a ninguna ficha (cuenta nueva de Google
+        // que aún no reservó ni canjeó código). NO es un fallo de red → lista vacía, para
+        // que la pantalla invite a vincularse en vez de gritar "revisa tu conexión".
+        // Mismo criterio que mi-tratamiento y mis-citas; esta era la única que faltaba.
+        if (resp.status == HttpStatusCode.Forbidden) return emptyList()
         if (resp.status != HttpStatusCode.OK) return null
         val arr = json.parseToJsonElement(resp.bodyAsText()).jsonObject["clinicas"] as? JsonArray ?: return emptyList()
         return arr.mapNotNull {

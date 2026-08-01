@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.KeyboardOptions
 import kotlinx.coroutines.launch
 import pe.saniape.app.data.SaludRepo
+import pe.saniape.app.ui.clinica.pacientes.coloresCampoForm
+import pe.saniape.app.ui.theme.Sania
 
 /**
  * Paso OBLIGATORIO del portal: pedir el DNI antes de mostrar nada más. El DNI es la
@@ -47,26 +49,32 @@ fun PantallaPedirDni(onListo: (String) -> Unit, onOmitir: () -> Unit) {
     var guardando by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    Box(Modifier.fillMaxSize().background(Sand).padding(24.dp), contentAlignment = Alignment.Center) {
+    val c = Sania.colors
+
+    Box(Modifier.fillMaxSize().background(c.fondo).padding(24.dp), contentAlignment = Alignment.Center) {
         Column(
-            Modifier.fillMaxWidth().background(Blanco, RoundedCornerShape(18.dp)).padding(24.dp),
+            Modifier.fillMaxWidth().background(c.superficie, RoundedCornerShape(18.dp)).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("🪪", fontSize = 40.sp)
-            Text("Ingresa tu DNI", color = TextoPrincipal, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text("Ingresa tu DNI", color = c.texto, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Text(
                 "Con tu DNI conectamos las atenciones que ya tuviste en tus clínicas. Es un paso único y seguro.",
-                color = Muted, fontSize = 13.sp,
+                color = c.textoSuave, fontSize = 13.sp,
                 modifier = Modifier.fillMaxWidth(),
             )
+            // colors explícitos: sin esto el campo hereda el colorScheme de Material3 y en
+            // modo oscuro el texto sale casi blanco sobre la tarjeta clara = invisible.
+            // Mismo bug que ya se arregló en el alta de pacientes (DALU, 2026-07-23).
             OutlinedTextField(
                 value = dni,
                 onValueChange = { v -> dni = v.filter { it.isDigit() }.take(8); error = null },
-                placeholder = { Text("Tu DNI (8 dígitos)", fontSize = 14.sp) },
+                placeholder = { Text("Tu DNI (8 dígitos)", fontSize = 14.sp, color = c.textoSuave) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 isError = error != null,
+                colors = coloresCampoForm(),
                 modifier = Modifier.fillMaxWidth(),
             )
             if (error != null) {
@@ -94,7 +102,7 @@ fun PantallaPedirDni(onListo: (String) -> Unit, onOmitir: () -> Unit) {
             // registrado en la clínica, o ficha sin DNI). Para esos, el código de clínica.
             Text(
                 "Omitir por ahora",
-                color = Muted, fontSize = 13.sp,
+                color = c.textoSuave, fontSize = 13.sp,
                 modifier = Modifier.padding(top = 4.dp).clickable(enabled = !guardando) { onOmitir() },
             )
         }

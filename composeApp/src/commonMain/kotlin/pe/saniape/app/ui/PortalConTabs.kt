@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.SaludRepo
+import pe.saniape.app.ui.theme.Sania
 
 private enum class Tab(val titulo: String, val icono: ImageVector) {
     Inicio("Inicio", Icons.Filled.Home),
@@ -59,8 +60,10 @@ fun PortalConTabs(
     ManejarAtras(activo = tab != Tab.Inicio) { tab = Tab.Inicio }
 
     // Gate: sin DNI, no se muestran las tabs. Cargando = spinner; falta = pedirlo.
+    val c = Sania.colors
+
     if (dni == "...") {
-        Box(Modifier.fillMaxSize().background(Sand), contentAlignment = androidx.compose.ui.Alignment.Center) {
+        Box(Modifier.fillMaxSize().background(c.fondo), contentAlignment = androidx.compose.ui.Alignment.Center) {
             androidx.compose.material3.CircularProgressIndicator(color = Navy)
         }
         return
@@ -77,7 +80,7 @@ fun PortalConTabs(
 
     Scaffold(
         bottomBar = {
-            NavigationBar(containerColor = Blanco) {
+            NavigationBar(containerColor = c.superficie) {
                 Tab.entries.forEach { t ->
                     NavigationBarItem(
                         selected = tab == t,
@@ -85,18 +88,18 @@ fun PortalConTabs(
                         icon = { Icon(t.icono, contentDescription = t.titulo) },
                         label = { Text(t.titulo, fontSize = 11.sp) },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Navy,
-                            selectedTextColor = Navy,
-                            indicatorColor = Navy50,
-                            unselectedIconColor = Muted,
-                            unselectedTextColor = Muted,
+                            selectedIconColor = c.navy,
+                            selectedTextColor = c.navy,
+                            indicatorColor = c.chipBg,
+                            unselectedIconColor = c.textoSuave,
+                            unselectedTextColor = c.textoSuave,
                         ),
                     )
                 }
             }
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding).background(Sand)) {
+        Box(Modifier.fillMaxSize().padding(padding).background(c.fondo)) {
             when (tab) {
                 Tab.Inicio -> PantallaPortal(nombre = nombre, onCerrarSesion = onCerrarSesion)
                 Tab.Reservar -> pe.saniape.app.ui.reservar.PantallaMisClinicas()

@@ -44,6 +44,8 @@ import pe.saniape.app.data.CitaPortal
 import pe.saniape.app.data.PortalRepo
 import pe.saniape.app.data.SaludRepo
 import pe.saniape.app.data.Tratamiento
+import pe.saniape.app.ui.clinica.pacientes.coloresCampoForm
+import pe.saniape.app.ui.theme.Sania
 
 /**
  * Portal del paciente — saludo, próxima cita destacada, mi tratamiento
@@ -51,6 +53,7 @@ import pe.saniape.app.data.Tratamiento
  */
 @Composable
 fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
+    val c = Sania.colors
     var cargando by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var proximas by remember { mutableStateOf<List<CitaPortal>>(emptyList()) }
@@ -76,7 +79,7 @@ fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
 
     val primerNombre = nombre?.trim()?.split(" ")?.firstOrNull()
 
-    Surface(color = Sand, modifier = Modifier.fillMaxSize()) {
+    Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             // Barra superior de marca
             Row(
@@ -112,9 +115,9 @@ fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
                         Column {
                             Text(
                                 if (primerNombre != null) "Hola, $primerNombre 👋" else "Hola 👋",
-                                color = TextoPrincipal, fontSize = 24.sp, fontWeight = FontWeight.Bold,
+                                color = c.texto, fontSize = 24.sp, fontWeight = FontWeight.Bold,
                             )
-                            Text("Tu salud, en un solo lugar.", color = Muted, fontSize = 13.sp)
+                            Text("Tu salud, en un solo lugar.", color = c.textoSuave, fontSize = 13.sp)
                         }
                     }
 
@@ -172,9 +175,9 @@ fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
                             ) {
                                 Text(
                                     "HISTORIAL DE CITAS (${pasadas.size})",
-                                    color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                    color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                                 )
-                                Text(if (verHistorial) "▲" else "▼", color = Muted, fontSize = 11.sp)
+                                Text(if (verHistorial) "▲" else "▼", color = c.textoSuave, fontSize = 11.sp)
                             }
                         }
                         if (verHistorial) {
@@ -189,11 +192,12 @@ fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
 
 @Composable
 private fun Etiqueta(texto: String) {
-    Text(texto, color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    Text(texto, color = Sania.colors.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold)
 }
 
 @Composable
-private fun CitaHero(c: CitaPortal) {
+private fun CitaHero(cita: CitaPortal) {
+    val c = Sania.colors
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
             .border(1.dp, Navy, RoundedCornerShape(16.dp)),
@@ -204,29 +208,30 @@ private fun CitaHero(c: CitaPortal) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(c.fecha, color = Blanco, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text(cita.fecha, color = Blanco, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 Box(
                     Modifier.clip(RoundedCornerShape(20.dp)).background(Blanco.copy(alpha = 0.15f))
                         .padding(horizontal = 10.dp, vertical = 4.dp),
-                ) { Text(c.estado, color = Blanco, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                ) { Text(cita.estado, color = Blanco, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
             }
-            Text(c.hora.take(5), color = Blanco, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+            Text(cita.hora.take(5), color = Blanco, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         }
-        Column(Modifier.fillMaxWidth().background(Blanco).padding(18.dp)) {
-            c.clinica?.let { Text(it, color = Navy, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
+        Column(Modifier.fillMaxWidth().background(c.superficie).padding(18.dp)) {
+            cita.clinica?.let { Text(it, color = Navy, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
             Text(
-                (c.tipo ?: "Cita") + (c.profesional?.let { " · con $it" } ?: ""),
-                color = Muted, fontSize = 13.sp,
+                (cita.tipo ?: "Cita") + (cita.profesional?.let { " · con $it" } ?: ""),
+                color = c.textoSuave, fontSize = 13.sp,
             )
         }
     }
 }
 
 @Composable
-private fun CitaItem(c: CitaPortal, atenuar: Boolean) {
+private fun CitaItem(cita: CitaPortal, atenuar: Boolean) {
+    val c = Sania.colors
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Blanco)
-            .border(1.dp, BorderColor, RoundedCornerShape(14.dp)).padding(14.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(c.superficie)
+            .border(1.dp, c.borde, RoundedCornerShape(14.dp)).padding(14.dp),
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -234,26 +239,27 @@ private fun CitaItem(c: CitaPortal, atenuar: Boolean) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "${c.fecha} · ${c.hora.take(5)}",
-                color = if (atenuar) Muted else TextoPrincipal,
+                "${cita.fecha} · ${cita.hora.take(5)}",
+                color = if (atenuar) c.textoSuave else c.texto,
                 fontSize = 15.sp, fontWeight = FontWeight.Bold,
             )
-            BadgeEstado(c.estado)
+            BadgeEstado(cita.estado)
         }
-        c.clinica?.let { Text(it, color = Navy, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
+        cita.clinica?.let { Text(it, color = Navy, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
         Text(
-            (c.tipo ?: "") + (c.profesional?.let { " · $it" } ?: ""),
-            color = Muted, fontSize = 12.sp,
+            (cita.tipo ?: "") + (cita.profesional?.let { " · $it" } ?: ""),
+            color = c.textoSuave, fontSize = 12.sp,
         )
     }
 }
 
 @Composable
 private fun TarjetaTratamiento(t: Tratamiento) {
+    val c = Sania.colors
     var verSesiones by remember { mutableStateOf(false) }
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Blanco)
-            .border(1.dp, BorderColor, RoundedCornerShape(16.dp)).padding(16.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(c.superficie)
+            .border(1.dp, c.borde, RoundedCornerShape(16.dp)).padding(16.dp),
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -261,8 +267,8 @@ private fun TarjetaTratamiento(t: Tratamiento) {
             verticalAlignment = Alignment.Top,
         ) {
             Column(Modifier.weight(1f)) {
-                Text(t.procedimiento, color = TextoPrincipal, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                t.clinica?.let { Text("🏥 $it", color = Muted, fontSize = 12.sp) }
+                Text(t.procedimiento, color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                t.clinica?.let { Text("🏥 $it", color = c.textoSuave, fontSize = 12.sp) }
             }
             val activo = t.estado == "Activo"
             Box(
@@ -272,7 +278,7 @@ private fun TarjetaTratamiento(t: Tratamiento) {
             ) {
                 Text(
                     if (activo) "En curso" else if (t.estado == "Completado") "Terminado" else t.estado,
-                    color = if (activo) GreenOk else Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    color = if (activo) GreenOk else c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                 )
             }
         }
@@ -285,16 +291,16 @@ private fun TarjetaTratamiento(t: Tratamiento) {
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("Progreso", color = Muted, fontSize = 12.sp)
+                Text("Progreso", color = c.textoSuave, fontSize = 12.sp)
                 Text(
                     "${t.sesionesCompletadas} de ${t.totalSesiones} sesiones",
-                    color = TextoPrincipal, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                 )
             }
             Spacer(Modifier.height(4.dp))
             Box(
                 Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(20.dp))
-                    .background(Navy50),
+                    .background(c.chipBg),
             ) {
                 Box(
                     Modifier.fillMaxWidth(pct).height(8.dp).clip(RoundedCornerShape(20.dp))
@@ -323,11 +329,11 @@ private fun TarjetaTratamiento(t: Tratamiento) {
                                     .background(colorEstadoSesion(s.estado)),
                             )
                             Spacer(Modifier.width(8.dp))
-                            Text("Sesión #${s.numero}", color = TextoPrincipal, fontSize = 13.sp)
+                            Text("Sesión #${s.numero}", color = c.texto, fontSize = 13.sp)
                             Spacer(Modifier.width(6.dp))
-                            Text("· ${s.fecha}", color = Muted, fontSize = 12.sp)
+                            Text("· ${s.fecha}", color = c.textoSuave, fontSize = 12.sp)
                             Spacer(Modifier.weight(1f))
-                            Text(s.estado, color = Muted, fontSize = 11.sp)
+                            Text(s.estado, color = c.textoSuave, fontSize = 11.sp)
                         }
                     }
                 }
@@ -338,18 +344,19 @@ private fun TarjetaTratamiento(t: Tratamiento) {
 
 @Composable
 private fun TarjetaVacia() {
+    val c = Sania.colors
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Blanco)
-            .border(1.dp, BorderColor, RoundedCornerShape(16.dp)).padding(vertical = 32.dp, horizontal = 20.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(c.superficie)
+            .border(1.dp, c.borde, RoundedCornerShape(16.dp)).padding(vertical = 32.dp, horizontal = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text("📅", fontSize = 34.sp)
         Spacer(Modifier.height(8.dp))
-        Text("No tienes citas próximas", color = TextoPrincipal, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text("No tienes citas próximas", color = c.texto, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(4.dp))
         Text(
             "Cuando reserves una cita, aparecerá aquí.",
-            color = Muted, fontSize = 13.sp,
+            color = c.textoSuave, fontSize = 13.sp,
         )
     }
 }
@@ -368,11 +375,12 @@ private fun BadgeEstado(estado: String) {
     ) { Text(estado, color = fg, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
 }
 
+@Composable
 private fun colorEstadoSesion(estado: String): Color = when (estado) {
     "Completada" -> GreenOk
     "En progreso" -> Blue
     "Reprogramada" -> Amber
-    else -> Muted
+    else -> Sania.colors.textoSuave
 }
 
 /**
@@ -382,6 +390,7 @@ private fun colorEstadoSesion(estado: String): Color = when (estado) {
  */
 @Composable
 private fun TarjetaVincularCodigo(onVinculado: () -> Unit) {
+    val c = Sania.colors
     val scope = rememberCoroutineScope()
     var abierto by remember { mutableStateOf(false) }
     var codigo by remember { mutableStateOf("") }
@@ -391,27 +400,27 @@ private fun TarjetaVincularCodigo(onVinculado: () -> Unit) {
     if (!abierto) {
         Text(
             "🔑 ¿Tu clínica te dio un código? Vincúlalo aquí",
-            color = Muted, fontSize = 13.sp,
+            color = c.textoSuave, fontSize = 13.sp,
             modifier = Modifier.clickable { abierto = true }.padding(vertical = 2.dp),
         )
         return
     }
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Blanco)
-            .border(1.dp, BorderColor, RoundedCornerShape(16.dp)).padding(16.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(c.superficie)
+            .border(1.dp, c.borde, RoundedCornerShape(16.dp)).padding(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("🔑", fontSize = 20.sp)
             Spacer(Modifier.width(8.dp))
-            Text("Código de tu clínica", color = TextoPrincipal, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Text("Código de tu clínica", color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
-            Text("✕", color = Muted, fontSize = 14.sp,
+            Text("✕", color = c.textoSuave, fontSize = 14.sp,
                 modifier = Modifier.clickable { abierto = false }.padding(4.dp))
         }
         Spacer(Modifier.height(4.dp))
         Text(
             "Ingresa el código de 6 dígitos que te dieron en recepción para conectar tus atenciones.",
-            color = Muted, fontSize = 12.sp,
+            color = c.textoSuave, fontSize = 12.sp,
         )
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -421,6 +430,7 @@ private fun TarjetaVincularCodigo(onVinculado: () -> Unit) {
                 placeholder = { Text("000000", fontSize = 15.sp) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                colors = coloresCampoForm(),
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(8.dp))
@@ -454,24 +464,25 @@ private fun TarjetaVincularCodigo(onVinculado: () -> Unit) {
  */
 @Composable
 private fun TarjetaPedirDni(onGuardado: (String) -> Unit) {
+    val c = Sania.colors
     val scope = rememberCoroutineScope()
     var dni by remember { mutableStateOf("") }
     var guardando by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Blanco)
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(c.superficie)
             .border(1.dp, Navy, RoundedCornerShape(16.dp)).padding(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("🪪", fontSize = 24.sp)
             Spacer(Modifier.width(8.dp))
-            Text("Completa tu DNI", color = TextoPrincipal, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text("Completa tu DNI", color = c.texto, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(4.dp))
         Text(
             "Con tu DNI conectamos las atenciones que ya tuviste en tus clínicas, aunque no hayan registrado tu correo. Solo se pide una vez.",
-            color = Muted, fontSize = 12.sp,
+            color = c.textoSuave, fontSize = 12.sp,
         )
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -481,6 +492,7 @@ private fun TarjetaPedirDni(onGuardado: (String) -> Unit) {
                 placeholder = { Text("Tu DNI (8 dígitos)", fontSize = 14.sp) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                colors = coloresCampoForm(),
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(8.dp))

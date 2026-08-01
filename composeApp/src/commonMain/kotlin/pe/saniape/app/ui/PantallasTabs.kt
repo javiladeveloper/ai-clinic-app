@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import pe.saniape.app.data.PerfilPaciente
+import pe.saniape.app.ui.clinica.pacientes.coloresCampoForm
 import pe.saniape.app.data.PerfilRepo
 import pe.saniape.app.data.ResultadoPerfil
 import pe.saniape.app.ui.theme.Sania
@@ -157,6 +158,7 @@ fun PantallaMas(
                             placeholder = { Text("Ingresa tu DNI (8 dígitos)", color = c.textoSuave) },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                            colors = coloresCampoForm(),
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Text("⚠ El DNI solo se ingresa una vez. Verifica que sea correcto: después no se puede cambiar.",
@@ -174,6 +176,7 @@ fun PantallaMas(
                         placeholder = { Text("Tu número de contacto", color = c.textoSuave) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done),
+                        colors = coloresCampoForm(),
                         modifier = Modifier.fillMaxWidth(),
                     )
 
@@ -188,6 +191,7 @@ fun PantallaMas(
                         placeholder = { Text("Ej. Profesor, oficinista, deportista…", color = c.textoSuave) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        colors = coloresCampoForm(),
                         modifier = Modifier.fillMaxWidth(),
                     )
 

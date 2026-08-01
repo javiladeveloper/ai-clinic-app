@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import pe.saniape.app.data.Preferencias
+import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.data.Supabase
 import pe.saniape.app.ui.IntroMarca
 import pe.saniape.app.ui.PantallaLogin
@@ -127,7 +128,7 @@ fun App() {
             modo = nuevoModo
         }
 
-        Surface(color = Sand) {
+        Surface(color = Sania.colors.fondo) {
           androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
             when {
                 !introLista -> IntroMarca(onFin = { introLista = true })
