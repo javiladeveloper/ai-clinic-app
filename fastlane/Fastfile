@@ -24,14 +24,18 @@ platform :android do
     )
   end
 
-  desc "Sube a producción (revisar antes de usar)"
+  desc "Sube a producción y LANZA (el tag produccion-* promete live, no borrador)"
   lane :production do
     upload_to_play_store(
       package_name: "pe.saniape.app",
       track: "production",
       aab: "composeApp/build/outputs/bundle/release/composeApp-release.aab",
       json_key: ENV["PLAY_STORE_JSON_KEY_PATH"],
-      release_status: "draft",
+      # "completed" = inicia el lanzamiento de verdad (Google igual revisa antes
+      # de publicar). Con "draft" el CI decía verde pero la versión quedaba en
+      # BORRADOR esperando un clic en la consola que nadie sabía que faltaba
+      # (pasó con la v2.9.10, 2026-08-01).
+      release_status: "completed",
       skip_upload_metadata: true,
       skip_upload_images: true,
       skip_upload_screenshots: true,

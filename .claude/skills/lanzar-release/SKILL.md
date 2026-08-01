@@ -74,6 +74,11 @@ release, así que el prefijo importa:
 
 ## Si el CI falla
 
+- **Android producción en verde pero la versión NO sale** → mirar Play Console →
+  Producción: si está en **BORRADOR**, el lane subió con `release_status: draft`
+  (pasó con la v2.9.10; ya corregido a `completed` en el Fastfile — si reaparece,
+  revisar ese campo). Se destraba a mano: Revisar versión → Iniciar lanzamiento.
+  El CI da verde igual porque subir el borrador sí funcionó.
 - **iOS `ios-prod-*` falla en el submit con `whatsNew`** → ver paso 5: falta
   "Novedades". El binario ya subió; llena Novedades en ASC y dale Submit.
 - **Falla en segundos, ningún paso rojo** → cuota de GitHub Actions agotada.
