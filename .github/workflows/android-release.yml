@@ -1,6 +1,9 @@
 name: Android · Play Store
 
-# Se dispara a mano (workflow_dispatch) o al empujar un tag android-vX.Y.Z.
+# El PREFIJO del tag decide el canal:
+#   android-v*    → prueba INTERNA (testers)
+#   produccion-*  → PRODUCCIÓN, LIVE 100% (publica al instante — usar con cuidado)
+# También a mano (workflow_dispatch) eligiendo el track.
 # NO corre en cada push a master (para no gastar builds ni subir sin querer).
 on:
   workflow_dispatch:
@@ -14,6 +17,7 @@ on:
   push:
     tags:
       - "android-v*"
+      - "produccion-*"
 
 jobs:
   build-and-upload:
@@ -21,6 +25,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # Resuelve el track de Play desde el prefijo del tag o del input manual.
+      - name: Determinar canal
+        id: canal
+        run: |
+          if [ -n "${{ github.event.inputs.track }}" ]; then
+            TRACK="${{ github.event.inputs.track }}"
+          else
+            case "${GITHUB_REF_NAME}" in
+              produccion-*) TRACK="production" ;;
+              android-v*)   TRACK="internal" ;;
+              *) echo "::error::Tag '${GITHUB_REF_NAME}' no coincide con android-v* ni produccion-*"; exit 1 ;;
+            esac
+          fi
+          echo "track=$TRACK" >> "$GITHUB_OUTPUT"
+          echo "Canal de Play: $TRACK (ref ${GITHUB_REF_NAME})"
 
       - name: Configurar JDK 17
         uses: actions/setup-java@v4
@@ -73,7 +93,8 @@ jobs:
       - name: Subir a Play Store
         env:
           PLAY_STORE_JSON_KEY_PATH: play-store-key.json
-        run: bundle exec fastlane android ${{ github.event.inputs.track || 'internal' }}
+          TRACK: ${{ steps.canal.outputs.track }}
+        run: bundle exec fastlane android "$TRACK"
 
       # Actualiza en Vercel la ÚLTIMA versión disponible (APP_ANDROID_LATEST) al versionCode
       # recién subido → el endpoint /api/app/version la sirve y la app muestra el popup
@@ -81,7 +102,7 @@ jobs:
       # Requiere secrets: VERCEL_TOKEN y VERCEL_PROJECT_ID (ver docs/ci-cd-despliegue.md).
       # Se salta silenciosamente si los secrets no están configurados (no rompe el deploy).
       - name: Actualizar versión en Vercel (popup de actualización)
-        if: ${{ github.event.inputs.track != 'production' }}
+        if: ${{ steps.canal.outputs.track != 'production' }}
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

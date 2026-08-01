@@ -10,9 +10,14 @@ release, así que el prefijo importa:
 
 | Tag | Destino |
 |---|---|
-| `android-vX.Y.Z` | Play Store |
+| `android-vX.Y.Z` | Play Store — **prueba interna** (testers) |
+| `produccion-vX.Y.Z` | Play Store — **PRODUCCIÓN, LIVE 100%** (publica al instante) |
 | `ios-vX.Y.Z` | **TestFlight** (testers, sin revisión) |
 | `ios-prod-vX.Y.Z` | **App Store**: ENVÍA A REVISIÓN de Apple; al aprobar publica solo |
+
+> **`produccion-*` (Android) deja el AAB LIVE para todos en minutos.** Úsalo solo
+> tras validar en interna (`android-v*`). También se puede a mano: Actions → Run
+> workflow → track `production`.
 
 > **iOS ≠ Android.** En Android el tag publica; en iOS `ios-prod-*` **envía a
 > revisión** (Apple tarda horas/días y puede rechazar). Verde en el CI =
