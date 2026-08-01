@@ -1,66 +1,88 @@
 ---
 name: lanzar-release
-description: Usar al publicar una versión nueva de la app a Play Store o TestFlight. Cubre subir la versión, etiquetar y verificar que ambos CI queden verdes.
+description: Usar al publicar una versión nueva de la app (Play Store, TestFlight o App Store de producción). Cubre subir la versión, etiquetar con el prefijo correcto, la trampa del "What's New" en producción iOS, y verificar que el CI quede verde.
 ---
 
 # Publicar una versión
 
-Los tags disparan los workflows: `android-vX.Y.Z` → Play Store,
-`ios-vX.Y.Z` → TestFlight. Un tag mal puesto publica o rompe un release, así
-que el orden importa.
+El **prefijo del tag** decide a dónde va. Un tag mal puesto publica o rompe un
+release, así que el prefijo importa:
+
+| Tag | Destino |
+|---|---|
+| `android-vX.Y.Z` | Play Store |
+| `ios-vX.Y.Z` | **TestFlight** (testers, sin revisión) |
+| `ios-prod-vX.Y.Z` | **App Store**: ENVÍA A REVISIÓN de Apple; al aprobar publica solo |
+
+> **iOS ≠ Android.** En Android el tag publica; en iOS `ios-prod-*` **envía a
+> revisión** (Apple tarda horas/días y puede rechazar). Verde en el CI =
+> "enviada a revisión", NO "publicada".
 
 ## Pasos
 
 1. **Subir la versión** en `composeApp/build.gradle.kts`:
-
-   - `versionCode` **+1 sí o sí**. Play Store rechaza un envío que repita un
-     versionCode ya publicado, y el fallo aparece recién al final del CI.
+   - `versionCode` **+1 sí o sí** (Play rechaza un versionCode repetido; el fallo
+     sale recién al final del CI).
    - `versionName` a la versión nueva.
-   - Añadir una línea al historial comentado que hay encima, en el mismo
-     formato (`// vNN/X.Y.Z = ...`). Se escribe para el dueño, no para
-     desarrolladores: qué cambia para quien usa la app.
+   - Añadir la línea al historial comentado (`// vNN/X.Y.Z = ...`), escrita para
+     el dueño: qué cambia para quien usa la app.
 
-   `CFBundleVersion` de iOS es automático — no hay que tocarlo.
+2. **Alinear la versión de iOS.** El `CFBundleShortVersionString` del
+   `iosApp/iosApp/Info.plist` debe COINCIDIR con el `versionName`. El
+   `CFBundleVersion` (build number) es automático — no se toca.
+   > Trampa real: si Gradle está en 0.9.9 pero el Info.plist en 0.9.8, el
+   > `ios-prod-*` sube la 0.9.8, no la 0.9.9.
 
-2. **Compilar antes de etiquetar.** Un tag con build roto deja un release a
-   medias que hay que limpiar a mano:
-
+3. **Compilar antes de etiquetar** (un tag con build roto deja un release a medias):
    ```bash
    ./gradlew compileDebugKotlinAndroid
    ```
 
-3. **Commit y push a `master`.**
+4. **Commit y push a `master`.**
 
-4. **Etiquetar y empujar los dos tags:**
+5. **⚠️ SOLO para producción iOS (`ios-prod-*`): el "What's New" es OBLIGATORIO.**
+   El lane usa `skip_metadata`, así que NO sube las notas. Si la versión en App
+   Store Connect no tiene **"Novedades de esta versión"**, el auto-envío falla con:
+   `missing a required attribute 'whatsNew' ... cannot be reviewed`. El binario
+   sube igual, pero NO se envía a revisión.
+   - **Antes o después del tag:** en App Store Connect → la versión → llenar
+     **"Novedades"**. Si el CI ya subió el binario, basta llenar Novedades y darle
+     **Submit** a mano.
+   - No mencionar **otras plataformas** (Android, etc.) en la ficha: el precheck lo
+     marca y Apple puede rechazar.
 
+6. **Etiquetar y empujar:**
    ```bash
+   # TestFlight + Play:
    git tag android-vX.Y.Z && git tag ios-vX.Y.Z
    git push origin android-vX.Y.Z ios-vX.Y.Z
+   # Producción App Store (aparte, a propósito):
+   git tag ios-prod-vX.Y.Z && git push origin ios-prod-vX.Y.Z
    ```
 
-5. **Verificar que ambos terminen verdes:**
-
+7. **Verificar que terminen verdes:**
    ```bash
-   gh run list --limit 2 --json name,status,conclusion \
-     -q '.[] | "\(.name): \(.status)/\(.conclusion // "en curso")"'
+   gh run list --limit 3
    ```
-
-   Android tarda ~6 min; iOS entre 13 y 23. **No dar el release por hecho
-   hasta ver `success` en los dos** — iOS es el que más falla.
-
-   Consultar por ID (`gh run view <id>`) devuelve vacío en este entorno; usar
-   `gh run list`.
+   Android ~6 min; iOS 13-23. **No dar el release por hecho hasta ver `success`**
+   — iOS es el que más falla.
 
 ## Si el CI falla
 
-- **Falla en segundos y ningún paso aparece como fallido** → no es el código,
-  es la cuota de GitHub Actions agotada. Se resuelve subiendo la cuota y
-  reintentando el mismo commit con `gh run rerun <id>`.
-- **iOS: cuelgue en `codesign`** → suele ser el keychain que se auto-bloquea,
-  no el linker.
-- **iOS exige Xcode 26.3** porque Apple pide SDK de iOS 26. No bajarlo.
+- **iOS `ios-prod-*` falla en el submit con `whatsNew`** → ver paso 5: falta
+  "Novedades". El binario ya subió; llena Novedades en ASC y dale Submit.
+- **Falla en segundos, ningún paso rojo** → cuota de GitHub Actions agotada.
+  `gh run rerun <id>`.
+- **iOS: cuelgue en `codesign`** → keychain auto-bloqueado, no el linker.
+- **iOS exige Xcode 26.3** (Apple pide SDK iOS 26). No bajarlo.
+
+## Nota Sania — App Store bloqueado
+
+El App Store de Sania está frenado por el **5.1.1(ix)** (exige cuenta de
+organización). El tag `ios-prod-*` no pasará hasta resolver la cuenta
+(empresa + D-U-N-S). TestFlight (`ios-v*`) sí funciona.
 
 ## Después
 
-Publicar en las tiendas no llega solo: Play Store puede tardar en revisar, y
-TestFlight necesita que se reparta la build a los probadores.
+Publicar no llega solo: Play puede tardar en revisar, TestFlight necesita
+repartir la build a los probadores, y App Store revisa antes de publicar.
