@@ -21,7 +21,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  * permiso, la app sigue normal (solo no habrá notificaciones en la barra).
  */
 @Composable
-actual fun EfectoPushNativo() {
+actual fun EfectoPushNativo(paciente: Boolean) {
     if (!FirebaseCfg.activo) return
     val context = LocalContext.current
 
@@ -39,7 +39,8 @@ actual fun EfectoPushNativo() {
         }
         // 2) Token FCM del dispositivo → registrar para el usuario logueado.
         val token = obtenerTokenFcm() ?: return@LaunchedEffect
-        PushRepo.registrarToken(token)
+        // El paciente registra en SU tabla (por cuenta); el staff en la suya (por perfil).
+        if (paciente) PushRepo.registrarTokenPaciente(token) else PushRepo.registrarToken(token)
     }
 }
 

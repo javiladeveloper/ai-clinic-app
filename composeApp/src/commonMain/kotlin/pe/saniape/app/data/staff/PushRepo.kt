@@ -28,4 +28,22 @@ object PushRepo {
             })
         }
     }
+
+    /**
+     * Igual que registrarToken pero para el PACIENTE (portal): los pacientes no
+     * tienen perfil de clinica — su identidad es la cuenta (auth_user_id) y su
+     * tabla es dispositivos_push_paciente. El dashboard les envia campañas y
+     * recordatorios de retorno con enviarFcmACuenta.
+     */
+    suspend fun registrarTokenPaciente(token: String) {
+        val userId = Supabase.client.auth.currentUserOrNull()?.id ?: return
+        runCatching {
+            Supabase.client.postgrest["dispositivos_push_paciente"].delete { filter { eq("token", token) } }
+            Supabase.client.postgrest["dispositivos_push_paciente"].insert(buildJsonObject {
+                put("auth_user_id", userId)
+                put("token", token)
+                put("plataforma", "android")
+            })
+        }
+    }
 }

@@ -186,8 +186,15 @@ android {
         //       datos anidados que después descartaba (19 ms → 0,8 ms). Además guarda en el
         //       teléfono lo último que se vio, así la pantalla pinta al instante y se refresca
         //       por detrás: con señal irregular ya no se espera a la red mirando una lista vacía.
-        versionCode = 39
-        versionName = "2.9.9"
+        // v40/2.9.10 = EL PACIENTE ESTRENA AVISOS Y CLARIDAD: modo oscuro coherente en todo
+        //       el portal (antes Inicio/Mis clinicas quedaban claras y el DNI se veia
+        //       invisible al escribir); "Mis clinicas" ya no grita "revisa tu conexion"
+        //       cuando simplemente no hay historial (y tiene Reintentar); la clinica
+        //       pendiente explica "pide en recepcion que confirmen tu cuenta"; y la app
+        //       registra el token push del paciente: campañas de su clinica y recordatorio
+        //       de tratamiento a medias le llegan al celular.
+        versionCode = 40
+        versionName = "2.9.10"
     }
     signingConfigs {
         create("release") {

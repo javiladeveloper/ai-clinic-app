@@ -15,6 +15,6 @@ import androidx.compose.runtime.Composable
  * Por ahora (Fase 1) es un no-op: la app funciona sin push en iOS.
  */
 @Composable
-actual fun EfectoPushNativo() {
+actual fun EfectoPushNativo(paciente: Boolean) {
     // TODO(iOS Fase 2): registrar APNs/FCM y guardar el token en dispositivos_push.
 }

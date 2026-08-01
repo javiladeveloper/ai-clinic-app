@@ -9,4 +9,4 @@ import androidx.compose.runtime.Composable
  * Montarlo cuando hay sesión de staff (panel de clínica).
  */
 @Composable
-expect fun EfectoPushNativo()
+expect fun EfectoPushNativo(paciente: Boolean = false)

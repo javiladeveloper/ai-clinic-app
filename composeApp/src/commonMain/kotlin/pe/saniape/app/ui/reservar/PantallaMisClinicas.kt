@@ -137,13 +137,31 @@ private fun TarjetaClinicaPaciente(cl: ClinicaPaciente, onReservar: () -> Unit) 
             Column(Modifier.weight(1f)) {
                 Text(cl.nombre, color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 Text(
-                    if (cl.puedeReservar) "Puedes reservar tu cita" else "Ver tu historial en Salud",
-                    color = if (cl.puedeReservar) color else c.textoSuave, fontSize = 12.sp,
+                    when {
+                        cl.pendiente -> "Pendiente de confirmación"
+                        cl.puedeReservar -> "Puedes reservar tu cita"
+                        else -> "Ver tu historial en Salud"
+                    },
+                    color = if (cl.puedeReservar && !cl.pendiente) color else c.textoSuave, fontSize = 12.sp,
                 )
             }
         }
         Spacer(Modifier.height(12.dp))
-        if (cl.puedeReservar) {
+        if (cl.pendiente) {
+            // Vinculo sin confirmar: la clinica reconoce el DNI pero aun no confirma
+            // la cuenta. El paciente sabe QUE hacer (decirlo en recepcion) y no ve
+            // un error ni una pantalla vacia inexplicable.
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                    .border(1.dp, c.borde, RoundedCornerShape(12.dp)).padding(horizontal = 14.dp, vertical = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "🪪 Pide en recepción que confirmen tu cuenta — un paso único; luego verás tu historial aquí.",
+                    color = c.textoSuave, fontSize = 12.sp,
+                )
+            }
+        } else if (cl.puedeReservar) {
             Box(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(color)
                     .clickable { onReservar() }.padding(vertical = 12.dp),

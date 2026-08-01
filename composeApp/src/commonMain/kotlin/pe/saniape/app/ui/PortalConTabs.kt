@@ -78,6 +78,10 @@ fun PortalConTabs(
         return
     }
 
+    // Push del paciente: campañas de su clinica y recordatorio de retorno.
+    // Se monta recien pasado el gate del DNI (= usuario real usando el portal).
+    EfectoPushNativo(paciente = true)
+
     Scaffold(
         bottomBar = {
             NavigationBar(containerColor = c.superficie) {

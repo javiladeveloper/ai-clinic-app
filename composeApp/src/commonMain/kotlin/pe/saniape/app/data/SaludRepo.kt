@@ -49,6 +49,9 @@ data class ClinicaPaciente(
     val logoUrl: String?,
     val colorPrincipal: String?,
     val puedeReservar: Boolean,
+    /** Match solo por DNI, sin confirmar por la clinica: se ve que existe, sin
+     *  historial ni reserva, hasta que recepcion confirme el vinculo. */
+    val pendiente: Boolean = false,
 )
 
 /**
@@ -145,6 +148,7 @@ object SaludRepo {
                 logoUrl = o.str("logo_url"),
                 colorPrincipal = o.str("color_principal"),
                 puedeReservar = o.bool("puedeReservar"),
+                pendiente = o.bool("pendiente"),
             )
         }
     }
