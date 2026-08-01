@@ -51,6 +51,7 @@ import pe.saniape.app.auth.recordarGoogleAuthLauncher
  */
 @Composable
 fun PantallaLogin(onLogueado: () -> Unit) {
+    val acciones = recordarAcciones()
     val launcher = recordarGoogleAuthLauncher()
     val appleLauncher = recordarAppleAuthLauncher()   // null en Android → sin botón Apple
     val scope = rememberCoroutineScope()
@@ -230,6 +231,20 @@ fun PantallaLogin(onLogueado: () -> Unit) {
                     if (modoStaff) "Entrar con Google" else "Acceso clínicas",
                     color = Navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.clickable { modoStaff = !modoStaff; error = null },
+                )
+            }
+
+            // Quien llega desde Play Store SIN cuenta no debe chocar con un muro:
+            // el registro de la clínica vive en la web (wizard + prueba de 30 días)
+            // y la cuenta creada ahí entra a la app normal.
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("¿Tienes una clínica?", color = Muted, fontSize = 13.sp)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "Créala gratis — 30 días",
+                    color = Navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable { acciones.abrirUrl("https://www.saniape.com/register") },
                 )
             }
 
