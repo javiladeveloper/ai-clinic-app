@@ -146,7 +146,7 @@ fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
                     val proxima = proximas.firstOrNull()
                     if (proxima != null) {
                         item { Etiqueta("TU PRÓXIMA CITA") }
-                        item { CitaHero(proxima) }
+                        item { CitaHero(proxima, onCambio = { recargarTick++ }) }
                     } else {
                         item { TarjetaVacia() }
                     }
@@ -196,8 +196,9 @@ private fun Etiqueta(texto: String) {
 }
 
 @Composable
-private fun CitaHero(cita: CitaPortal) {
+private fun CitaHero(cita: CitaPortal, onCambio: () -> Unit = {}) {
     val c = Sania.colors
+    val acciones = recordarAcciones()
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
             .border(1.dp, Navy, RoundedCornerShape(16.dp)),
@@ -222,6 +223,7 @@ private fun CitaHero(cita: CitaPortal) {
                 (cita.tipo ?: "Cita") + (cita.profesional?.let { " · con $it" } ?: ""),
                 color = c.textoSuave, fontSize = 13.sp,
             )
+            AccionesCita(cita, onCambio = onCambio, abrirUrl = { acciones.abrirUrl(it) })
         }
     }
 }

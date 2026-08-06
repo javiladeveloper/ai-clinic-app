@@ -13,7 +13,9 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Resultado de una carga del portal: distingue "cargó bien" (aunque sea vacío) de
@@ -277,8 +279,60 @@ object SaludRepo {
                     profesional = o.str("profesional"),
                     clinica = o.str("clinica"),
                     clinicaSlug = o.str("clinicaSlug"),
+                    // El servidor ya mandaba todo esto; el parser lo descartaba y por eso
+                    // el paciente no podía gestionar su cita ni saber a qué local ir.
+                    token = o.str("token"),
+                    sede = o.str("sede"),
+                    direccion = o.str("direccion"),
+                    lat = o["lat"]?.jsonPrimitive?.doubleOrNull,
+                    lng = o["lng"]?.jsonPrimitive?.doubleOrNull,
+                    whatsapp = o.str("whatsapp"),
                 )
             }
         return ResultadoPortal.Ok(mapear("proximas") to mapear("pasadas"))
     }
+
+    /**
+     * Confirmar / cancelar / reprogramar / reseñar la cita.
+     *
+     * Va contra /api/cita/[token], el MISMO endpoint que usa el portal web: el
+     * paciente no necesita sesión, le basta el token de su cita. Devuelve null
+     * si salió bien, o el motivo en español para mostrarlo tal cual.
+     *
+     * El servidor tiene la última palabra y por buenas razones: no deja
+     * reprogramar a menos de 3 horas de la cita, ni tocar una ya completada o
+     * cancelada. Esos mensajes se muestran sin reescribir.
+     */
+    private suspend fun accionCita(token: String, cuerpo: String): String? {
+        val resp = runCatching {
+            http.post("${Supabase.SITE_URL}/api/cita/$token") {
+                contentType(ContentType.Application.Json)
+                setBody(cuerpo)
+            }
+        }.getOrNull() ?: return "Sin conexión. Revisa tu internet."
+        if (resp.status == HttpStatusCode.OK) return null
+        return runCatching {
+            json.parseToJsonElement(resp.bodyAsText()).jsonObject.str("error")
+        }.getOrNull() ?: "No se pudo completar la acción"
+    }
+
+    suspend fun confirmarCita(token: String): String? =
+        accionCita(token, """{"accion":"confirmar"}""")
+
+    suspend fun cancelarCita(token: String): String? =
+        accionCita(token, """{"accion":"cancelar"}""")
+
+    /** fecha AAAA-MM-DD, hora HH:MM. La clínica recibe un aviso del cambio. */
+    suspend fun reprogramarCita(token: String, fecha: String, hora: String): String? =
+        accionCita(token, """{"accion":"reprogramar","fecha":"$fecha","hora":"$hora"}""")
+
+    /**
+     * Reseña de la atención (1 a 5 estrellas). El comentario se escapa porque
+     * el paciente escribe libre: una comilla rompería el JSON armado a mano.
+     */
+    suspend fun resenarCita(token: String, calificacion: Int, comentario: String): String? {
+        val limpio = JsonPrimitive(comentario.trim()).toString()
+        return accionCita(token, """{"accion":"resenar","calificacion":$calificacion,"comentario":$limpio}""")
+    }
+
 }

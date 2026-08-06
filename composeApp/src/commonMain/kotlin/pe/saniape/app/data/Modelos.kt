@@ -53,4 +53,17 @@ data class CitaPortal(
     val profesional: String?,
     val clinica: String?,
     val clinicaSlug: String? = null,
+    /**
+     * Permite gestionar la cita (confirmar, cancelar, reprogramar, reseñar)
+     * contra /api/cita/[token]. El servidor ya lo enviaba y el parser lo tiraba,
+     * así que el paciente solo podía mirar su cita.
+     */
+    val token: String? = null,
+    /** Sede donde se atiende. En una clínica de varios locales, sin esto el paciente no sabe a cuál ir. */
+    val sede: String? = null,
+    val direccion: String? = null,
+    val lat: Double? = null,
+    val lng: Double? = null,
+    /** WhatsApp de la sede (o de la clínica): para escribir sin buscar el número. */
+    val whatsapp: String? = null,
 )
