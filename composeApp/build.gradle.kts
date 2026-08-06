@@ -195,8 +195,12 @@ android {
         //       de tratamiento a medias le llegan al celular.
         // v41/2.9.11 = EL PACIENTE YA NO SOLO MIRA: desde el celular confirma, cancela o
         //       reprograma su cita, ve a que local ir (mapa) y escribe por WhatsApp a la
-        //       clinica; opina de la atencion con estrellas cuando termina; y le llega
-        //       "manana tienes cita" la tarde anterior aunque su clinica no tenga WhatsApp.
+        //       clinica; opina de la atencion con estrellas cuando termina; y le llegan
+        //       avisos de su cita aunque su clinica no tenga WhatsApp — al tocarlos cae
+        //       en la cita con Confirmar delante. La app se actualiza sola cuando la
+        //       clinica confirma su cuenta (antes habia que cerrar sesion). Si el
+        //       profesional que eligio no puede, le ofrece quien si o a que otra hora.
+        //       Y el calendario en espanol, con hora en 12h y sin dias pasados.
         versionCode = 41
         versionName = "2.9.11"
     }
