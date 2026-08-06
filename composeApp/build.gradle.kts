@@ -193,8 +193,12 @@ android {
         //       pendiente explica "pide en recepcion que confirmen tu cuenta"; y la app
         //       registra el token push del paciente: campañas de su clinica y recordatorio
         //       de tratamiento a medias le llegan al celular.
-        versionCode = 40
-        versionName = "2.9.10"
+        // v41/2.9.11 = EL PACIENTE YA NO SOLO MIRA: desde el celular confirma, cancela o
+        //       reprograma su cita, ve a que local ir (mapa) y escribe por WhatsApp a la
+        //       clinica; opina de la atencion con estrellas cuando termina; y le llega
+        //       "manana tienes cita" la tarde anterior aunque su clinica no tenga WhatsApp.
+        versionCode = 41
+        versionName = "2.9.11"
     }
     signingConfigs {
         create("release") {
