@@ -23,7 +23,10 @@ class SaniaFcmService : FirebaseMessagingService() {
     override fun onMessageReceived(msg: RemoteMessage) {
         val titulo = msg.notification?.title ?: msg.data["titulo"] ?: "Sania"
         val cuerpo = msg.notification?.body ?: msg.data["cuerpo"] ?: ""
-        mostrar(titulo, cuerpo)
+        // Qué abrir al tocar: el recordatorio de cita lleva a ESA cita, con el
+        // botón Confirmar a la vista. Un aviso que solo abre la app deja al
+        // paciente buscando qué hacer.
+        mostrar(titulo, cuerpo, msg.data["citaId"])
     }
 
     override fun onNewToken(token: String) {
@@ -31,7 +34,7 @@ class SaniaFcmService : FirebaseMessagingService() {
         // (EfectoPushNativo registra el token vigente al entrar al panel).
     }
 
-    private fun mostrar(titulo: String, cuerpo: String) {
+    private fun mostrar(titulo: String, cuerpo: String, citaId: String? = null) {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             // Sonido propio de Sania (mismo acorde que la intro de marca): el fisio
@@ -49,8 +52,11 @@ class SaniaFcmService : FirebaseMessagingService() {
             nm.createNotificationChannel(canal)
         }
         val abrir = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP },
+            this, citaId?.hashCode() ?: 0,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                if (citaId != null) putExtra(EXTRA_CITA, citaId)
+            },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val notif = NotificationCompat.Builder(this, CANAL)
@@ -68,5 +74,9 @@ class SaniaFcmService : FirebaseMessagingService() {
     // "_v2": el sonido de un canal solo se fija al CREARLO. El canal viejo
     // ("sania_general") ya existe con el sonido por defecto en los dispositivos; con un
     // id nuevo Android crea el canal con el sonido de Sania. Subir a _v3… si cambia.
-    private companion object { const val CANAL = "sania_general_v2" }
+    companion object {
+        private const val CANAL = "sania_general_v2"
+        /** Id de la cita que abrió la notificación: MainActivity lo lee para llevar al paciente a ella. */
+        const val EXTRA_CITA = "cita_id"
+    }
 }

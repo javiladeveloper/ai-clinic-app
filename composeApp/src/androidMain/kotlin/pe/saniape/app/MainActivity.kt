@@ -1,5 +1,6 @@
 package pe.saniape.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import android.app.LocaleManager
@@ -7,6 +8,8 @@ import android.os.Build
 import android.os.LocaleList
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import pe.saniape.app.push.SaniaFcmService
+import pe.saniape.app.ui.CitaPendienteDeAbrir
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -19,9 +22,18 @@ class MainActivity : ComponentActivity() {
             getSystemService(LocaleManager::class.java)
                 ?.applicationLocales = LocaleList.forLanguageTags("es")
         }
+        // La app pudo arrancar porque el paciente tocó un recordatorio de cita.
+        CitaPendienteDeAbrir.pedir(intent?.getStringExtra(SaniaFcmService.EXTRA_CITA))
         enableEdgeToEdge()
         setContent {
             App()
         }
+    }
+
+    /** Con la app ya abierta, tocar la notificación llega por aquí, no por onCreate. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        CitaPendienteDeAbrir.pedir(intent.getStringExtra(SaniaFcmService.EXTRA_CITA))
     }
 }

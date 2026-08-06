@@ -70,7 +70,12 @@ fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
     val alcanceVivo = rememberCoroutineScope()
     DisposableEffect(Unit) {
         val job = pe.saniape.app.data.RealtimePortal.suscribir(alcanceVivo) { recargarTick++ }
-        onDispose { job.cancel() }
+        onDispose {
+            job.cancel()
+            // Ya se atendió el aviso: olvidarlo, o el paciente volvería a esta
+            // misma cita cada vez que abra la app.
+            CitaPendienteDeAbrir.consumir()
+        }
     }
 
     LaunchedEffect(recargarTick) {
@@ -165,7 +170,11 @@ fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
                     }
 
                     // Próxima cita destacada o estado vacío
-                    val proxima = proximas.firstOrNull()
+                    // Si llegó tocando un recordatorio, esa cita va primero:
+                    // es la que vino a confirmar, no necesariamente la más próxima.
+                    val pedida = CitaPendienteDeAbrir.actual
+                    val proxima = pedida?.let { id -> proximas.firstOrNull { it.id == id } }
+                        ?: proximas.firstOrNull()
                     if (proxima != null) {
                         item { Etiqueta("TU PRÓXIMA CITA") }
                         item { CitaHero(proxima, onCambio = { recargarTick++ }) }
