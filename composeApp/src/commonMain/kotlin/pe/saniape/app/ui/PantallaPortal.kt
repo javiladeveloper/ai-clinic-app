@@ -111,8 +111,21 @@ fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
                 cargando -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                     CircularProgressIndicator(color = Navy)
                 }
+                // Un error sin salida deja al paciente varado hasta que cierra la
+                // app. Casi siempre es red intermitente: reintentar lo resuelve.
                 error != null -> Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
-                    Text("⚠ $error", color = RedDanger, fontSize = 14.sp)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("⚠ $error", color = RedDanger, fontSize = 14.sp)
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Revisa tu conexión e inténtalo de nuevo.",
+                            color = Sania.colors.textoSuave, fontSize = 13.sp,
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        TextButton(onClick = { error = null; cargando = true; recargarTick++ }) {
+                            Text("Reintentar", color = Navy, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
