@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -18,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -42,7 +44,21 @@ fun DialogoReprogramar(
     var fecha by remember { mutableStateOf<String?>(null) }
 
     if (fecha == null) {
-        val estado = rememberDatePickerState()
+        // Solo desde hoy: dejar tocar el lunes pasado y rechazarlo después es
+        // hacerle perder el tiempo al paciente. El servidor igual lo valida.
+        val estado = rememberDatePickerState(
+            selectableDates = object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                    val hoy = Clock.System.now().toEpochMilliseconds()
+                    // Margen de un día: el picker trabaja en UTC y Perú va -5.
+                    return utcTimeMillis >= hoy - 86_400_000L
+                }
+                override fun isSelectableYear(year: Int): Boolean {
+                    val actual = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).year
+                    return year >= actual
+                }
+            },
+        )
         DatePickerDialog(
             onDismissRequest = onCerrar,
             confirmButton = {
@@ -53,7 +69,7 @@ fun DialogoReprogramar(
             dismissButton = { TextButton(onClick = onCerrar) { Text("Cancelar", color = c.textoSuave) } },
         ) { DatePicker(state = estado) }
     } else {
-        val estado = rememberTimePickerState(initialHour = 10, initialMinute = 0, is24Hour = true)
+        val estado = rememberTimePickerState(initialHour = 10, initialMinute = 0, is24Hour = false)   // 12h (AM/PM): nadie en Perú dice "15:00". Se guarda igual en 24h.
         DatePickerDialog(   // mismo contenedor que en reservas, para el TimePicker
             onDismissRequest = onCerrar,
             confirmButton = {

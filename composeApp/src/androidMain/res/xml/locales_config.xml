@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sania está escrita en español y sus clínicas son peruanas. Sin esto, los
+  diálogos NATIVOS de Android (calendario, selector de hora) salían en el idioma
+  del teléfono: en un celular en inglés el paciente veía "Select date" dentro de
+  una app en español.
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="es" />
+</locale-config>

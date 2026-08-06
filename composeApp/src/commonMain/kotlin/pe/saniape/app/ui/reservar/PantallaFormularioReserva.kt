@@ -26,6 +26,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -47,6 +48,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -104,7 +106,16 @@ fun PantallaFormularioReserva(clinica: ClinicaDir, onAtras: () -> Unit) {
 
     // ── Diálogo de FECHA nativo ──────────────────────────────────────────
     if (mostrarFecha) {
-        val estado = rememberDatePickerState()
+        // Solo desde hoy: el servidor rechaza el pasado, y dejar tocarlo hace
+        // que el paciente se entere del error recién al enviar.
+        val estado = rememberDatePickerState(
+            selectableDates = object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+                    utcTimeMillis >= Clock.System.now().toEpochMilliseconds() - 86_400_000L
+                override fun isSelectableYear(year: Int): Boolean =
+                    year >= Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).year
+            },
+        )
         DatePickerDialog(
             onDismissRequest = { mostrarFecha = false },
             confirmButton = {
@@ -119,7 +130,7 @@ fun PantallaFormularioReserva(clinica: ClinicaDir, onAtras: () -> Unit) {
 
     // ── Diálogo de HORA nativo ───────────────────────────────────────────
     if (mostrarHora) {
-        val estado = rememberTimePickerState(initialHour = 10, initialMinute = 0, is24Hour = true)
+        val estado = rememberTimePickerState(initialHour = 10, initialMinute = 0, is24Hour = false)   // 12h (AM/PM): nadie en Perú dice "15:00". Se guarda igual en 24h.
         DatePickerDialog(  // reutilizamos el contenedor de diálogo para el TimePicker
             onDismissRequest = { mostrarHora = false },
             confirmButton = {
