@@ -181,7 +181,7 @@ fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
                             }
                         }
                         if (verHistorial) {
-                            items(pasadas) { CitaItem(it, atenuar = true) }
+                            items(pasadas) { CitaItem(it, atenuar = true, onResenado = { recargarTick++ }) }
                         }
                     }
                 }
@@ -229,7 +229,7 @@ private fun CitaHero(cita: CitaPortal, onCambio: () -> Unit = {}) {
 }
 
 @Composable
-private fun CitaItem(cita: CitaPortal, atenuar: Boolean) {
+private fun CitaItem(cita: CitaPortal, atenuar: Boolean, onResenado: () -> Unit = {}) {
     val c = Sania.colors
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(c.superficie)
@@ -252,6 +252,7 @@ private fun CitaItem(cita: CitaPortal, atenuar: Boolean) {
             (cita.tipo ?: "") + (cita.profesional?.let { " · $it" } ?: ""),
             color = c.textoSuave, fontSize = 12.sp,
         )
+        ResenarCita(cita, onListo = onResenado)
     }
 }
 
