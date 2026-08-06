@@ -26,7 +26,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,6 +62,15 @@ fun PantallaMisClinicas() {
     var error by remember { mutableStateOf(false) }
     // Cambiarlo relanza el LaunchedEffect: es el "reintentar" sin salir de la pantalla.
     var intento by remember { mutableStateOf(0) }
+
+    // En vivo: cuando la clinica confirma el vinculo desde la web, esta pantalla
+    // deja de decir "Pendiente de confirmacion" sola. Antes habia que cerrar
+    // sesion y volver a entrar, justo cuando la clinica dice "listo, ya esta".
+    val alcanceVivo = rememberCoroutineScope()
+    DisposableEffect(Unit) {
+        val job = pe.saniape.app.data.RealtimePortal.suscribir(alcanceVivo) { intento++ }
+        onDispose { job.cancel() }
+    }
 
     LaunchedEffect(intento) {
         cargando = true; error = false

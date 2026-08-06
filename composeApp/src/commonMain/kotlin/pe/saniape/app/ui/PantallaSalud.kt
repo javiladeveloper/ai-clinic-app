@@ -22,6 +22,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,7 +60,17 @@ fun PantallaSalud() {
     var saldos by remember { mutableStateOf<Map<String, Saldo>>(emptyMap()) }
     var documentos by remember { mutableStateOf<List<Documento>>(emptyList()) }
 
-    LaunchedEffect(Unit) {
+    // En vivo: cuando la clinica confirma el vinculo desde la web, el historial
+    // aparece solo. Esta pantalla cargaba una sola vez, asi que el paciente veia
+    // "sin datos" hasta cerrar sesion y volver a entrar.
+    var recargar by remember { mutableStateOf(0) }
+    val alcanceVivo = rememberCoroutineScope()
+    DisposableEffect(Unit) {
+        val job = pe.saniape.app.data.RealtimePortal.suscribir(alcanceVivo) { recargar++ }
+        onDispose { job.cancel() }
+    }
+
+    LaunchedEffect(recargar) {
         try {
             tratamientos = (SaludRepo.tratamientos() as? ResultadoPortal.Ok)?.datos ?: emptyList()
             saldos = SaludRepo.saldos()

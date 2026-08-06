@@ -25,6 +25,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +64,14 @@ fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
     // DNI de la cuenta (llave de enlace con sus fichas). null = falta → pedirlo.
     var dniCuenta by remember { mutableStateOf<String?>("...") } // "..." = cargando
     var recargarTick by remember { mutableStateOf(0) }
+
+    // En vivo: si la clinica confirma el vinculo desde la web, esta pantalla se
+    // actualiza sola en vez de esperar a que el paciente cierre y vuelva a entrar.
+    val alcanceVivo = rememberCoroutineScope()
+    DisposableEffect(Unit) {
+        val job = pe.saniape.app.data.RealtimePortal.suscribir(alcanceVivo) { recargarTick++ }
+        onDispose { job.cancel() }
+    }
 
     LaunchedEffect(recargarTick) {
         try {
