@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,6 +25,7 @@ import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -83,6 +85,10 @@ fun PantallaFormularioReserva(clinica: ClinicaDir, onAtras: () -> Unit) {
 
     var enviando by remember { mutableStateOf(false) }
     var mensaje by remember { mutableStateOf<String?>(null) }
+    // Salidas cuando el profesional elegido no puede: quién más está libre a esa
+    // hora y a qué otras horas podría él. Tocarlas resuelve sin volver a empezar.
+    var otrosProfesionales by remember { mutableStateOf<List<pe.saniape.app.data.ProfesionalLibre>>(emptyList()) }
+    var otrasHoras by remember { mutableStateOf<List<String>>(emptyList()) }
     var exito by remember { mutableStateOf(false) }
 
     androidx.compose.runtime.LaunchedEffect(clinica.slug) {
@@ -170,7 +176,44 @@ fun PantallaFormularioReserva(clinica: ClinicaDir, onAtras: () -> Unit) {
             ) {
                 mensaje?.let {
                     Text("⚠ $it", color = c.error, fontSize = Sania.txt.pequeno,
-                        modifier = Modifier.fillMaxWidth().padding(bottom = Sania.dim.md))
+                        modifier = Modifier.fillMaxWidth().padding(bottom = Sania.dim.sm))
+                }
+
+                // En vez de dejar al paciente con un "no se puede", se le ofrece
+                // salida — lo mismo que haría recepción por teléfono.
+                if (otrosProfesionales.isNotEmpty()) {
+                    Text("Sí pueden atenderte a esa hora:", color = c.texto,
+                        fontSize = Sania.txt.pequeno, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    otrosProfesionales.forEach { p ->
+                        OutlinedButton(
+                            onClick = {
+                                profesional = info?.profesionales?.firstOrNull { it.id == p.id }
+                                mensaje = null; otrosProfesionales = emptyList(); otrasHoras = emptyList()
+                            },
+                            shape = RoundedCornerShape(Sania.shape.md.dp),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                        ) { Text(p.nombre, fontSize = Sania.txt.pequeno) }
+                    }
+                    Spacer(Modifier.height(Sania.dim.sm))
+                }
+                if (otrasHoras.isNotEmpty()) {
+                    Text("O a estas horas con quien elegiste:", color = c.texto,
+                        fontSize = Sania.txt.pequeno, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                        otrasHoras.forEach { h ->
+                            OutlinedButton(
+                                onClick = {
+                                    hora = h
+                                    mensaje = null; otrosProfesionales = emptyList(); otrasHoras = emptyList()
+                                },
+                                shape = RoundedCornerShape(Sania.shape.md.dp),
+                                modifier = Modifier.padding(end = 6.dp),
+                            ) { Text(h, fontSize = Sania.txt.pequeno) }
+                        }
+                    }
+                    Spacer(Modifier.height(Sania.dim.md))
                 }
 
                 // Profesional (opcional)
@@ -232,7 +275,11 @@ fun PantallaFormularioReserva(clinica: ClinicaDir, onAtras: () -> Unit) {
                             enviando = false
                             when (r) {
                                 is ResultadoReserva.Ok -> exito = true
-                                is ResultadoReserva.Error -> mensaje = r.mensaje
+                                is ResultadoReserva.Error -> {
+                                    mensaje = r.mensaje
+                                    otrosProfesionales = r.profesionales
+                                    otrasHoras = r.horas
+                                }
                             }
                         }
                     },

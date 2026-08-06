@@ -10,6 +10,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -28,9 +29,21 @@ data class ProfReserva(val id: String, val nombre: String, val especialidad: Str
 data class EspReserva(val id: String, val nombre: String)
 
 /** Resultado de crear una reserva. */
+/** Otro profesional que SÍ puede a la hora pedida. */
+data class ProfesionalLibre(val id: String, val nombre: String)
+
 sealed class ResultadoReserva {
     data class Ok(val token: String) : ResultadoReserva()
-    data class Error(val mensaje: String) : ResultadoReserva()
+    /**
+     * No se pudo, pero con salidas: quién más puede a esa hora y a qué otras
+     * horas podría el elegido. Un "no se puede" a secas hace que el paciente
+     * abandone; esto es lo que diría recepción por teléfono.
+     */
+    data class Error(
+        val mensaje: String,
+        val profesionales: List<ProfesionalLibre> = emptyList(),
+        val horas: List<String> = emptyList(),
+    ) : ResultadoReserva()
 }
 
 /**
@@ -104,7 +117,19 @@ object ReservaRepo {
         return if (resp.status == HttpStatusCode.OK && body?.str("ok") == "true") {
             ResultadoReserva.Ok(body.str("token") ?: "")
         } else {
-            ResultadoReserva.Error(body?.str("error") ?: "No se pudo reservar. Intenta de nuevo.")
+            {
+                val alt = body?.get("alternativas")?.jsonObject
+                val profs = (alt?.get("profesionales") as? JsonArray ?: JsonArray(emptyList())).mapNotNull {
+                    val o = it.jsonObject
+                    ProfesionalLibre(o.str("id") ?: return@mapNotNull null, o.str("nombre") ?: "")
+                }
+                val horas = (alt?.get("horas") as? JsonArray ?: JsonArray(emptyList()))
+                    .mapNotNull { (it as? JsonPrimitive)?.content }
+                ResultadoReserva.Error(
+                    body?.str("error") ?: "No se pudo reservar. Intenta de nuevo.",
+                    profs, horas,
+                )
+            }()
         }
     }
 }
