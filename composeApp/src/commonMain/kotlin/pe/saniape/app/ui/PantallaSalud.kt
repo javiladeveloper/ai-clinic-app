@@ -20,6 +20,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -220,28 +222,47 @@ private fun TarjetaTratamiento(t: Tratamiento, saldo: Saldo?) {
                 // recepción" y se muestra tal cual.
                 if (saldo.saldo > 0 && saldo.puedePagarOnline) {
                     var pagando by remember { mutableStateOf(false) }
+                    var confirmar by remember { mutableStateOf(false) }
+
+                    // Confirmar el monto antes de ir a Mercado Pago. Si le
+                    // cobraron en recepción hace un momento, el servidor recalcula
+                    // y podría cobrar menos de lo que dice la pantalla: mejor que
+                    // el paciente vea la cifra y la acepte.
+                    if (confirmar) {
+                        AlertDialog(
+                            onDismissRequest = { confirmar = false },
+                            title = { Text("¿Pagar S/ ${formato2(saldo.saldo)}?") },
+                            text = {
+                                Text(
+                                    "Es lo que debes de ${t.procedimiento}. " +
+                                        "Si acabas de pagar en la clínica, revisa el monto antes de continuar.",
+                                )
+                            },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    confirmar = false
+                                    pagando = true
+                                    alcance.launch {
+                                        when (val r = SaludRepo.pagarTratamiento(t.id)) {
+                                            is ResultadoPago.Ok -> { acciones.abrirUrl(r.url); pagando = false }
+                                            is ResultadoPago.Error -> { pagando = false; Toaster.error(r.mensaje) }
+                                        }
+                                    }
+                                }) { Text("Sí, pagar", color = c.navy) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { confirmar = false }) {
+                                    Text("Ahora no", color = c.textoSuave)
+                                }
+                            },
+                        )
+                    }
                     Spacer(Modifier.height(8.dp))
                     Box(
                         Modifier.fillMaxWidth()
                             .clip(RoundedCornerShape(Sania.shape.sm.dp))
                             .background(c.navy)
-                            .clickable(enabled = !pagando) {
-                                pagando = true
-                                alcance.launch {
-                                    when (val r = SaludRepo.pagarTratamiento(t.id)) {
-                                        is ResultadoPago.Ok -> {
-                                            // El pago se completa en el sitio de Mercado
-                                            // Pago; al volver, el webhook ya lo registró.
-                                            acciones.abrirUrl(r.url)
-                                            pagando = false
-                                        }
-                                        is ResultadoPago.Error -> {
-                                            pagando = false
-                                            Toaster.error(r.mensaje)
-                                        }
-                                    }
-                                }
-                            }
+                            .clickable(enabled = !pagando) { confirmar = true }
                             .padding(vertical = 11.dp),
                         contentAlignment = Alignment.Center,
                     ) {

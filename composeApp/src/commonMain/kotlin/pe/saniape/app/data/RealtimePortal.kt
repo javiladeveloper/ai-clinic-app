@@ -1,8 +1,10 @@
 package pe.saniape.app.data
 
+import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.postgresChangeFlow
+import io.github.jan.supabase.realtime.realtime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.launchIn
@@ -33,13 +35,32 @@ object RealtimePortal {
     fun suscribir(scope: CoroutineScope, onCambio: () -> Unit): Job {
         return scope.launch {
             runCatching {
-                val canal = Supabase.client.channel("portal-vinculos")
-                val cambios = canal.postgresChangeFlow<PostgresAction>(schema = "public") {
+                // El canal respeta la RLS, así que necesita el token del paciente.
+                // Suscribirse antes de que la sesión esté lista deja el canal
+                // conectado pero sin recibir NADA — silencioso y difícil de ver.
+                val sesion = Supabase.client.auth.currentSessionOrNull()
+                    ?: run {
+                        // Espera corta a que Auth termine de restaurar la sesión.
+                        var intentos = 0
+                        var s: io.github.jan.supabase.auth.user.UserSession? = null
+                        while (s == null && intentos < 10) {
+                            kotlinx.coroutines.delay(500)
+                            s = Supabase.client.auth.currentSessionOrNull()
+                            intentos++
+                        }
+                        s
+                    } ?: return@runCatching
+                val canal = Supabase.client.channel("portal-paciente")
+                // Vínculos: la clínica confirmó su cuenta.
+                canal.postgresChangeFlow<PostgresAction>(schema = "public") {
                     table = "portal_vinculos"
-                }
-                cambios
-                    .onEach { onCambio() }
-                    .launchIn(scope)
+                }.onEach { onCambio() }.launchIn(scope)
+                // Pagos: si le cobraron en recepción, su deuda baja SOLA. Sin
+                // esto la app seguía mostrando el saldo viejo y el paciente
+                // podía intentar pagar algo que ya pagó.
+                canal.postgresChangeFlow<PostgresAction>(schema = "public") {
+                    table = "pagos_tratamiento"
+                }.onEach { onCambio() }.launchIn(scope)
                 canal.subscribe()
             }
             // Si falla, no se relanza: el portal sigue vivo sin auto-refresco.
