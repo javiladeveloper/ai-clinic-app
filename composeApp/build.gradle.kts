@@ -201,8 +201,17 @@ android {
         //       clinica confirma su cuenta (antes habia que cerrar sesion). Si el
         //       profesional que eligio no puede, le ofrece quien si o a que otra hora.
         //       Y el calendario en espanol, con hora en 12h y sin dias pasados.
-        versionCode = 41
-        versionName = "2.9.11"
+        // v42/2.9.12 = EL PACIENTE PAGA DESDE SU CELULAR: boton "Pagar S/ X" con su
+        //       saldo real, que abre Mercado Pago y le acredita el pago en su
+        //       tratamiento y en la caja de la clinica. Solo aparece si la clinica
+        //       conecto su cuenta; si no, se le dice que pague en recepcion. Si le
+        //       cobran en el mostrador, su deuda baja SOLA en la pantalla, y antes de
+        //       pagar se le confirma el monto para que no pague dos veces. Al reservar,
+        //       el profesional va en un desplegable cerrado en "Cualquiera" (repartir el
+        //       trabajo en vez de saturar al mismo), y el formulario carga en menos de
+        //       un segundo en vez de tres.
+        versionCode = 42
+        versionName = "2.9.12"
     }
     signingConfigs {
         create("release") {
