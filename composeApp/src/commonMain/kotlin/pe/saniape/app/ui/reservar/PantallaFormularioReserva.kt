@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -49,6 +50,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -83,6 +86,7 @@ fun PantallaFormularioReserva(clinica: ClinicaDir, onAtras: () -> Unit) {
     var dniFijo by remember { mutableStateOf(false) }
 
     var mostrarFecha by remember { mutableStateOf(false) }
+    var mostrarProfesional by remember { mutableStateOf(false) }
     var mostrarHora by remember { mutableStateOf(false) }
 
     var enviando by remember { mutableStateOf(false) }
@@ -94,13 +98,18 @@ fun PantallaFormularioReserva(clinica: ClinicaDir, onAtras: () -> Unit) {
     var exito by remember { mutableStateOf(false) }
 
     androidx.compose.runtime.LaunchedEffect(clinica.slug) {
-        try { info = ReservaRepo.infoClinica(clinica.slug) } catch (_: Exception) {}
-        // Prepoblar DNI y teléfono con lo que ya tenemos del perfil del paciente.
-        try {
-            val p = pe.saniape.app.data.PerfilRepo.cargar()
+        // Las dos consultas EN PARALELO. Iban en fila —primero la clínica, después
+        // el perfil— y el formulario tardaba la suma de ambas: el paciente veía
+        // aparecer el profesional y su DNI dos segundos más tarde. No dependen
+        // entre sí, así que no hay razón para esperar.
+        coroutineScope {
+            val pedirInfo = async { runCatching { ReservaRepo.infoClinica(clinica.slug) }.getOrNull() }
+            val pedirPerfil = async { runCatching { pe.saniape.app.data.PerfilRepo.cargar() }.getOrNull() }
+            info = pedirInfo.await()
+            val p = pedirPerfil.await()
             if (!p?.dni.isNullOrBlank()) { dni = p!!.dni!!; dniFijo = true }
             if (!p?.telefono.isNullOrBlank()) telefono = p!!.telefono!!
-        } catch (_: Exception) {}
+        }
         cargando = false
     }
 
@@ -227,16 +236,41 @@ fun PantallaFormularioReserva(clinica: ClinicaDir, onAtras: () -> Unit) {
                     Spacer(Modifier.height(Sania.dim.md))
                 }
 
-                // Profesional (opcional)
+                // Profesional. Va CERRADO en "Cualquiera" a propósito: con la lista
+                // abierta el paciente elige por elegir y termina saturando siempre al
+                // mismo, mientras el resto del equipo queda libre. A la clínica le
+                // conviene repartir; a quien de verdad quiere a alguien, le basta
+                // abrir el desplegable.
                 info?.profesionales?.takeIf { it.isNotEmpty() }?.let { profs ->
-                    Text("Profesional (opcional)", color = c.textoSuave,
-                        fontSize = Sania.txt.pequeno, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(6.dp))
-                    ChipProf("Cualquiera", profesional == null) { profesional = null }
-                    profs.forEach { p ->
-                        ChipProf(p.nombre + (p.especialidad?.let { " · $it" } ?: ""), profesional?.id == p.id) { profesional = p }
+                    CampoSelector(
+                        "Profesional",
+                        profesional?.let { it.nombre + (it.especialidad?.let { e -> " · $e" } ?: "") }
+                            ?: "Cualquiera (te asignamos al disponible)",
+                    ) { mostrarProfesional = true }
+
+                    if (mostrarProfesional) {
+                        AlertDialog(
+                            onDismissRequest = { mostrarProfesional = false },
+                            title = { Text("¿Con quién prefieres atenderte?") },
+                            text = {
+                                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                                    OpcionProf("Cualquiera", "Te asignamos al que esté disponible", profesional == null) {
+                                        profesional = null; mostrarProfesional = false
+                                    }
+                                    profs.forEach { p ->
+                                        OpcionProf(p.nombre, p.especialidad ?: "", profesional?.id == p.id) {
+                                            profesional = p; mostrarProfesional = false
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { mostrarProfesional = false }) {
+                                    Text("Cerrar", color = c.textoSuave)
+                                }
+                            },
+                        )
                     }
-                    Spacer(Modifier.height(Sania.dim.md))
                 }
 
                 // FECHA (picker nativo)
@@ -306,6 +340,26 @@ fun PantallaFormularioReserva(clinica: ClinicaDir, onAtras: () -> Unit) {
                     Text("Reservar cita", fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.height(Sania.dim.xxl))
+            }
+        }
+    }
+}
+
+/** Una opción de profesional dentro del desplegable. */
+@Composable
+private fun OpcionProf(nombre: String, detalle: String, elegido: Boolean, onClick: () -> Unit) {
+    val c = Sania.colors
+    Row(
+        Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(if (elegido) "●" else "○", color = if (elegido) c.navy else c.textoSuave,
+            fontSize = Sania.txt.cuerpo, modifier = Modifier.padding(end = 10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(nombre, color = c.texto, fontSize = Sania.txt.cuerpo,
+                fontWeight = if (elegido) FontWeight.Bold else FontWeight.Normal)
+            if (detalle.isNotBlank()) {
+                Text(detalle, color = c.textoSuave, fontSize = Sania.txt.pequeno)
             }
         }
     }
