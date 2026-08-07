@@ -38,6 +38,12 @@ data class Saldo(
     val saldo: Double,
     val estado: String,
     val pagos: List<PagoInfo> = emptyList(),
+    /**
+     * La clínica conectó su cuenta de Mercado Pago y puede recibir el pago.
+     * Si es false NO se ofrece pagar: un botón que al tocarlo falla es peor que
+     * no tenerlo.
+     */
+    val puedePagarOnline: Boolean = false,
 )
 
 /** Documento del paciente visible en su portal. */
@@ -61,6 +67,13 @@ data class ClinicaPaciente(
  * en la web: firmar URLs de storage, leer config de saldo). Se piden al API web
  * con el Bearer token del paciente.
  */
+/** Resultado de pedir el link de pago. */
+sealed class ResultadoPago {
+    /** URL de Mercado Pago donde el paciente completa el pago. */
+    data class Ok(val url: String) : ResultadoPago()
+    data class Error(val mensaje: String) : ResultadoPago()
+}
+
 object SaludRepo {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -173,7 +186,8 @@ object SaludRepo {
                     metodo = p.str("metodo"),
                 )
             }
-            id to Saldo(o.dbl("acordado"), o.dbl("pagado"), o.dbl("saldo"), o.str("estado") ?: "", pagos)
+            id to Saldo(o.dbl("acordado"), o.dbl("pagado"), o.dbl("saldo"), o.str("estado") ?: "", pagos,
+                puedePagarOnline = o.bool("puedePagarOnline"))
         }.toMap()
     }
 
@@ -333,6 +347,42 @@ object SaludRepo {
     suspend fun resenarCita(token: String, calificacion: Int, comentario: String): String? {
         val limpio = JsonPrimitive(comentario.trim()).toString()
         return accionCita(token, """{"accion":"resenar","calificacion":$calificacion,"comentario":$limpio}""")
+    }
+
+    /**
+     * Pedir el link para pagar un tratamiento.
+     *
+     * El monto lo decide el SERVIDOR (saldo pendiente): aquí solo se dice cuánto
+     * quiere abonar el paciente, y allá se acota al saldo. Un cliente no debería
+     * poder fijar cuánto paga.
+     *
+     * Si la clínica no conectó su cuenta de Mercado Pago, el servidor responde con
+     * un mensaje claro ("puedes pagar en recepción") en vez de un error técnico.
+     *
+     * @param monto null = pagar todo lo que debe.
+     */
+    suspend fun pagarTratamiento(tratamientoId: String, monto: Double? = null): ResultadoPago {
+    val tk = token() ?: return ResultadoPago.Error("Sesión expirada")
+    val cuerpo = buildString {
+        append("""{"tratamientoId":"$tratamientoId"""")
+        if (monto != null) append(""","monto":$monto""")
+        append("}")
+    }
+    val resp = runCatching {
+        http.post("${Supabase.SITE_URL}/api/paciente/pagar") {
+            header("Authorization", "Bearer $tk")
+            contentType(ContentType.Application.Json)
+            setBody(cuerpo)
+        }
+    }.getOrNull() ?: return ResultadoPago.Error("Sin conexión. Revisa tu internet.")
+
+    val body = runCatching { json.parseToJsonElement(resp.bodyAsText()).jsonObject }.getOrNull()
+    val url = body?.str("url")
+    return if (resp.status == HttpStatusCode.OK && !url.isNullOrBlank()) {
+        ResultadoPago.Ok(url)
+    } else {
+        ResultadoPago.Error(body?.str("error") ?: "No se pudo abrir el pago")
+    }
     }
 
 }

@@ -40,6 +40,7 @@ import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import pe.saniape.app.data.Documento
 import pe.saniape.app.data.ResultadoPortal
+import pe.saniape.app.data.ResultadoPago
 import pe.saniape.app.data.Saldo
 import pe.saniape.app.data.SaludRepo
 import pe.saniape.app.data.Tratamiento
@@ -138,6 +139,8 @@ private fun Etiqueta(t: String) {
 
 @Composable
 private fun TarjetaTratamiento(t: Tratamiento, saldo: Saldo?) {
+    val alcance = rememberCoroutineScope()
+    val acciones = recordarAcciones()
     val c = Sania.colors
     var verSesiones by remember { mutableStateOf(false) }
     Column(
@@ -212,6 +215,51 @@ private fun TarjetaTratamiento(t: Tratamiento, saldo: Saldo?) {
                         else -> ColumnaMonto("SALDO", "—", c.textoSuave, Modifier.weight(1f))
                     }
                 }
+                // Pagar lo que debe, desde el celular. Solo si la clínica conectó
+                // su cuenta: si no, el servidor responde "puedes pagar en
+                // recepción" y se muestra tal cual.
+                if (saldo.saldo > 0 && saldo.puedePagarOnline) {
+                    var pagando by remember { mutableStateOf(false) }
+                    Spacer(Modifier.height(8.dp))
+                    Box(
+                        Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(Sania.shape.sm.dp))
+                            .background(c.navy)
+                            .clickable(enabled = !pagando) {
+                                pagando = true
+                                alcance.launch {
+                                    when (val r = SaludRepo.pagarTratamiento(t.id)) {
+                                        is ResultadoPago.Ok -> {
+                                            // El pago se completa en el sitio de Mercado
+                                            // Pago; al volver, el webhook ya lo registró.
+                                            acciones.abrirUrl(r.url)
+                                            pagando = false
+                                        }
+                                        is ResultadoPago.Error -> {
+                                            pagando = false
+                                            Toaster.error(r.mensaje)
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(vertical = 11.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            if (pagando) "Abriendo…" else "Pagar S/ ${formato2(saldo.saldo)}",
+                            color = c.sobreNavy, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+
+                if (saldo.saldo > 0 && !saldo.puedePagarOnline) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Puedes pagar tu saldo en la recepción de la clínica.",
+                        color = c.textoSuave, fontSize = 12.sp,
+                    )
+                }
+
                 if (saldo.pagos.isNotEmpty()) {
                     Spacer(Modifier.height(6.dp))
                     Text(if (verPagos) "Ocultar pagos" else "Ver mis pagos (${saldo.pagos.size})",
