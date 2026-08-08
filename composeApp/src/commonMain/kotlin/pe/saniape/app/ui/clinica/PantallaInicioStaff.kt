@@ -5,6 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import pe.saniape.app.ui.theme.Movim
+import pe.saniape.app.ui.theme.tarjeta
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.clickable
 import pe.saniape.app.ui.theme.tocable
 import androidx.compose.foundation.layout.Arrangement
@@ -142,7 +144,9 @@ fun PantallaInicioStaff(
                     if (proxima != null) {
                         item {
                             Row(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+                                Modifier.fillMaxWidth()
+                                    .shadow(6.dp, RoundedCornerShape(Sania.shape.md.dp))
+                                    .clip(RoundedCornerShape(Sania.shape.md.dp))
                                     .background(c.navy).tocable { onIrAgenda() }
                                     .padding(Sania.dim.lg),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -378,8 +382,7 @@ private fun AccesoRapido(emoji: String, label: String, modifier: Modifier = Modi
 private fun StatCard(label: String, valor: String, emoji: String, modifier: Modifier = Modifier) {
     val c = Sania.colors
     Column(
-        modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
-            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(Sania.dim.lg),
+        modifier.tarjeta().padding(Sania.dim.lg),
     ) {
         Text(emoji, fontSize = 22.sp)
         Spacer(Modifier.height(6.dp))
@@ -393,7 +396,7 @@ private fun StatCard(label: String, valor: String, emoji: String, modifier: Modi
                 animationSpec = tween(Movim.largo, easing = Movim.salida),
                 label = "stat",
             )
-            Text("", color = c.navy, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Text(animado.toString(), color = c.navy, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         } else {
             Text(valor, color = c.navy, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         }
@@ -405,8 +408,7 @@ private fun StatCard(label: String, valor: String, emoji: String, modifier: Modi
 private fun FilaAgenda(cita: CitaAgenda, onClick: () -> Unit = {}) {
     val c = Sania.colors
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.superficie)
-            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+        Modifier.fillMaxWidth().tarjeta(Sania.shape.sm)
             .tocable { onClick() }.padding(Sania.dim.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {

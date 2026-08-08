@@ -2,6 +2,7 @@ package pe.saniape.app.ui.clinica.agenda.componentes
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.clickable
 import pe.saniape.app.ui.theme.tocable
 import androidx.compose.foundation.layout.Arrangement
@@ -64,6 +65,10 @@ fun TarjetaCita(
 
     Row(
         Modifier.fillMaxWidth().height(IntrinsicSize.Min)
+            // Sombra corta: da el relieve que hace que la tarjeta se lea como un
+            // objeto sobre el fondo y no como un rectángulo dibujado. Va antes
+            // del clip para que se proyecte fuera de la forma.
+            .shadow(2.dp, RoundedCornerShape(Sania.shape.md.dp))
             .clip(RoundedCornerShape(Sania.shape.md.dp)).background(solape?.bg ?: c.superficie)
             .border(1.dp, solape?.fg ?: c.borde, RoundedCornerShape(Sania.shape.md.dp)),
     ) {

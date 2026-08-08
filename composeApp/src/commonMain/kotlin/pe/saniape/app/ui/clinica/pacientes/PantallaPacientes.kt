@@ -2,6 +2,7 @@ package pe.saniape.app.ui.clinica.pacientes
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.clickable
 import pe.saniape.app.ui.theme.tocable
 import androidx.compose.foundation.layout.Arrangement
@@ -220,7 +221,9 @@ private fun TarjetaPaciente(p: PacienteStaff, verContacto: Boolean, onClick: () 
     val activo = p.tratamientosActivos.firstOrNull()
 
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
+        Modifier.fillMaxWidth()
+            .shadow(2.dp, RoundedCornerShape(Sania.shape.md.dp))
+            .clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
             .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp))
             .tocable { onClick() }.padding(Sania.dim.tarjeta),
         verticalAlignment = Alignment.CenterVertically,

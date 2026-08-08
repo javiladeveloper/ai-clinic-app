@@ -10,6 +10,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.dp
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.tween
@@ -137,4 +143,30 @@ fun Modifier.tocable(
             enabled = habilitado,
             onClick = onClick,
         )
+}
+
+
+/**
+ * Superficie de tarjeta con la elevación de la app.
+ *
+ * La app no tenía NINGUNA sombra: todo eran bordes de 1px sobre el fondo, así
+ * que nada se separaba del papel y la pantalla se leía como una lista de cajas
+ * dibujadas. Una sombra corta y suave da la profundidad que hace que una
+ * tarjeta parezca un objeto y no un rectángulo.
+ *
+ * Sobria a propósito: 2dp, no un halo. En tema oscuro la sombra casi no se ve,
+ * así que ahí el borde sigue siendo quien separa.
+ */
+@Composable
+fun Modifier.tarjeta(
+    radio: Int = Formas.md,
+    elevada: Boolean = true,
+): Modifier {
+    val c = Sania.colors
+    val forma = RoundedCornerShape(radio.dp)
+    return this
+        .then(if (elevada) Modifier.shadow(2.dp, forma) else Modifier)
+        .clip(forma)
+        .background(c.superficie)
+        .border(1.dp, c.borde, forma)
 }
