@@ -210,8 +210,16 @@ android {
         //       el profesional va en un desplegable cerrado en "Cualquiera" (repartir el
         //       trabajo en vez de saturar al mismo), y el formulario carga en menos de
         //       un segundo en vez de tres.
-        versionCode = 42
-        versionName = "2.9.12"
+        // v43/2.9.13 = LA APP SE SIENTE VIVA: hasta ahora todo aparecia y desaparecia de
+        //       golpe — al cambiar de pestaña o abrir una ficha la pantalla saltaba y
+        //       costaba seguir donde quedo uno. Ahora el contenido entra y sale con
+        //       movimiento, las tarjetas se hunden al tocarlas (se nota que registro el
+        //       toque, aunque el servidor tarde), las listas acomodan sus filas en vez de
+        //       parpadear y los avisos bajan desde arriba en lugar de aparecer encima.
+        //       Nada cambia de sitio ni de funcion: es la misma app, mejor terminada.
+        //       Respeta "reducir movimiento" del telefono.
+        versionCode = 43
+        versionName = "2.9.13"
     }
     signingConfigs {
         create("release") {
