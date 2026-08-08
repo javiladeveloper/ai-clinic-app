@@ -3,6 +3,7 @@ package pe.saniape.app.ui.clinica
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import pe.saniape.app.ui.theme.tocable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -493,7 +494,7 @@ private fun BotonAccion(
     Box(
         Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).background(fondo)
             .then(if (borde) Modifier.border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)) else Modifier)
-            .clickable { onClick() }.padding(horizontal = 12.dp, vertical = 8.dp),
+            .tocable { onClick() }.padding(horizontal = 12.dp, vertical = 8.dp),
     ) { Text(texto, color = contenido, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
 }
 

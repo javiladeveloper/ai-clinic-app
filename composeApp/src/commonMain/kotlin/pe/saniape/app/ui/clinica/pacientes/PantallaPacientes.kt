@@ -3,6 +3,7 @@ package pe.saniape.app.ui.clinica.pacientes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import pe.saniape.app.ui.theme.tocable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -178,7 +179,9 @@ fun PantallaPacientes(
                         }
                     }
                     else -> items(vm.filtrados, key = { it.id }) { p ->
-                        Box(Modifier.padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm / 2)) {
+                        // Al buscar o filtrar, las tarjetas se reacomodan con movimiento
+                        // en vez de parpadear a otra lista distinta.
+                        Box(Modifier.animateItem().padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm / 2)) {
                             TarjetaPaciente(p, verContacto = vm.verContacto) { onAbrirFicha(p) }
                         }
                     }
@@ -219,7 +222,7 @@ private fun TarjetaPaciente(p: PacienteStaff, verContacto: Boolean, onClick: () 
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
             .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp))
-            .clickable { onClick() }.padding(Sania.dim.tarjeta),
+            .tocable { onClick() }.padding(Sania.dim.tarjeta),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Semáforo (flag)
@@ -283,7 +286,7 @@ private fun ChipFiltro(texto: String, activo: Boolean, onClick: () -> Unit) {
         Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
             .background(if (activo) c.navy else c.superficie)
             .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
-            .clickable { onClick() }.padding(horizontal = 12.dp, vertical = 5.dp),
+            .tocable { onClick() }.padding(horizontal = 12.dp, vertical = 5.dp),
     ) {
         Text(texto, color = if (activo) c.sobreNavy else c.texto, fontSize = 11.sp,
             fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal)

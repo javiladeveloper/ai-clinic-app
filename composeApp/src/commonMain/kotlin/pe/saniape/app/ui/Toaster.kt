@@ -1,5 +1,8 @@
 package pe.saniape.app.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.draw.scale
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -93,7 +96,15 @@ fun ToastHost() {
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(icono, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    // El icono entra creciendo: el mismo gesto de "listo" que la web.
+                    // Un toast que solo aparece se lee como un cartel; con el punch se
+                    // siente como una confirmación de lo que acabas de hacer.
+                    val escala = remember(m) { Animatable(0.5f) }
+                    LaunchedEffect(m) { escala.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = 380f)) }
+                    Text(
+                        icono, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.scale(escala.value),
+                    )
                     Spacer(Modifier.width(10.dp))
                     Text(m.texto, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }

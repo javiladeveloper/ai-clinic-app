@@ -3,6 +3,7 @@ package pe.saniape.app.ui.clinica.agenda.componentes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import pe.saniape.app.ui.theme.tocable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -198,7 +199,7 @@ private fun BotonAccion(label: String, color: Color, habilitado: Boolean, onClic
         Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp))
             .background(color.copy(alpha = 0.12f))
             .border(1.dp, color, RoundedCornerShape(Sania.shape.sm.dp))
-            .clickable(enabled = habilitado) { onClick() }
+            .tocable(habilitado = habilitado) { onClick() }
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) { Text(label, color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
 }

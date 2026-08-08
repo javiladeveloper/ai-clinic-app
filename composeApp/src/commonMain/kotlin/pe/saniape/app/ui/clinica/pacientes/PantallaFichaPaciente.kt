@@ -1,8 +1,13 @@
 package pe.saniape.app.ui.clinica.pacientes
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
+import pe.saniape.app.ui.theme.aparecer
+import pe.saniape.app.ui.theme.desaparecer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import pe.saniape.app.ui.theme.tocable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -424,7 +429,14 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     Box(Modifier.fillMaxWidth().padding(Sania.dim.lg), Alignment.Center) {
                         CircularProgressIndicator(color = c.navy, strokeWidth = 2.dp)
                     }
-                } else when (tab) {
+                } else AnimatedContent(
+                    targetState = tab,
+                    // Cambiar de pestaña con desvanecido: el contenido de una ficha
+                    // clínica es denso, y el corte seco hace perder el punto donde
+                    // uno estaba mirando.
+                    transitionSpec = { aparecer() togetherWith desaparecer() },
+                    label = "tabFicha",
+                ) { actual -> when (actual) {
                     "atenciones" -> ContenidoAtenciones(
                         ctx = ctx, paciente = paciente, hitos = hitos,
                         recargaToken = recargarToken,
@@ -479,7 +491,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         ctx = ctx, paciente = paciente, acciones = acciones,
                         onEditarClinico = { editarClinico = true },
                     )
-                }
+                } }
 
                 Spacer(Modifier.height(Sania.dim.xxl))
             }
@@ -764,7 +776,7 @@ private fun ChipCompletar(texto: String, onClick: () -> Unit) {
         modifier = Modifier
             .clip(RoundedCornerShape(Sania.shape.pill.dp))
             .background(c.chipBg)
-            .clickable { onClick() }
+            .tocable { onClick() }
             .padding(horizontal = 12.dp, vertical = 6.dp),
     )
 }
@@ -1325,7 +1337,7 @@ private fun BotonContacto(label: String, color: androidx.compose.ui.graphics.Col
     Box(
         Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).background(color.copy(alpha = 0.12f))
             .border(1.dp, color.copy(alpha = 0.5f), RoundedCornerShape(Sania.shape.sm.dp))
-            .clickable { onClick() }.padding(horizontal = 12.dp, vertical = 7.dp),
+            .tocable { onClick() }.padding(horizontal = 12.dp, vertical = 7.dp),
     ) { Text(label, color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
 }
 

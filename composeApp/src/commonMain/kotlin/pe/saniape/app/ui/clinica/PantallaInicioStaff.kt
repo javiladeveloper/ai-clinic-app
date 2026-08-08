@@ -2,7 +2,11 @@ package pe.saniape.app.ui.clinica
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.tween
+import pe.saniape.app.ui.theme.Movim
 import androidx.compose.foundation.clickable
+import pe.saniape.app.ui.theme.tocable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -139,7 +143,7 @@ fun PantallaInicioStaff(
                         item {
                             Row(
                                 Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
-                                    .background(c.navy).clickable { onIrAgenda() }
+                                    .background(c.navy).tocable { onIrAgenda() }
                                     .padding(Sania.dim.lg),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -236,7 +240,7 @@ fun PantallaInicioStaff(
                         ) {
                             Text("AGENDA DE HOY", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
                             Text("Ver todo →", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                                modifier = Modifier.clickable { onIrAgenda() })
+                                modifier = Modifier.tocable { onIrAgenda() })
                         }
                     }
                     if (s.agendaHoy.isEmpty()) {
@@ -342,7 +346,7 @@ private fun AvisoInicio(
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(bg)
             .border(1.dp, fg.copy(alpha = 0.4f), RoundedCornerShape(Sania.shape.sm.dp))
-            .clickable { onClick() }.padding(horizontal = 12.dp, vertical = 10.dp),
+            .tocable { onClick() }.padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(icono, fontSize = 16.sp)
@@ -361,7 +365,7 @@ private fun AccesoRapido(emoji: String, label: String, modifier: Modifier = Modi
     Column(
         modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
             .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp))
-            .clickable { onClick() }.padding(vertical = 12.dp),
+            .tocable { onClick() }.padding(vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(emoji, fontSize = 20.sp)
@@ -379,7 +383,20 @@ private fun StatCard(label: String, valor: String, emoji: String, modifier: Modi
     ) {
         Text(emoji, fontSize = 22.sp)
         Spacer(Modifier.height(6.dp))
-        Text(valor, color = c.navy, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        // El número sube desde 0 al aparecer. No es adorno: hace mirar la cifra,
+        // que es justo lo que uno viene a ver al abrir la app por la mañana.
+        // Solo si es un número; "S/ 1,200" o "—" se muestran tal cual.
+        val destino = valor.toIntOrNull()
+        if (destino != null) {
+            val animado by animateIntAsState(
+                targetValue = destino,
+                animationSpec = tween(Movim.largo, easing = Movim.salida),
+                label = "stat",
+            )
+            Text("", color = c.navy, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        } else {
+            Text(valor, color = c.navy, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        }
         Text(label, color = c.textoSuave, fontSize = 12.sp)
     }
 }
@@ -390,7 +407,7 @@ private fun FilaAgenda(cita: CitaAgenda, onClick: () -> Unit = {}) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.superficie)
             .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-            .clickable { onClick() }.padding(Sania.dim.md),
+            .tocable { onClick() }.padding(Sania.dim.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(hora12(cita.hora), color = c.navy, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)

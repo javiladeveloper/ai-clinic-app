@@ -1,5 +1,12 @@
 package pe.saniape.app.ui.clinica
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.togetherWith
+import pe.saniape.app.ui.theme.aparecer
+import pe.saniape.app.ui.theme.desaparecer
+import pe.saniape.app.ui.theme.entrarDetalle
+import pe.saniape.app.ui.theme.salirDetalle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
@@ -160,41 +167,61 @@ fun ClinicaConTabs(
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding).background(c.fondo)) {
-            when (tab) {
-                TabClinica.Inicio -> PantallaInicioStaff(
-                    ctx = contexto,
-                    onIrAgenda = { tab = TabClinica.Agenda },
-                    onIrPacientes = { tab = TabClinica.Pacientes },
-                    onAbrirCaja = if (contexto.puede("pagos")) ({ verCaja = true }) else null,
-                    onBuscar = if (verPacientes) ({ verBuscador = true }) else null,
-                )
-                TabClinica.Agenda -> PantallaAgenda(contexto)
-                TabClinica.Pacientes -> PantallaPacientesStaff(contexto)
-                TabClinica.Mas -> PantallaMasClinica(
-                    contexto = contexto,
-                    puedeIrAPortal = puedeIrAPortal,
-                    onIrAPortal = onIrAPortal,
-                    onCerrarSesion = onCerrarSesion,
-                    // Recargar el contexto maestro tras cambiar de clínica → header, ✓,
-                    // pacientes y permisos pasan todos a la nueva clínica activa.
-                    onCambioClinica = { pe.saniape.app.data.staff.DashboardRepo.limpiarCache(); tab = TabClinica.Inicio; intento++ },
-                    onAbrirSesiones = if (contexto.puede("sesiones")) ({ verSesiones = true }) else null,
-                    onAbrirCaja = if (contexto.puede("pagos")) ({ verCaja = true }) else null,
-                )
+            // Cambio de pestaña con desvanecido: antes era un corte seco y en cada
+            // toque parecía que la app "parpadeaba" a otra cosa. Sin desplazamiento
+            // lateral a propósito — las pestañas son hermanas, no un flujo con
+            // dirección.
+            AnimatedContent(
+                targetState = tab,
+                transitionSpec = { aparecer() togetherWith desaparecer() },
+                label = "tab",
+            ) { actual ->
+                when (actual) {
+                    TabClinica.Inicio -> PantallaInicioStaff(
+                        ctx = contexto,
+                        onIrAgenda = { tab = TabClinica.Agenda },
+                        onIrPacientes = { tab = TabClinica.Pacientes },
+                        onAbrirCaja = if (contexto.puede("pagos")) ({ verCaja = true }) else null,
+                        onBuscar = if (verPacientes) ({ verBuscador = true }) else null,
+                    )
+                    TabClinica.Agenda -> PantallaAgenda(contexto)
+                    TabClinica.Pacientes -> PantallaPacientesStaff(contexto)
+                    TabClinica.Mas -> PantallaMasClinica(
+                        contexto = contexto,
+                        puedeIrAPortal = puedeIrAPortal,
+                        onIrAPortal = onIrAPortal,
+                        onCerrarSesion = onCerrarSesion,
+                        // Recargar el contexto maestro tras cambiar de clínica → header, ✓,
+                        // pacientes y permisos pasan todos a la nueva clínica activa.
+                        onCambioClinica = { pe.saniape.app.data.staff.DashboardRepo.limpiarCache(); tab = TabClinica.Inicio; intento++ },
+                        onAbrirSesiones = if (contexto.puede("sesiones")) ({ verSesiones = true }) else null,
+                        onAbrirCaja = if (contexto.puede("pagos")) ({ verCaja = true }) else null,
+                    )
+                }
             }
-            // Overlay de módulos sin tab propio (encima del contenido, oculta los tabs).
-            if (verSesiones && contexto.puede("sesiones")) {
+
+            // Overlays de módulos sin tab propio. Entran desde la derecha y salen
+            // por donde vinieron: eso es lo que hace entender "esto se abrió
+            // encima" y "estoy volviendo", en vez de que la pantalla cambie de
+            // golpe sin saber a dónde fue.
+            AnimatedVisibility(
+                visible = verSesiones && contexto.puede("sesiones"),
+                enter = entrarDetalle(), exit = salirDetalle(),
+            ) {
                 Box(Modifier.fillMaxSize().background(c.fondo)) {
                     PantallaSesiones(ctx = contexto)
                 }
             }
-            if (verCaja && contexto.puede("pagos")) {
+            AnimatedVisibility(
+                visible = verCaja && contexto.puede("pagos"),
+                enter = entrarDetalle(), exit = salirDetalle(),
+            ) {
                 Box(Modifier.fillMaxSize().background(c.fondo)) {
                     PantallaCajaHoy(ctx = contexto)
                 }
             }
             // Buscador global (header) → al elegir, abre la ficha en overlay.
-            if (verBuscador) {
+            AnimatedVisibility(visible = verBuscador, enter = entrarDetalle(), exit = salirDetalle()) {
                 Box(Modifier.fillMaxSize().background(c.fondo)) {
                     PantallaBuscarPaciente(
                         ctx = contexto,
@@ -203,11 +230,16 @@ fun ClinicaConTabs(
                     )
                 }
             }
-            fichaBuscada?.let { pac ->
-                Box(Modifier.fillMaxSize().background(c.fondo)) {
-                    pe.saniape.app.ui.clinica.pacientes.PantallaFichaPaciente(
-                        ctx = contexto, pacienteInicial = pac, onCerrar = { fichaBuscada = null },
-                    )
+            AnimatedVisibility(visible = fichaBuscada != null, enter = entrarDetalle(), exit = salirDetalle()) {
+                // La ficha se recuerda mientras dura la salida: sin esto, al cerrar
+                // el contenido desaparecería de golpe y solo se animaría un hueco.
+                val pac = remember(fichaBuscada) { fichaBuscada }
+                pac?.let {
+                    Box(Modifier.fillMaxSize().background(c.fondo)) {
+                        pe.saniape.app.ui.clinica.pacientes.PantallaFichaPaciente(
+                            ctx = contexto, pacienteInicial = it, onCerrar = { fichaBuscada = null },
+                        )
+                    }
                 }
             }
         }
