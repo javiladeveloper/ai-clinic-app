@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.PacienteStaff
 import pe.saniape.app.ui.theme.EstadosColor
+import pe.saniape.app.ui.CargandoLista
 import pe.saniape.app.ui.theme.Sania
 
 private val ESTADOS = listOf("Nuevo", "Consultado", "Evaluado", "En tratamiento", "Alta")
@@ -141,11 +142,9 @@ fun PantallaPacientes(
                     }
                 }
                 when {
-                    vm.cargando -> item {
-                        Box(Modifier.fillMaxWidth().padding(Sania.dim.xxl), Alignment.Center) {
-                            CircularProgressIndicator(color = c.navy)
-                        }
-                    }
+                    // Andamio con la forma de la lista, no un aro girando: dice QUÉ
+                    // viene y evita el salto cuando llegan los datos.
+                    vm.cargando -> item { CargandoLista(filas = 6) }
                     // Falló la carga (red/permiso): NO es lo mismo que "no hay pacientes".
                     vm.cargaFallo -> item {
                         Column(

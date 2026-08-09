@@ -53,6 +53,7 @@ import pe.saniape.app.data.staff.PacienteStaff
 import pe.saniape.app.data.staff.PacientesRepo
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+import pe.saniape.app.ui.CargandoLista
 import pe.saniape.app.ui.theme.Sania
 
 /**
@@ -197,11 +198,9 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                 }
 
                 when {
-                    vm.cargando -> item {
-                        Box(Modifier.fillMaxWidth().padding(Sania.dim.xxl), Alignment.Center) {
-                            CircularProgressIndicator(color = c.navy)
-                        }
-                    }
+                    // Andamio con la forma de las tarjetas de cita: dice qué viene
+                    // y evita el salto al llegar los datos.
+                    vm.cargando -> item { CargandoLista(filas = 5) }
                     vm.citasFiltradas.isEmpty() -> item {
                         Box(Modifier.fillMaxWidth().padding(Sania.dim.lg)) {
                             when {

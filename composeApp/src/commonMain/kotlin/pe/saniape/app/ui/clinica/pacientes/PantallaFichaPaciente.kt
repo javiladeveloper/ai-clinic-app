@@ -58,6 +58,7 @@ import pe.saniape.app.ui.recordarAcciones
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.ui.theme.EstadosColor
+import pe.saniape.app.ui.CargandoFicha
 import pe.saniape.app.ui.theme.Sania
 
 /** Petición de subir un archivo: documento suelto o resultado de una solicitud. */
@@ -426,9 +427,10 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 }
 
                 if (cargando) {
-                    Box(Modifier.fillMaxWidth().padding(Sania.dim.lg), Alignment.Center) {
-                        CircularProgressIndicator(color = c.navy, strokeWidth = 2.dp)
-                    }
+                    // Andamio de la ficha (encabezado + las 4 tarjetas + contenido)
+                    // en vez de un aro: la ficha es la pantalla más pesada y su
+                    // espera es la que más se nota.
+                    CargandoFicha()
                 } else AnimatedContent(
                     targetState = tab,
                     // Cambiar de pestaña con desvanecido: el contenido de una ficha
