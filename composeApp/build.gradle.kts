@@ -218,8 +218,14 @@ android {
         //       parpadear y los avisos bajan desde arriba en lugar de aparecer encima.
         //       Nada cambia de sitio ni de funcion: es la misma app, mejor terminada.
         //       Respeta "reducir movimiento" del telefono.
-        versionCode = 43
-        versionName = "2.9.13"
+        // v44/2.9.14 = ESPERAR YA NO ES UNA PANTALLA VACIA: pacientes, agenda y ficha
+        //       mostraban un aro girando en medio de la nada — no se sabia si venia una
+        //       lista, una ficha o si algo se habia roto, y al llegar los datos todo
+        //       saltaba de golpe. Ahora se dibuja el molde de lo que viene (tarjetas,
+        //       nombres, estados) y el contenido lo reemplaza sin salto, porque el
+        //       espacio ya estaba tomado.
+        versionCode = 44
+        versionName = "2.9.14"
     }
     signingConfigs {
         create("release") {
