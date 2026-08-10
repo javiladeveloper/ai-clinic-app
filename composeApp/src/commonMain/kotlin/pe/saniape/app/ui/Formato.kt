@@ -35,3 +35,28 @@ fun proximaHoraEnPunto(): String {
     if (h > 20) h = 20
     return "${h.toString().padStart(2, '0')}:00"
 }
+/**
+ * El nombre con el que saludar a alguien, saltándose el título profesional.
+ *
+ * Las clínicas guardan a su gente como "Lic. Fisio Prueba" o "Dra. Ana Quispe",
+ * y quedarse con la primera palabra saludaba "Hola, Lic. 👋" — que no es el
+ * nombre de nadie. Pasaba con casi todos los profesionales, porque casi todos se
+ * registran con título.
+ *
+ * Si tras quitar títulos no queda nada (alguien guardado solo como "Dr."), se
+ * devuelve null y quien llama saluda sin nombre: mejor "Hola 👋" que un saludo
+ * con una abreviatura.
+ */
+fun nombreDeSaludo(nombreCompleto: String?): String? {
+    val partes = nombreCompleto?.trim()?.split(" ")?.filter { it.isNotBlank() } ?: return null
+    // Con y sin punto: se escribe de las dos formas. En minúsculas para comparar.
+    val titulos = setOf(
+        "lic", "lic.", "licenciado", "licenciada",
+        "dr", "dr.", "dra", "dra.", "doctor", "doctora",
+        "mg", "mg.", "mgtr", "mtro", "mtra",
+        "tec", "tec.", "tecnico", "técnico",
+        "sr", "sr.", "sra", "sra.", "srta", "srta.",
+        "esp", "esp.", "prof", "prof.",
+    )
+    return partes.firstOrNull { it.lowercase() !in titulos }
+}

@@ -50,6 +50,7 @@ import pe.saniape.app.data.staff.DashboardRepo
 import pe.saniape.app.data.staff.StatsDashboard
 import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.ui.nombreDeSaludo
 
 /**
  * Inicio del staff: saludo con fecha, PRÓXIMA CITA destacada, stats, avisos tocables
@@ -84,7 +85,9 @@ fun PantallaInicioStaff(
     }
     val noLeidas = notifs.count { !it.leida }
 
-    val primerNombre = ctx.nombre?.trim()?.split(" ")?.firstOrNull()
+    // Sin el título: "Lic. Fisio Prueba" saludaba "Hola, Lic. 👋", que no es el
+    // nombre de nadie. Pasa con casi todos los profesionales.
+    val primerNombre = nombreDeSaludo(ctx.nombre)
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {

@@ -35,6 +35,7 @@ import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.recordarAcciones
 import pe.saniape.app.ui.theme.EstadosColor
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.ui.nombreDeSaludo
 
 /**
  * Tarjeta de una cita en la agenda. Muestra (como la web): color por tipo, hora,
@@ -113,7 +114,7 @@ fun TarjetaCita(
                     // un toque y el mensaje sale listo para enviar.
                     IconoContacto("💬", pe.saniape.app.ui.theme.Paleta.WhatsApp) {
                         val n = tel.filter { ch -> ch.isDigit() }.let { if (it.length <= 9) "51$it" else it }
-                        val nombre = cita.pacienteNombre?.trim()?.split(" ")?.firstOrNull() ?: ""
+                        val nombre = nombreDeSaludo(cita.pacienteNombre) ?: ""
                         val msg = "Hola $nombre 👋 Te recordamos tu cita" +
                             (cita.tipo?.let { " de ${it.lowercase()}" } ?: "") +
                             " el ${cita.fecha} a las ${hora12(cita.hora)}. ¿Nos confirmas tu asistencia? 🙌"

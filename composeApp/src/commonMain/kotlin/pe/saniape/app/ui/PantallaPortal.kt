@@ -91,7 +91,7 @@ fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
         }
     }
 
-    val primerNombre = nombre?.trim()?.split(" ")?.firstOrNull()
+    val primerNombre = nombreDeSaludo(nombre)
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
