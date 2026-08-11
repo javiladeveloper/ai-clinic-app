@@ -24,6 +24,11 @@ class SaniaApplication : Application(), SingletonImageLoader.Factory {
         // Context para abrir los Ajustes de notificaciones desde fuera de Compose
         // (el aviso de "avisos apagados" en Inicio).
         pe.saniape.app.ui.ContextoApp.init(this)
+        // El canal DEBE existir antes de que llegue el primer push: con la app
+        // cerrada, Android muestra el aviso él mismo y si el canal no existe lo
+        // descarta en silencio. Creándolo solo al recibir un mensaje, el celular
+        // en el bolsillo nunca sonaba (2026-08-11).
+        pe.saniape.app.push.SaniaFcmService.crearCanal(this)
     }
 
     // ImageLoader de Coil con fetcher de red ktor (carga las fotos evolutivas desde

@@ -36,21 +36,7 @@ class SaniaFcmService : FirebaseMessagingService() {
 
     private fun mostrar(titulo: String, cuerpo: String, citaId: String? = null) {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Sonido propio de Sania (mismo acorde que la intro de marca): el fisio
-            // reconoce que la notificación es de Sania sin mirar la pantalla.
-            // OJO: el sonido del canal SOLO se aplica al CREARLO. Si el canal ya existía
-            // con el sonido por defecto, hay que recrearlo con otro id — de ahí el sufijo
-            // "_v2" en CANAL (cambiarlo si el sonido vuelve a cambiar).
-            val canal = NotificationChannel(CANAL, "Notificaciones de la clínica", NotificationManager.IMPORTANCE_HIGH)
-            val sonido = Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://$packageName/${R.raw.sania_notif}")
-            val attrs = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build()
-            canal.setSound(sonido, attrs)
-            nm.createNotificationChannel(canal)
-        }
+        crearCanal(this)
         val abrir = PendingIntent.getActivity(
             this, citaId?.hashCode() ?: 0,
             Intent(this, MainActivity::class.java).apply {
@@ -75,8 +61,41 @@ class SaniaFcmService : FirebaseMessagingService() {
     // ("sania_general") ya existe con el sonido por defecto en los dispositivos; con un
     // id nuevo Android crea el canal con el sonido de Sania. Subir a _v3… si cambia.
     companion object {
-        private const val CANAL = "sania_general_v2"
+        const val CANAL = "sania_general_v2"
         /** Id de la cita que abrió la notificación: MainActivity lo lee para llevar al paciente a ella. */
         const val EXTRA_CITA = "cita_id"
+
+        /**
+         * Crea el canal de avisos. Se llama al ARRANCAR la app, no solo al recibir
+         * un mensaje.
+         *
+         * Por qué importa: el servidor manda el push con `notification` +
+         * `channel_id`, y en ese caso —con la app cerrada o en segundo plano—
+         * Android lo muestra ÉL MISMO, sin pasar por onMessageReceived. Si el
+         * canal no existe todavía en el dispositivo, DESCARTA el aviso en
+         * silencio.
+         *
+         * Como el canal solo se creaba dentro de mostrar(), pasaba justo lo peor:
+         * con la app abierta llegaba (por onMessageReceived), y con el celular en
+         * el bolsillo —el caso que de verdad importa— no llegaba nunca. Encaja
+         * con lo reportado: permiso encendido y aun así sin avisos (2026-08-11).
+         */
+        fun crearCanal(context: android.content.Context) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+            val nm = context.getSystemService(NotificationManager::class.java) ?: return
+            if (nm.getNotificationChannel(CANAL) != null) return // ya existe: no se toca
+            // Sonido propio de Sania (mismo acorde que la intro de marca): el fisio
+            // reconoce que la notificación es de Sania sin mirar la pantalla.
+            // OJO: el sonido de un canal SOLO se aplica al CREARLO.
+            val canal = NotificationChannel(CANAL, "Notificaciones de la clínica", NotificationManager.IMPORTANCE_HIGH)
+            val sonido = Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://${context.packageName}/${R.raw.sania_notif}")
+            val attrs = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+            canal.setSound(sonido, attrs)
+            canal.enableVibration(true)
+            nm.createNotificationChannel(canal)
+        }
     }
 }
