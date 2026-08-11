@@ -19,6 +19,13 @@ on:
       - "android-v*"
       - "produccion-*"
 
+# El workflow ESCRIBE en el repo: devuelve a master el versionCode nuevo. Sin
+# esto el token es de solo lectura y ese push falla con 403 (paso "Guardar la
+# versión nueva en master"), que fue lo que tumbó el release v2.9.17 — despues
+# de haber subido el .aab a Play, o sea a mitad de camino.
+permissions:
+  contents: write
+
 jobs:
   build-and-upload:
     runs-on: ubuntu-latest
@@ -143,8 +150,13 @@ jobs:
       # Devuelve a master el versionCode nuevo. Sin esto el archivo se queda con
       # el número viejo y el SIGUIENTE release calcularía el mismo → Play lo
       # rechaza por versionCode repetido.
+      # continue-on-error: guardar la versión es SECUNDARIO. Sin esto, un fallo
+      # aquí tumba el release entero DESPUÉS de haber subido el .aab a Play y
+      # deja sin correr el paso de Vercel — el aviso de actualización no sale y
+      # el release queda a medias. Paso justo en v2.9.17 (403 por permisos).
       - name: Guardar la versión nueva en master
         if: ${{ steps.version.outputs.aplicar == 'si' }}
+        continue-on-error: true
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
