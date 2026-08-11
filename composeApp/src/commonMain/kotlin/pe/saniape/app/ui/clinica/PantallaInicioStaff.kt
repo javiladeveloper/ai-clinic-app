@@ -92,18 +92,15 @@ fun PantallaInicioStaff(
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             // Barra de marca white-label compartida (logo de la clínica + nombre + campana).
+            // SIN campana en el celular: para eso está la barra de notificaciones
+            // del propio Android. Una campana dentro de la app obliga a abrirla
+            // para enterarse, que es justo lo que un aviso debe evitar — y hacía
+            // parecer que "las notificaciones llegan" cuando al celular no
+            // llegaba nada (decisión del dueño 2026-08-11).
             HeaderMarcaClinica(
                 ctx = ctx,
-                noLeidas = noLeidas,
                 onBuscar = onBuscar,
                 onCaja = onAbrirCaja,
-                onCampana = {
-                    verNotifs = true
-                    if (noLeidas > 0) scope.launch {
-                        pe.saniape.app.data.staff.NotificacionesRepo.marcarTodasLeidas()
-                        notifs = notifs.map { it.copy(leida = true) }
-                    }
-                },
             )
 
             if (cargando) {

@@ -23,23 +23,32 @@ object PushRepo {
     suspend fun registrarToken(token: String): Boolean {
         val userId = Supabase.client.auth.currentUserOrNull()?.id ?: return false
         return runCatching {
-            // UPSERT en un solo viaje. Antes eran DOS (delete + insert) y eso traía dos
-            // problemas:
-            //  1. Si el primero se pasaba del timeout, el registro entero fallaba — en el
-            //     emulador se colgaba SIEMPRE en el delete (2026-08-10).
-            //  2. El delete no servía para lo que decía servir: la RLS solo deja borrar
-            //     filas propias, así que el token de OTRA cuenta —el caso que quería
-            //     resolver— nunca se borraba.
+            // Se llama al ENDPOINT, no a la tabla.
             //
-            // `token` es UNIQUE, así que el upsert por esa columna reasigna la fila al
-            // usuario actual en una sola operación, y del lado del servidor.
-            Supabase.client.postgrest["dispositivos_push"].upsert(
-                listOf(buildJsonObject {
-                    put("perfil_id", userId)
-                    put("token", token)
-                    put("plataforma", "android")
-                }),
-            ) { onConflict = "token" }
+            // El upsert directo con `onConflict = token` parecía la vía corta, pero
+            // la RLS lo bloquea justo en el caso que importa: la política es
+            // `perfil_id = auth.uid()`, así que si esa fila ya existe a nombre de
+            // OTRO perfil (el mismo celular usado antes con otra cuenta), el
+            // UPDATE del upsert no puede tocarla. Falla y devuelve false, en
+            // silencio.
+            //
+            // Y aunque la fila fuera propia, seguía sin cubrir el caso real de un
+            // usuario con DOS aparatos: cada uno tiene su token, pero la tabla
+            // solo mostraba uno por perfil — nadie llegó nunca a tener dos
+            // (comprobado en producción 2026-08-11).
+            //
+            // El endpoint usa service_role y resuelve las dos cosas del lado del
+            // servidor: reasigna el token si estaba a nombre de otro, y conserva
+            // los demás aparatos del mismo usuario.
+            val res = Supabase.client.postgrest.rpc(
+                "registrar_dispositivo_push",
+                buildJsonObject {
+                    put("p_token", token)
+                    put("p_plataforma", "android")
+                },
+            )
+            println("SaniaPush: dispositivo registrado para $userId")
+            res
             true
         }.getOrElse {
             println("SaniaPush: no se pudo registrar el dispositivo — ${it.message}")
@@ -56,14 +65,16 @@ object PushRepo {
     suspend fun registrarTokenPaciente(token: String): Boolean {
         val userId = Supabase.client.auth.currentUserOrNull()?.id ?: return false
         return runCatching {
-            // Un solo viaje, igual que el del staff (ver la nota de registrarToken).
-            Supabase.client.postgrest["dispositivos_push_paciente"].upsert(
-                listOf(buildJsonObject {
-                    put("auth_user_id", userId)
-                    put("token", token)
-                    put("plataforma", "android")
-                }),
-            ) { onConflict = "token" }
+            // Por el endpoint, igual que el del staff (ver la nota de registrarToken):
+            // la RLS bloquea el upsert directo cuando el token ya está a nombre de otro.
+            Supabase.client.postgrest.rpc(
+                "registrar_dispositivo_push_paciente",
+                buildJsonObject {
+                    put("p_token", token)
+                    put("p_plataforma", "android")
+                },
+            )
+            println("SaniaPush: dispositivo del paciente registrado para $userId")
             true
         }.getOrElse {
             println("SaniaPush: no se pudo registrar el dispositivo del paciente — ${it.message}")
