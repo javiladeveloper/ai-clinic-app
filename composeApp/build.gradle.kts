@@ -224,8 +224,16 @@ android {
         //       saltaba de golpe. Ahora se dibuja el molde de lo que viene (tarjetas,
         //       nombres, estados) y el contenido lo reemplaza sin salto, porque el
         //       espacio ya estaba tomado.
-        versionCode = 44
-        versionName = "2.9.14"
+        // v45/2.9.15 = LAS NOTIFICACIONES DEL CELULAR AL FIN LLEGAN: el aviso de una
+        //       cita nueva aparecia en el panel pero NUNCA en el telefono. Eran tres
+        //       fallos encadenados: se pedia el permiso de notificaciones y se seguia
+        //       de largo sin esperar la respuesta; al cambiar de cuenta en el mismo
+        //       celular el telefono seguia registrado con el usuario anterior; y los
+        //       errores se tragaban en silencio, asi que no habia forma de saberlo.
+        //       Ademas el saludo decia "Hola, Lic." — tomaba la primera palabra del
+        //       nombre, que en "Lic. Ana Quispe" es el titulo; ahora dice "Hola, Ana".
+        versionCode = 45
+        versionName = "2.9.15"
     }
     signingConfigs {
         create("release") {
