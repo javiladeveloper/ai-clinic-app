@@ -96,11 +96,14 @@ class SaniaFcmService : FirebaseMessagingService() {
         fun crearCanal(context: android.content.Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
             val nm = context.getSystemService(NotificationManager::class.java) ?: return
-            // El canal viejo se BORRA para que su versión muda no siga en uso: el
-            // servidor puede seguir pidiendo _v2 durante el despliegue (una app
-            // nueva puede hablar con un servidor viejo, y al revés). Al borrarlo,
-            // Android cae en el canal por defecto —que suena— en vez de usar uno
-            // creado sin sonido.
+            // Se limpian los canales de versiones anteriores para que no queden
+            // sueltos en los Ajustes del celular.
+            //
+            // OJO para quien venga a cambiar el sonido: borrar un canal NO olvida
+            // su configuración. Si se recrea con el MISMO id, Android le devuelve
+            // los ajustes que tenía —incluido "sin sonido"—, así que borrar y
+            // recrear NO sirve para redefinirlo. La única vía es un id que ese
+            // celular no haya visto nunca (por eso la serie _v2, _v3…).
             runCatching { nm.deleteNotificationChannel("sania_general") }
             runCatching { nm.deleteNotificationChannel("sania_general_v2") }
             if (nm.getNotificationChannel(CANAL) != null) return // ya existe: no se toca
