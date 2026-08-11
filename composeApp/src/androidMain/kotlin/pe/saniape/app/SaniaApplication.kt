@@ -21,6 +21,9 @@ class SaniaApplication : Application(), SingletonImageLoader.Factory {
         Supabase.client
         // FCM (notificaciones del celular): no-op hasta pegar los valores en FirebaseCfg.
         pe.saniape.app.push.FirebaseCfg.inicializar(this)
+        // Context para abrir los Ajustes de notificaciones desde fuera de Compose
+        // (el aviso de "avisos apagados" en Inicio).
+        pe.saniape.app.ui.ContextoApp.init(this)
     }
 
     // ImageLoader de Coil con fetcher de red ktor (carga las fotos evolutivas desde

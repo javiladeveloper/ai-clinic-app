@@ -1,9 +1,14 @@
 package pe.saniape.app.ui
 
 import android.Manifest
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
+import androidx.core.app.NotificationManagerCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -89,6 +94,45 @@ actual fun EfectoPushNativo(paciente: Boolean) {
         }
         val ok = if (paciente) PushRepo.registrarTokenPaciente(token) else PushRepo.registrarToken(token)
         Log.i(TAG, if (ok) "Dispositivo registrado para $userId" else "FALLÓ el registro del dispositivo para $userId")
+
+        // 3) ¿Los avisos están apagados a nivel de sistema?
+        //
+        // Android deja de mostrar el diálogo si ya se negó antes, así que el
+        // usuario podía quedarse sin avisos sin haber visto NUNCA una pregunta
+        // —y sin nada en la app que se lo dijera—. Esto lo deja visible en
+        // Inicio, con el botón para activarlos (2026-08-11).
+        EstadoAvisos.apagados = !NotificationManagerCompat.from(context).areNotificationsEnabled()
+        if (EstadoAvisos.apagados) Log.w(TAG, "Los avisos del celular están APAGADOS en Ajustes de Android")
+    }
+}
+
+/**
+ * Context de aplicación para abrir los Ajustes desde fuera de Compose.
+ * Lo llena SaniaApplication.onCreate, igual que Preferencias/RedMonitor.
+ */
+object ContextoApp {
+    @Volatile var contexto: Context? = null
+        private set
+
+    fun init(context: Context) { contexto = context.applicationContext }
+}
+
+/** Abre la pantalla de notificaciones de la app en los Ajustes de Android. */
+actual fun abrirAjustesDeNotificaciones() {
+    val ctx = ContextoApp.contexto ?: return
+    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+        putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    runCatching { ctx.startActivity(intent) }.onFailure {
+        // Fabricantes que no tienen esa pantalla: cae a la ficha de la app.
+        runCatching {
+            ctx.startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    .setData(Uri.fromParts("package", ctx.packageName, null))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
     }
 }
 

@@ -18,3 +18,11 @@ import androidx.compose.runtime.Composable
 actual fun EfectoPushNativo(paciente: Boolean) {
     // TODO(iOS Fase 2): registrar APNs/FCM y guardar el token en dispositivos_push.
 }
+
+/**
+ * No-op en iOS: mientras el push sea Fase 2 aquí, no hay permiso que reparar y
+ * el aviso de "avisos apagados" nunca se muestra (EstadoAvisos queda en false).
+ */
+actual fun abrirAjustesDeNotificaciones() {
+    // TODO(iOS Fase 2): UIApplication.openSettingsURLString
+}

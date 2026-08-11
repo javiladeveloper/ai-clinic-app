@@ -141,6 +141,20 @@ fun PantallaInicioStaff(
                     }
                 }
 
+                // Avisos del celular apagados. Android deja de preguntar cuando ya
+                // se negó una vez, así que sin esto la app se queda muda y no hay
+                // NADA que lo explique: se ve como "las notificaciones no llegan"
+                // (reporte del dueño 2026-08-11). Tocarlo abre los Ajustes.
+                if (pe.saniape.app.ui.EstadoAvisos.apagados) {
+                    item {
+                        AvisoInicio(
+                            "🔕", "Los avisos están apagados",
+                            "No recibirás notificaciones de citas. Toca para activarlos",
+                            c.error, c.errorBg,
+                        ) { pe.saniape.app.ui.abrirAjustesDeNotificaciones() }
+                    }
+                }
+
                 if (s != null) {
                     // ── PRÓXIMA CITA destacada (la primera de hoy que aún no pasa) ──
                     val proxima = proximaCita(s.agendaHoy)
