@@ -138,6 +138,24 @@ jobs:
           TRACK: ${{ steps.canal.outputs.track }}
         run: bundle exec fastlane android "$TRACK"
 
+      # Devuelve a master el versionCode nuevo. Sin esto el archivo se queda con
+      # el número viejo y el SIGUIENTE release calcularía el mismo → Play lo
+      # rechaza por versionCode repetido.
+      #
+      # continue-on-error: guardar la versión es SECUNDARIO y no puede tumbar un
+      # release ya subido a Play (pasó en v2.9.17, por permisos).
+      - name: Guardar la versión nueva en master
+        if: ${{ steps.version.outputs.aplicar == 'si' }}
+        continue-on-error: true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add composeApp/build.gradle.kts
+          git diff --cached --quiet && { echo "Sin cambios que guardar."; exit 0; }
+          git commit -m "chore(release): versionCode de ${GITHUB_REF_NAME} [skip ci]"
+          # El tag apunta a un commit de master; se empuja ahí, no al tag.
+          git push origin HEAD:master
+
       # El aviso de "nueva versión" NO se dispara aquí.
       #
       # Antes este paso anunciaba la versión recién SUBIDA, pero Google la revisa
