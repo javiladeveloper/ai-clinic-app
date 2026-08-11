@@ -101,8 +101,11 @@ jobs:
       # "nueva versión disponible" sin que nadie toque Vercel a mano.
       # Requiere secrets: VERCEL_TOKEN y VERCEL_PROJECT_ID (ver docs/ci-cd-despliegue.md).
       # Se salta silenciosamente si los secrets no están configurados (no rompe el deploy).
+      # OJO: antes decía `!= 'production'` — o sea que se saltaba JUSTO en el
+      # release de producción, que es cuando hace falta. Resultado: se publicaba
+      # la v45 en Play y el endpoint seguía anunciando la 39, así que a nadie le
+      # aparecía el aviso de nueva versión (2026-08-11).
       - name: Actualizar versión en Vercel (popup de actualización)
-        if: ${{ steps.canal.outputs.track != 'production' }}
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
