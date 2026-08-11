@@ -53,15 +53,28 @@ class SaniaFcmService : FirebaseMessagingService() {
             .setAutoCancel(true)
             .setContentIntent(abrir)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            // Sonido y vibración explícitos. En Android 8+ manda el canal, pero
+            // esto cubre los celulares viejos y sirve de respaldo si el canal
+            // quedó creado sin sonido: llegaba muda y no había forma de saberlo.
+            .setSound(Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://$packageName/${R.raw.sania_notif}"))
+            .setVibrate(longArrayOf(0, 400, 200, 400))
+            .setDefaults(NotificationCompat.DEFAULT_LIGHTS)
             .build()
         nm.notify(System.currentTimeMillis().toInt(), notif)
     }
 
-    // "_v2": el sonido de un canal solo se fija al CREARLO. El canal viejo
-    // ("sania_general") ya existe con el sonido por defecto en los dispositivos; con un
-    // id nuevo Android crea el canal con el sonido de Sania. Subir a _v3… si cambia.
+    // "_v3": el sonido y la vibración de un canal SOLO se fijan al CREARLO —
+    // después son del usuario y la app no puede tocarlos. En los celulares donde
+    // ya existía "_v2" se había creado sin sonido (lo creaba mostrar(), que solo
+    // corría cuando el aviso ya venía mudo), así que las notificaciones llegaban
+    // SIN SONIDO y no había forma de arreglarlo salvo con un id nuevo
+    // (reportado por el dueño 2026-08-11: "la notificación sí llega, sin sonido").
+    //
+    // Subir a _v4… si el sonido vuelve a cambiar. Ojo: cada cambio de id deja el
+    // canal anterior visible en los Ajustes del celular; por eso no se hace a la
+    // ligera, solo cuando de verdad hay que redefinir sonido o importancia.
     companion object {
-        const val CANAL = "sania_general_v2"
+        const val CANAL = "sania_general_v3"
         /** Id de la cita que abrió la notificación: MainActivity lo lee para llevar al paciente a ella. */
         const val EXTRA_CITA = "cita_id"
 
@@ -83,6 +96,13 @@ class SaniaFcmService : FirebaseMessagingService() {
         fun crearCanal(context: android.content.Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
             val nm = context.getSystemService(NotificationManager::class.java) ?: return
+            // El canal viejo se BORRA para que su versión muda no siga en uso: el
+            // servidor puede seguir pidiendo _v2 durante el despliegue (una app
+            // nueva puede hablar con un servidor viejo, y al revés). Al borrarlo,
+            // Android cae en el canal por defecto —que suena— en vez de usar uno
+            // creado sin sonido.
+            runCatching { nm.deleteNotificationChannel("sania_general") }
+            runCatching { nm.deleteNotificationChannel("sania_general_v2") }
             if (nm.getNotificationChannel(CANAL) != null) return // ya existe: no se toca
             // Sonido propio de Sania (mismo acorde que la intro de marca): el fisio
             // reconoce que la notificación es de Sania sin mirar la pantalla.

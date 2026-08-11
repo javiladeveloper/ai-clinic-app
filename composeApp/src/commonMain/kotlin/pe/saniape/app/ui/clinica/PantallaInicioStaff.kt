@@ -76,12 +76,31 @@ fun PantallaInicioStaff(
     var verNotifs by remember { mutableStateOf(false) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
+    // La clave es Reanudacion.contador, no Unit: con Unit esto corría UNA vez por
+    // montaje, así que al volver a la app tras agendar una cita la agenda seguía
+    // mostrando lo de antes y había que refrescar a mano. Ahora cada vuelta al
+    // frente vuelve a consultar.
+    LaunchedEffect(pe.saniape.app.ui.Reanudacion.contador) {
         // Refresca aunque haya caché (para traer lo nuevo), pero sin borrar la pantalla:
         // si ya hay stats visibles, el spinner no aparece (cargando ya es false).
         try { DashboardRepo.stats()?.let { stats = it } } catch (_: Exception) {}
         cargando = false
         notifs = runCatching { pe.saniape.app.data.staff.NotificacionesRepo.listar() }.getOrDefault(emptyList())
+    }
+
+    // Realtime: "Agenda de hoy" se actualiza sola cuando alguien agenda o cambia
+    // una cita desde el panel. La pantalla de Agenda ya estaba suscrita, pero el
+    // Inicio NO — y es la primera que se ve al abrir la app, así que era justo
+    // donde se notaba: llegaba el aviso al celular, se abría Sania y la cita
+    // nueva no estaba hasta refrescar a mano (2026-08-11).
+    LaunchedEffect(Unit) {
+        pe.saniape.app.data.staff.RealtimeAgenda.suscribir(this) {
+            // Solo las stats: recargar las notificaciones aquí las marcaría como
+            // vistas sin que el usuario las haya visto.
+            scope.launch {
+                runCatching { DashboardRepo.stats() }.getOrNull()?.let { stats = it }
+            }
+        }
     }
     val noLeidas = notifs.count { !it.leida }
 
@@ -199,19 +218,25 @@ fun PantallaInicioStaff(
                     // ── Stats: profesional (2×2) vs gestor (KPIs) ──
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(Sania.dim.md)) {
+                            // Cada cifra lleva a la lista que hay detrás: leer
+                            // "3 citas hoy" y tener que bajar a buscar el acceso
+                            // es un paso de más en lo que más se mira del día.
                             if (s.esProfesional) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(Sania.dim.md)) {
-                                    StatCard("Citas hoy", s.citasHoy.toString(), "📅", Modifier.weight(1f))
-                                    StatCard("Pendientes", s.misCitasPendientes.toString(), "⏳", Modifier.weight(1f))
+                                    StatCard("Citas hoy", s.citasHoy.toString(), "📅", Modifier.weight(1f), onIrAgenda)
+                                    StatCard("Pendientes", s.misCitasPendientes.toString(), "⏳", Modifier.weight(1f), onIrAgenda)
                                 }
                                 Row(horizontalArrangement = Arrangement.spacedBy(Sania.dim.md)) {
-                                    StatCard("Mis pacientes", s.totalPacientes.toString(), "👥", Modifier.weight(1f))
+                                    StatCard("Mis pacientes", s.totalPacientes.toString(), "👥", Modifier.weight(1f), onIrPacientes)
+                                    // "Sesiones" es un acumulado histórico, no una
+                                    // lista: no hay pantalla a la que llevar, así
+                                    // que se queda sin toque en vez de fingir uno.
                                     StatCard("Sesiones", s.misSesionesCompletadas.toString(), "✅", Modifier.weight(1f))
                                 }
                             } else {
                                 Row(horizontalArrangement = Arrangement.spacedBy(Sania.dim.md)) {
-                                    StatCard("Total pacientes", s.totalPacientes.toString(), "👥", Modifier.weight(1f))
-                                    StatCard("Citas hoy", s.citasHoy.toString(), "📅", Modifier.weight(1f))
+                                    StatCard("Total pacientes", s.totalPacientes.toString(), "👥", Modifier.weight(1f), onIrPacientes)
+                                    StatCard("Citas hoy", s.citasHoy.toString(), "📅", Modifier.weight(1f), onIrAgenda)
                                 }
                             }
                         }
@@ -393,10 +418,21 @@ private fun AccesoRapido(emoji: String, label: String, modifier: Modifier = Modi
 }
 
 @Composable
-private fun StatCard(label: String, valor: String, emoji: String, modifier: Modifier = Modifier) {
+private fun StatCard(
+    label: String,
+    valor: String,
+    emoji: String,
+    modifier: Modifier = Modifier,
+    // Una cifra que interesa lleva a la lista que hay detrás: ver "3 citas hoy"
+    // y no poder tocarlo obliga a bajar a buscar el acceso. Sin onClick, la
+    // tarjeta se queda como estaba (no todas las cifras tienen a dónde llevar).
+    onClick: (() -> Unit)? = null,
+) {
     val c = Sania.colors
     Column(
-        modifier.tarjeta().padding(Sania.dim.lg),
+        modifier.tarjeta()
+            .let { if (onClick != null) it.tocable { onClick() } else it }
+            .padding(Sania.dim.lg),
     ) {
         Text(emoji, fontSize = 22.sp)
         Spacer(Modifier.height(6.dp))

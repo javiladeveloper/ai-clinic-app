@@ -36,4 +36,16 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         CitaPendienteDeAbrir.pedir(intent.getStringExtra(SaniaFcmService.EXTRA_CITA))
     }
+
+    /**
+     * Volver al frente refresca los datos de las pantallas.
+     *
+     * Sin esto, `LaunchedEffect(Unit)` solo corría al montar: se agendaba una
+     * cita, llegaba el aviso al celular, se abría la app… y la agenda seguía
+     * mostrando lo de antes hasta refrescar a mano.
+     */
+    override fun onResume() {
+        super.onResume()
+        pe.saniape.app.ui.Reanudacion.volvioAlFrente()
+    }
 }
