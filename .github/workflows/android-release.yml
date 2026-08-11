@@ -25,6 +25,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Historial completo: el versionCode se calcula contando commits, y con
+          # el checkout somero (por defecto) siempre daría 1.
+          fetch-depth: 0
 
       # Resuelve el track de Play desde el prefijo del tag o del input manual.
       - name: Determinar canal
@@ -41,6 +45,37 @@ jobs:
           fi
           echo "track=$TRACK" >> "$GITHUB_OUTPUT"
           echo "Canal de Play: $TRACK (ref ${GITHUB_REF_NAME})"
+
+      # El versionCode y el versionName salen DEL TAG, no del build.gradle.kts.
+      #
+      # Antes había que editar el archivo a mano antes de cada release, y eso es
+      # justo lo que se olvida: subir el tag con el versionCode viejo hace que
+      # Play RECHACE el .aab ("versionCode ya usado"), o peor, que se publique
+      # anunciando un número que no corresponde.
+      #
+      # versionName = lo que sigue a "v" en el tag (produccion-v2.9.16 → 2.9.16).
+      # versionCode = el del archivo + 1. Se prefiere a contar commits porque
+      # mantiene la numeración corta y pegada a la de Play (47, 48, 49…) en vez
+      # de saltar a cientos, que vuelve ilegible la correspondencia.
+      # El commit con el número nuevo se devuelve a master al final del workflow,
+      # así el archivo nunca se queda atrás del release publicado.
+      - name: Calcular versión desde el tag
+        id: version
+        run: |
+          NOMBRE="${GITHUB_REF_NAME#*v}"
+          if [ -z "$NOMBRE" ] || [ "$NOMBRE" = "${GITHUB_REF_NAME}" ]; then
+            # workflow_dispatch (sin tag): se respeta lo que diga el archivo.
+            echo "Sin tag con versión: se usa la del build.gradle.kts."
+            echo "aplicar=no" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          ACTUAL=$(grep -oE 'versionCode[[:space:]]*=[[:space:]]*[0-9]+' composeApp/build.gradle.kts | grep -oE '[0-9]+' | head -1)
+          CODE=$((ACTUAL + 1))
+          sed -i -E "s/versionCode[[:space:]]*=[[:space:]]*[0-9]+/versionCode = $CODE/" composeApp/build.gradle.kts
+          sed -i -E "s/versionName[[:space:]]*=[[:space:]]*\"[^\"]*\"/versionName = \"$NOMBRE\"/" composeApp/build.gradle.kts
+          echo "aplicar=si" >> "$GITHUB_OUTPUT"
+          echo "Versión de este release: $NOMBRE ($CODE)"
+          grep -E 'versionCode|versionName' composeApp/build.gradle.kts | tail -2
 
       - name: Configurar JDK 17
         uses: actions/setup-java@v4
@@ -105,6 +140,20 @@ jobs:
       # release de producción, que es cuando hace falta. Resultado: se publicaba
       # la v45 en Play y el endpoint seguía anunciando la 39, así que a nadie le
       # aparecía el aviso de nueva versión (2026-08-11).
+      # Devuelve a master el versionCode nuevo. Sin esto el archivo se queda con
+      # el número viejo y el SIGUIENTE release calcularía el mismo → Play lo
+      # rechaza por versionCode repetido.
+      - name: Guardar la versión nueva en master
+        if: ${{ steps.version.outputs.aplicar == 'si' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add composeApp/build.gradle.kts
+          git diff --cached --quiet && { echo "Sin cambios que guardar."; exit 0; }
+          git commit -m "chore(release): versionCode de ${GITHUB_REF_NAME} [skip ci]"
+          # El tag apunta a un commit de master; se empuja ahí, no al tag.
+          git push origin HEAD:master
+
       - name: Actualizar versión en Vercel (popup de actualización)
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
