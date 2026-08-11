@@ -138,70 +138,17 @@ jobs:
           TRACK: ${{ steps.canal.outputs.track }}
         run: bundle exec fastlane android "$TRACK"
 
-      # Actualiza en Vercel la ÚLTIMA versión disponible (APP_ANDROID_LATEST) al versionCode
-      # recién subido → el endpoint /api/app/version la sirve y la app muestra el popup
-      # "nueva versión disponible" sin que nadie toque Vercel a mano.
-      # Requiere secrets: VERCEL_TOKEN y VERCEL_PROJECT_ID (ver docs/ci-cd-despliegue.md).
-      # Se salta silenciosamente si los secrets no están configurados (no rompe el deploy).
-      # OJO: antes decía `!= 'production'` — o sea que se saltaba JUSTO en el
-      # release de producción, que es cuando hace falta. Resultado: se publicaba
-      # la v45 en Play y el endpoint seguía anunciando la 39, así que a nadie le
-      # aparecía el aviso de nueva versión (2026-08-11).
-      # Devuelve a master el versionCode nuevo. Sin esto el archivo se queda con
-      # el número viejo y el SIGUIENTE release calcularía el mismo → Play lo
-      # rechaza por versionCode repetido.
-      # continue-on-error: guardar la versión es SECUNDARIO. Sin esto, un fallo
-      # aquí tumba el release entero DESPUÉS de haber subido el .aab a Play y
-      # deja sin correr el paso de Vercel — el aviso de actualización no sale y
-      # el release queda a medias. Paso justo en v2.9.17 (403 por permisos).
-      - name: Guardar la versión nueva en master
-        if: ${{ steps.version.outputs.aplicar == 'si' }}
-        continue-on-error: true
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add composeApp/build.gradle.kts
-          git diff --cached --quiet && { echo "Sin cambios que guardar."; exit 0; }
-          git commit -m "chore(release): versionCode de ${GITHUB_REF_NAME} [skip ci]"
-          # El tag apunta a un commit de master; se empuja ahí, no al tag.
-          git push origin HEAD:master
+      # El aviso de "nueva versión" NO se dispara aquí.
+      #
+      # Antes este paso anunciaba la versión recién SUBIDA, pero Google la revisa
+      # antes de publicarla y eso tarda horas. En ese hueco la app veía un número
+      # que aún no se podía descargar: decía "hay una actualización", mandaba a
+      # la tienda y allí no había nada (reportado 2026-08-11).
+      #
+      # Ahora lo hace el workflow `anunciar-version.yml`, que cada hora le
+      # pregunta a Play qué versionCode está REALMENTE publicado y solo anuncia
+      # ese. Se puede forzar a mano desde Actions si no se quiere esperar.
 
-      - name: Actualizar versión en Vercel (popup de actualización)
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
-        run: |
-          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
-            echo "VERCEL_TOKEN/VERCEL_PROJECT_ID no configurados — se omite (config manual)."
-            exit 0
-          fi
-          # versionCode del build.gradle.kts (la línea 'versionCode = N').
-          VC=$(grep -oE 'versionCode[[:space:]]*=[[:space:]]*[0-9]+' composeApp/build.gradle.kts | grep -oE '[0-9]+' | head -1)
-          echo "Actualizando APP_ANDROID_LATEST = $VC en Vercel…"
-          # 1) Buscar el id de la env var existente (si existe) para actualizarla.
-          ENV_ID=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
-            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID/env" \
-            | grep -o '"id":"[^"]*","key":"APP_ANDROID_LATEST"' | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-          if [ -n "$ENV_ID" ]; then
-            curl -s -X PATCH -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" \
-              "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID/env/$ENV_ID" \
-              -d "{\"value\":\"$VC\"}" > /dev/null && echo "✓ actualizada."
-          else
-            curl -s -X POST -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" \
-              "https://api.vercel.com/v10/projects/$VERCEL_PROJECT_ID/env" \
-              -d "{\"key\":\"APP_ANDROID_LATEST\",\"value\":\"$VC\",\"type\":\"plain\",\"target\":[\"production\"]}" > /dev/null && echo "✓ creada."
-          fi
-          # Vercel CONGELA las env vars al momento del deploy: cambiar la var NO afecta al
-          # deployment vivo hasta un nuevo deploy. El Deploy Hook re-despliega producción
-          # con el valor fresco → el endpoint /api/app/version pasa a servir el nuevo número.
-          if [ -n "$VERCEL_DEPLOY_HOOK" ]; then
-            curl -s -X POST "$VERCEL_DEPLOY_HOOK" > /dev/null && echo "✓ redeploy de la web disparado (deploy hook)."
-          else
-            echo "⚠ VERCEL_DEPLOY_HOOK no configurado — la var quedó guardada pero el popup NO se activa hasta el próximo deploy de la web. Configúralo (ver docs/ci-cd-despliegue.md)."
-          fi
-
-      # Limpieza: borra los secretos materializados aunque el job falle.
       - name: Limpiar secretos del runner
         if: always()
         run: rm -f sania-release.jks keystore.properties play-store-key.json

@@ -1,0 +1,105 @@
+name: Anunciar versión publicada
+
+# Anuncia en la web la última versión que Google Play tiene REALMENTE PUBLICADA.
+#
+# Por qué existe: el release anunciaba la versión al SUBIRLA a Play, pero Google
+# la revisa antes de publicarla y eso tarda horas. En ese hueco la app veía un
+# número que todavía no se podía descargar: decía "hay una actualización", te
+# mandaba a la tienda y allí no había nada nuevo (reportado 2026-08-11).
+#
+# Ahora se le pregunta a Play qué versionCode está en estado "completed" en el
+# track de producción, y solo ESO se anuncia. Mientras la versión siga en
+# revisión, la web sigue anunciando la anterior — que es la verdad.
+#
+# Corre solo cada hora y también a mano (workflow_dispatch).
+
+on:
+  schedule:
+    - cron: "17 * * * *"   # cada hora (minuto 17 para no chocar con el pico)
+  workflow_dispatch:
+
+jobs:
+  anunciar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Preguntar a Play y actualizar la web
+        env:
+          PLAY_JSON_B64: ${{ secrets.PLAY_STORE_JSON_KEY_B64 }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          set -e
+          if [ -z "$PLAY_JSON_B64" ] || [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "Faltan secrets — se omite."
+            exit 0
+          fi
+          echo "$PLAY_JSON_B64" | base64 -d > /tmp/play.json
+
+          # ── Token de la API de Google Play (JWT de la cuenta de servicio) ──
+          CLIENT_EMAIL=$(python3 -c "import json;print(json.load(open('/tmp/play.json'))['client_email'])")
+          python3 -c "import json;open('/tmp/pk.pem','w').write(json.load(open('/tmp/play.json'))['private_key'])"
+          AHORA=$(date +%s)
+          b64() { base64 -w0 | tr '+/' '-_' | tr -d '='; }
+          HEADER=$(printf '{"alg":"RS256","typ":"JWT"}' | b64)
+          CLAIMS=$(printf '{"iss":"%s","scope":"https://www.googleapis.com/auth/androidpublisher","aud":"https://oauth2.googleapis.com/token","iat":%s,"exp":%s}' \
+            "$CLIENT_EMAIL" "$AHORA" "$((AHORA+3600))" | b64)
+          FIRMA=$(printf '%s.%s' "$HEADER" "$CLAIMS" | openssl dgst -sha256 -sign /tmp/pk.pem | b64)
+          rm -f /tmp/pk.pem /tmp/play.json
+          TOKEN=$(curl -s -X POST https://oauth2.googleapis.com/token \
+            -d "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=$HEADER.$CLAIMS.$FIRMA" \
+            | python3 -c "import json,sys;print(json.load(sys.stdin).get('access_token',''))")
+          [ -z "$TOKEN" ] && { echo "::warning::No se pudo autenticar con Play"; exit 0; }
+
+          # ── Qué versionCode está REALMENTE PUBLICADO en producción ──
+          #
+          # OJO: NO sirve mirar el `status` de edits.tracks.get. Un release en
+          # revisión reporta `completed` igual que uno ya publicado — ese campo
+          # refleja la intención de rollout que enviaste, no la disponibilidad
+          # real, y el enum no tiene ningún estado de revisión. Google lo
+          # reconoce como defecto en su propio tracker (issue 208842993).
+          # Filtrar por ahí reproduce el bug que este workflow viene a arreglar.
+          #
+          # El endpoint correcto es applications.tracks.releases.list, que sí
+          # expone `releaseLifecycleState` con los estados de revisión
+          # (IN_REVIEW, APPROVED_NOT_PUBLISHED, PUBLISHED…). Además no necesita
+          # abrir un edit.
+          PKG="pe.saniape.app"
+          API="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PKG"
+          VC=$(curl -s -H "Authorization: Bearer $TOKEN" "$API/tracks/production/releases" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); c=[int(a['versionCode']) for r in d.get('releases',[]) if r.get('releaseLifecycleState')=='RELEASE_LIFECYCLE_STATE_PUBLISHED' for a in (r.get('activeArtifacts') or []) if a.get('versionCode')]; print(max(c) if c else '')")
+
+          if [ -z "$VC" ]; then
+            echo "Play no reporta ninguna versión publicada todavía — no se anuncia nada."
+            exit 0
+          fi
+          echo "Publicado en Play: versionCode $VC"
+
+          # ── ¿Ya está anunciado ese número? Si sí, no se toca nada ──
+          ENV_JSON=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID/env")
+          ENV_ID=$(echo "$ENV_JSON" | grep -o '"id":"[^"]*","key":"APP_ANDROID_LATEST"' | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+          ACTUAL=$(curl -s "https://www.saniape.com/api/app/version" | grep -oE '"latest":[0-9]+' | head -1 | grep -oE '[0-9]+')
+          if [ "$ACTUAL" = "$VC" ]; then
+            echo "La web ya anuncia la $VC — nada que hacer."
+            exit 0
+          fi
+          echo "La web anuncia $ACTUAL; Play tiene publicada $VC → actualizando."
+
+          if [ -n "$ENV_ID" ]; then
+            curl -s -X PATCH -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" \
+              "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID/env/$ENV_ID" \
+              -d "{\"value\":\"$VC\"}" > /dev/null && echo "✓ variable actualizada."
+          else
+            curl -s -X POST -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" \
+              "https://api.vercel.com/v10/projects/$VERCEL_PROJECT_ID/env" \
+              -d "{\"key\":\"APP_ANDROID_LATEST\",\"value\":\"$VC\",\"type\":\"plain\",\"target\":[\"production\"]}" > /dev/null && echo "✓ variable creada."
+          fi
+
+          # Vercel CONGELA las env vars al desplegar: sin un deploy nuevo, el
+          # endpoint sigue sirviendo el valor viejo.
+          if [ -n "$VERCEL_DEPLOY_HOOK" ]; then
+            curl -s -X POST "$VERCEL_DEPLOY_HOOK" > /dev/null && echo "✓ redeploy disparado."
+          else
+            echo "::warning::VERCEL_DEPLOY_HOOK no configurado: la variable quedó guardada pero el aviso no se activa hasta el próximo deploy."
+          fi
