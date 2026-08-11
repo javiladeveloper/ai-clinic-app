@@ -23,15 +23,23 @@ object PushRepo {
     suspend fun registrarToken(token: String): Boolean {
         val userId = Supabase.client.auth.currentUserOrNull()?.id ?: return false
         return runCatching {
-            // Delete + insert (más simple que upsert con onConflict en supabase-kt, y el
-            // token es UNIQUE): si el token ya era de otro perfil (cambio de cuenta en el
-            // mismo celular), pasa a ser del usuario actual.
-            Supabase.client.postgrest["dispositivos_push"].delete { filter { eq("token", token) } }
-            Supabase.client.postgrest["dispositivos_push"].insert(buildJsonObject {
-                put("perfil_id", userId)
-                put("token", token)
-                put("plataforma", "android")
-            })
+            // UPSERT en un solo viaje. Antes eran DOS (delete + insert) y eso traía dos
+            // problemas:
+            //  1. Si el primero se pasaba del timeout, el registro entero fallaba — en el
+            //     emulador se colgaba SIEMPRE en el delete (2026-08-10).
+            //  2. El delete no servía para lo que decía servir: la RLS solo deja borrar
+            //     filas propias, así que el token de OTRA cuenta —el caso que quería
+            //     resolver— nunca se borraba.
+            //
+            // `token` es UNIQUE, así que el upsert por esa columna reasigna la fila al
+            // usuario actual en una sola operación, y del lado del servidor.
+            Supabase.client.postgrest["dispositivos_push"].upsert(
+                listOf(buildJsonObject {
+                    put("perfil_id", userId)
+                    put("token", token)
+                    put("plataforma", "android")
+                }),
+            ) { onConflict = "token" }
             true
         }.getOrElse {
             println("SaniaPush: no se pudo registrar el dispositivo — ${it.message}")
@@ -48,12 +56,14 @@ object PushRepo {
     suspend fun registrarTokenPaciente(token: String): Boolean {
         val userId = Supabase.client.auth.currentUserOrNull()?.id ?: return false
         return runCatching {
-            Supabase.client.postgrest["dispositivos_push_paciente"].delete { filter { eq("token", token) } }
-            Supabase.client.postgrest["dispositivos_push_paciente"].insert(buildJsonObject {
-                put("auth_user_id", userId)
-                put("token", token)
-                put("plataforma", "android")
-            })
+            // Un solo viaje, igual que el del staff (ver la nota de registrarToken).
+            Supabase.client.postgrest["dispositivos_push_paciente"].upsert(
+                listOf(buildJsonObject {
+                    put("auth_user_id", userId)
+                    put("token", token)
+                    put("plataforma", "android")
+                }),
+            ) { onConflict = "token" }
             true
         }.getOrElse {
             println("SaniaPush: no se pudo registrar el dispositivo del paciente — ${it.message}")
