@@ -13,6 +13,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessaging
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.status.SessionStatus
 import pe.saniape.app.data.Supabase
 import pe.saniape.app.data.staff.PushRepo
 import pe.saniape.app.push.FirebaseCfg
@@ -65,7 +67,15 @@ actual fun EfectoPushNativo(paciente: Boolean) {
 
     // La clave incluye al usuario: al cambiar de cuenta en el mismo celular, el
     // token debe pasar a la cuenta nueva. Con `Unit` se quedaba en la anterior.
-    val userId = Supabase.client.auth.currentUserOrNull()?.id
+    //
+    // Y se OBSERVA la sesión, no se lee una vez. `currentUserOrNull()` es una
+    // lectura suelta: en un arranque en frío la sesión todavía se está
+    // restaurando, devuelve null, el efecto sale y —como el valor no es estado
+    // de Compose— NUNCA se reintenta. En el emulador no se notaba (la sesión ya
+    // estaba lista); en un celular real el registro se perdía y ese dispositivo
+    // se quedaba sin avisos para siempre (2026-08-11).
+    val sesion by Supabase.client.auth.sessionStatus.collectAsState()
+    val userId = (sesion as? SessionStatus.Authenticated)?.session?.user?.id
 
     LaunchedEffect(userId, permisoResuelto) {
         if (userId == null) return@LaunchedEffect
