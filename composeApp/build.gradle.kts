@@ -232,8 +232,8 @@ android {
         //       errores se tragaban en silencio, asi que no habia forma de saberlo.
         //       Ademas el saludo decia "Hola, Lic." — tomaba la primera palabra del
         //       nombre, que en "Lic. Ana Quispe" es el titulo; ahora dice "Hola, Ana".
-        versionCode = 49
-        versionName = "2.9.19"
+        versionCode = 50
+        versionName = "2.9.20"
     }
     signingConfigs {
         create("release") {
