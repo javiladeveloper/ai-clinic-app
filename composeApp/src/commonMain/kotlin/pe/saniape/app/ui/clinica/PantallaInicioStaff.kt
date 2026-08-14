@@ -76,6 +76,10 @@ fun PantallaInicioStaff(
     var verNotifs by remember { mutableStateOf(false) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
+    // Metas de comisión. Se autooculta si no tiene ninguna: solo comisiona quien
+    // la clínica configuró, y a los demás no debe salirles un hueco vacío.
+    var metas by remember { mutableStateOf<List<pe.saniape.app.data.staff.AvanceMeta>>(emptyList()) }
+
     // La clave es Reanudacion.contador, no Unit: con Unit esto corría UNA vez por
     // montaje, así que al volver a la app tras agendar una cita la agenda seguía
     // mostrando lo de antes y había que refrescar a mano. Ahora cada vuelta al
@@ -86,6 +90,7 @@ fun PantallaInicioStaff(
         try { DashboardRepo.stats()?.let { stats = it } } catch (_: Exception) {}
         cargando = false
         notifs = runCatching { pe.saniape.app.data.staff.NotificacionesRepo.listar() }.getOrDefault(emptyList())
+        metas = pe.saniape.app.data.staff.MetasRepo.mias()
     }
 
     // Realtime: "Agenda de hoy" se actualiza sola cuando alguien agenda o cambia
@@ -137,6 +142,7 @@ fun PantallaInicioStaff(
                     scope.launch {
                         runCatching { DashboardRepo.stats() }.onSuccess { stats = it }
                         notifs = runCatching { pe.saniape.app.data.staff.NotificacionesRepo.listar() }.getOrDefault(notifs)
+                        metas = pe.saniape.app.data.staff.MetasRepo.mias()
                         refrescando = false
                     }
                 },
@@ -155,6 +161,18 @@ fun PantallaInicioStaff(
                         )
                         Text(fechaHumanaHoy(), color = c.textoSuave, fontSize = Sania.txt.pequeno)
                     }
+                }
+
+                // ── MI META ──
+                // Arriba del todo, debajo del saludo: es lo que el profesional
+                // viene a mirar cada mañana, igual que "citas hoy". Escondida en
+                // un menú nadie la abre, y una meta que no se ve no motiva.
+                //
+                // Solo el avance, NUNCA el monto del bono: el endpoint ni
+                // siquiera lo manda cuando pregunta un profesional (decisión del
+                // dueño, 2026-08-14).
+                items(metas) { meta ->
+                    TarjetaMeta(meta)
                 }
 
                 // Avisos del celular apagados. Android deja de preguntar cuando ya
@@ -484,5 +502,67 @@ fun BadgeEstadoCita(estado: String) {
     Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(bg)
         .padding(horizontal = 10.dp, vertical = 4.dp)) {
         Text(estado, color = fg, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+/**
+ * La meta del profesional: cuánto lleva y cuánto le falta.
+ *
+ * Sin montos a propósito — él ve su avance, no el premio. La barra usa el color
+ * de la clínica y se pone verde al cumplir, que es el momento que hay que
+ * celebrar.
+ */
+@Composable
+private fun TarjetaMeta(meta: pe.saniape.app.data.staff.AvanceMeta) {
+    val c = Sania.colors
+    val progreso = (meta.progreso.coerceIn(0, 100)) / 100f
+    // La barra crece sola al entrar: hace mirar el número, que es de lo que va.
+    val animado by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = progreso,
+        animationSpec = tween(Movim.largo, easing = Movim.salida),
+        label = "meta",
+    )
+    Column(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(Sania.shape.md.dp))
+            .background(if (meta.cumplida) c.okBg else c.superficie)
+            .border(
+                1.dp,
+                if (meta.cumplida) c.ok else c.borde,
+                RoundedCornerShape(Sania.shape.md.dp),
+            )
+            .padding(Sania.dim.lg),
+    ) {
+        Text(
+            (meta.etiqueta ?: "MI META DEL MES").uppercase(),
+            color = c.textoSuave, fontSize = 9.sp,
+            fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            meta.texto,
+            color = if (meta.cumplida) c.ok else c.navy,
+            fontSize = 26.sp, fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(10.dp))
+        // Barra de progreso
+        Box(
+            Modifier.fillMaxWidth().height(8.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(c.borde),
+        ) {
+            Box(
+                Modifier.fillMaxWidth(animado.coerceAtLeast(0.02f)).height(8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(if (meta.cumplida) c.ok else c.navy),
+            )
+        }
+        if (!meta.cumplida && meta.faltan > 0) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                if (meta.faltan == 1) "Te falta 1 para llegar" else "Te faltan ${meta.faltan} para llegar",
+                color = c.textoSuave, fontSize = Sania.txt.pequeno,
+            )
+        }
     }
 }
