@@ -44,6 +44,7 @@ import pe.saniape.app.data.staff.TratamientoPaciente
 import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.theme.EstadosColor
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.data.staff.FlujoClinica
 
 /** Estado de sesión que se puede fijar desde el menú ⋯ (igual que la web). */
 private val ESTADOS_SESION = listOf("Reprogramada", "No asistió", "Cancelada", "Otro")
@@ -57,6 +58,8 @@ private val ESTADOS_SESION = listOf("Reprogramada", "No asistió", "Cancelada", 
 @Composable
 fun TarjetaTratamiento(
     t: TratamientoPaciente,
+    // Nombres que esta clínica le da a los pasos del recorrido.
+    flujo: FlujoClinica = FlujoClinica(),
     verPagos: Boolean,
     esAdmin: Boolean,
     puedeSesiones: Boolean,
@@ -198,7 +201,7 @@ fun TarjetaTratamiento(
         if (t.estado == "Activo" || t.estado == "Completado" || t.estado == "Alta") {
             Spacer(Modifier.height(10.dp))
             BarraRecorrido(
-                trat = t, consultaDone = consultaDone, evalDone = evalDone,
+                trat = t, flujo = flujo, consultaDone = consultaDone, evalDone = evalDone,
                 citaConsulta = citaConsulta, citaEvaluacion = citaEvaluacion,
                 puedePagos = verPagos, expandido = expandido, onEditarCita = onEditarCita,
                 onToggleSesiones = { expandido = !expandido },

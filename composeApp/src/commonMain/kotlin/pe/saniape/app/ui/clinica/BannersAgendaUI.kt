@@ -33,6 +33,7 @@ import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.recordarAcciones
 import pe.saniape.app.data.staff.NivelRiesgo
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.data.staff.FlujoClinica
 
 /**
  * Banners de la agenda (igual que la web): derivaciones pendientes, citas vencidas
@@ -40,6 +41,7 @@ import pe.saniape.app.ui.theme.Sania
  */
 @Composable
 fun BannersAgendaUI(
+    flujo: FlujoClinica = FlujoClinica(),
     banners: BannersAgenda,
     onVerCitaManana: (CitaStaff) -> Unit,
     onCerrarVencida: (CitaStaff, vino: Boolean) -> Unit,
@@ -96,7 +98,7 @@ fun BannersAgendaUI(
                     Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("${cita.fecha} · ${hora12(cita.hora)} · ${cita.tipo ?: ""}",
+                                Text("${cita.fecha} · ${hora12(cita.hora)} · ${flujo.nombreTipo(cita.tipo)}",
                                     color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                 Text(cita.pacienteNombre ?: "Paciente", color = c.textoSuave, fontSize = 12.sp)
                             }

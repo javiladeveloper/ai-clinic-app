@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import pe.saniape.app.data.staff.CitaHito
 import pe.saniape.app.data.staff.TratamientoPaciente
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.data.staff.FlujoClinica
 
 /** Un paso del recorrido (bolita + label). */
 private data class Paso(val label: String, val done: Boolean, val activo: Boolean)
@@ -47,6 +48,9 @@ private data class Paso(val label: String, val done: Boolean, val activo: Boolea
 @Composable
 fun BarraRecorrido(
     trat: TratamientoPaciente,
+    // Nombres que esta clínica le da a sus pasos. Con default para no romper
+    // las llamadas que todavía no lo pasan.
+    flujo: FlujoClinica = FlujoClinica(),
     consultaDone: Boolean,
     evalDone: Boolean,
     citaConsulta: CitaHito? = null,
@@ -91,10 +95,10 @@ fun BarraRecorrido(
     }
     val pasoCuarto =
         if (esServUnico) Paso("Pagado", done = servPagado, activo = servRealizado && !servPagado)
-        else Paso("Alta", done = altaTrat, activo = false)
+        else Paso(flujo.labelAlta, done = altaTrat, activo = false)
     val pasos = listOf(
-        Paso("Consulta", done = consultaDone, activo = false),
-        Paso("Evaluación", done = evalDone, activo = false),
+        Paso(flujo.labelConsulta, done = consultaDone, activo = false),
+        Paso(flujo.labelEvaluacion, done = evalDone, activo = false),
         pasoTercero,
         pasoCuarto,
     )
@@ -179,7 +183,7 @@ fun BarraRecorrido(
             // Detalle de la cita (si la hay)
             citaAbierta?.let { cita ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("${if (cita.tipo == "Consulta") "💬" else "🔍"} ${cita.tipo}",
+                    Text("${if (cita.tipo == "Consulta") "💬" else "🔍"} ${flujo.nombreTipo(cita.tipo)}",
                         color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     // El ✏ Editar NO va en el paso Control (ahí está "Registrar atención").
                     // En Consulta/Evaluación (fisio Y servicio único) sí: edita la cita.

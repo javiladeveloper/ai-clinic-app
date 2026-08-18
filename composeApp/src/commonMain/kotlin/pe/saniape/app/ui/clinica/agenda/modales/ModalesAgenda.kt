@@ -42,6 +42,7 @@ import pe.saniape.app.data.staff.EspecialidadRef
 import pe.saniape.app.ui.clinica.agenda.AccionCita
 import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.data.staff.FlujoClinica
 
 /**
  * Modal de completar Evaluación/Sesión (como la web):
@@ -187,7 +188,7 @@ fun ConfirmacionAccion(cita: CitaStaff, accion: AccionCita, onCancelar: () -> Un
 /** Editar/Reprogramar cita: fecha y hora con pickers nativos. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ModalEditarCita(cita: CitaStaff, onCancelar: () -> Unit, onGuardar: (fecha: String, hora: String) -> Unit) {
+fun ModalEditarCita(cita: CitaStaff, flujo: FlujoClinica = FlujoClinica(), onCancelar: () -> Unit, onGuardar: (fecha: String, hora: String) -> Unit) {
     val c = Sania.colors
     var fecha by remember { mutableStateOf(cita.fecha) }
     var hora by remember { mutableStateOf(cita.hora.take(5)) }
@@ -225,7 +226,7 @@ fun ModalEditarCita(cita: CitaStaff, onCancelar: () -> Unit, onGuardar: (fecha: 
         title = { Text("✏ Editar cita") },
         text = {
             Column {
-                Text("Cita de ${cita.pacienteNombre ?: "paciente"} · ${cita.tipo ?: ""}",
+                Text("Cita de ${cita.pacienteNombre ?: "paciente"} · ${flujo.nombreTipo(cita.tipo)}",
                     color = c.textoSuave, fontSize = Sania.txt.pequeno)
                 if (cita.tipo == "Sesión") {
                     Text("También se actualizará la sesión vinculada.", color = c.textoSuave, fontSize = 11.sp)

@@ -32,6 +32,10 @@ object StaffContextoRepo {
         (this[k] as? JsonPrimitive)?.content?.takeIf { it != "null" }
     private fun JsonObject.bool(k: String): Boolean =
         (this[k] as? JsonPrimitive)?.content == "true"
+    /** `null` si la clave no vino: distinto de `false`. El flujo lo necesita
+     *  porque ausente significa "sí lo usa", no "no lo usa". */
+    private fun JsonObject.boolOrNull(k: String): Boolean? =
+        (this[k] as? JsonPrimitive)?.content?.let { if (it == "true") true else if (it == "false") false else null }
     private fun JsonObject.intOrNull(k: String): Int? =
         (this[k] as? JsonPrimitive)?.content?.toIntOrNull()
     private fun JsonObject.obj(k: String): JsonObject? = this[k] as? JsonObject
@@ -109,6 +113,18 @@ object StaffContextoRepo {
             ),
             miTerapeutaId = o.str("miTerapeutaId"),
             usaSesiones = o.bool("usaSesiones"),
+            // Con defaults: una app nueva contra un backend viejo (o al revés)
+            // no puede quedarse sin nombres para sus citas.
+            flujo = o.obj("flujo")?.let { f ->
+                FlujoClinica(
+                    usaConsulta = f.boolOrNull("usa_consulta") ?: true,
+                    usaEvaluacion = f.boolOrNull("usa_evaluacion") ?: true,
+                    labelConsulta = f.str("label_consulta") ?: "Consulta",
+                    labelEvaluacion = f.str("label_evaluacion") ?: "Evaluación",
+                    labelSesiones = f.str("label_sesiones") ?: "Sesiones",
+                    labelAlta = f.str("label_alta") ?: "Alta",
+                )
+            } ?: FlujoClinica(),
             clinicas = (o["clinicas"]?.jsonArray ?: emptyList()).mapNotNull {
                 val c = it.jsonObject
                 val id = c.str("id") ?: return@mapNotNull null

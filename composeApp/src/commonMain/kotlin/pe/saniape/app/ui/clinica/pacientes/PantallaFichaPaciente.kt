@@ -60,6 +60,7 @@ import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.ui.theme.EstadosColor
 import pe.saniape.app.ui.CargandoFicha
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.data.staff.FlujoClinica
 
 /** Petición de subir un archivo: documento suelto o resultado de una solicitud. */
 data class SubidaDoc(val categoria: String, val solicitudId: String?)
@@ -614,6 +615,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     // Modal editar cita-hito (Consulta/Evaluación realizada): fecha/hora/notas.
     editarCitaHito?.let { cita ->
         ModalEditarCitaHito(
+            flujo = ctx.flujo,
             cita = cita,
             onCancelar = { editarCitaHito = null },
             onGuardar = { fecha, hora, notas ->
@@ -1124,6 +1126,7 @@ private fun ModalCrearSesion(
 @Composable
 private fun ModalEditarCitaHito(
     cita: pe.saniape.app.data.staff.CitaHito,
+    flujo: FlujoClinica = FlujoClinica(),
     onCancelar: () -> Unit,
     onGuardar: (fecha: String, hora: String, notas: String?) -> Unit,
 ) {
@@ -1176,7 +1179,7 @@ private fun ModalEditarCitaHito(
         onCancelar = onCancelar,
         onAccion = { onGuardar(fecha.trim(), hora.trim(), notas.trim().ifBlank { null }) },
     ) {
-        TarjetaForm(titulo = cita.tipo, icono = if (cita.tipo == "Consulta") "💬" else "🔍") {
+        TarjetaForm(titulo = flujo.nombreTipo(cita.tipo), icono = if (cita.tipo == "Consulta") "💬" else "🔍") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) { EtqForm("Fecha"); SelectorBoxFicha(fecha) { mostrarFecha = true } }
                 Column(Modifier.weight(1f)) { EtqForm("Hora"); SelectorBoxFicha(hora12(hora)) { mostrarHora = true } }
@@ -1411,7 +1414,7 @@ private fun ContenidoAtenciones(
         val citaC = citaDeEste(hitos?.consultas)
         val citaE = citaDeEste(hitos?.evaluaciones)
         TarjetaTratamiento(
-            t = t, verPagos = ctx.puede("pagos"), esAdmin = ctx.esAdmin,
+            t = t, flujo = ctx.flujo, verPagos = ctx.puede("pagos"), esAdmin = ctx.esAdmin,
             puedeSesiones = ctx.puede("sesiones"),
             pacienteId = paciente.id, puedeFotos = ctx.can("fotosEvolutivas"),
             puedeIA = ctx.can("ia"),

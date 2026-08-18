@@ -55,6 +55,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import pe.saniape.app.ui.CargandoLista
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.data.staff.FlujoClinica
 
 /**
  * Agenda del staff. Pantalla DELGADA: solo observa el [AgendaViewModel] y dispara
@@ -122,6 +123,7 @@ fun PantallaAgenda(ctx: ContextoStaff) {
             }
 
             FiltrosAgenda(
+                flujo = ctx.flujo,
                 busqueda = vm.busqueda, onBusqueda = { vm.cambiarBusqueda(it) },
                 filtroEstado = vm.filtroEstado, onEstado = { vm.cambiarFiltroEstado(it) },
                 filtroTipo = vm.filtroTipo, onTipo = { vm.cambiarFiltroTipo(it) },
@@ -176,6 +178,7 @@ fun PantallaAgenda(ctx: ContextoStaff) {
                     item {
                         BannerSinProfesional(
                             citas = vm.citasSinProfesional,
+                            flujo = ctx.flujo,
                             onAsignar = { editar = it },
                         )
                     }
@@ -340,7 +343,7 @@ fun PantallaAgenda(ctx: ContextoStaff) {
 
 /** Aviso de citas sin profesional asignado (origen web). Tocar una abre el editor para asignar. */
 @Composable
-private fun BannerSinProfesional(citas: List<CitaStaff>, onAsignar: (CitaStaff) -> Unit) {
+private fun BannerSinProfesional(citas: List<CitaStaff>, flujo: FlujoClinica, onAsignar: (CitaStaff) -> Unit) {
     val c = Sania.colors
     Column(
         Modifier.fillMaxWidth().padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm)
@@ -357,7 +360,7 @@ private fun BannerSinProfesional(citas: List<CitaStaff>, onAsignar: (CitaStaff) 
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("${hora12(cita.hora)} · ${cita.pacienteNombre ?: "Paciente"} · ${cita.tipo ?: ""}",
+                Text("${hora12(cita.hora)} · ${cita.pacienteNombre ?: "Paciente"} · ${flujo.nombreTipo(cita.tipo)}",
                     color = c.texto, fontSize = 12.sp, modifier = Modifier.weight(1f))
                 Box(
                     Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.pend)

@@ -5,6 +5,40 @@ package pe.saniape.app.data.staff
  * recalcula permisos/plan: lee estos flags ya resueltos por los helpers de la web
  * (resolverPermisosV2, resolverPlan). Espeja las reglas de negocio sin duplicarlas.
  */
+/**
+ * Cómo llama esta clínica a sus citas y cuáles usa. Lo resuelve el servidor
+ * (configuracion.flujo_preset) y viene ya listo en /api/staff/contexto.
+ *
+ * El tipo interno de una cita ("Consulta"/"Evaluación"/"Sesión") NO cambia
+ * nunca: es la mecánica del flujo y hay miles de citas históricas que dependen
+ * de esos valores. Esto es solo cómo se le muestra a la gente — RENOVA CAPILAR
+ * llama "Evaluación" a lo que internamente es una Consulta.
+ */
+data class FlujoClinica(
+    val usaConsulta: Boolean = true,
+    val usaEvaluacion: Boolean = true,
+    val labelConsulta: String = "Consulta",
+    val labelEvaluacion: String = "Evaluación",
+    val labelSesiones: String = "Sesiones",
+    val labelAlta: String = "Alta",
+) {
+    /** El nombre que esta clínica le da a un tipo de cita. */
+    fun nombreTipo(tipo: String?): String = when (tipo) {
+        "Consulta" -> labelConsulta
+        "Evaluación" -> labelEvaluacion
+        // "Sesiones" es el nombre del PASO; una cita suelta va en singular.
+        "Sesión" -> if (labelSesiones == "Sesiones") "Sesión" else labelSesiones
+        else -> tipo ?: "Cita"
+    }
+
+    /** ¿Esta clínica ofrece este tipo de cita al agendar? */
+    fun usaTipo(tipo: String): Boolean = when (tipo) {
+        "Consulta" -> usaConsulta
+        "Evaluación" -> usaEvaluacion
+        else -> true
+    }
+}
+
 data class ContextoStaff(
     val clinicaId: String,
     val clinicaNombre: String,
@@ -18,6 +52,7 @@ data class ContextoStaff(
     val planEstado: PlanEstado,
     val miTerapeutaId: String?,
     val usaSesiones: Boolean,
+    val flujo: FlujoClinica = FlujoClinica(),
     val clinicas: List<ClinicaRef>,
     val tienePortal: Boolean,
 ) {

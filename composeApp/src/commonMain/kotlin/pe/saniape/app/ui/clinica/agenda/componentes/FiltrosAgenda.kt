@@ -31,8 +31,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.EspecialidadRef
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.data.staff.FlujoClinica
 
 private val ESTADOS = listOf("Pendiente", "Confirmada", "Completada", "Cancelada")
+// Los tipos internos, que NO cambian: son la mecánica del flujo y con lo que se
+// guardan las citas. Lo que sí cambia es su etiqueta y cuáles se ofrecen.
 private val TIPOS = listOf("Consulta", "Evaluación", "Sesión")
 
 /**
@@ -45,6 +48,7 @@ fun FiltrosAgenda(
     busqueda: String, onBusqueda: (String) -> Unit,
     filtroEstado: String?, onEstado: (String?) -> Unit,
     filtroTipo: String?, onTipo: (String?) -> Unit,
+    flujo: FlujoClinica = FlujoClinica(),
     // Filtro por especialidad (si la clínica tiene varias) — reemplaza al de profesional,
     // que era redundante (con la especialidad basta para buscar rápido).
     especialidades: List<EspecialidadRef> = emptyList(),
@@ -85,8 +89,11 @@ fun FiltrosAgenda(
             DropdownFiltro(
                 etiqueta = "Tipo",
                 valor = filtroTipo,
+                // Solo los tipos que esta clínica usa, con SU nombre: ofrecer
+                // "Consulta" a una clínica que solo hace evaluaciones es un
+                // filtro que siempre da vacío.
                 opciones = listOf<Pair<String?, String>>(null to "Todos los tipos") +
-                    TIPOS.map { it as String? to it },
+                    TIPOS.filter { flujo.usaTipo(it) }.map { it as String? to flujo.nombreTipo(it) },
                 onElegir = onTipo,
             )
             // Especialidad (si la clínica tiene más de una)
