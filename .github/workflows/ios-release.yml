@@ -29,7 +29,12 @@ jobs:
     runs-on: macos-15
     # Tope de seguridad del JOB. La compilación real con Xcode 26 toma ~20 min
     # (probado en ios-v2.9.3: compile Kotlin + link OK). 90 mata cualquier cuelgue real.
-    timeout-minutes: 90
+    # 50 y no 90: macOS factura 10x, así que un job colgado a 90 min son 900
+    # minutos de cuota. Un build normal tarda 15-20.
+    # OJO: tiene que quedar POR ENCIMA del timeout del paso de compilar (40),
+    # o el job moriría antes y se perdería el guardado de caché — que es justo
+    # lo que hace que la corrida siguiente llegue más lejos.
+    timeout-minutes: 50
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -186,7 +191,7 @@ jobs:
       # testflight → lane 'beta'       (testers, sin revisión de Apple)
       # produccion → lane 'production' (ENVÍA A REVISIÓN; al aprobar publica solo)
       - name: Compilar y subir a Apple
-        timeout-minutes: 55
+        timeout-minutes: 40
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}

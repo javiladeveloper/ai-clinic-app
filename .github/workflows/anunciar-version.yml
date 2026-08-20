@@ -11,11 +11,21 @@ name: Anunciar versión publicada
 # track de producción, y solo ESO se anuncia. Mientras la versión siga en
 # revisión, la web sigue anunciando la anterior — que es la verdad.
 #
-# Corre solo cada hora y también a mano (workflow_dispatch).
+# CADENCIA (bajada de cada hora a 2 veces al día, 2026-08-20):
+#
+# Corría cada hora = 720 ejecuciones al mes, el 36% de la cuota de Actions —
+# casi todas sin nada que anunciar, porque entre release y release pasan días.
+# Google tarda horas en publicar, así que revisar 2 veces al día alcanza: en el
+# peor caso la web anuncia la versión nueva medio día más tarde, y mientras
+# tanto sigue anunciando la anterior, que es la verdad.
+#
+# Tras subir un release, conviene dispararlo A MANO (workflow_dispatch) en vez
+# de esperar: es 1 ejecución cuando hace falta, no 24 por si acaso.
 
 on:
   schedule:
-    - cron: "17 * * * *"   # cada hora (minuto 17 para no chocar con el pico)
+    # 13:00 y 23:00 UTC = 8am y 6pm en Perú: al empezar el día y al cerrar.
+    - cron: "17 13,23 * * *"
   workflow_dispatch:
 
 jobs:
