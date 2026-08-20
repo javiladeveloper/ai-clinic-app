@@ -135,16 +135,32 @@ platform :ios do
       destination: "generic/platform=iOS",
     )
 
+    # NO se espera a que Apple procese el binario.
+    #
+    # Por defecto `upload_to_app_store` se queda esperando el procesado —10 a 30
+    # minutos— para recién ahí enviar a revisión. Ese rato el runner de macOS
+    # factura a 10x sin hacer nada: es la mitad del costo de un release de iOS.
+    #
+    # Con `wait_for_build_processing: false` el job sube y termina. Apple procesa
+    # y revisa por su cuenta igual que si estuviéramos mirando: son sus servidores,
+    # no los nuestros. `automatic_release: true` publica sola al aprobar.
+    #
+    # El precio: `submit_for_review` no puede adjuntarse a un binario que aún no
+    # terminó de procesar, así que el envío a revisión queda para App Store
+    # Connect (un botón, una vez). Se cambia esperar 20 minutos de runner por un
+    # clic — y esos 20 minutos son ~US$1.60 por release.
     upload_to_app_store(
-      submit_for_review: true,   # envía a revisión (sin esto se queda quieto esperando el botón)
+      wait_for_build_processing: false,
+      submit_for_review: false,  # se envía desde App Store Connect (ver nota de arriba)
       automatic_release: true,   # al aprobar, publica solo
       skip_metadata: true,       # la ficha se gestiona en App Store Connect, no desde CI
       skip_screenshots: true,
       force: true,               # sin confirmación interactiva (runner headless)
       precheck_include_in_app_purchases: false,
+      # Sin efecto mientras `submit_for_review` sea false, pero se deja puesto:
+      # si se reactiva el envío automático, quitarlo haría que Apple frene la
+      # revisión preguntando por el cifrado. Declaración estándar: solo HTTPS.
       submission_information: {
-        # Declaración estándar: solo HTTPS. Sin esto Apple para la revisión a
-        # preguntar y el envío automático se queda colgado.
         export_compliance_uses_encryption: false,
         add_id_info_uses_idfa: false,
       },
