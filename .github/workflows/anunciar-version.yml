@@ -31,6 +31,9 @@ on:
 jobs:
   anunciar:
     runs-on: ubuntu-latest
+    # Sin tope, un job colgado corre hasta las 6 HORAS de GitHub.
+    # Solo consulta a Play y dispara un deploy: es cuestión de segundos.
+    timeout-minutes: 10
     steps:
       - name: Preguntar a Play y actualizar la web
         env:
