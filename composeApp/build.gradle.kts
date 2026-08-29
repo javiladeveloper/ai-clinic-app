@@ -232,7 +232,7 @@ android {
         //       errores se tragaban en silencio, asi que no habia forma de saberlo.
         //       Ademas el saludo decia "Hola, Lic." — tomaba la primera palabra del
         //       nombre, que en "Lic. Ana Quispe" es el titulo; ahora dice "Hola, Ana".
-        versionCode = 53
+        versionCode = 54
         versionName = "2.9.22"
     }
     signingConfigs {
