@@ -137,6 +137,24 @@ fun PantallaPortal(nombre: String?, onCerrarSesion: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 20.dp),
                 ) {
+                    // Avisos del celular apagados: igual que en el inicio del staff.
+                    // Sin esto, el paciente que negó el permiso se queda sin
+                    // recordatorios de cita EN SILENCIO (auditoría 2026-08-27).
+                    if (EstadoAvisos.apagados) {
+                        item {
+                            Column(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                                    .background(Sania.colors.errorBg)
+                                    .clickable { abrirAjustesDeNotificaciones() }
+                                    .padding(14.dp),
+                            ) {
+                                Text("🔕 Los avisos están apagados", color = Sania.colors.error,
+                                    fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text("No recibirás recordatorios de tus citas. Toca para activarlos.",
+                                    color = Sania.colors.textoSuave, fontSize = 12.sp)
+                            }
+                        }
+                    }
                     // Saludo
                     item {
                         Column {
@@ -417,16 +435,21 @@ private fun colorEstadoSesion(estado: String): Color = when (estado) {
     else -> Sania.colors.textoSuave
 }
 
+/** Señal para llegar al canje YA ABIERTO desde otra pantalla (PedirDni, Mis clínicas). */
+object AbrirCanje { var pendiente by mutableStateOf(false) }
+
 /**
  * Canjear el código que le dio su clínica: vínculo explícito cuenta↔ficha para
  * pacientes sin email ni DNI registrados (el matching automático no los alcanza).
- * Colapsado como link discreto; se expande al tocarlo.
+ * Colapsado como link discreto; se expande al tocarlo (o llega expandido vía
+ * AbrirCanje). Pública: también se monta en el vacío de Mis clínicas.
  */
 @Composable
-private fun TarjetaVincularCodigo(onVinculado: () -> Unit) {
+fun TarjetaVincularCodigo(onVinculado: () -> Unit) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
-    var abierto by remember { mutableStateOf(false) }
+    // Llega EXPANDIDA cuando otra pantalla lo pidió (PedirDni, Mis clínicas).
+    var abierto by remember { mutableStateOf(AbrirCanje.pendiente.also { AbrirCanje.pendiente = false }) }
     var codigo by remember { mutableStateOf("") }
     var canjeando by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }

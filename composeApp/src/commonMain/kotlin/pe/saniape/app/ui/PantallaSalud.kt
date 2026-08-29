@@ -73,12 +73,21 @@ fun PantallaSalud() {
         onDispose { job.cancel() }
     }
 
-    LaunchedEffect(recargar) {
+    // Error de red ≠ "no tienes tratamientos": antes se veían idénticos y el
+    // paciente sin señal creía que le borraron todo (auditoría 2026-08-27).
+    var errorCarga by remember { mutableStateOf(false) }
+    // La vuelta al frente también recarga (Reanudacion): cubre el regreso desde
+    // Mercado Pago — el saldo se refresca aunque Realtime no haya conectado.
+    LaunchedEffect(recargar, Reanudacion.contador) {
+        errorCarga = false
         try {
-            tratamientos = (SaludRepo.tratamientos() as? ResultadoPortal.Ok)?.datos ?: emptyList()
+            when (val rt = SaludRepo.tratamientos()) {
+                is ResultadoPortal.Ok -> tratamientos = rt.datos
+                is ResultadoPortal.Error -> errorCarga = true
+            }
             saldos = SaludRepo.saldos()
             documentos = SaludRepo.documentos()
-        } catch (_: Exception) { /* secciones vacías */ }
+        } catch (_: Exception) { errorCarga = true }
         finally { cargando = false }
     }
 
@@ -94,6 +103,22 @@ fun PantallaSalud() {
                 cargando -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                     CircularProgressIndicator(color = c.navy)
                 }
+                errorCarga && tratamientos.isEmpty() && documentos.isEmpty() ->
+                    Box(Modifier.fillMaxSize().padding(Sania.dim.xxl), Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("⚠", fontSize = 44.sp)
+                            Spacer(Modifier.height(Sania.dim.md))
+                            Text("No pudimos cargar tu información", color = c.texto,
+                                fontSize = Sania.txt.seccion, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(Sania.dim.sm))
+                            Text("Revisa tu conexión e inténtalo de nuevo.",
+                                color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                            Spacer(Modifier.height(Sania.dim.lg))
+                            Text("Reintentar", color = c.navy, fontWeight = FontWeight.Bold,
+                                fontSize = Sania.txt.cuerpo,
+                                modifier = Modifier.clickable { cargando = true; recargar++ })
+                        }
+                    }
                 tratamientos.isEmpty() && documentos.isEmpty() ->
                     Box(Modifier.fillMaxSize().padding(Sania.dim.xxl), Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -222,6 +247,9 @@ private fun TarjetaTratamiento(t: Tratamiento, saldo: Saldo?) {
                 // recepción" y se muestra tal cual.
                 if (saldo.saldo > 0 && saldo.puedePagarOnline) {
                     var pagando by remember { mutableStateOf(false) }
+                    // El botón se libera recién al VOLVER del navegador: dos toques
+                    // rápidos creaban dos preferencias de pago en Mercado Pago.
+                    LaunchedEffect(Reanudacion.contador) { pagando = false }
                     var confirmar by remember { mutableStateOf(false) }
 
                     // Confirmar el monto antes de ir a Mercado Pago. Si le
@@ -244,7 +272,7 @@ private fun TarjetaTratamiento(t: Tratamiento, saldo: Saldo?) {
                                     pagando = true
                                     alcance.launch {
                                         when (val r = SaludRepo.pagarTratamiento(t.id)) {
-                                            is ResultadoPago.Ok -> { acciones.abrirUrl(r.url); pagando = false }
+                                            is ResultadoPago.Ok -> acciones.abrirUrl(r.url)   // pagando sigue true hasta volver
                                             is ResultadoPago.Error -> { pagando = false; Toaster.error(r.mensaje) }
                                         }
                                     }

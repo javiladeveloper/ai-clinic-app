@@ -104,10 +104,16 @@ fun PantallaMisClinicas() {
                     shape = RoundedCornerShape(12.dp),
                 ) { Text("Reintentar", color = Blanco, fontWeight = FontWeight.Bold) }
             }
-            clinicas.isEmpty() -> MensajeVacio(
-                "📋", "Aún no tienes historial",
-                "Cuando te atiendas en una clínica que use Sania, aparecerá aquí.",
-            )
+            clinicas.isEmpty() -> Column {
+                MensajeVacio(
+                    "📋", "Aún no tienes historial",
+                    "Cuando te atiendas en una clínica que use Sania, aparecerá aquí.",
+                )
+                Spacer(Modifier.height(14.dp))
+                // El canje del código también vive aquí: este vacío es EXACTAMENTE
+                // el momento en que el paciente lo necesita (auditoría 2026-08-27).
+                pe.saniape.app.ui.TarjetaVincularCodigo(onVinculado = { intento++ })
+            }
             else -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 clinicas.forEach { cl ->
                     TarjetaClinicaPaciente(cl, onReservar = {

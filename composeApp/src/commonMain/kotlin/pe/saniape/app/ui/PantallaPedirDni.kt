@@ -105,6 +105,16 @@ fun PantallaPedirDni(onListo: (String) -> Unit, onOmitir: () -> Unit) {
                 color = c.textoSuave, fontSize = 13.sp,
                 modifier = Modifier.padding(top = 4.dp).clickable(enabled = !guardando) { onOmitir() },
             )
+            // El caso "ficha sin DNI / nombre distinto" se resuelve con el código
+            // de la clínica — antes había que descubrir un link gris en Inicio.
+            Text(
+                "🔑 Tengo un código de mi clínica",
+                color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 10.dp).clickable(enabled = !guardando) {
+                    AbrirCanje.pendiente = true
+                    onOmitir()
+                },
+            )
         }
     }
 }
