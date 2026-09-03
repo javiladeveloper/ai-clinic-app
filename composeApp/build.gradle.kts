@@ -242,6 +242,10 @@ android {
         // 2.10.1: el profesional ve en Pacientes a quien ATIENDE, no solo a
         //       quien tiene a su nombre (paciente repartido entre dos fisios).
         //       Primera de las dos que llega a producción.
+        // 2.10.2: en la vista LISTA de la agenda la fecha manda: el historial va
+        //       de lo más reciente a lo más antiguo. Antes ordenaba solo por
+        //       hora y una cita de julio a las 9:00 se colaba encima de una de
+        //       septiembre a las 18:00.
         versionCode = 56
         versionName = "2.10.1"
     }
