@@ -37,6 +37,41 @@ object CajaRepo {
     private fun JsonObject.dbl(k: String): Double? =
         (this[k] as? JsonPrimitive)?.content?.toDoubleOrNull()
 
+    /**
+     * Registra un movimiento MANUAL en el kardex (mismo insert que /finanzas web:
+     * RLS pone la clínica; la fecha usa el DEFAULT de hoy). Devuelve null si entró,
+     * o el mensaje de error humano (comprobante repetido, sesión vencida…).
+     */
+    suspend fun registrarMovimiento(
+        tipo: String, categoria: String, descripcion: String?, monto: Double,
+        metodo: String?, comprobante: String?,
+    ): String? = try {
+        Supabase.client.postgrest["movimientos"].insert(
+            kotlinx.serialization.json.buildJsonObject {
+                put("tipo", kotlinx.serialization.json.JsonPrimitive(tipo))
+                put("categoria", kotlinx.serialization.json.JsonPrimitive(categoria))
+                if (!descripcion.isNullOrBlank()) put("descripcion", kotlinx.serialization.json.JsonPrimitive(descripcion.trim()))
+                put("monto", kotlinx.serialization.json.JsonPrimitive(monto))
+                if (!metodo.isNullOrBlank()) put("metodo_pago", kotlinx.serialization.json.JsonPrimitive(metodo))
+                // '' NO es NULL: el índice único de comprobante cuenta el string vacío
+                // (mismo bug ya cazado en la web, DALU 2026-08-31).
+                comprobante?.trim()?.takeIf { it.isNotBlank() }?.let {
+                    put("comprobante", kotlinx.serialization.json.JsonPrimitive(it))
+                }
+            }
+        )
+        null
+    } catch (e: Exception) {
+        val msg = e.message ?: ""
+        when {
+            Regex("uq_movimiento_comprobante", RegexOption.IGNORE_CASE).containsMatchIn(msg) ->
+                "Ya existe un movimiento con ese comprobante — revisa la lista"
+            Regex("jwt|token|expired", RegexOption.IGNORE_CASE).containsMatchIn(msg) ->
+                "Tu sesión expiró — vuelve a entrar"
+            else -> "No se pudo registrar. Revisa tu conexión."
+        }
+    }
+
     suspend fun movimientosDeHoy(): List<MovimientoCaja> {
         val filas = Supabase.client.postgrest["movimientos"]
             .select(Columns.raw("id, tipo, categoria, descripcion, monto, metodo_pago, fecha, created_at, paciente:pacientes(nombre)")) {

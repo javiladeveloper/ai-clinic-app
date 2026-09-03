@@ -2,6 +2,7 @@ package pe.saniape.app.ui.clinica
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,25 +30,46 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import pe.saniape.app.data.staff.CajaRepo
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.MovimientoCaja
 import pe.saniape.app.ui.theme.Sania
 
 /**
- * 💰 Caja de HOY (esencial móvil): cuánto entró hoy y por qué método, + egresos y neto.
- * Solo lectura — el kardex completo y el cierre formal viven en la web (/finanzas).
+ * 💰 Caja de HOY (esencial móvil): cuánto entró hoy y por qué método, + egresos y neto,
+ * y "+ Registrar" para meter un movimiento manual (recepción lo pedía: la caja era solo
+ * un reporte y los gastos del día se quedaban sin anotar hasta llegar a la web).
+ * El kardex completo y el cierre formal siguen en la web (/finanzas).
  */
 @Composable
 fun PantallaCajaHoy(ctx: ContextoStaff) {
     val c = Sania.colors
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     var movs by remember { mutableStateOf<List<MovimientoCaja>?>(null) }
     var fallo by remember { mutableStateOf(false) }
+    var registrando by remember { mutableStateOf(false) }
 
-    LaunchedEffect(ctx.clinicaId) {
+    suspend fun cargar() {
         runCatching { CajaRepo.movimientosDeHoy() }
             .onSuccess { movs = it; fallo = false }
             .onFailure { fallo = true }
+    }
+    LaunchedEffect(ctx.clinicaId) { cargar() }
+
+    if (registrando) {
+        ModalRegistrarMovimiento(
+            onCancelar = { registrando = false },
+            onGuardar = { tipo, categoria, descripcion, monto, metodo, comprobante ->
+                registrando = false
+                scope.launch {
+                    val err = CajaRepo.registrarMovimiento(tipo, categoria, descripcion, monto, metodo, comprobante)
+                    if (err == null) pe.saniape.app.ui.Toaster.exito("$tipo de S/ ${formatoCaja(monto)} registrado")
+                    else pe.saniape.app.ui.Toaster.error(err)
+                    cargar()
+                }
+            },
+        )
     }
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
@@ -57,7 +79,13 @@ fun PantallaCajaHoy(ctx: ContextoStaff) {
                     .padding(horizontal = Sania.dim.xl, vertical = Sania.dim.lg),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("💰 Caja de hoy", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
+                Text("💰 Caja de hoy", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f))
+                Box(
+                    Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.navy)
+                        .clickable { registrando = true }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                ) { Text("+ Registrar", color = c.sobreNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
             }
 
             when {
@@ -180,3 +208,99 @@ private fun iconoMetodo(m: String): String = when (m) {
 
 private fun formatoCaja(v: Double): String =
     if (v % 1.0 == 0.0) v.toInt().toString() else ((v * 100).toInt() / 100.0).toString()
+
+/**
+ * Registrar un movimiento manual (paridad con "Registrar Movimiento" de /finanzas web).
+ * Default EGRESO: los ingresos de pacientes ya entran solos por pagos/citas — lo que
+ * recepción anota a mano suele ser el gasto del día (agua, taxi, insumos).
+ */
+@Composable
+private fun ModalRegistrarMovimiento(
+    onCancelar: () -> Unit,
+    onGuardar: (tipo: String, categoria: String, descripcion: String?, monto: Double, metodo: String?, comprobante: String?) -> Unit,
+) {
+    val c = Sania.colors
+    var tipo by remember { mutableStateOf("Egreso") }
+    var monto by remember { mutableStateOf("") }
+    var descripcion by remember { mutableStateOf("") }
+    var categoria by remember { mutableStateOf("") }
+    var metodo by remember { mutableStateOf("Efectivo") }
+    var comprobante by remember { mutableStateOf("") }
+
+    pe.saniape.app.ui.clinica.pacientes.DialogoForm(
+        titulo = "Registrar movimiento",
+        subtitulo = "Entra al kardex de hoy (se ve también en Finanzas web)",
+        textoAccion = "✓ Registrar",
+        accionHabilitada = (monto.toDoubleOrNull() ?: 0.0) > 0 && descripcion.isNotBlank(),
+        onCancelar = onCancelar,
+        onAccion = {
+            val m = monto.toDoubleOrNull() ?: return@DialogoForm
+            onGuardar(
+                tipo,
+                categoria.trim().ifBlank { if (tipo == "Egreso") "Otro" else "Otro ingreso" },
+                descripcion.trim().ifBlank { null }, m, metodo,
+                comprobante.trim().ifBlank { null },
+            )
+        },
+    ) {
+        pe.saniape.app.ui.clinica.pacientes.TarjetaForm(titulo = "Movimiento", icono = "🧾") {
+            pe.saniape.app.ui.clinica.pacientes.EtqForm("Tipo")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("Egreso" to "− Egreso (gasto)", "Ingreso" to "+ Ingreso").forEach { (v, etq) ->
+                    val activo = tipo == v
+                    val col = if (v == "Ingreso") c.ok else c.error
+                    Box(
+                        Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                            .background(if (activo) col.copy(alpha = 0.15f) else c.superficie)
+                            .border(1.5.dp, if (activo) col else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                            .clickable { tipo = v }.padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { Text(etq, color = if (activo) col else c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            pe.saniape.app.ui.clinica.pacientes.EtqForm("Descripción *")
+            androidx.compose.material3.OutlinedTextField(
+                colors = pe.saniape.app.ui.clinica.pacientes.coloresCampoForm(),
+                value = descripcion, onValueChange = { descripcion = it },
+                placeholder = { Text(if (tipo == "Egreso") "Ej. Compra de sábanas, taxi…" else "Ej. Venta de faja…", color = c.textoSuave) },
+                singleLine = true, modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f)) {
+                    pe.saniape.app.ui.clinica.pacientes.EtqForm("Monto (S/) *")
+                    androidx.compose.material3.OutlinedTextField(
+                        colors = pe.saniape.app.ui.clinica.pacientes.coloresCampoForm(),
+                        value = monto,
+                        onValueChange = { monto = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Column(Modifier.weight(1f)) {
+                    pe.saniape.app.ui.clinica.pacientes.EtqForm("Categoría")
+                    androidx.compose.material3.OutlinedTextField(
+                        colors = pe.saniape.app.ui.clinica.pacientes.coloresCampoForm(),
+                        value = categoria, onValueChange = { categoria = it },
+                        placeholder = { Text(if (tipo == "Egreso") "Insumos" else "Otro ingreso", color = c.textoSuave) },
+                        singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            pe.saniape.app.ui.clinica.pacientes.EtqForm("Método")
+            pe.saniape.app.ui.clinica.pacientes.ChipsMetodoPago(metodo) { metodo = it }
+            Spacer(Modifier.height(10.dp))
+            pe.saniape.app.ui.clinica.pacientes.EtqForm("Comprobante — opcional")
+            androidx.compose.material3.OutlinedTextField(
+                colors = pe.saniape.app.ui.clinica.pacientes.coloresCampoForm(),
+                value = comprobante, onValueChange = { comprobante = it },
+                placeholder = { Text("N° de boleta/recibo (uno por clínica)", color = c.textoSuave) },
+                singleLine = true, modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
