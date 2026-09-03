@@ -79,16 +79,31 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         }.sortedWith(
             // Orden de la agenda (mismo criterio que compararCitas en la web):
             //  1) Las CANCELADAS siempre al fondo del todo.
-            //  2) Entre las demás (completadas incluidas): por HORA ascendente.
-            //  3) Desempate a misma hora Y MISMO paciente: la Evaluación arriba de la Consulta
+            //  2) La FECHA manda cuando la vista mezcla varios días (historial y
+            //     "solo próximas"): en el historial lo más reciente arriba; en
+            //     próximas, lo que toca antes. En la vista de UN día todas
+            //     comparten fecha, así que esto no la altera.
+            //  3) Luego la HORA, en el mismo sentido que la fecha.
+            //  4) Desempate a misma hora Y MISMO paciente: la Evaluación arriba de la Consulta
             //     (el paciente pasa consulta → evaluación; se prioriza la evaluación).
+            //
+            // Sin el paso 2 el historial ordenaba SOLO por hora: una cita del 22
+            // de julio a las 9:00 se colaba encima de una del 3 de septiembre a
+            // las 18:00, y la lista parecía desordenada (reporte 2026-09-03).
             Comparator { a, b ->
                 val aCanc = a.estado == "Cancelada"
                 val bCanc = b.estado == "Cancelada"
                 if (aCanc != bCanc) return@Comparator if (aCanc) 1 else -1
+                if (modoLista && a.fecha != b.fecha) {
+                    return@Comparator if (verHistorial) b.fecha.compareTo(a.fecha)
+                                      else a.fecha.compareTo(b.fecha)
+                }
                 val ha = a.hora.take(5)
                 val hb = b.hora.take(5)
-                if (ha != hb) return@Comparator ha.compareTo(hb)
+                if (ha != hb) {
+                    return@Comparator if (modoLista && verHistorial) hb.compareTo(ha)
+                                      else ha.compareTo(hb)
+                }
                 if (a.pacienteId != null && a.pacienteId == b.pacienteId) {
                     val prioridad = { t: String? -> when (t) { "Evaluación" -> 0; "Consulta" -> 1; "Sesión" -> 2; else -> 3 } }
                     val pa = prioridad(a.tipo)

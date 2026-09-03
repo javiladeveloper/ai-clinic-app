@@ -90,8 +90,15 @@ object AgendaRepo {
                     if (!verHistorial) gte("fecha", hoy)
                     if (miTerapeutaId != null) eq("terapeuta_id", miTerapeutaId)
                 }
-                order("fecha", if (verHistorial) Order.DESCENDING else Order.ASCENDING)
-                order("hora", Order.ASCENDING)
+                // La hora sigue a la fecha: en el HISTORIAL lo más reciente va
+                // arriba (fecha y hora descendentes), y en "próximas" lo que
+                // toca antes (ambas ascendentes). Mezclarlas — como estaba —
+                // dejaba los días del más nuevo al más viejo pero las horas de
+                // cada día al revés: dentro del 3 de septiembre salía 8:00,
+                // 10:00, 11:00 cuando lo último atendido fue lo de las 11:00.
+                val orden = if (verHistorial) Order.DESCENDING else Order.ASCENDING
+                order("fecha", orden)
+                order("hora", orden)
                 range(desde.toLong(), (desde + PAGE_SIZE - 1).toLong())
             }
             .decodeList<JsonObject>()
