@@ -687,12 +687,13 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         ModalEditarPaciente(
             paciente = paciente,
             onCancelar = { editandoPaciente = false },
-            onGuardar = { nombre, tel, ocup, edad, flag, diag, dni, email, pats, tipoPat ->
+            onGuardar = { e ->
                 editandoPaciente = false
                 scope.launch {
                     val ok = PacientesRepo.actualizarPaciente(
-                        paciente.id, nombre, tel, ocup, edad, flag, diag,
-                        dni = dni, email = email, patologias = pats, tipoPatologia = tipoPat,
+                        paciente.id, e.nombre, e.telefono, e.ocupacion, e.edad, e.flag, e.diagnostico,
+                        dni = e.dni, email = e.email, patologias = e.patologias, tipoPatologia = e.tipoPatologia,
+                        talla = e.talla, peso = e.peso, observaciones = e.observaciones,
                         tocarExtra = true)
                     if (ok) pe.saniape.app.ui.Toaster.exito("Paciente actualizado") else pe.saniape.app.ui.Toaster.error("No se pudo guardar")
                     recargar()
@@ -1245,10 +1246,7 @@ private fun <T> SelectorListaFicha(items: List<T>, elegido: T?, etiqueta: (T) ->
 private fun ModalEditarPaciente(
     paciente: PacienteStaff,
     onCancelar: () -> Unit,
-    onGuardar: (
-        nombre: String, tel: String?, ocup: String?, edad: Int?, flag: String?, diag: String?,
-        dni: String?, email: String?, patologias: List<String>, tipoPatologia: String?,
-    ) -> Unit,
+    onGuardar: (EdicionPaciente) -> Unit,
 ) {
     val c = Sania.colors
     var nombre by remember { mutableStateOf(paciente.nombre) }
@@ -1257,6 +1255,9 @@ private fun ModalEditarPaciente(
     var email by remember { mutableStateOf(paciente.email ?: "") }
     var ocupacion by remember { mutableStateOf(paciente.ocupacion ?: "") }
     var edad by remember { mutableStateOf(paciente.edad?.toString() ?: "") }
+    var talla by remember { mutableStateOf(paciente.talla?.toString() ?: "") }
+    var peso by remember { mutableStateOf(paciente.peso?.toString() ?: "") }
+    var observaciones by remember { mutableStateOf(paciente.observaciones ?: "") }
     var diagnostico by remember { mutableStateOf(paciente.diagnostico ?: "") }
     var patologias by remember { mutableStateOf(paciente.patologias.joinToString(", ")) }
     var tipoPatologia by remember { mutableStateOf(paciente.tipoPatologia ?: "") }
@@ -1270,17 +1271,24 @@ private fun ModalEditarPaciente(
         onCancelar = onCancelar,
         onAccion = {
             val pats = patologias.split(",").map { it.trim() }.filter { it.isNotBlank() }
-            onGuardar(
-                nombre.trim(), telefono.trim().ifBlank { null }, ocupacion.trim().ifBlank { null },
-                edad.toIntOrNull(), flag, diagnostico.trim().ifBlank { null },
-                dni.trim().ifBlank { null }, email.trim().ifBlank { null }, pats,
-                tipoPatologia.trim().ifBlank { null })
+            onGuardar(EdicionPaciente(
+                nombre = nombre.trim(), telefono = telefono.trim().ifBlank { null },
+                ocupacion = ocupacion.trim().ifBlank { null },
+                edad = edad.toIntOrNull(), flag = flag,
+                diagnostico = diagnostico.trim().ifBlank { null },
+                dni = dni.trim().ifBlank { null }, email = email.trim().ifBlank { null },
+                patologias = pats, tipoPatologia = tipoPatologia.trim().ifBlank { null },
+                talla = talla.toIntOrNull(), peso = peso.toDoubleOrNull(),
+                observaciones = observaciones.trim().ifBlank { null },
+            ))
         },
     ) {
         TarjetaForm(titulo = "Datos del paciente", icono = "👤") {
             CampoFicha("Nombre", nombre) { nombre = it }
             Spacer(Modifier.height(8.dp))
-            CampoFicha("DNI", dni, soloNumero = true) { dni = it }
+            // "soloNumero" filtraba letras y guiones: un RUT chileno o pasaporte
+            // no se podía escribir (mismo bug que tenía el alta).
+            CampoFicha("Documento (DNI / RUT / pasaporte)", dni) { dni = it.take(20) }
             Spacer(Modifier.height(8.dp))
             CampoFicha("Teléfono", telefono) { telefono = it }
             Spacer(Modifier.height(8.dp))
@@ -1288,9 +1296,17 @@ private fun ModalEditarPaciente(
             Spacer(Modifier.height(8.dp))
             CampoFicha("Ocupación", ocupacion) { ocupacion = it }
             Spacer(Modifier.height(8.dp))
-            CampoFicha("Edad", edad, soloNumero = true) { edad = it }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f)) { CampoFicha("Edad", edad, soloNumero = true) { edad = it.take(3) } }
+                Column(Modifier.weight(1f)) { CampoFicha("Talla (cm)", talla, soloNumero = true) { talla = it.take(3) } }
+                Column(Modifier.weight(1f)) {
+                    CampoFicha("Peso (kg)", peso) { peso = it.filter { ch -> ch.isDigit() || ch == '.' }.take(6) }
+                }
+            }
             Spacer(Modifier.height(8.dp))
             CampoFicha("Motivo / Diagnóstico", diagnostico, multilinea = true) { diagnostico = it }
+            Spacer(Modifier.height(8.dp))
+            CampoFicha("Observaciones (notas libres)", observaciones, multilinea = true) { observaciones = it }
             Spacer(Modifier.height(10.dp))
             EtqForm("Comportamiento (semáforo)")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1314,6 +1330,16 @@ private fun ModalEditarPaciente(
         }
     }
 }
+
+/** Lo que el modal "Editar paciente" devuelve al guardar (un solo objeto en vez
+ *  de una lambda de 13 parámetros posicionales imposible de leer). */
+private data class EdicionPaciente(
+    val nombre: String, val telefono: String?, val ocupacion: String?,
+    val edad: Int?, val flag: String?, val diagnostico: String?,
+    val dni: String?, val email: String?,
+    val patologias: List<String>, val tipoPatologia: String?,
+    val talla: Int?, val peso: Double?, val observaciones: String?,
+)
 
 @Composable
 private fun CampoFicha(

@@ -250,6 +250,7 @@ data class PacienteStaff(
     val alergias: String? = null,
     val medicacionActual: String? = null,
     val antecedentes: String? = null,
+    val observaciones: String? = null,            // notas libres de recepción ("la hija paga por ella")
     val patologias: List<String> = emptyList(),   // síntomas/patologías (chips)
     val tipoPatologia: String? = null,            // rubro/tipo de los síntomas
     // Resumen clínico IA persistido (se genera async; se relee al abrir la ficha).
@@ -343,7 +344,7 @@ object PacientesRepo {
 
     private const val SELECT = """
         id, nombre, dni, edad, telefono, email, ocupacion, diagnostico, estado, flag,
-        talla, peso, fecha_ingreso, alergias, medicacion_actual, antecedentes, patologias, tipo_patologia,
+        talla, peso, fecha_ingreso, alergias, medicacion_actual, antecedentes, observaciones, patologias, tipo_patologia,
         resumen_ia, resumen_ia_fecha, resumen_ia_estado, campos_custom,
         tratamientos:tratamientos(
             id, modalidad, estado, estado_pago, total_sesiones, sesiones_completadas,
@@ -431,17 +432,42 @@ object PacientesRepo {
      */
     suspend fun crearPaciente(
         nombre: String, dni: String?, telefono: String?, edad: Int?, diagnostico: String?,
+        // Alta COMPLETA (paridad con la web, 2026-09-02): la recepcionista registra
+        // desde el celular y le faltaban campos. Todos opcionales.
+        email: String? = null, ocupacion: String? = null,
+        talla: Int? = null, peso: Double? = null,
+        observaciones: String? = null, flag: String? = null,
+        antecedentes: String? = null, alergias: String? = null,
+        medicacionActual: String? = null, patologias: List<String> = emptyList(),
+        tipoPatologia: String? = null,
     ): PacienteStaff? {
         // Se ENCOLA contra /api/staff/paciente/crear (que hace dedup por DNI e
         // idempotencia) en vez de insertar directo: así no se pierde sin señal ni
         // se duplica al reintentar. Devolvemos ya un paciente con id temporal para
         // que la UI lo muestre al instante; al sincronizar se mapea al id real.
+        fun kotlinx.serialization.json.JsonObjectBuilder.textoOpc(clave: String, v: String?) {
+            v?.trim()?.takeIf { it.isNotBlank() }?.let { put(clave, it) }
+        }
         val cuerpo = buildJsonObject {
             put("nombre", nombre.trim())
-            dni?.trim()?.takeIf { it.isNotBlank() }?.let { put("dni", it) }
-            telefono?.trim()?.takeIf { it.isNotBlank() }?.let { put("telefono", it) }
+            textoOpc("dni", dni)
+            textoOpc("telefono", telefono)
             if (edad != null) put("edad", edad)
-            diagnostico?.trim()?.takeIf { it.isNotBlank() }?.let { put("diagnostico", it) }
+            textoOpc("diagnostico", diagnostico)
+            textoOpc("email", email)
+            textoOpc("ocupacion", ocupacion)
+            if (talla != null && talla > 0) put("talla", talla)
+            if (peso != null && peso > 0) put("peso", peso)
+            textoOpc("observaciones", observaciones)
+            textoOpc("flag", flag)
+            textoOpc("antecedentes", antecedentes)
+            textoOpc("alergias", alergias)
+            textoOpc("medicacion_actual", medicacionActual)
+            textoOpc("tipo_patologia", tipoPatologia)
+            if (patologias.isNotEmpty()) {
+                put("patologias", kotlinx.serialization.json.JsonArray(
+                    patologias.mapNotNull { it.trim().takeIf { p -> p.isNotBlank() } }.map { JsonPrimitive(it) }))
+            }
         }
 
         // Con señal: se crea de verdad y devolvemos el paciente con su id REAL, así
@@ -494,6 +520,7 @@ object PacientesRepo {
         edad: Int?, flag: String?, diagnostico: String?,
         dni: String? = null, email: String? = null,
         patologias: List<String>? = null, tipoPatologia: String? = null,
+        talla: Int? = null, peso: Double? = null, observaciones: String? = null,
         tocarExtra: Boolean = false,
     ): Boolean = try {
         Supabase.client.postgrest["pacientes"].update({
@@ -508,6 +535,9 @@ object PacientesRepo {
                 set("email", email?.trim()?.ifBlank { null })
                 set("patologias", patologias ?: emptyList())
                 set("tipo_patologia", tipoPatologia?.trim()?.ifBlank { null })
+                set("talla", talla)
+                set("peso", peso)
+                set("observaciones", observaciones?.trim()?.ifBlank { null })
             }
         }) { filter { eq("id", id) } }
         true
@@ -1127,6 +1157,7 @@ object PacientesRepo {
             alergias = o.str("alergias"),
             medicacionActual = o.str("medicacion_actual"),
             antecedentes = o.str("antecedentes"),
+            observaciones = o.str("observaciones"),
             patologias = (o["patologias"] as? JsonArray)
                 ?.mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c != "null" } } ?: emptyList(),
             tipoPatologia = o.str("tipo_patologia"),
