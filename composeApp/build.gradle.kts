@@ -232,8 +232,13 @@ android {
         //       errores se tragaban en silencio, asi que no habia forma de saberlo.
         //       Ademas el saludo decia "Hola, Lic." — tomaba la primera palabra del
         //       nombre, que en "Lic. Ana Quispe" es el titulo; ahora dice "Hola, Ana".
+        // 2.10.0: paridad de recepción con la web — alta de paciente completa
+        //       (RUT/pasaporte, email, talla/peso, observaciones, antecedentes),
+        //       duración de cita editable, pago al crear/completar sesión, editar
+        //       sesión con pickers, métodos de pago de la clínica, campañas de
+        //       descuento, caja con registro manual y resumen clínico con cache.
         versionCode = 54
-        versionName = "2.9.22"
+        versionName = "2.10.0"
     }
     signingConfigs {
         create("release") {
