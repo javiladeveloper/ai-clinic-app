@@ -237,6 +237,11 @@ android {
         //       duración de cita editable, pago al crear/completar sesión, editar
         //       sesión con pickers, métodos de pago de la clínica, campañas de
         //       descuento, caja con registro manual y resumen clínico con cache.
+        //       OJO: salió con tag android-v*, o sea a prueba INTERNA, no a
+        //       producción. Para producción el tag va con prefijo produccion-*.
+        // 2.10.1: el profesional ve en Pacientes a quien ATIENDE, no solo a
+        //       quien tiene a su nombre (paciente repartido entre dos fisios).
+        //       Primera de las dos que llega a producción.
         versionCode = 55
         versionName = "2.10.0"
     }
