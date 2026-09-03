@@ -242,8 +242,8 @@ android {
         // 2.10.1: el profesional ve en Pacientes a quien ATIENDE, no solo a
         //       quien tiene a su nombre (paciente repartido entre dos fisios).
         //       Primera de las dos que llega a producción.
-        versionCode = 55
-        versionName = "2.10.0"
+        versionCode = 56
+        versionName = "2.10.1"
     }
     signingConfigs {
         create("release") {
