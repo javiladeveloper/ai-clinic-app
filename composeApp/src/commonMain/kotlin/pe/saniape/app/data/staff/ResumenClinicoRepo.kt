@@ -57,6 +57,14 @@ object ResumenClinicoRepo {
     private val json = Json { ignoreUnknownKeys = true }
     private val http = crearHttpClient()
 
+    // Cache en memoria por paciente (TTL corto): el popup se abre varias veces
+    // seguidas para el mismo paciente en la mañana de atención — reabrirlo debe
+    // ser instantáneo, no otro viaje al servidor ("se demora bastante",
+    // recepción DALU 2026-09-02). 2 min: lo clínico no cambia en ese lapso salvo
+    // que se complete una sesión, y al reabrir tras el TTL se refresca solo.
+    private const val TTL_MS = 2 * 60 * 1000L
+    private val cache = mutableMapOf<String, Pair<Long, ResumenClinico>>()
+
     private suspend fun token(): String? = Supabase.client.auth.currentSessionOrNull()?.accessToken
 
     private fun JsonObject.str(k: String): String? =
@@ -75,8 +83,10 @@ object ResumenClinicoRepo {
         diagnostico = o.str("diagnostico"),
     )
 
-    /** GET al endpoint. Devuelve null si falla (sin sesión, error de red o HTTP no OK). */
+    /** GET al endpoint (con cache de 2 min). Devuelve null si falla (sin sesión, red, HTTP no OK). */
     suspend fun cargar(pacienteId: String): ResumenClinico? {
+        val ahora = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+        cache[pacienteId]?.let { (ts, r) -> if (ahora - ts < TTL_MS) return r }
         val tk = token() ?: return null
         val resp = try {
             http.get("${Supabase.SITE_URL}/api/staff/paciente/resumen-clinico?pacienteId=$pacienteId") {
@@ -90,7 +100,7 @@ object ResumenClinicoRepo {
         val trats = (o["tratamientos"] as? JsonArray)
             ?.mapNotNull { (it as? JsonObject)?.let(::tratamiento) }
             ?: emptyList()
-        return ResumenClinico(
+        val resumen = ResumenClinico(
             nombre = o.str("nombre") ?: "Paciente",
             edad = o.int("edad"),
             ocupacion = o.str("ocupacion"),
@@ -109,5 +119,7 @@ object ResumenClinicoRepo {
                 )
             },
         )
+        cache[pacienteId] = ahora to resumen
+        return resumen
     }
 }
