@@ -562,7 +562,7 @@ private fun ModalRegistrarServicio(
                         CampoTexto("Monto (S/)", monto, soloNumero = true) { monto = it }
                         Spacer(Modifier.height(8.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            METODOS_PAGO.forEach { m -> ChipMetodo(m, metodo == m) { metodo = m } }
+                            rememberMetodosPago().forEach { m -> ChipMetodo(m, metodo == m) { metodo = m } }
                         }
                     }
                 } else {
@@ -758,7 +758,8 @@ private fun ItemMenu(texto: String, color: Color, onClick: () -> Unit) {
 }
 
 /** Métodos de pago (igual que la web). */
-private val METODOS_PAGO = listOf("Efectivo", "Yape", "Plin", "BCP", "Transferencia", "Otro")
+// Métodos de pago: ahora salen de la configuración de la clínica — ver
+// rememberMetodosPago() en FormDialogo.kt (fallback a los de siempre).
 
 /** Sección de pagos del tratamiento: resumen + lista + registrar (reusa endpoint). */
 @OptIn(ExperimentalLayoutApi::class)
@@ -820,7 +821,7 @@ fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, on
                     )
                     Spacer(Modifier.height(6.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        METODOS_PAGO.forEach { m -> ChipMetodo(m, editMetodo == m) { editMetodo = m } }
+                        rememberMetodosPago().forEach { m -> ChipMetodo(m, editMetodo == m) { editMetodo = m } }
                     }
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -916,7 +917,7 @@ fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, on
         )
         Spacer(Modifier.height(6.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            METODOS_PAGO.forEach { m -> ChipMetodo(m, metodo == m) { metodo = m } }
+            rememberMetodosPago().forEach { m -> ChipMetodo(m, metodo == m) { metodo = m } }
         }
         Spacer(Modifier.height(6.dp))
         androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(), 
@@ -994,33 +995,46 @@ private fun ModalEditarSesion(
     onCancelar: () -> Unit,
     onGuardar: (fecha: String, hora: String?, duracion: Int, costo: Double?, notas: String?) -> Unit,
 ) {
-    val c = Sania.colors
+    // Fecha y hora con PICKERS nativos (antes eran texto libre "AAAA-MM-DD" sin
+    // validación: un typo guardaba cualquier cosa) + duración editable, como la web.
     var fecha by remember { mutableStateOf(ses.fecha) }
     var hora by remember { mutableStateOf(ses.hora?.take(5) ?: "") }
+    var duracion by remember { mutableStateOf(ses.duracion ?: 45) }
     var costo by remember { mutableStateOf(ses.costo?.let { formato2(it) } ?: "") }
     var notas by remember { mutableStateOf(ses.notas ?: "") }
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onCancelar,
-        title = { Text("✏ Editar sesión #${ses.numero}", fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                CampoTexto("Fecha (AAAA-MM-DD)", fecha) { fecha = it }
-                Spacer(Modifier.height(8.dp))
-                CampoTexto("Hora (HH:MM)", hora) { hora = it }
-                Spacer(Modifier.height(8.dp))
-                CampoTexto("Costo (S/)", costo, soloNumero = true) { costo = it }
-                Spacer(Modifier.height(8.dp))
-                CampoTexto("Notas / procedimientos", notas, multilinea = true) { notas = it }
-            }
+    var mostrarFecha by remember { mutableStateOf(false) }
+    var mostrarHora by remember { mutableStateOf(false) }
+
+    if (mostrarFecha) DialogoFecha(onElegir = { fecha = it }, onCerrar = { mostrarFecha = false })
+    if (mostrarHora) DialogoHora(hora.ifBlank { "09:00" }, onElegir = { hora = it }, onCerrar = { mostrarHora = false })
+
+    DialogoForm(
+        titulo = "✏ Editar sesión #${ses.numero}",
+        subtitulo = null,
+        textoAccion = "Guardar",
+        accionHabilitada = fecha.isNotBlank(),
+        onCancelar = onCancelar,
+        onAccion = {
+            onGuardar(fecha.trim(), hora.trim().ifBlank { null }, duracion, costo.toDoubleOrNull(), notas.trim().ifBlank { null })
         },
-        confirmButton = {
-            BotonModalP("Guardar") {
-                onGuardar(fecha.trim(), hora.trim().ifBlank { null }, ses.duracion ?: 45, costo.toDoubleOrNull(), notas.trim().ifBlank { null })
+    ) {
+        TarjetaForm(titulo = "Programación", icono = "📅") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f)) { EtqForm("Fecha"); CajaSelectorForm(fecha) { mostrarFecha = true } }
+                Column(Modifier.weight(1f)) {
+                    EtqForm("Hora")
+                    CajaSelectorForm(if (hora.isBlank()) "—" else pe.saniape.app.ui.hora12(hora)) { mostrarHora = true }
+                }
             }
-        },
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
-        containerColor = c.superficie,
-    )
+            Spacer(Modifier.height(10.dp))
+            EtqForm("Duración")
+            ChipsDuracion(duracion, onChange = { duracion = it })
+            Spacer(Modifier.height(10.dp))
+            CampoTexto("Costo (S/) — vacío si no aplica", costo, soloNumero = true) { costo = it }
+            Spacer(Modifier.height(10.dp))
+            CampoTexto("Notas / procedimientos", notas, multilinea = true) { notas = it }
+        }
+    }
 }
 
 @Composable
@@ -1065,7 +1079,7 @@ private fun ModalCobrar(ses: SesionFicha, onCancelar: () -> Unit, onConfirmar: (
                 CampoTexto("Monto (S/)", monto, soloNumero = true) { monto = it }
                 Spacer(Modifier.height(8.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    METODOS_PAGO.forEach { m -> ChipMetodo(m, metodo == m) { metodo = m } }
+                    rememberMetodosPago().forEach { m -> ChipMetodo(m, metodo == m) { metodo = m } }
                 }
                 Spacer(Modifier.height(8.dp))
                 CampoTexto("Observación (opcional)", obs, multilinea = true) { obs = it }

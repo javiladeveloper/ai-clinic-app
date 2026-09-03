@@ -524,24 +524,12 @@ private fun ModalEstadoSesion(
     var fecha by remember { mutableStateOf(ses.fecha.ifBlank { hoyIso() }) }
     var hora by remember { mutableStateOf(ses.hora?.take(5) ?: "09:00") }
     var mostrarFecha by remember { mutableStateOf(false) }
+    var mostrarHora by remember { mutableStateOf(false) }
 
-    if (mostrarFecha) {
-        val estadoP = rememberDatePickerState()
-        DatePickerDialog(
-            onDismissRequest = { mostrarFecha = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    estadoP.selectedDateMillis?.let { ms ->
-                        val d = kotlinx.datetime.Instant.fromEpochMilliseconds(ms)
-                            .toLocalDateTime(kotlinx.datetime.TimeZone.UTC).date
-                        fecha = "${d.year}-${d.monthNumber.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}"
-                    }
-                    mostrarFecha = false
-                }) { Text("Aceptar", color = c.navy) }
-            },
-            dismissButton = { TextButton(onClick = { mostrarFecha = false }) { Text("Cancelar", color = c.textoSuave) } },
-        ) { DatePicker(state = estadoP) }
-    }
+    if (mostrarFecha) pe.saniape.app.ui.clinica.pacientes.DialogoFecha(
+        onElegir = { fecha = it }, onCerrar = { mostrarFecha = false })
+    if (mostrarHora) pe.saniape.app.ui.clinica.pacientes.DialogoHora(
+        hora, onElegir = { hora = it }, onCerrar = { mostrarHora = false })
 
     DialogoForm(
         titulo = if (esReprog) "📅 Reprogramar sesión" else "Marcar como \"$estado\"",
@@ -561,12 +549,8 @@ private fun ModalEstadoSesion(
                 }
                 Spacer(Modifier.height(10.dp))
                 EtqForm("Hora")
-                OutlinedTextField(
-                    value = hora, onValueChange = { hora = it },
-                    placeholder = { Text("09:00", color = c.textoSuave) },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                )
+                // Picker nativo (antes era texto libre: "930" o "9.30" guardaban una hora rota).
+                pe.saniape.app.ui.clinica.pacientes.CajaSelectorForm(pe.saniape.app.ui.hora12(hora)) { mostrarHora = true }
             }
             Spacer(Modifier.height(12.dp))
         }

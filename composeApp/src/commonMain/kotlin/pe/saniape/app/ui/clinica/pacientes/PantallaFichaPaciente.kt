@@ -520,6 +520,8 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         medicacion = nuevo.medicacion, proximoControl = nuevo.proximoControl,
                         cantidadUnidades = nuevo.cantidadUnidades, precioUnitario = nuevo.precioUnitario,
                         tecnicasSugeridas = nuevo.tecnicasSugeridas,
+                        campaniaId = nuevo.campaniaId, motivoPrecio = nuevo.motivoPrecio,
+                        fechaInicio = nuevo.fechaInicio,
                     )
                     if (ok) pe.saniape.app.ui.Toaster.exito("Tratamiento creado") else pe.saniape.app.ui.Toaster.error("No se pudo crear el tratamiento")
                     // Si se usó una plantilla, contar el uso (ordena "más usadas primero").
@@ -537,7 +539,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             miTerapeutaId = ctx.miTerapeutaId,
             puedePagos = ctx.puede("pagos"),
             onCancelar = { crearSesionEn = null },
-            onGuardar = { fecha, hora, dur, terapeutaId, estado, costo, notas ->
+            onGuardar = { fecha, hora, dur, terapeutaId, estado, costo, notas, pago ->
                 crearSesionEn = null
                 scope.launch {
                     val ok = PacientesRepo.crearSesion(
@@ -546,6 +548,16 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     )
                     if (ok) pe.saniape.app.ui.Toaster.exito("Sesión registrada")
                     else pe.saniape.app.ui.Toaster.error("No se pudo crear la sesión")
+                    // Pago anticipado (momento 1 del cobro, como la web). La sesión
+                    // recién creada aún no tiene id aquí (viaja por la cola offline),
+                    // así que el pago entra como abono del TRATAMIENTO con nota de la
+                    // fecha — el dinero cae igual en caja y el saldo cuadra.
+                    if (ok && pago != null) {
+                        val okPago = PacientesRepo.registrarPago(
+                            t.id, pago.first, pago.second, "Pago de la sesión del $fecha")
+                        if (okPago) pe.saniape.app.ui.Toaster.exito("Pago registrado (${pago.second})")
+                        else pe.saniape.app.ui.Toaster.error("La sesión se creó pero el PAGO no se registró — usa la sección Pagos")
+                    }
                     recargar()
                 }
             },
@@ -710,8 +722,9 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             ses = ses,
             anterior = anterior,
             tecnicasSugeridas = req.tecnicasSugeridas,
+            puedePagos = ctx.puede("pagos"),
             onCancelar = { completarSesion = null },
-            onConfirmar = { tecnicas, mejorias, dejoRx ->
+            onConfirmar = { tecnicas, mejorias, dejoRx, pago ->
                 completarSesion = null
                 scope.launch {
                     // Evolución: solo desde la sesión #2 ("" limpia, null = no tocar),
@@ -724,6 +737,12 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     )
                     if (ok) pe.saniape.app.ui.Toaster.exito("Sesión #${ses.numero} completada")
                     else pe.saniape.app.ui.Toaster.error("No se pudo completar la sesión")
+                    // Cobro en el mismo paso (si lo activó): vinculado a la sesión.
+                    if (ok && pago != null) {
+                        val okPago = PacientesRepo.cobrarSesion(req.trat.id, ses.id, pago.first, pago.second, null)
+                        if (okPago) pe.saniape.app.ui.Toaster.exito("Pago registrado (${pago.second})")
+                        else pe.saniape.app.ui.Toaster.error("La sesión se completó pero el PAGO no se registró — cóbrala desde Pagos")
+                    }
                     // Aprender las técnicas para sugerirlas la próxima vez (fire-and-forget).
                     tecnicas?.let { TecnicasRepo.registrar(it) }
                     recargar()
@@ -792,10 +811,17 @@ private fun ModalCompletarSesion(
     ses: SesionFicha,
     anterior: SesionFicha?,
     tecnicasSugeridas: String?,
+    puedePagos: Boolean,
     onCancelar: () -> Unit,
-    onConfirmar: (tecnicas: String?, mejorias: String?, dejoRx: Boolean) -> Unit,
+    // pago = (monto, método) si activó "¿pagó esta sesión?" — el cobro sale en el
+    // MISMO paso que el completar, como la web (antes eran 2 viajes: ✓ y luego 💳).
+    onConfirmar: (tecnicas: String?, mejorias: String?, dejoRx: Boolean, pago: Pair<Double, String>?) -> Unit,
 ) {
     val c = Sania.colors
+    var cobrar by remember { mutableStateOf(false) }
+    var pagoMonto by remember { mutableStateOf(ses.costo?.let { v -> if (v > 0) formatoMonto(v) else "" } ?: "") }
+    var pagoMetodo by remember { mutableStateOf("Efectivo") }
+    val muestraPago = puedePagos && !ses.pagada
     // Precarga de técnicas, por orden de utilidad real:
     //  1. lo que YA tenga esta sesión (se está editando),
     //  2. lo que se le hizo la SESIÓN ANTERIOR — es lo que de verdad se repite: el
@@ -822,9 +848,13 @@ private fun ModalCompletarSesion(
     DialogoForm(
         titulo = "Completar sesión #${ses.numero}",
         subtitulo = "Registra lo realizado en la sesión",
-        textoAccion = "✓ Completar",
+        textoAccion = if (cobrar) "✓ Completar y cobrar" else "✓ Completar",
+        accionHabilitada = !cobrar || (pagoMonto.toDoubleOrNull() ?: 0.0) > 0,
         onCancelar = onCancelar,
-        onAccion = { onConfirmar(tecnicas.trim().ifBlank { null }, mejorias.trim().ifBlank { null }, dejoRx) },
+        onAccion = {
+            val pago = if (cobrar) pagoMonto.toDoubleOrNull()?.takeIf { it > 0 }?.let { it to pagoMetodo } else null
+            onConfirmar(tecnicas.trim().ifBlank { null }, mejorias.trim().ifBlank { null }, dejoRx, pago)
+        },
     ) {
         // Aviso: el paciente dejó RX pendiente en la sesión anterior (se recuerda aquí).
         if (anterior != null && AvisoRx.dejoRx(anterior)) {
@@ -942,6 +972,50 @@ private fun ModalCompletarSesion(
             }
             Text("⚕️", fontSize = 16.sp)
         }
+
+        // Cobro en el mismo paso (paridad con la web): toggle "¿pagó esta sesión?".
+        if (muestraPago) {
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .background(if (cobrar) c.chipBg else c.fondo)
+                    .border(1.dp, if (cobrar) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                    .clickable { cobrar = !cobrar }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier.size(22.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .background(if (cobrar) c.navy else c.superficie)
+                        .border(1.dp, if (cobrar) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
+                    contentAlignment = Alignment.Center,
+                ) { if (cobrar) Text("✓", color = c.sobreNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("¿El paciente pagó esta sesión?", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text("El cobro se registra junto con el completar", color = c.textoSuave, fontSize = 11.sp,
+                        modifier = Modifier.padding(top = 1.dp))
+                }
+                Text("💳", fontSize = 16.sp)
+            }
+            if (cobrar) {
+                Spacer(Modifier.height(8.dp))
+                TarjetaForm(titulo = "Cobro", icono = "💳") {
+                    EtqForm("Monto (S/)")
+                    androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(),
+                        value = pagoMonto,
+                        onValueChange = { pagoMonto = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    EtqForm("Método")
+                    ChipsMetodoPago(pagoMetodo) { pagoMetodo = it }
+                }
+            }
+        }
     }
 }
 
@@ -961,10 +1035,14 @@ private fun ModalCrearSesion(
     miTerapeutaId: String?,
     puedePagos: Boolean,
     onCancelar: () -> Unit,
-    onGuardar: (fecha: String, hora: String, duracion: Int, terapeutaId: String?, estado: String, costo: Double?, notas: String?) -> Unit,
+    // pago = (monto, método) si activó "¿el paciente pagó?" — momento 1 del cobro (web).
+    onGuardar: (fecha: String, hora: String, duracion: Int, terapeutaId: String?, estado: String, costo: Double?, notas: String?, pago: Pair<Double, String>?) -> Unit,
 ) {
     val c = Sania.colors
     val esPaquete = t.modalidad == "Paquete"
+    var cobrar by remember { mutableStateOf(false) }
+    var pagoMonto by remember { mutableStateOf("") }
+    var pagoMetodo by remember { mutableStateOf("Efectivo") }
     var fecha by remember { mutableStateOf(pe.saniape.app.ui.clinica.agenda.hoyIso()) }
     var hora by remember { mutableStateOf(pe.saniape.app.ui.proximaHoraEnPunto()) }
     var duracion by remember { mutableStateOf(45) }
@@ -1033,14 +1111,17 @@ private fun ModalCrearSesion(
         // anterior a otras ya creadas terminaba con un número distinto al del título.
         titulo = "Nueva sesión",
         subtitulo = if (esPaquete) "Incluida en el paquete" else "Sesión suelta",
-        textoAccion = "Agendar sesión",
-        accionHabilitada = fecha.isNotBlank() && hora.isNotBlank(),
+        textoAccion = if (cobrar) "Agendar y cobrar" else "Agendar sesión",
+        accionHabilitada = fecha.isNotBlank() && hora.isNotBlank() &&
+            (!cobrar || (pagoMonto.toDoubleOrNull() ?: 0.0) > 0),
         onCancelar = onCancelar,
         onAccion = {
+            val pago = if (cobrar) pagoMonto.toDoubleOrNull()?.takeIf { it > 0 }?.let { it to pagoMetodo } else null
             onGuardar(
                 fecha.trim(), hora.trim(), duracion, terapeutaId, estado,
                 if (esPaquete) null else costo.toDoubleOrNull(),
                 notas.trim().ifBlank { null },
+                pago,
             )
         },
     ) {
@@ -1051,19 +1132,7 @@ private fun ModalCrearSesion(
             }
             Spacer(Modifier.height(10.dp))
             EtqForm("Duración")
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(30, 45, 60).forEach { d ->
-                    val activo = duracion == d
-                    Box(
-                        Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
-                            .background(if (activo) c.navy else c.superficie)
-                            .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                            .clickable { duracion = d }.padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center,
-                    ) { Text("$d min", color = if (activo) c.sobreNavy else c.texto, fontSize = 12.sp,
-                        fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal) }
-                }
-            }
+            ChipsDuracion(duracion, onChange = { duracion = it })
             if (fechaPasada) {
                 Spacer(Modifier.height(8.dp))
                 Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
@@ -1118,6 +1187,47 @@ private fun ModalCrearSesion(
             Spacer(Modifier.height(10.dp))
             EtqForm("Notas clínicas")
             CampoFicha("", notas, multilinea = true) { notas = it }
+        }
+
+        // Pago anticipado (momento 1 del cobro, como el "¿pagó esta sesión?" web).
+        // También en paquete: un abono al plan puede entrar aquí mismo.
+        if (puedePagos) {
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .background(if (cobrar) c.chipBg else c.fondo)
+                    .border(1.dp, if (cobrar) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                    .clickable {
+                        cobrar = !cobrar
+                        if (cobrar && pagoMonto.isBlank()) pagoMonto = costo.ifBlank { "" }
+                    }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier.size(22.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .background(if (cobrar) c.navy else c.superficie)
+                        .border(1.dp, if (cobrar) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
+                    contentAlignment = Alignment.Center,
+                ) { if (cobrar) Text("✓", color = c.sobreNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("¿El paciente pagó esta sesión?", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (esPaquete) "Entra como abono del paquete" else "Se registra junto con la sesión",
+                        color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 1.dp))
+                }
+                Text("💳", fontSize = 16.sp)
+            }
+            if (cobrar) {
+                Spacer(Modifier.height(8.dp))
+                TarjetaForm(titulo = "Cobro", icono = "💳") {
+                    EtqForm("Monto (S/)")
+                    CampoFicha("", pagoMonto, soloNumero = true) { pagoMonto = it }
+                    Spacer(Modifier.height(10.dp))
+                    EtqForm("Método")
+                    ChipsMetodoPago(pagoMetodo) { pagoMetodo = it }
+                }
+            }
         }
     }
 }

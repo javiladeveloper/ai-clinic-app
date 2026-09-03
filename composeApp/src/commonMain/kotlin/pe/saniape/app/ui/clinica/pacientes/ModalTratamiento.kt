@@ -68,6 +68,10 @@ data class TratamientoNuevo(
     // Plantilla usada (si se eligió): técnicas por sesión + contador de usos.
     val tecnicasSugeridas: String? = null,
     val plantillaId: String? = null,
+    // Campaña aplicada, motivo del descuento y fecha de inicio (paridad web 2026-09-02).
+    val campaniaId: String? = null,
+    val motivoPrecio: String? = null,
+    val fechaInicio: String? = null,
 )
 
 /**
@@ -108,8 +112,17 @@ fun ModalCrearTratamiento(
     // La plantilla se aplica DESPUÉS del prefill del servicio (LaunchedEffect) para no ser pisada.
     var plantillaPend by remember { mutableStateOf<PlantillaRef?>(null) }
     // medicación y próximo control: no se piden al crear (se llenan al editar tras atender).
+    // Campañas de descuento vigentes (⚡ promos): se ofrecen al elegir el servicio.
+    var campanias by remember { mutableStateOf<List<pe.saniape.app.data.staff.CampaniaApp>>(emptyList()) }
+    var campaniaAplicada by remember { mutableStateOf<pe.saniape.app.data.staff.CampaniaApp?>(null) }
+    // Auditoría de descuentos: si el acordado queda por DEBAJO de la referencia, se pide el porqué.
+    var motivoPrecio by remember { mutableStateOf("") }
+    // Cuándo empieza (pasada si ya venía atendiéndose, futura si está programado). Default hoy.
+    var fechaInicio by remember { mutableStateOf(pe.saniape.app.ui.clinica.agenda.hoyIso()) }
+    var mostrarFechaInicio by remember { mutableStateOf(false) }
 
     LaunchedEffect(pacienteId) {
+        campanias = runCatching { pe.saniape.app.data.staff.CatalogosCobroRepo.campaniasVigentes() }.getOrDefault(emptyList())
         procedimientos = runCatching { PacientesRepo.procedimientos() }.getOrDefault(emptyList())
         terapeutas = runCatching { PacientesRepo.terapeutasConEspecialidad() }.getOrDefault(emptyList())
         val esps = runCatching { PacientesRepo.especialidadesClinica() }.getOrDefault(emptyList())
@@ -148,6 +161,7 @@ fun ModalCrearTratamiento(
 
     // Al elegir servicio: autocompletar precios + tarifario (si hay).
     LaunchedEffect(proc?.id) {
+        campaniaAplicada = null   // otra promo puede aplicar al nuevo servicio
         proc?.let { p ->
             precioPorSesion = p.precio.toString()
             val tar10 = p.tarifarios.firstOrNull { it.cantidadSesiones == 10 } ?: p.tarifarios.firstOrNull()
@@ -187,6 +201,8 @@ fun ModalCrearTratamiento(
     // Unidades: exige cantidad y precio por unidad (> 0) para poder crear.
     val puedeCrear = proc != null && (!esUnidades ||
         ((cantidadUnidades.toIntOrNull() ?: 0) > 0 && (precioUnitario.toDoubleOrNull() ?: 0.0) > 0.0))
+
+    if (mostrarFechaInicio) DialogoFecha(onElegir = { fechaInicio = it }, onCerrar = { mostrarFechaInicio = false })
 
     Dialog(onDismissRequest = onCancelar, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
@@ -285,6 +301,82 @@ fun ModalCrearTratamiento(
                         if (especialidad == null && terId == null) "Elige especialidad o profesional" else "Seleccionar…") { proc = it }
                 }
 
+                // ⚡ Promoción vigente (campañas): aplicar con un toque, como la web.
+                // La campaña es una capa de precio — pisa los campos, nunca el precio base.
+                val campsDelServicio = proc?.let { p ->
+                    pe.saniape.app.data.staff.CatalogosCobroRepo.paraProcedimiento(campanias, p.id)
+                } ?: emptyList()
+                if (campsDelServicio.isNotEmpty() || campaniaAplicada != null) {
+                    Spacer(Modifier.height(12.dp))
+                    Tarjeta(titulo = "Promoción vigente", icono = "⚡") {
+                        campaniaAplicada?.let { ca ->
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                    .background(c.chipBg).padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("⚡ ${ca.nombre}: ${ca.etiqueta()}", color = c.navy, fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                Text("✕ Quitar", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.clickable {
+                                        // Quitar = volver a los precios del servicio (mismo prefill).
+                                        campaniaAplicada = null
+                                        proc?.let { p ->
+                                            precioPorSesion = p.precio.toString()
+                                            val tar = p.tarifarios.firstOrNull { it.cantidadSesiones == 10 } ?: p.tarifarios.firstOrNull()
+                                            if (tar != null) { totalSesiones = tar.cantidadSesiones.toString(); precioPaquete = tar.precioTotal.toString() }
+                                            else { precioPaquete = p.precioPaquete?.toString() ?: ""; totalSesiones = "10" }
+                                            precioUnitario = (p.precioUnitarioSugerido ?: p.precio).toString()
+                                            precioAcordado = if (p.modoCobro == "simple" && p.precio > 0) p.precio.toString() else ""
+                                        }
+                                    }.padding(4.dp))
+                            }
+                        }
+                        if (campaniaAplicada == null) campsDelServicio.forEach { camp ->
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 3.dp)
+                                    .clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.fondo)
+                                    .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(camp.nombre, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text(camp.etiqueta(), color = c.textoSuave, fontSize = 11.sp)
+                                }
+                                Box(
+                                    Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.navy)
+                                        .clickable {
+                                            // Port de aplicarCampania (web): a qué campo va el precio promo.
+                                            val p = proc ?: return@clickable
+                                            when (camp.tipo) {
+                                                "paquete_fijo" -> {
+                                                    modalidad = "Paquete"
+                                                    camp.cantidad?.let { totalSesiones = it.toString() }
+                                                    camp.precio?.let { precioPaquete = it.toString() }
+                                                    precioAcordado = ""
+                                                }
+                                                "precio_fijo" -> when {
+                                                    esUnidades -> { precioUnitario = (camp.precio ?: 0.0).toString(); precioAcordado = "" }
+                                                    usaSesiones && modalidad == "Paquete" -> { precioPaquete = (camp.precio ?: 0.0).toString(); precioAcordado = "" }
+                                                    usaSesiones -> { precioPorSesion = (camp.precio ?: 0.0).toString(); precioAcordado = "" }
+                                                    else -> precioAcordado = (camp.precio ?: 0.0).toString()
+                                                }
+                                                else -> when {   // porcentaje / monto_fijo: descuentan el base
+                                                    esUnidades -> { precioUnitario = camp.precioCon(precioUnitario.toDoubleOrNull() ?: p.precio).toString(); precioAcordado = "" }
+                                                    usaSesiones && modalidad == "Paquete" -> { precioPaquete = camp.precioCon(precioPaquete.toDoubleOrNull() ?: 0.0).toString(); precioAcordado = "" }
+                                                    usaSesiones -> { precioPorSesion = camp.precioCon(precioPorSesion.toDoubleOrNull() ?: p.precio).toString(); precioAcordado = "" }
+                                                    else -> precioAcordado = camp.precioCon(p.precio).toString()
+                                                }
+                                            }
+                                            campaniaAplicada = camp
+                                        }.padding(horizontal = 14.dp, vertical = 7.dp),
+                                ) { Text("Aplicar", color = c.sobreNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                            }
+                        }
+                    }
+                }
+
                 // Bloque 2 · adaptado al tipo de servicio ─────────────────
                 if (esUnidades) {
                     Spacer(Modifier.height(12.dp))
@@ -367,6 +459,38 @@ fun ModalCrearTratamiento(
                             "registran al editar, después de atender.", color = c.textoSuave, fontSize = 10.sp)
                     }
                 }
+
+                // ¿Por qué este precio? — SOLO cuando el acordado va a la BAJA respecto
+                // de la referencia (auditoría de descuentos, igual que la web).
+                val referencia = when {
+                    esUnidades -> (cantidadUnidades.toIntOrNull() ?: 0) * (precioUnitario.toDoubleOrNull() ?: 0.0)
+                    usaSesiones && modalidad == "Paquete" -> precioPaquete.toDoubleOrNull() ?: 0.0
+                    else -> proc?.precio ?: 0.0
+                }
+                val acordadoNum = precioAcordado.toDoubleOrNull() ?: 0.0
+                val hayDescuento = referencia > 0 && acordadoNum > 0 && (referencia - acordadoNum) > 0.005
+                if (hayDescuento) {
+                    Spacer(Modifier.height(12.dp))
+                    Tarjeta(titulo = "¿Por qué este precio?", icono = "💬") {
+                        OutlinedTextField(colors = coloresCampoForm(), value = motivoPrecio,
+                            onValueChange = { motivoPrecio = it.take(200) },
+                            placeholder = { Text("Ej. Promoción acordada, paciente frecuente…", color = c.textoSuave) },
+                            singleLine = true, modifier = Modifier.fillMaxWidth())
+                        Text("Queda registrado: S/ ${formatoNum(referencia)} → S/ ${formatoNum(acordadoNum)}",
+                            color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
+                    }
+                }
+
+                // Fecha de inicio (no aplica a unidades — igual que la web, donde el
+                // protocolo de controles la gobierna).
+                if (proc != null && !esUnidades) {
+                    Spacer(Modifier.height(12.dp))
+                    Tarjeta(titulo = "Fecha de inicio", icono = "📅") {
+                        CajaSelectorForm(fechaInicio) { mostrarFechaInicio = true }
+                        Text("Anterior si ya empezó, futura si está programado.",
+                            color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
             }
 
             // ── Footer fijo: Cancelar + Crear a ancho completo ────────────
@@ -409,6 +533,9 @@ fun ModalCrearTratamiento(
                                     precioUnitario = if (esUnidades) precioUnitario.toDoubleOrNull() else null,
                                     tecnicasSugeridas = plantilla?.tecnicasSesion?.takeIf { it.isNotBlank() },
                                     plantillaId = plantilla?.id,
+                                    campaniaId = campaniaAplicada?.id,
+                                    motivoPrecio = motivoPrecio.trim().ifBlank { null },
+                                    fechaInicio = if (esUnidades) null else fechaInicio,
                                 )
                             )
                         }.padding(vertical = 13.dp),
@@ -421,6 +548,13 @@ fun ModalCrearTratamiento(
         }
     }
 }
+
+/** "80" o "79.50" — para mostrar montos sin colas de decimales. */
+private fun formatoNum(n: Double): String =
+    if (n % 1.0 == 0.0) n.toInt().toString() else {
+        val cent = kotlin.math.round(n * 100).toLong()
+        "${cent / 100}.${(cent % 100).toString().padStart(2, '0')}"
+    }
 
 /** Tarjeta de sección con título e ícono — agrupa campos relacionados. */
 @Composable

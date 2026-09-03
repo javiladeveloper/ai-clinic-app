@@ -715,6 +715,8 @@ object PacientesRepo {
         cantidadUnidades: Int? = null, precioUnitario: Double? = null,
         // Técnicas sugeridas por sesión (de la plantilla): precargan el completar sesión.
         tecnicasSugeridas: String? = null,
+        // Campaña aplicada, motivo del descuento y fecha de inicio (paridad web 2026-09-02).
+        campaniaId: String? = null, motivoPrecio: String? = null, fechaInicio: String? = null,
     ): Boolean = accionTratamiento(buildJsonObject {
         put("accion", "crear"); put("pacienteId", pacienteId); put("procedimientoId", procedimientoId)
         if (terapeutaId != null) put("terapeutaId", terapeutaId)
@@ -730,6 +732,9 @@ object PacientesRepo {
         if (!medicacion.isNullOrBlank()) put("medicacion", medicacion)
         if (!proximoControl.isNullOrBlank()) put("proximoControl", proximoControl)
         if (!tecnicasSugeridas.isNullOrBlank()) put("tecnicasSugeridas", tecnicasSugeridas)
+        if (!campaniaId.isNullOrBlank()) put("campaniaId", campaniaId)
+        if (!motivoPrecio.isNullOrBlank()) put("motivoPrecio", motivoPrecio)
+        if (!fechaInicio.isNullOrBlank()) put("fechaInicio", fechaInicio)
     })
 
     suspend fun editarTratamiento(

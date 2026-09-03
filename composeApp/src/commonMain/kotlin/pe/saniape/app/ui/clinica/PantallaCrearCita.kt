@@ -35,6 +35,8 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import pe.saniape.app.data.staff.CampaniaApp
+import pe.saniape.app.data.staff.CatalogosCobroRepo
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -115,8 +117,18 @@ fun PantallaCrearCita(
     var tratamientos by remember { mutableStateOf<List<TratamientoRef>>(emptyList()) }
     var precioConsulta by remember { mutableStateOf(0.0) }
     var precioEvaluacion by remember { mutableStateOf(40.0) }
+    // Campañas vigentes: el costo por defecto sale con la MEJOR promo aplicada (como la web).
+    // (nombres cortos vía import: `pe` es también el destructure de precios más abajo)
+    var campanias by remember { mutableStateOf<List<CampaniaApp>>(emptyList()) }
+    var promoAplicada by remember { mutableStateOf<CampaniaApp?>(null) }
 
     var tipo by remember { mutableStateOf(prefill?.tipo ?: "Consulta") }
+    // Duración EDITABLE (antes era fija 15/60 y una sesión de 30 no se podía agendar).
+    // Default por tipo (igual que la web: Consulta 15, resto 60); si el usuario la
+    // tocó, cambiar de tipo ya no se la pisa.
+    var duracion by remember { mutableStateOf(if ((prefill?.tipo ?: "Consulta") == "Consulta") 15 else 60) }
+    var duracionTocada by remember { mutableStateOf(false) }
+    LaunchedEffect(tipo) { if (!duracionTocada) duracion = if (tipo == "Consulta") 15 else 60 }
     var paciente by remember { mutableStateOf<RefNombre?>(null) }
     var tratamiento by remember { mutableStateOf<TratamientoRef?>(null) }
     var terapeuta by remember { mutableStateOf<TerapeutaRef?>(null) }
@@ -146,12 +158,12 @@ fun PantallaCrearCita(
     var disponibilidad by remember { mutableStateOf<pe.saniape.app.data.staff.Disponibilidad?>(null) }
     // Depende también de paciente?.id: si no, el aviso de "el paciente ya tiene otra cita"
     // no se recalcula al cambiar de paciente (quedaba obsoleto).
-    LaunchedEffect(terapeuta?.id, fecha, hora, tipo, paciente?.id) {
+    LaunchedEffect(terapeuta?.id, fecha, hora, tipo, paciente?.id, duracion) {
         val terId = terapeuta?.id ?: ctx.miTerapeutaId
         disponibilidad = if (terId != null) {
             runCatching {
                 pe.saniape.app.data.staff.DisponibilidadRepo.verificar(
-                    terId, fecha, hora, if (tipo == "Consulta") 15 else 60, pacienteId = paciente?.id,
+                    terId, fecha, hora, duracion, pacienteId = paciente?.id,
                 )
             }.getOrNull()
         } else null
@@ -164,7 +176,12 @@ fun PantallaCrearCita(
             especialidadesClinica = runCatching { AgendaRepo.especialidades() }.getOrDefault(emptyList())
             val (pc, pe) = AgendaRepo.precios()
             precioConsulta = pc; precioEvaluacion = pe
-            costo = if (prefill?.tipo == "Evaluación") pe.toString() else pc.toString()
+            campanias = runCatching { CatalogosCobroRepo.campaniasVigentes() }.getOrDefault(emptyList())
+            val tipoIni = prefill?.tipo ?: "Consulta"
+            val baseIni = if (tipoIni == "Evaluación") pe else pc
+            val (precioIni, promoIni) = CatalogosCobroRepo.precioCitaConCampania(campanias, tipoIni, baseIni)
+            promoAplicada = promoIni
+            costo = precioIni.toString()
             // Resolver referencias del pre-llenado (→ Evaluación).
             prefill?.let { pf ->
                 paciente = pf.pacienteId?.let { id ->
@@ -182,13 +199,13 @@ fun PantallaCrearCita(
         } catch (_: Exception) {}
     }
 
-    // Costo por defecto según tipo
+    // Costo por defecto según tipo, con la MEJOR campaña vigente ya descontada.
     LaunchedEffect(tipo) {
-        costo = when (tipo) {
-            "Evaluación" -> precioEvaluacion.toString()
-            "Consulta" -> precioConsulta.toString()
-            else -> "0"
-        }
+        if (tipo == "Sesión") { costo = "0"; promoAplicada = null; return@LaunchedEffect }
+        val base = if (tipo == "Evaluación") precioEvaluacion else precioConsulta
+        val (precio, promo) = CatalogosCobroRepo.precioCitaConCampania(campanias, tipo, base)
+        promoAplicada = promo
+        costo = precio.toString()
     }
     // Tratamientos del paciente (para tipo Sesión / control vinculado)
     LaunchedEffect(paciente?.id) {
@@ -235,7 +252,7 @@ fun PantallaCrearCita(
     if (mostrarHorarios) {
         ModalVerHorarios(
             fecha = fecha, hora = hora,
-            duracion = if (tipo == "Consulta") 15 else 60,
+            duracion = duracion,
             soloTerapeutaIds = especialidad?.let { e -> terapeutas.filter { e.id in it.especialidadIds }.map { it.id } },
             onElegir = { id -> terapeuta = terapeutas.find { it.id == id }; mostrarHorarios = false },
             onCerrar = { mostrarHorarios = false },
@@ -315,6 +332,11 @@ fun PantallaCrearCita(
                         SelectorBoton(hora) { mostrarHora = true }
                     }
                 }
+                Spacer(Modifier.height(Sania.dim.md))
+                Etiqueta("Duración")
+                pe.saniape.app.ui.clinica.pacientes.ChipsDuracion(duracion, onChange = {
+                    duracion = it; duracionTocada = true
+                })
                 // Regularización: "esta cita ya ocurrió" (salta validación de disponibilidad)
                 Row(verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(top = Sania.dim.sm).clickable { esRegularizacion = !esRegularizacion }) {
@@ -381,12 +403,14 @@ fun PantallaCrearCita(
 
                 if (ctx.puede("pagos") && tipo != "Sesión") {
                     val precioBase = if (tipo == "Evaluación") precioEvaluacion else precioConsulta
+                    // Con promo, "Restablecer" vuelve al precio PROMOCIONAL (es el vigente).
+                    val precioDefault = promoAplicada?.precioCon(precioBase) ?: precioBase
                     Spacer(Modifier.height(Sania.dim.md))
                     Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                         Etiqueta("Costo (S/)")
-                        if ((costo.toDoubleOrNull() ?: 0.0) != precioBase) {
+                        if ((costo.toDoubleOrNull() ?: 0.0) != precioDefault) {
                             Text("Restablecer", color = c.navy, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                                modifier = Modifier.clickable { costo = precioBase.toString() })
+                                modifier = Modifier.clickable { costo = precioDefault.toString() })
                         }
                     }
                     OutlinedTextField(
@@ -395,6 +419,13 @@ fun PantallaCrearCita(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    promoAplicada?.let { promo ->
+                        Text(
+                            "🎉 ${promo.nombre} — ${promo.etiqueta()} · antes S/ ${if (precioBase % 1.0 == 0.0) precioBase.toInt() else precioBase}",
+                            color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(Sania.dim.md))
@@ -442,10 +473,11 @@ fun PantallaCrearCita(
                                 pacienteId = p.id, tipo = tipo, fecha = fecha, hora = hora,
                                 terapeutaId = terId, tratamientoId = tratamiento?.id,
                                 costo = costo.toDoubleOrNull() ?: 0.0,
-                                duracion = if (tipo == "Consulta") 15 else 60,
+                                duracion = duracion,
                                 notas = notas.ifBlank { null },
                                 especialidadId = espId,
                                 diagnostico = if (tipo == "Evaluación") diagnostico.ifBlank { null } else null,
+                                campaniaId = if (tipo != "Sesión") promoAplicada?.id else null,
                             )
                             guardando = false
                             if (ok) { pe.saniape.app.ui.Toaster.exito("Cita agendada"); onListo() }

@@ -348,6 +348,8 @@ object AgendaRepo {
         pacienteId: String, tipo: String, fecha: String, hora: String,
         terapeutaId: String?, tratamientoId: String?, costo: Double, duracion: Int, notas: String?,
         especialidadId: String? = null, diagnostico: String? = null,
+        // Campaña que descontó el costo (traza la promo en la cita, como la web).
+        campaniaId: String? = null,
     ): Boolean {
         val tk = token() ?: return false
         val cuerpo = buildJsonObject {
@@ -362,6 +364,7 @@ object AgendaRepo {
             put("costo", costo)
             put("duracion", duracion)
             if (!notas.isNullOrBlank()) put("notas", notas)
+            if (!campaniaId.isNullOrBlank()) put("campaniaId", campaniaId)
         }
         return encolarCita("crear", cuerpo)
     }
