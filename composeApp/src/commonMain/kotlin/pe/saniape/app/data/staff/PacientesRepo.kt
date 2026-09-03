@@ -357,9 +357,44 @@ object PacientesRepo {
     """
 
     /**
+     * Los pacientes que un profesional ATIENDE aunque no sean suyos: los que
+     * tienen alguna sesión o cita a su nombre.
+     *
+     * Hace falta porque un paciente puede repartirse entre dos profesionales
+     * (6 sesiones con uno, 4 con otro, porque se complementan por especialidad)
+     * y el tratamiento tiene UN solo responsable. Sin esto el segundo lo tenía
+     * en su agenda pero no en Pacientes (caso DALU: Jorge Olivera, de
+     * Katherine, atendido por Rodas — 2026-09-03).
+     */
+    private suspend fun pacientesQueAtiende(terapeutaId: String): Set<String> = try {
+        val ids = mutableSetOf<String>()
+        // Sesiones suyas → el paciente sale del tratamiento.
+        Supabase.client.postgrest["sesiones"]
+            .select(Columns.raw("tratamiento:tratamientos!inner(paciente_id)")) {
+                filter { eq("terapeuta_id", terapeutaId) }
+                limit(3000)
+            }
+            .decodeList<JsonObject>()
+            .forEach { o -> (o["tratamiento"] as? JsonObject)?.str("paciente_id")?.let { ids.add(it) } }
+        // Citas suyas (consultas/evaluaciones que no pasan por tratamiento).
+        Supabase.client.postgrest["citas"]
+            .select(Columns.list("paciente_id")) {
+                filter { eq("terapeuta_id", terapeutaId) }
+                limit(3000)
+            }
+            .decodeList<JsonObject>()
+            .forEach { o -> o.str("paciente_id")?.let { ids.add(it) } }
+        ids
+    } catch (_: Exception) {
+        // Sin red o si falla: no se cae la lista, solo se queda con el criterio
+        // viejo (los tratamientos a su nombre).
+        emptySet()
+    }
+
+    /**
      * Lista de pacientes. [soloTerapeutaId] (scope del profesional vinculado): si no es
-     * null, devuelve solo pacientes que tienen algún tratamiento con ese terapeuta.
-     * El filtrado por scope se hace en memoria (igual que la web).
+     * null, devuelve los pacientes que ATIENDE — responsable del tratamiento o con
+     * sesiones/citas suyas. El filtrado por scope se hace en memoria (igual que la web).
      */
     suspend fun listar(soloTerapeutaId: String? = null): List<PacienteStaff> {
         val filas = Supabase.client.postgrest["pacientes"]
@@ -375,8 +410,19 @@ object PacientesRepo {
             )
         }
         val pacientes = filas.map { mapear(it) }
-        return if (soloTerapeutaId == null) pacientes
-        else pacientes.filter { p -> p.tratamientos.any { it.terapeutaId == soloTerapeutaId } }
+        if (soloTerapeutaId == null) return pacientes
+        val atiende = pacientesQueAtiende(soloTerapeutaId)
+        // Los ids que atiende se guardan junto a la lista: `listarDeCache` los
+        // necesita para filtrar igual cuando pinta sin red.
+        runCatching {
+            CacheLectura.guardar(
+                CacheLectura.claveListaPacientes(soloTerapeutaId) + ":atiende",
+                Json.encodeToString(JsonArray.serializer(), JsonArray(atiende.map { JsonPrimitive(it) })),
+            )
+        }
+        return pacientes.filter { p ->
+            p.id in atiende || p.tratamientos.any { it.terapeutaId == soloTerapeutaId }
+        }
     }
 
     /**
@@ -388,8 +434,16 @@ object PacientesRepo {
         val crudo = CacheLectura.leer(CacheLectura.claveListaPacientes(soloTerapeutaId)) ?: return emptyList()
         val filas = Json.parseToJsonElement(crudo).jsonArray.map { it.jsonObject }
         val pacientes = filas.map { mapear(it) }
-        if (soloTerapeutaId == null) pacientes
-        else pacientes.filter { p -> p.tratamientos.any { it.terapeutaId == soloTerapeutaId } }
+        if (soloTerapeutaId == null) return@runCatching pacientes
+        // Mismo criterio que `listar`: los que atiende + los que tiene a su nombre.
+        val atiende = runCatching {
+            val c = CacheLectura.leer(CacheLectura.claveListaPacientes(soloTerapeutaId) + ":atiende")
+                ?: return@runCatching emptySet<String>()
+            Json.parseToJsonElement(c).jsonArray.mapNotNull { (it as? JsonPrimitive)?.content }.toSet()
+        }.getOrDefault(emptySet())
+        pacientes.filter { p ->
+            p.id in atiende || p.tratamientos.any { it.terapeutaId == soloTerapeutaId }
+        }
     }.getOrDefault(emptyList())
 
     /** Un paciente por id (para la ficha). */
