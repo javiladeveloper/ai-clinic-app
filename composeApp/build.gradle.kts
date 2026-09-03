@@ -237,7 +237,7 @@ android {
         //       duración de cita editable, pago al crear/completar sesión, editar
         //       sesión con pickers, métodos de pago de la clínica, campañas de
         //       descuento, caja con registro manual y resumen clínico con cache.
-        versionCode = 54
+        versionCode = 55
         versionName = "2.10.0"
     }
     signingConfigs {
