@@ -61,25 +61,69 @@ object MetasRepo {
      */
     suspend fun mias(): List<AvanceMeta> {
         val tk = Supabase.client.auth.currentSessionOrNull()?.accessToken ?: return emptyList()
-        return runCatching {
-            val resp = http.get("${Supabase.SITE_URL}/api/staff/metas") {
-                header("Authorization", "Bearer $tk")
-            }
-            if (resp.status != HttpStatusCode.OK) return emptyList()
-            val o = json.parseToJsonElement(resp.bodyAsText()).jsonObject
-            (o["metas"]?.jsonArray ?: return emptyList()).map { el ->
-                val m = el.jsonObject
+        // Las dos fuentes viven juntas: las metas viejas (por persona) y los
+        // ESQUEMAS por niveles (las pirámides, 2026-09-03). Una clínica migra
+        // de una a otra sin que la app se entere; el que no tiene nada ve nada.
+        return metasViejas(tk) + esquemas(tk)
+    }
+
+    private suspend fun metasViejas(tk: String): List<AvanceMeta> = runCatching {
+        val resp = http.get("${Supabase.SITE_URL}/api/staff/metas") {
+            header("Authorization", "Bearer $tk")
+        }
+        if (resp.status != HttpStatusCode.OK) return emptyList()
+        val o = json.parseToJsonElement(resp.bodyAsText()).jsonObject
+        (o["metas"]?.jsonArray ?: return emptyList()).map { el ->
+            val m = el.jsonObject
+            AvanceMeta(
+                id = m.str("id") ?: "",
+                etiqueta = m.str("etiqueta"),
+                texto = m.str("texto") ?: "",
+                logrado = m.int("logrado"),
+                objetivo = m.int("objetivo"),
+                progreso = m.int("progreso"),
+                cumplida = m.bool("cumplida"),
+                faltan = m.int("faltan"),
+            )
+        }
+    }.getOrElse { emptyList() }
+
+    /**
+     * ESQUEMAS POR NIVELES (/api/staff/comision-plantillas): las pirámides
+     * Bronce/Plata/Oro/Diamante de DALU. El endpoint ya devuelve al
+     * profesional SOLO su avance y sin montos; acá se traduce cada
+     * (esquema, avance) a la misma tarjeta de meta, para no inventar otra UI:
+     * texto = "Plata · 2 para Oro", cumplida = está en el tope.
+     */
+    private suspend fun esquemas(tk: String): List<AvanceMeta> = runCatching {
+        val resp = http.get("${Supabase.SITE_URL}/api/staff/comision-plantillas") {
+            header("Authorization", "Bearer $tk")
+        }
+        if (resp.status != HttpStatusCode.OK) return emptyList()
+        val o = json.parseToJsonElement(resp.bodyAsText()).jsonObject
+        (o["plantillas"]?.jsonArray ?: return emptyList()).flatMap { el ->
+            val p = el.jsonObject
+            val nombre = p.str("nombre") ?: "Mi esquema"
+            val rango = p.str("etiquetaRango")
+            val tramos = p["tramos"]?.jsonArray?.map { it.jsonObject } ?: emptyList()
+            val topeObjetivo = tramos.maxOfOrNull { it.int("objetivo") } ?: 0
+            (p["avances"]?.jsonArray ?: return@flatMap emptyList()).map { av ->
+                val a = av.jsonObject
+                val siguiente = a.str("siguienteNivel")
+                val actual = a.str("nivelActual")
+                val objetivo = tramos.firstOrNull { it.str("nombre") == siguiente }?.int("objetivo") ?: topeObjetivo
                 AvanceMeta(
-                    id = m.str("id") ?: "",
-                    etiqueta = m.str("etiqueta"),
-                    texto = m.str("texto") ?: "",
-                    logrado = m.int("logrado"),
-                    objetivo = m.int("objetivo"),
-                    progreso = m.int("progreso"),
-                    cumplida = m.bool("cumplida"),
-                    faltan = m.int("faltan"),
+                    id = "${p.str("id")}:${a.str("terapeutaId")}",
+                    etiqueta = if (rango != null) "$nombre · $rango" else nombre,
+                    texto = a.str("texto") ?: "",
+                    logrado = a.int("logrado"),
+                    objetivo = objetivo,
+                    progreso = a.int("progreso"),
+                    // En el tope de la pirámide no hay "siguiente": eso es cumplir.
+                    cumplida = actual != null && siguiente == null,
+                    faltan = a.int("faltanParaSiguiente"),
                 )
             }
-        }.getOrElse { emptyList() }
-    }
+        }
+    }.getOrElse { emptyList() }
 }
