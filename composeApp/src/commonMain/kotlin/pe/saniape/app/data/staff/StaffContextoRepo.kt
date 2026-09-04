@@ -12,6 +12,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import pe.saniape.app.data.Supabase
 import pe.saniape.app.data.crearHttpClient
+import pe.saniape.app.data.offline.CacheLectura
 
 /**
  * Carga el contexto del staff desde /api/staff/contexto (con Bearer). Cachea el
@@ -80,9 +81,26 @@ object StaffContextoRepo {
         return try {
             cargarInterno(tk)
         } catch (e: Exception) {
-            Resultado.Error("No se pudo conectar con el servidor. Revisa tu conexión.")
+            // SIN RED: se entra con el último contexto que se vio (caché local),
+            // igual que la lista de pacientes. Sin esto, cerrar la app en una zona
+            // sin señal dejaba al fisio AFUERA aunque su cola offline estuviera
+            // intacta (hallazgo de la prueba en modo avión, 2026-09-04). Permisos
+            // o plan pueden quedar un rato desactualizados: el servidor los vuelve
+            // a validar en cada escritura, así que no es un riesgo.
+            desdeCache() ?: Resultado.Error("No se pudo conectar con el servidor. Revisa tu conexión.")
         }
     }
+
+    private fun claveCache(): String? =
+        Supabase.client.auth.currentSessionOrNull()?.user?.id?.let { CacheLectura.claveContexto(it) }
+
+    private fun desdeCache(): Resultado.Ok? = runCatching {
+        val clave = claveCache() ?: return null
+        val crudo = CacheLectura.leer(clave) ?: return null
+        val ctx = parsear(json.parseToJsonElement(crudo).jsonObject)
+        actual = ctx
+        Resultado.Ok(ctx)
+    }.getOrNull()
 
     private suspend fun cargarInterno(tk: String): Resultado {
         val resp = http.get("${Supabase.SITE_URL}/api/staff/contexto") {
@@ -91,11 +109,20 @@ object StaffContextoRepo {
         if (resp.status == HttpStatusCode.Forbidden) return Resultado.NoEsClinica
         if (resp.status != HttpStatusCode.OK) return Resultado.Error("No se pudo cargar el contexto")
 
-        val o = json.parseToJsonElement(resp.bodyAsText()).jsonObject
+        val crudo = resp.bodyAsText()
+        val o = json.parseToJsonElement(crudo).jsonObject
         if (o.bool("suspendida")) return Resultado.Suspendida(o.str("clinicaNombre") ?: "Tu clínica")
 
+        val ctx = parsear(o)
+        // Se guarda tal cual para poder ENTRAR sin red la próxima vez (ver `cargar`).
+        claveCache()?.let { CacheLectura.guardar(it, crudo) }
+        actual = ctx
+        return Resultado.Ok(ctx)
+    }
+
+    private fun parsear(o: JsonObject): ContextoStaff {
         val plan = o.obj("planEstado")
-        val ctx = ContextoStaff(
+        return ContextoStaff(
             clinicaId = o.str("clinicaId") ?: "",
             clinicaNombre = o.str("clinicaNombre") ?: "Clínica",
             logoUrl = o.str("logoUrl"),
@@ -132,9 +159,12 @@ object StaffContextoRepo {
             },
             tienePortal = o.bool("tienePortal"),
         )
-        actual = ctx
-        return Resultado.Ok(ctx)
     }
 
-    fun limpiar() { actual = null }
+    fun limpiar() {
+        // Al salir se borra el contexto guardado: en un celular compartido, el
+        // siguiente que entre no debe poder arrancar con la clínica del anterior.
+        claveCache()?.let { CacheLectura.borrar(it) }
+        actual = null
+    }
 }

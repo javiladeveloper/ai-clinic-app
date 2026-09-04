@@ -13,12 +13,16 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import kotlinx.datetime.plus
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import pe.saniape.app.data.Supabase
 import pe.saniape.app.data.crearHttpClient
+import pe.saniape.app.data.offline.CacheLectura
 import pe.saniape.app.data.offline.enviarOEncolar
 
 /** Una cita del staff (lista de agenda), con joins de paciente/terapeuta/tratamiento. */
@@ -227,13 +231,15 @@ object AgendaRepo {
 
     /** Pacientes activos (no Inactivo) para el selector. */
     suspend fun pacientesParaSelector(): List<RefNombre> {
-        val filas = Supabase.client.postgrest["pacientes"]
-            .select(Columns.list("id, nombre, estado")) {
-                filter { neq("estado", "Inactivo") }
-                order("nombre", Order.ASCENDING)
-                limit(500)
-            }
-            .decodeList<JsonObject>()
+        val filas = filasConRespaldo(CacheLectura.claveCatalogo("pacientes-selector")) {
+            Supabase.client.postgrest["pacientes"]
+                .select(Columns.list("id, nombre, estado")) {
+                    filter { neq("estado", "Inactivo") }
+                    order("nombre", Order.ASCENDING)
+                    limit(500)
+                }
+                .decodeList<JsonObject>()
+        }
         return filas.mapNotNull {
             val id = it.str("id") ?: return@mapNotNull null
             RefNombre(id, it.str("nombre") ?: "Paciente")
@@ -242,15 +248,17 @@ object AgendaRepo {
 
     /** Terapeutas activos con sus especialidades (para filtrar por especialidad). */
     suspend fun terapeutasActivos(): List<TerapeutaRef> {
-        val filas = Supabase.client.postgrest["terapeutas"]
-            .select(Columns.raw(
-                "id, nombre, estado, " +
-                    "especialidades:terapeuta_especialidades(especialidad:especialidades(id, nombre))"
-            )) {
-                filter { eq("estado", "Activo") }
-                order("nombre", Order.ASCENDING)
-            }
-            .decodeList<JsonObject>()
+        val filas = filasConRespaldo(CacheLectura.claveCatalogo("terapeutas-activos")) {
+            Supabase.client.postgrest["terapeutas"]
+                .select(Columns.raw(
+                    "id, nombre, estado, " +
+                        "especialidades:terapeuta_especialidades(especialidad:especialidades(id, nombre))"
+                )) {
+                    filter { eq("estado", "Activo") }
+                    order("nombre", Order.ASCENDING)
+                }
+                .decodeList<JsonObject>()
+        }
         return filas.mapNotNull { o ->
             val id = o.str("id") ?: return@mapNotNull null
             val espIds = (o["especialidades"] as? kotlinx.serialization.json.JsonArray ?: emptyList())
@@ -281,13 +289,33 @@ object AgendaRepo {
         }
     }
 
+    /**
+     * Consulta con RESPALDO local: guarda las filas crudas y, si la red falla y
+     * hay algo guardado, devuelve eso. Los catálogos del formulario de cita
+     * (pacientes, profesionales, precios) cambian poco, y sin ellos no se podía
+     * agendar sin señal: el buscador decía "Sin coincidencias" con la cola
+     * offline lista para recibir la cita (prueba en modo avión, 2026-09-04).
+     * Si no hay red NI respaldo, propaga el error como antes.
+     */
+    private suspend fun filasConRespaldo(clave: String, traer: suspend () -> List<JsonObject>): List<JsonObject> =
+        try {
+            traer().also { filas ->
+                CacheLectura.guardar(clave, Json.encodeToString(JsonArray.serializer(), JsonArray(filas)))
+            }
+        } catch (e: Exception) {
+            val crudo = CacheLectura.leer(clave) ?: throw e
+            Json.parseToJsonElement(crudo).jsonArray.map { it.jsonObject }
+        }
+
     /** Precios por defecto (consulta/evaluación) de la configuración. */
     suspend fun precios(): Pair<Double, Double> {
-        val filas = Supabase.client.postgrest["configuracion"]
-            .select(Columns.list("clave, valor")) {
-                filter { isIn("clave", listOf("precio_consulta", "precio_evaluacion")) }
-            }
-            .decodeList<JsonObject>()
+        val filas = filasConRespaldo(CacheLectura.claveCatalogo("precios-cita")) {
+            Supabase.client.postgrest["configuracion"]
+                .select(Columns.list("clave, valor")) {
+                    filter { isIn("clave", listOf("precio_consulta", "precio_evaluacion")) }
+                }
+                .decodeList<JsonObject>()
+        }
         var consulta = 0.0; var evaluacion = 40.0
         for (o in filas) {
             when (o.str("clave")) {

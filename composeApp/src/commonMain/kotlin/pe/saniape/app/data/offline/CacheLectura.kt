@@ -57,4 +57,8 @@ object CacheLectura {
     fun claveListaPacientes(scope: String?): String = "pacientes:lista:${scope ?: "todos"}"
     fun claveFicha(pacienteId: String): String = "ficha:$pacienteId"
     fun claveAgenda(fecha: String): String = "agenda:$fecha"
+    /** El contexto del staff (permisos/plan/marca), por usuario: permite ENTRAR sin red. */
+    fun claveContexto(userId: String): String = "contexto:$userId"
+    /** Catálogos del formulario de cita (pacientes, profesionales, precios). */
+    fun claveCatalogo(nombre: String): String = "catalogo:$nombre"
 }

@@ -141,12 +141,25 @@ fun PantallaPacientes(
                         }
                     }
                 }
+                // Sin red pero con lista de la caché: se ve lo último guardado, con
+                // aviso. Antes la rama de fallo de abajo TAPABA la lista cacheada y
+                // el fisio veía "No se pudo cargar" con los datos ahí (2026-09-04).
+                if (vm.cargaFallo && vm.pacientes.isNotEmpty()) {
+                    item {
+                        Text(
+                            "Sin conexión — mostrando lo último guardado.",
+                            color = c.textoSuave, fontSize = Sania.txt.mini,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = Sania.dim.lg, vertical = 4.dp),
+                        )
+                    }
+                }
                 when {
                     // Andamio con la forma de la lista, no un aro girando: dice QUÉ
                     // viene y evita el salto cuando llegan los datos.
                     vm.cargando -> item { CargandoLista(filas = 6) }
-                    // Falló la carga (red/permiso): NO es lo mismo que "no hay pacientes".
-                    vm.cargaFallo -> item {
+                    // Falló la carga (red/permiso) y no hay NADA que mostrar: NO es lo
+                    // mismo que "no hay pacientes".
+                    vm.cargaFallo && vm.pacientes.isEmpty() -> item {
                         Column(
                             Modifier.fillMaxWidth().padding(Sania.dim.xxl),
                             horizontalAlignment = Alignment.CenterHorizontally,
