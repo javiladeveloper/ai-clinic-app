@@ -67,15 +67,20 @@ object AgendaRepo {
 
     /** Citas de un día (yyyy-MM-dd). Si miTerapeutaId != null, solo las suyas (scope). */
     suspend fun citasDelDia(fecha: String, miTerapeutaId: String?): List<CitaStaff> {
-        val filas = Supabase.client.postgrest["citas"]
-            .select(Columns.raw(SELECT_CITA)) {
-                filter {
-                    eq("fecha", fecha)
-                    if (miTerapeutaId != null) eq("terapeuta_id", miTerapeutaId)
+        // Con respaldo local: el día que ya se vio se vuelve a ver sin señal
+        // (la clave lleva el scope para no mezclar "mis citas" con "todas").
+        val clave = CacheLectura.claveAgenda(fecha) + (miTerapeutaId?.let { ":$it" } ?: "")
+        val filas = filasConRespaldo(clave) {
+            Supabase.client.postgrest["citas"]
+                .select(Columns.raw(SELECT_CITA)) {
+                    filter {
+                        eq("fecha", fecha)
+                        if (miTerapeutaId != null) eq("terapeuta_id", miTerapeutaId)
+                    }
+                    order("hora", Order.ASCENDING)
                 }
-                order("hora", Order.ASCENDING)
-            }
-            .decodeList<JsonObject>()
+                .decodeList<JsonObject>()
+        }
         return filas.map { mapearCita(it) }
     }
 

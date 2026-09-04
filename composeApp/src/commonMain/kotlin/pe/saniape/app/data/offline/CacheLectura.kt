@@ -59,6 +59,8 @@ object CacheLectura {
     fun claveAgenda(fecha: String): String = "agenda:$fecha"
     /** El contexto del staff (permisos/plan/marca), por usuario: permite ENTRAR sin red. */
     fun claveContexto(userId: String): String = "contexto:$userId"
+    /** Las stats del Inicio (por usuario, como el contexto). */
+    fun claveInicio(userId: String): String = "inicio:$userId"
     /** Catálogos del formulario de cita (pacientes, profesionales, precios). */
     fun claveCatalogo(nombre: String): String = "catalogo:$nombre"
 }

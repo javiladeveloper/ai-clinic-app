@@ -69,7 +69,8 @@ fun PantallaInicioStaff(
     val c = Sania.colors
     // Muestra al instante lo último cargado (sobrevive al cambio de tab) y refresca en
     // segundo plano. Spinner de pantalla completa SOLO la primera vez (sin caché).
-    var stats by remember { mutableStateOf(DashboardRepo.cache) }
+    // Memoria (cambio de tab) → disco (app recién abierta, incluso sin señal) → nada.
+    var stats by remember { mutableStateOf(DashboardRepo.cache ?: DashboardRepo.desdeDisco()) }
     var cargando by remember { mutableStateOf(DashboardRepo.cache == null) }
     // 🔔 Notificaciones in-app (misma tabla que la campanita web). No es push (eso será FCM).
     var notifs by remember { mutableStateOf<List<pe.saniape.app.data.staff.NotificacionClinica>>(emptyList()) }

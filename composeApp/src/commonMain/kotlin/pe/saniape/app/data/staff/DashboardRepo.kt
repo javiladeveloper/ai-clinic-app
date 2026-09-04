@@ -12,6 +12,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import pe.saniape.app.data.Supabase
 import pe.saniape.app.data.crearHttpClient
+import pe.saniape.app.data.offline.CacheLectura
 
 /** Una cita de la agenda de hoy (resumen del dashboard). */
 data class CitaAgenda(
@@ -51,7 +52,24 @@ object DashboardRepo {
     var cache: StatsDashboard? = null
         private set
 
-    fun limpiarCache() { cache = null }
+    fun limpiarCache() {
+        claveDisco()?.let { CacheLectura.borrar(it) }
+        cache = null
+    }
+
+    /** En disco va por usuario: un celular compartido no mezcla Inicios. */
+    private fun claveDisco(): String? =
+        Supabase.client.auth.currentSessionOrNull()?.user?.id?.let { CacheLectura.claveInicio(it) }
+
+    /**
+     * Lo último que se vio, SIN red (caché en disco). Sin esto, abrir la app
+     * sin señal mostraba "No se pudieron cargar tus datos" en la primera
+     * pantalla, aunque el resto ya funcionara offline (2026-09-04).
+     */
+    fun desdeDisco(): StatsDashboard? = runCatching {
+        val crudo = CacheLectura.leer(claveDisco() ?: return null) ?: return null
+        parsear(json.parseToJsonElement(crudo).jsonObject).also { cache = it }
+    }.getOrNull()
 
     private fun JsonObject.str(k: String): String? =
         (this[k] as? JsonPrimitive)?.content?.takeIf { it != "null" }
@@ -66,7 +84,13 @@ object DashboardRepo {
             header("Authorization", "Bearer $tk")
         }
         if (resp.status != HttpStatusCode.OK) return null
-        val o = json.parseToJsonElement(resp.bodyAsText()).jsonObject
+        val crudo = resp.bodyAsText()
+        claveDisco()?.let { CacheLectura.guardar(it, crudo) }
+        return parsear(json.parseToJsonElement(crudo).jsonObject)
+            .also { cache = it }   // guarda el último resultado para mostrarlo al instante al volver
+    }
+
+    private fun parsear(o: JsonObject): StatsDashboard {
         val agenda = (o["agendaHoy"] as? JsonArray ?: JsonArray(emptyList())).mapNotNull {
             val a = it.jsonObject
             CitaAgenda(
@@ -90,6 +114,6 @@ object DashboardRepo {
             pacientesNuevosSemana = o.intp("pacientesNuevosSemana"),
             derivacionesPend = o.intp("derivacionesPend"),
             agendaHoy = agenda,
-        ).also { cache = it }   // guarda el último resultado para mostrarlo al instante al volver
+        )
     }
 }
