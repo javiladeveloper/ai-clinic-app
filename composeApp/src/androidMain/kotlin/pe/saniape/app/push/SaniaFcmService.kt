@@ -11,7 +11,16 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import io.github.jan.supabase.auth.auth
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import pe.saniape.app.MainActivity
+import pe.saniape.app.data.Preferencias
+import pe.saniape.app.data.Supabase
+import pe.saniape.app.data.staff.PushRepo
 import pe.saniape.app.R
 
 /**
@@ -30,8 +39,30 @@ class SaniaFcmService : FirebaseMessagingService() {
     }
 
     override fun onNewToken(token: String) {
-        // El token rotó: se re-registra en el próximo arranque con sesión
-        // (EfectoPushNativo registra el token vigente al entrar al panel).
+        // El token rotó (reinstalación, restauración del celular, limpieza de
+        // datos de Play Services). Antes solo se re-registraba en el PRÓXIMO
+        // arranque con sesión: un celular que no abría la app quedaba mudo
+        // hasta entonces (2026-09-04). Ahora se registra acá mismo si hay
+        // sesión; sin sesión, EfectoPushNativo lo hace al entrar.
+        alcance.launch {
+            runCatching {
+                Supabase.client.auth.awaitInitialization()
+                if (Supabase.client.auth.currentSessionOrNull() == null) return@launch
+                val esPaciente = Preferencias.modoActivo() == "paciente"
+                // El RPC del staff falla para una cuenta sin perfil (paciente):
+                // se cae al de paciente, que registra por auth_user_id.
+                val ok = if (esPaciente) PushRepo.registrarTokenPaciente(token)
+                else PushRepo.registrarToken(token) || PushRepo.registrarTokenPaciente(token)
+                android.util.Log.i("SaniaPush", if (ok) "Token FCM rotado y re-registrado" else "Token FCM rotado: no se pudo re-registrar")
+            }
+        }
+    }
+
+    private val alcance = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    override fun onDestroy() {
+        alcance.cancel()
+        super.onDestroy()
     }
 
     private fun mostrar(titulo: String, cuerpo: String, citaId: String? = null) {
