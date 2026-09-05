@@ -271,7 +271,7 @@ fun PantallaAgenda(ctx: ContextoStaff) {
     // ── Modales ──
     completar?.let { cita ->
         ModalCompletar(
-            cita = cita, especialidades = vm.especialidades,
+            cita = cita, especialidades = vm.especialidades, flujo = ctx.flujo,
             onCancelar = { completar = null },
             onConfirmar = { obs, diag, espId ->
                 completar = null

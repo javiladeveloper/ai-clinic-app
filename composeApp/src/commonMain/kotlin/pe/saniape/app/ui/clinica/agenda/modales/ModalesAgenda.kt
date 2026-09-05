@@ -56,9 +56,14 @@ fun ModalCompletar(
     especialidades: List<EspecialidadRef>,
     onCancelar: () -> Unit,
     onConfirmar: (observaciones: String?, diagnostico: String?, derivarEspId: String?) -> Unit,
+    flujo: FlujoClinica = FlujoClinica(),
 ) {
     val c = Sania.colors
-    val esEvaluacion = cita.tipo == "Evaluación"
+    // La cita que EVALÚA pide diagnóstico: la Evaluación siempre, y la Consulta
+    // cuando el flujo no tiene Evaluación aparte (estética: su "Evaluación" es
+    // una Consulta con otro nombre). Antes García la cerraba como sesión sin
+    // poder poner diagnóstico (reporte de Jonathan, demo 2026-09-05).
+    val esEvaluacion = cita.tipo == "Evaluación" || (cita.tipo == "Consulta" && !flujo.usaEvaluacion)
     var texto by remember { mutableStateOf("") }
     var derivar by remember { mutableStateOf(false) }
     var espElegida by remember { mutableStateOf<EspecialidadRef?>(null) }
@@ -67,7 +72,7 @@ fun ModalCompletar(
         onDismissRequest = onCancelar,
         title = {
             Column {
-                Text(if (esEvaluacion) "🔍 Completar evaluación" else "🏃 Completar sesión",
+                Text(if (esEvaluacion) "🔍 Completar ${flujo.nombreTipo(cita.tipo).lowercase()}" else "🏃 Completar sesión",
                     fontWeight = FontWeight.Bold)
                 cita.pacienteNombre?.let {
                     Text(it, color = c.textoSuave, fontSize = Sania.txt.pequeno,
