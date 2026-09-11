@@ -9,8 +9,6 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import pe.saniape.app.data.Supabase
 
-private const val SEPARADOR = " + "
-
 /**
  * Técnicas/procedimientos de la clínica (tabla tecnicas_sesion), para el
  * autocomplete al completar una sesión. RLS de staff filtra por clínica.
@@ -34,7 +32,11 @@ object TecnicasRepo {
      * [texto] viene unido con " + " (mismo formato que sesiones.notas).
      */
     suspend fun registrar(texto: String) {
-        val nombres = texto.split(SEPARADOR).map { it.trim() }.filter { it.isNotEmpty() }
+        // Se parte con el normalizador y no por el separador a secas: si el
+        // texto trae "TENS+COMPRESA" escrito a mano, entraba al catálogo como
+        // UNA técnica con ese nombre. Así se llenó DALU de frases enteras
+        // (Jonathan, 2026-09-11).
+        val nombres = TecnicasNormalizar.partir(texto)
         if (nombres.isEmpty()) return
         fun norm(s: String) = s.lowercase().trim()
         try {

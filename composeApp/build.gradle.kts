@@ -74,6 +74,10 @@ kotlin {
             // Mapa OSM + ubicación
             implementation(libs.osmdroid)
             implementation(libs.play.location)
+            // Actualización en segundo plano (In-App Updates, modo flexible):
+            // Play baja el APK mientras se sigue trabajando y recién al final
+            // se ofrece "Instalar", sin salir de la app.
+            implementation(libs.play.app.update.ktx)
             // Rotación EXIF al comprimir fotos clínicas antes de subirlas
             implementation("androidx.exifinterface:exifinterface:1.3.7")
             // Notificaciones FCM (init programática — sin plugin google-services; los valores

@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import pe.saniape.app.data.staff.TecnicasNormalizar
 import pe.saniape.app.data.staff.TecnicasRepo
 import pe.saniape.app.ui.theme.Sania
 
@@ -59,9 +60,17 @@ fun TecnicasInput(value: String, onChange: (String) -> Unit) {
         .take(6)
 
     fun agregar(nombre: String) {
-        val n = nombre.trim()
-        if (n.isEmpty() || chips.any { normalizar(it) == normalizar(n) }) return
-        onChange((chips + n).joinToString(SEPARADOR))
+        // Lo que llega puede traer VARIAS técnicas dentro ("TENS+COMPRESA", o
+        // un texto pegado con saltos de línea): se parte acá. Antes entraba
+        // como UNA técnica llamada "TENS+COMPRESA" y así se llenó el catálogo
+        // de DALU de frases enteras (Jonathan, 2026-09-11).
+        val nuevas = TecnicasNormalizar.partir(nombre)
+        if (nuevas.isEmpty()) return
+        val suma = chips.toMutableList()
+        for (n in nuevas) {
+            if (suma.none { normalizar(it) == normalizar(n) }) suma.add(n)
+        }
+        onChange(suma.joinToString(SEPARADOR))
         texto = ""
     }
     fun quitar(nombre: String) = onChange(chips.filter { it != nombre }.joinToString(SEPARADOR))

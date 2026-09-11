@@ -31,9 +31,18 @@ import pe.saniape.app.ui.clinica.ClinicaConTabs
  *  2) Login (Google) si no hay sesión.
  *  3) Según el MODO activo (clínica vs paciente): panel de clínica o portal del paciente.
  *     Una cuenta puede ser staff Y paciente; alterna con botones en "Más".
+ *
+ * [actualizacionDescargando]/[actualizacionLista]/[alInstalarActualizacion] los
+ * pone la Activity de Android (ver `ActualizadorFlexible`): mientras Play
+ * descarga en segundo plano, el aviso que manda a la tienda se calla para no
+ * ofrecer dos caminos a la vez; cuando el APK está listo se ofrece "Instalar".
  */
 @Composable
-fun App() {
+fun App(
+    actualizacionDescargando: Boolean = false,
+    actualizacionLista: Boolean = false,
+    alInstalarActualizacion: () -> Unit = {},
+) {
     TemaSania {
         var introLista by remember { mutableStateOf(false) }
         var logueado by remember { mutableStateOf<Boolean?>(null) }
@@ -155,12 +164,24 @@ fun App() {
             // ficha del paciente —donde más se espera al borrar/crear sesiones— no se veía.
             if (introLista) pe.saniape.app.ui.IndicadorGuardandoHost()
 
-            // Aviso sugerido de nueva versión (solo si hay update y no se descartó aún).
-            urlActualizacion?.takeIf { !avisoDescartado }?.let { url ->
-                pe.saniape.app.ui.DialogoActualizacion(
-                    onActualizar = { acciones.abrirUrl(url); avisoDescartado = true },
-                    onMasTarde = { avisoDescartado = true },
+            // Nueva versión. Tres estados, en este orden de prioridad:
+            when {
+                // 1) Play ya bajó el APK: se ofrece instalar sin salir de Sania.
+                actualizacionLista -> pe.saniape.app.ui.DialogoInstalarActualizacion(
+                    alInstalar = alInstalarActualizacion,
                 )
+                // 2) Play está descargando en segundo plano: silencio. Avisar
+                //    acá mandaría a la tienda a hacer lo que ya se está
+                //    haciendo solo.
+                actualizacionDescargando -> Unit
+                // 3) Sin Play (APK a mano, sin Play Services): el chequeo
+                //    contra el backend sigue siendo el respaldo.
+                else -> urlActualizacion?.takeIf { !avisoDescartado }?.let { url ->
+                    pe.saniape.app.ui.DialogoActualizacion(
+                        onActualizar = { acciones.abrirUrl(url); avisoDescartado = true },
+                        onMasTarde = { avisoDescartado = true },
+                    )
+                }
             }
           }
         }

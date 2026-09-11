@@ -8,10 +8,22 @@ import android.os.Build
 import android.os.LocaleList
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import pe.saniape.app.actualizacion.ActualizadorFlexible
 import pe.saniape.app.push.SaniaFcmService
 import pe.saniape.app.ui.CitaPendienteDeAbrir
 
 class MainActivity : ComponentActivity() {
+
+    // LA ACTUALIZACIÓN QUE SE BAJA SOLA (Jonathan, 2026-09-11): Play la
+    // descarga en segundo plano y recién con el APK listo se ofrece
+    // "Instalar", sin salir de Sania. Ver ActualizadorFlexible.
+    private var actualizacionDescargando by mutableStateOf(false)
+    private var actualizacionLista by mutableStateOf(false)
+    private lateinit var actualizador: ActualizadorFlexible
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Sania está escrita en español y sus clínicas son peruanas. Sin esto, los
@@ -25,8 +37,19 @@ class MainActivity : ComponentActivity() {
         // La app pudo arrancar porque el paciente tocó un recordatorio de cita.
         CitaPendienteDeAbrir.pedir(intent?.getStringExtra(SaniaFcmService.EXTRA_CITA))
         enableEdgeToEdge()
+        // En onCreate y no después: el launcher interno del flujo de Play se
+        // registra al construir, y eso tiene que pasar antes de RESUMED.
+        actualizador = ActualizadorFlexible(this) { descargando, lista ->
+            actualizacionDescargando = descargando
+            actualizacionLista = lista
+        }
+        actualizador.arrancar()
         setContent {
-            App()
+            App(
+                actualizacionDescargando = actualizacionDescargando,
+                actualizacionLista = actualizacionLista,
+                alInstalarActualizacion = { actualizador.instalar() },
+            )
         }
     }
 
@@ -47,5 +70,13 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         pe.saniape.app.ui.Reanudacion.volvioAlFrente()
+        // La descarga pudo terminar con la app en segundo plano: se pregunta
+        // de nuevo para no dejar una actualización lista sin ofrecer.
+        if (::actualizador.isInitialized) actualizador.alVolverAPrimerPlano()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (::actualizador.isInitialized) actualizador.soltar()
     }
 }
