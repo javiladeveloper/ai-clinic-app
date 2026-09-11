@@ -250,8 +250,8 @@ android {
         //       de lo más reciente a lo más antiguo. Antes ordenaba solo por
         //       hora y una cita de julio a las 9:00 se colaba encima de una de
         //       septiembre a las 18:00.
-        versionCode = 57
-        versionName = "2.10.2"
+        versionCode = 58
+        versionName = "2.11.0"
     }
     signingConfigs {
         create("release") {
