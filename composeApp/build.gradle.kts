@@ -254,7 +254,7 @@ android {
         //       (tab Agenda, posicionada en su día). Antes caía en Inicio y
         //       tenía que buscarla a mano; una cita de la semana siguiente ni
         //       se veía. Necesita el lado servidor, que manda citaId+citaFecha.
-        versionCode = 58
+        versionCode = 59
         versionName = "2.11.1"
     }
     signingConfigs {
