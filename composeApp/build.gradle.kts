@@ -250,8 +250,12 @@ android {
         //       de lo más reciente a lo más antiguo. Antes ordenaba solo por
         //       hora y una cita de julio a las 9:00 se colaba encima de una de
         //       septiembre a las 18:00.
+        // 2.11.1: tocar el aviso de "cita nueva" lleva al profesional A esa cita
+        //       (tab Agenda, posicionada en su día). Antes caía en Inicio y
+        //       tenía que buscarla a mano; una cita de la semana siguiente ni
+        //       se veía. Necesita el lado servidor, que manda citaId+citaFecha.
         versionCode = 58
-        versionName = "2.11.0"
+        versionName = "2.11.1"
     }
     signingConfigs {
         create("release") {
