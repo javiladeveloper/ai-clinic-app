@@ -35,7 +35,7 @@ class SaniaFcmService : FirebaseMessagingService() {
         // Qué abrir al tocar: el recordatorio de cita lleva a ESA cita, con el
         // botón Confirmar a la vista. Un aviso que solo abre la app deja al
         // paciente buscando qué hacer.
-        mostrar(titulo, cuerpo, msg.data["citaId"])
+        mostrar(titulo, cuerpo, msg.data["citaId"], msg.data["citaFecha"])
     }
 
     override fun onNewToken(token: String) {
@@ -65,7 +65,12 @@ class SaniaFcmService : FirebaseMessagingService() {
         super.onDestroy()
     }
 
-    private fun mostrar(titulo: String, cuerpo: String, citaId: String? = null) {
+    private fun mostrar(
+        titulo: String,
+        cuerpo: String,
+        citaId: String? = null,
+        citaFecha: String? = null,
+    ) {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         crearCanal(this)
         val abrir = PendingIntent.getActivity(
@@ -73,6 +78,10 @@ class SaniaFcmService : FirebaseMessagingService() {
             Intent(this, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 if (citaId != null) putExtra(EXTRA_CITA, citaId)
+                // La fecha viaja aparte: con ella la agenda del STAFF se posiciona
+                // en el dia de la cita. Sin fecha caeria en hoy, y una cita de la
+                // semana que viene no se veria (reportado 2026-09-13).
+                if (citaFecha != null) putExtra(EXTRA_CITA_FECHA, citaFecha)
             },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
@@ -108,6 +117,8 @@ class SaniaFcmService : FirebaseMessagingService() {
         const val CANAL = "sania_general_v3"
         /** Id de la cita que abrió la notificación: MainActivity lo lee para llevar al paciente a ella. */
         const val EXTRA_CITA = "cita_id"
+        /** Fecha (ISO) de esa cita: posiciona la agenda del staff en su día. */
+        const val EXTRA_CITA_FECHA = "cita_fecha"
 
         /**
          * Crea el canal de avisos. Se llama al ARRANCAR la app, no solo al recibir

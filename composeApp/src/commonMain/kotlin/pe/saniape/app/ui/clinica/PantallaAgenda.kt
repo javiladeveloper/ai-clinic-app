@@ -23,6 +23,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,9 +64,27 @@ import pe.saniape.app.data.staff.FlujoClinica
  * banners, modales) están en archivos propios. Escalable y fácil de mantener.
  */
 @Composable
-fun PantallaAgenda(ctx: ContextoStaff) {
+fun PantallaAgenda(
+    ctx: ContextoStaff,
+    /**
+     * Día (ISO) en el que abrir, cuando se llegó tocando el aviso de una cita.
+     * null = comportamiento normal (hoy, o el día que ya estuviera elegido).
+     */
+    fechaInicial: String? = null,
+    /** Se llama al posicionarse: así no vuelve a esa fecha en cada recomposición. */
+    onFechaConsumida: () -> Unit = {},
+) {
     val c = Sania.colors
     val vm: AgendaViewModel = viewModel(key = ctx.clinicaId) { AgendaViewModel(ctx) }
+
+    // El profesional tocó "Nueva cita agendada": la agenda abre en el día de ESA
+    // cita, no en hoy. Sin esto, una cita de la semana que viene no se ve.
+    LaunchedEffect(fechaInicial) {
+        if (fechaInicial != null) {
+            vm.seleccionarDia(fechaInicial)
+            onFechaConsumida()
+        }
+    }
 
     // Sub-pantalla: crear cita (con o sin pre-llenado de → Evaluación)
     var creandoCita by remember { mutableStateOf(false) }

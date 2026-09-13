@@ -3,6 +3,7 @@ package pe.saniape.app.ui.clinica
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.togetherWith
+import pe.saniape.app.ui.CitaPendienteDeAbrir
 import pe.saniape.app.ui.theme.aparecer
 import pe.saniape.app.ui.theme.desaparecer
 import pe.saniape.app.ui.theme.entrarDetalle
@@ -68,6 +69,21 @@ fun ClinicaConTabs(
     var ctx by remember { mutableStateOf<ContextoStaff?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var tab by remember { mutableStateOf(TabClinica.Inicio) }
+    // Fecha (ISO) en la que debe abrir la agenda porque el profesional tocó el
+    // aviso de una cita. Se consume una sola vez: si no, cada regreso a la app
+    // lo devolvería a esa fecha en vez de a hoy.
+    var fechaDeAviso by remember { mutableStateOf<String?>(null) }
+
+    // El aviso de "cita nueva" tiene que dejar al profesional EN la cita, no en
+    // Inicio buscándola (reportado 2026-09-13). Llega con la app cerrada
+    // (MainActivity) o abierta (onNewIntent); por eso se observa el estado.
+    LaunchedEffect(CitaPendienteDeAbrir.actual) {
+        if (CitaPendienteDeAbrir.actual != null) {
+            fechaDeAviso = CitaPendienteDeAbrir.fechaActual
+            tab = TabClinica.Agenda
+            CitaPendienteDeAbrir.consumir()
+        }
+    }
     var intento by remember { mutableStateOf(0) }   // para "Reintentar"
     // Sub-pantallas accesibles desde "Más" (módulos sin tab propio).
     var verSesiones by remember { mutableStateOf(false) }
@@ -184,7 +200,11 @@ fun ClinicaConTabs(
                         onAbrirCaja = if (contexto.puede("pagos")) ({ verCaja = true }) else null,
                         onBuscar = if (verPacientes) ({ verBuscador = true }) else null,
                     )
-                    TabClinica.Agenda -> PantallaAgenda(contexto)
+                    TabClinica.Agenda -> PantallaAgenda(
+                        ctx = contexto,
+                        fechaInicial = fechaDeAviso,
+                        onFechaConsumida = { fechaDeAviso = null },
+                    )
                     TabClinica.Pacientes -> PantallaPacientesStaff(contexto)
                     TabClinica.Mas -> PantallaMasClinica(
                         contexto = contexto,

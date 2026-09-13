@@ -35,7 +35,10 @@ class MainActivity : ComponentActivity() {
                 ?.applicationLocales = LocaleList.forLanguageTags("es")
         }
         // La app pudo arrancar porque el paciente tocó un recordatorio de cita.
-        CitaPendienteDeAbrir.pedir(intent?.getStringExtra(SaniaFcmService.EXTRA_CITA))
+        CitaPendienteDeAbrir.pedir(
+            intent?.getStringExtra(SaniaFcmService.EXTRA_CITA),
+            intent?.getStringExtra(SaniaFcmService.EXTRA_CITA_FECHA),
+        )
         enableEdgeToEdge()
         // En onCreate y no después: el launcher interno del flujo de Play se
         // registra al construir, y eso tiene que pasar antes de RESUMED.
@@ -57,7 +60,10 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        CitaPendienteDeAbrir.pedir(intent.getStringExtra(SaniaFcmService.EXTRA_CITA))
+        CitaPendienteDeAbrir.pedir(
+            intent.getStringExtra(SaniaFcmService.EXTRA_CITA),
+            intent.getStringExtra(SaniaFcmService.EXTRA_CITA_FECHA),
+        )
     }
 
     /**
