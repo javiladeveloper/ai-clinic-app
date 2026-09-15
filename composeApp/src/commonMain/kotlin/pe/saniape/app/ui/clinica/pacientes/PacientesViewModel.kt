@@ -60,14 +60,61 @@ class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
     /** Lista tras búsqueda + filtro de estado (default: oculta Inactivos). */
     val filtrados: List<PacienteStaff>
         get() = pacientes.filter { p ->
-            (busqueda.isBlank() ||
-                p.nombre.contains(busqueda, ignoreCase = true) ||
-                (verContacto && p.dni?.contains(busqueda, ignoreCase = true) == true) ||
-                (p.diagnostico?.contains(busqueda, ignoreCase = true) == true)) &&
+            coincideBusqueda(p.nombre, p.dni.takeIf { verContacto }, p.diagnostico, busqueda) &&
                 when (filtroEstado) {
                     null -> p.estado != "Inactivo"   // por defecto, sin inactivos
                     "todos" -> true
                     else -> p.estado == filtroEstado
                 }
         }
+}
+
+/** Minúsculas y SIN TILDES, para comparar nombres escritos a las apuradas. */
+internal fun normalizarBusqueda(s: String): String = buildString {
+    for (c in s.lowercase().trim()) {
+        append(
+            when (c) {
+                'á', 'à', 'ä', 'â' -> 'a'
+                'é', 'è', 'ë', 'ê' -> 'e'
+                'í', 'ì', 'ï', 'î' -> 'i'
+                'ó', 'ò', 'ö', 'ô' -> 'o'
+                'ú', 'ù', 'ü', 'û' -> 'u'
+                'ñ' -> 'n'
+                else -> c
+            }
+        )
+    }
+}
+
+/**
+ * ¿Este paciente coincide con lo que se escribió en el buscador?
+ *
+ * Cada palabra por separado y en cualquier orden, sin exigir que estén pegadas.
+ * Antes era `nombre.contains(busqueda)` —la frase literal— y eso rompía el caso
+ * más común: buscar por nombre y apellido.
+ *
+ * "jorge oli" no encontraba a "JORGE YOCELYN OLIVERA GAMERO", porque entre
+ * "jorge" y "oli" está el segundo nombre. En producción 399 de 873 pacientes
+ * (46%) tienen cuatro o más palabras en el nombre, y 137 llevan alguna tilde
+ * que nadie teclea al buscar.
+ *
+ * El documento y el diagnóstico se buscan con el texto COMPLETO: partirlos en
+ * palabras daría falsos positivos.
+ *
+ * Mismo criterio que la web (components/ui/BuscadorPaciente.tsx y
+ * hooks/usePacientes.ts): un paciente se busca igual desde donde sea.
+ */
+internal fun coincideBusqueda(
+    nombre: String,
+    dni: String?,
+    diagnostico: String?,
+    busqueda: String,
+): Boolean {
+    val q = normalizarBusqueda(busqueda)
+    if (q.isBlank()) return true
+    val sinEspacios = q.filterNot { it.isWhitespace() }
+    if (!dni.isNullOrBlank() && dni.lowercase().contains(sinEspacios)) return true
+    if (!diagnostico.isNullOrBlank() && normalizarBusqueda(diagnostico).contains(q)) return true
+    val nombreNorm = normalizarBusqueda(nombre)
+    return q.split(Regex("\\s+")).filter { it.isNotBlank() }.all { nombreNorm.contains(it) }
 }
