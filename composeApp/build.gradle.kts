@@ -258,7 +258,7 @@ android {
         //       encontraba a "JORGE YOCELYN OLIVERA GAMERO" porque se buscaba
         //       la frase literal y estorbaba el segundo nombre. Ahora cada
         //       palabra por separado y sin tildes, igual que en la web.
-        versionCode = 60
+        versionCode = 61
         versionName = "2.11.2"
     }
     signingConfigs {
