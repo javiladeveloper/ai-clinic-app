@@ -254,8 +254,12 @@ android {
         //       (tab Agenda, posicionada en su día). Antes caía en Inicio y
         //       tenía que buscarla a mano; una cita de la semana siguiente ni
         //       se veía. Necesita el lado servidor, que manda citaId+citaFecha.
-        versionCode = 59
-        versionName = "2.11.1"
+        // 2.11.2: buscar un paciente por nombre y apellido. "jorge oli" no
+        //       encontraba a "JORGE YOCELYN OLIVERA GAMERO" porque se buscaba
+        //       la frase literal y estorbaba el segundo nombre. Ahora cada
+        //       palabra por separado y sin tildes, igual que en la web.
+        versionCode = 60
+        versionName = "2.11.2"
     }
     signingConfigs {
         create("release") {
