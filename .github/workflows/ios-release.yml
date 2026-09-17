@@ -7,6 +7,22 @@ name: iOS · TestFlight y App Store
 # OJO iOS ≠ Android: lo máximo automatizable es ENVIAR A REVISIÓN. Apple revisa
 # (horas/días) y PUEDE RECHAZAR. Verde = "enviada a revisión", NO "publicada".
 # Corre en macOS (Xcode requiere Mac).
+#
+# ═══════════════════════════════════════════════════════════════════════════
+# EN PAUSA (2026-09-17) — SOLO A MANO, no se dispara por tag.
+#
+# Por qué: Apple todavía no aprueba la cuenta, así que no hay nada que subir.
+# Y macOS factura 10x — un build de ~20 min gasta 200 minutos de la cuota.
+# En septiembre se agotaron los 3.000 minutos del plan, y un iOS que corriera
+# por accidente al taguear se lleva el presupuesto de un mes entero.
+#
+# El workflow NO se borra: funciona y costó afinarlo (keychain, caché, Xcode
+# 26). Solo se le quitó el disparador automático.
+#
+# Para reactivarlo cuando Apple apruebe: descomentar el bloque `push:` de
+# abajo. Mientras tanto se puede lanzar igual desde
+# Actions → "iOS · TestFlight y App Store" → Run workflow.
+# ═══════════════════════════════════════════════════════════════════════════
 on:
   workflow_dispatch:
     inputs:
@@ -16,10 +32,11 @@ on:
         default: "testflight"
         type: choice
         options: [testflight, produccion]
-  push:
-    tags:
-      - "ios-v*"
-      - "ios-prod-*"
+  # Reactivar cuando Apple apruebe la cuenta (ver el bloque de arriba):
+  # push:
+  #   tags:
+  #     - "ios-v*"
+  #     - "ios-prod-*"
 
 jobs:
   build-and-upload:
