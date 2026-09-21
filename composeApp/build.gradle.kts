@@ -258,8 +258,15 @@ android {
         //       encontraba a "JORGE YOCELYN OLIVERA GAMERO" porque se buscaba
         //       la frase literal y estorbaba el segundo nombre. Ahora cada
         //       palabra por separado y sin tildes, igual que en la web.
+        // 2.12.0: el flujo de atención puede ser distinto POR ESPECIALIDAD. En
+        //       una clínica con fisioterapia y odontología, fisioterapia entra
+        //       por Consulta y odontología directo al Diagnóstico (ahí la
+        //       primera visita YA es la revisión). Al agendar, la especialidad
+        //       se pregunta antes del tipo de cita. De paso: la pantalla de
+        //       crear cita ofrecía SIEMPRE los tres tipos con los nombres
+        //       internos — RENOVA veía una "Consulta" que no hace.
         versionCode = 61
-        versionName = "2.11.2"
+        versionName = "2.12.0"
     }
     signingConfigs {
         create("release") {
