@@ -46,6 +46,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.AvisoRx
+import pe.saniape.app.data.staff.AgendaRepo
+import pe.saniape.app.data.staff.EspecialidadRef
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.PacienteStaff
 import pe.saniape.app.data.staff.PacientesRepo
@@ -1539,6 +1541,20 @@ private fun ContenidoAtenciones(
     }
     var verHistorial by remember(paciente.id) { mutableStateOf(false) }
 
+    // Flujo POR TRATAMIENTO: cada uno sigue las etapas de la especialidad de su
+    // servicio. En una clínica con fisioterapia y odontología, un paciente puede
+    // tener un tratamiento de cada una y los recorridos no son iguales
+    // (odontología entra por el Diagnóstico, sin consulta previa).
+    // Sin especialidades cargadas, o sin flujo propio, manda el de la clínica:
+    // es el caso de casi todas y no cambia nada.
+    var especialidades by remember { mutableStateOf<List<EspecialidadRef>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        especialidades = runCatching { AgendaRepo.especialidades() }.getOrDefault(emptyList())
+    }
+    val flujoDe = { t: TratamientoPaciente ->
+        ctx.flujo.paraEspecialidad(especialidades.find { it.id == t.especialidadId }?.flujoPreset)
+    }
+
     // Render de UNA tarjeta (vivo o del historial) — mismo componente y acciones.
     val renderTrat: @Composable (TratamientoPaciente) -> Unit = { t ->
         Spacer(Modifier.height(Sania.dim.sm))
@@ -1550,7 +1566,7 @@ private fun ContenidoAtenciones(
         val citaC = citaDeEste(hitos?.consultas)
         val citaE = citaDeEste(hitos?.evaluaciones)
         TarjetaTratamiento(
-            t = t, flujo = ctx.flujo, verPagos = ctx.puede("pagos"), esAdmin = ctx.esAdmin,
+            t = t, flujo = flujoDe(t), verPagos = ctx.puede("pagos"), esAdmin = ctx.esAdmin,
             puedeSesiones = ctx.puede("sesiones"),
             pacienteId = paciente.id, puedeFotos = ctx.can("fotosEvolutivas"),
             puedeIA = ctx.can("ia"),

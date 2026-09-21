@@ -1,5 +1,10 @@
 package pe.saniape.app.data.staff
 
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
+
 /**
  * Contexto del staff resuelto por el servidor (/api/staff/contexto). La app NO
  * recalcula permisos/plan: lee estos flags ya resueltos por los helpers de la web
@@ -36,6 +41,38 @@ data class FlujoClinica(
         "Consulta" -> usaConsulta
         "Evaluación" -> usaEvaluacion
         else -> true
+    }
+
+    /**
+     * El flujo que rige cuando se elige una ESPECIALIDAD.
+     *
+     * En una clínica con fisioterapia y odontología el camino no es el mismo:
+     * fisioterapia entra por Consulta —el paciente viene a contar qué le pasa—
+     * y odontología no, porque ahí la primera visita YA es la revisión con
+     * odontograma.
+     *
+     * Gemelo de `flujoDeEspecialidad()` en la web (lib/flujo.ts). Si cambia una,
+     * cambia la otra.
+     *
+     * [propio] es el `flujo_preset` de la especialidad. NULL —el caso de casi
+     * todas— devuelve este mismo flujo, que es lo que protege a las clínicas
+     * que ya trabajan. Un JSON a medias se ignora ENTERO: heredar la mitad
+     * dejaría una barra de recorrido sin sentido.
+     */
+    fun paraEspecialidad(propio: JsonObject?): FlujoClinica {
+        if (propio == null) return this
+        val usaC = (propio["usa_consulta"] as? JsonPrimitive)?.booleanOrNull ?: return this
+        val usaE = (propio["usa_evaluacion"] as? JsonPrimitive)?.booleanOrNull ?: return this
+        fun txt(k: String, porDefecto: String) =
+            (propio[k] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() } ?: porDefecto
+        return FlujoClinica(
+            usaConsulta = usaC,
+            usaEvaluacion = usaE,
+            labelConsulta = txt("label_consulta", labelConsulta),
+            labelEvaluacion = txt("label_evaluacion", labelEvaluacion),
+            labelSesiones = txt("label_sesiones", labelSesiones),
+            labelAlta = txt("label_alta", labelAlta),
+        )
     }
 }
 

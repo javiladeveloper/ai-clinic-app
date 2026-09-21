@@ -218,17 +218,23 @@ object AgendaRepo {
     suspend fun revertir(citaId: String) = postSimple("revertir", citaId)
     suspend fun cancelar(citaId: String) = postSimple("cancelar", citaId)
 
-    /** Especialidades activas de la clínica (para el selector de derivación). */
+    /**
+     * Especialidades activas de la clínica (selector de derivación y de cita).
+     *
+     * Trae `flujo_preset` porque cada especialidad puede tener su propio camino
+     * (fisioterapia entra por Consulta, odontología por Diagnóstico). NULL —lo
+     * normal— significa "usa el de la clínica".
+     */
     suspend fun especialidades(): List<EspecialidadRef> {
         val filas = Supabase.client.postgrest["especialidades"]
-            .select(Columns.list("id, nombre")) {
+            .select(Columns.list("id, nombre, flujo_preset")) {
                 filter { eq("estado", "Activa") }
                 order("nombre", Order.ASCENDING)
             }
             .decodeList<JsonObject>()
         return filas.mapNotNull {
             val id = it.str("id") ?: return@mapNotNull null
-            EspecialidadRef(id, it.str("nombre") ?: "")
+            EspecialidadRef(id, it.str("nombre") ?: "", it["flujo_preset"] as? JsonObject)
         }
     }
 
@@ -410,7 +416,8 @@ object AgendaRepo {
     }
 }
 
-data class EspecialidadRef(val id: String, val nombre: String)
+/** [flujoPreset] = flujo propio de la especialidad; null = hereda el de la clínica. */
+data class EspecialidadRef(val id: String, val nombre: String, val flujoPreset: JsonObject? = null)
 data class RefNombre(val id: String, val nombre: String)
 /** Terapeuta con sus especialidades (para filtrar por especialidad en el form). */
 data class TerapeutaRef(val id: String, val nombre: String, val especialidadIds: List<String>)

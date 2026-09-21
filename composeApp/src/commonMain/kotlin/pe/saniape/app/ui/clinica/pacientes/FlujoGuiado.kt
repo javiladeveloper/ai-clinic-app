@@ -34,7 +34,13 @@ import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.data.staff.FlujoClinica
 
 /** Un paso del recorrido (bolita + label). */
-private data class Paso(val label: String, val done: Boolean, val activo: Boolean)
+/**
+ * [clave] identifica el paso sin depender de su POSICIÓN. Es lo que permite
+ * ocultar una etapa que el flujo no usa: con índices fijos (0=consulta,
+ * 1=evaluación, 2=sesiones) quitar una corría todas las demás y las bolitas
+ * abrían el contenido equivocado. Mismo criterio que la web.
+ */
+private data class Paso(val clave: String, val label: String, val done: Boolean, val activo: Boolean)
 
 /**
  * Barra de recorrido ADAPTATIVA por TIPO de tratamiento (Strategy, como la web), para incrustar
@@ -74,8 +80,10 @@ fun BarraRecorrido(
     val sesTot = trat.totalSesiones
     val altaTrat = trat.estado == "Alta"
     val completo = trat.estado == "Completado" || (sesTot > 0 && sesComp >= sesTot)
-    // Bolita seleccionada (muestra su nube de referencia). Índice del paso abierto, o null.
-    var hitoAbierto by remember { mutableStateOf<Int?>(null) }
+    // Bolita seleccionada (muestra su nube de referencia). CLAVE del paso abierto, o
+    // null. Clave y no índice: los pasos que el flujo no usa no se pintan, así que la
+    // posición se corre y dejaría abierta la nube equivocada.
+    var hitoAbierto by remember { mutableStateOf<String?>(null) }
 
     // Tercer paso: con sesiones = progreso N/M; sin sesiones = "Control" (la próxima cita
     // aprox). 'done' si ya se atendió (hubo consulta/evaluación); 'activo' si hay próximo
@@ -84,21 +92,28 @@ fun BarraRecorrido(
     val tieneProxControl = !trat.proximoControl.isNullOrBlank()
     val pasoTercero = when {
         esServUnico -> Paso(
-            if (servRealizado) "Realizado" else "Por hacer",
+            "servicio", if (servRealizado) "Realizado" else "Por hacer",
             done = servRealizado, activo = !servRealizado && !altaTrat,
         )
         usaSesiones -> {
             val etq = if (sesComp > sesTot) "$sesTot/$sesTot +${sesComp - sesTot}" else "$sesComp/$sesTot ses."
-            Paso(etq, done = completo, activo = !completo && !altaTrat)
+            Paso("sesiones", etq, done = completo, activo = !completo && !altaTrat)
         }
-        else -> Paso("Control", done = atendido, activo = !altaTrat && tieneProxControl)
+        else -> Paso("control", "Control", done = atendido, activo = !altaTrat && tieneProxControl)
     }
     val pasoCuarto =
-        if (esServUnico) Paso("Pagado", done = servPagado, activo = servRealizado && !servPagado)
-        else Paso(flujo.labelAlta, done = altaTrat, activo = false)
-    val pasos = listOf(
-        Paso(flujo.labelConsulta, done = consultaDone, activo = false),
-        Paso(flujo.labelEvaluacion, done = evalDone, activo = false),
+        if (esServUnico) Paso("pagado", "Pagado", done = servPagado, activo = servRealizado && !servPagado)
+        else Paso("alta", flujo.labelAlta, done = altaTrat, activo = false)
+    // Las etapas de entrada se ocultan si este flujo NO las usa Y no están
+    // cumplidas. Un hito histórico ya cumplido NUNCA se borra: una clínica que
+    // cambió de flujo tiene consultas viejas, y hacerlas desaparecer de la barra
+    // daría la impresión de que el paciente nunca pasó por ahí.
+    // Mismo criterio que la web (FlujoGuiado.tsx).
+    val pasos = listOfNotNull(
+        Paso("consulta", flujo.labelConsulta, done = consultaDone, activo = false)
+            .takeIf { flujo.usaConsulta || consultaDone },
+        Paso("evaluacion", flujo.labelEvaluacion, done = evalDone, activo = false)
+            .takeIf { flujo.usaEvaluacion || evalDone },
         pasoTercero,
         pasoCuarto,
     )
@@ -106,31 +121,31 @@ fun BarraRecorrido(
     //  - paso 0 (Consulta) → citaConsulta
     //  - paso 1 (Evaluación) → citaEvaluacion
     //  - paso 2 (Control, sin sesiones) → la cita que se realizó (consulta o evaluación)
-    val citaDelPaso = { i: Int ->
-        when {
-            i == 0 -> citaConsulta
-            i == 1 -> citaEvaluacion
-            i == 2 && !usaSesiones && !esServUnico -> citaConsulta ?: citaEvaluacion
+    val citaDelPaso = { p: Paso ->
+        when (p.clave) {
+            "consulta" -> citaConsulta
+            "evaluacion" -> citaEvaluacion
+            "control" -> citaConsulta ?: citaEvaluacion
             else -> null
         }
     }
 
-    // El paso "Sesiones" (índice 2, con sesiones) controla el expandir de la tarjeta.
-    val esSesiones = { i: Int -> i == 2 && usaSesiones }
-    // El paso "Control" (índice 2, sin sesiones) SIEMPRE abre su nube (próx. control + acciones),
-    // aunque no haya una cita asociada — así el profesional puede agendar/dar de alta.
-    val esControl = { i: Int -> i == 2 && !usaSesiones && !esServUnico }
-    // El paso del SERVICIO (índice 2, servicio único): nube con detalles + registrar/revertir.
-    val esServicio = { i: Int -> i == 2 && esServUnico }
+    // El paso "Sesiones" controla el expandir de la tarjeta.
+    val esSesiones = { p: Paso -> p.clave == "sesiones" }
+    // El paso "Control" SIEMPRE abre su nube (próx. control + acciones), aunque no haya
+    // una cita asociada — así el profesional puede agendar/dar de alta.
+    val esControl = { p: Paso -> p.clave == "control" }
+    // El paso del SERVICIO (servicio único): nube con detalles + registrar/revertir.
+    val esServicio = { p: Paso -> p.clave == "servicio" }
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         pasos.forEachIndexed { i, paso ->
-            val cita = citaDelPaso(i)
+            val cita = citaDelPaso(paso)
             // Tocable si: tiene cita, o es Control, o es el paso del Servicio (único).
-            val abreNube = cita != null || esControl(i) || esServicio(i)
+            val abreNube = cita != null || esControl(paso) || esServicio(paso)
             Column(Modifier.width(60.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 // "abierta" = nube abierta, o (paso Sesiones) la tarjeta está expandida.
-                val abierta = hitoAbierto == i || (esSesiones(i) && expandido)
+                val abierta = hitoAbierto == paso.clave || (esSesiones(paso) && expandido)
                 val bg = when { paso.done -> c.ok; paso.activo -> c.navy; else -> c.superficie }
                 val fg = when { paso.done || paso.activo -> c.sobreNavy; else -> c.textoSuave }
                 val borde = when { abierta -> c.navy; paso.done -> c.ok; paso.activo -> c.navy; else -> c.borde }
@@ -140,11 +155,11 @@ fun BarraRecorrido(
                         .let {
                             when {
                                 // Sesiones: expande la tarjeta y cierra cualquier nube abierta.
-                                esSesiones(i) -> it.clickable { hitoAbierto = null; onToggleSesiones() }
+                                esSesiones(paso) -> it.clickable { hitoAbierto = null; onToggleSesiones() }
                                 // Nube (cita o Control): alterna y colapsa la tarjeta (1 activo a la vez).
                                 abreNube -> it.clickable {
-                                    val abrir = hitoAbierto != i
-                                    hitoAbierto = if (abrir) i else null
+                                    val abrir = hitoAbierto != paso.clave
+                                    hitoAbierto = if (abrir) paso.clave else null
                                     if (abrir && expandido) onColapsarTarjeta()
                                 }
                                 else -> it
@@ -170,9 +185,10 @@ fun BarraRecorrido(
     // Nube flotante del paso tocado. Renderiza si hay cita (Consulta/Eval/Control con datos)
     // O si es el paso Control/Servicio (aunque no haya cita → detalles + acciones).
     val abi = hitoAbierto
-    val citaAbierta = abi?.let { citaDelPaso(it) }
-    val esControlAbierto = abi == 2 && !usaSesiones && !esServUnico
-    val esServicioAbierto = abi == 2 && esServUnico
+    val pasoAbierto = abi?.let { clave -> pasos.find { it.clave == clave } }
+    val citaAbierta = pasoAbierto?.let { citaDelPaso(it) }
+    val esControlAbierto = abi == "control"
+    val esServicioAbierto = abi == "servicio"
     if (abi != null && (citaAbierta != null || esControlAbierto || esServicioAbierto)) {
         Spacer(Modifier.height(8.dp))
         Column(

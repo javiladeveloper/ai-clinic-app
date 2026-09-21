@@ -148,6 +148,29 @@ fun PantallaCrearCita(
 
     // Clínica multi-especialidad → mostrar selector que filtra los profesionales.
     val multiEspecialidad = especialidadesClinica.size > 1
+
+    // El flujo que rige ESTA cita: el de la especialidad elegida si tiene uno
+    // propio, si no el de la clínica. Es lo que permite que en una misma
+    // clínica fisioterapia entre por Consulta y odontología por Diagnóstico.
+    val flujoEfectivo = remember(ctx.flujo, especialidad) {
+        ctx.flujo.paraEspecialidad(especialidad?.flujoPreset)
+    }
+    // Los tipos que se ofrecen de verdad. Antes se mostraban los tres SIEMPRE:
+    // a RENOVA, que no hace consultas, se le ofrecía "Consulta"; y con los
+    // nombres internos, no los suyos.
+    val tiposVisibles = remember(flujoEfectivo, ctx.usaSesiones) {
+        TIPOS_INFO.filter { flujoEfectivo.usaTipo(it.valor) }
+            .filter { it.valor != "Sesión" || ctx.usaSesiones }
+    }
+    // Si el tipo elegido deja de ofrecerse (al cambiar de especialidad, o al
+    // abrir la pantalla en una clínica que no usa Consulta), se cae al primero
+    // que sí exista. Sin esto se guardaba una cita de un tipo que la clínica
+    // declaró no tener.
+    LaunchedEffect(tiposVisibles) {
+        if (tiposVisibles.isNotEmpty() && tiposVisibles.none { it.valor == tipo }) {
+            tipo = tiposVisibles.first().valor
+        }
+    }
     // Profesionales filtrados por la especialidad elegida (o todos si no se eligió).
     val terapeutasFiltrados = especialidad?.let { e ->
         terapeutas.filter { e.id in it.especialidadIds }
@@ -289,12 +312,35 @@ fun PantallaCrearCita(
                     Spacer(Modifier.height(Sania.dim.sm))
                 }
 
-                // Tipo de cita — tarjetas con icono + descripción (más llamativas)
+                // La especialidad va ANTES del tipo de cita: de ella dependen
+                // qué etapas existen. En una clínica con fisioterapia y
+                // odontología, fisioterapia entra por Consulta y odontología
+                // directo al Diagnóstico; preguntar el tipo primero ofrecería
+                // etapas que esa especialidad no tiene.
+                if (multiEspecialidad && ctx.miTerapeutaId == null) {
+                    Spacer(Modifier.height(Sania.dim.md))
+                    Etiqueta("Especialidad")
+                    SelectorLista(
+                        items = especialidadesClinica, elegido = especialidad, etiqueta = { it.nombre },
+                        onElegir = { esp ->
+                            especialidad = esp
+                            // Si el profesional elegido ya no pertenece a la especialidad, lo quitamos.
+                            terapeuta?.let { t -> if (esp.id !in t.especialidadIds) terapeuta = null }
+                        },
+                        placeholder = "Todas las especialidades",
+                    )
+                }
+                Spacer(Modifier.height(Sania.dim.md))
+
+                // Tipo de cita — solo los que esta clínica (o la especialidad
+                // elegida) ofrece de verdad, y con SU nombre: RENOVA no hace
+                // "consultas" y llama "Evaluación" a su primera cita.
                 Etiqueta("Tipo de cita")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TIPOS_INFO.forEach { ti ->
+                    tiposVisibles.forEach { ti ->
                         TarjetaTipo(
                             info = ti, activo = tipo == ti.valor,
+                            etiqueta = flujoEfectivo.nombreTipo(ti.valor),
                             modifier = Modifier.weight(1f),
                         ) { tipo = ti.valor }
                     }
@@ -343,21 +389,6 @@ fun PantallaCrearCita(
                     Text(if (esRegularizacion) "☑" else "☐", fontSize = 18.sp, color = c.navy)
                     Spacer(Modifier.width(6.dp))
                     Text("Esta cita ya ocurrió (la registro después)", color = c.textoSuave, fontSize = 12.sp)
-                }
-
-                // Especialidad (solo si la clínica tiene más de una). Filtra los profesionales.
-                if (multiEspecialidad && ctx.miTerapeutaId == null) {
-                    Spacer(Modifier.height(Sania.dim.md))
-                    Etiqueta("Especialidad")
-                    SelectorLista(
-                        items = especialidadesClinica, elegido = especialidad, etiqueta = { it.nombre },
-                        onElegir = { esp ->
-                            especialidad = esp
-                            // Si el profesional elegido ya no pertenece a la especialidad, lo quitamos.
-                            terapeuta?.let { t -> if (esp.id !in t.especialidadIds) terapeuta = null }
-                        },
-                        placeholder = "Todas las especialidades",
-                    )
                 }
 
                 Spacer(Modifier.height(Sania.dim.md))
@@ -506,7 +537,7 @@ private fun Etiqueta(t: String) {
 }
 
 @Composable
-private fun TarjetaTipo(info: TipoInfo, activo: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun TarjetaTipo(info: TipoInfo, activo: Boolean, etiqueta: String = info.valor, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val c = Sania.colors
     val acento = when (info.valor) {
         "Evaluación" -> c.info
@@ -522,7 +553,7 @@ private fun TarjetaTipo(info: TipoInfo, activo: Boolean, modifier: Modifier = Mo
     ) {
         Text(info.icono, fontSize = 22.sp)
         Spacer(Modifier.height(4.dp))
-        Text(info.valor, color = if (activo) acento else c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(etiqueta, color = if (activo) acento else c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         Text(info.desc, color = c.textoSuave, fontSize = 9.sp,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier.padding(top = 2.dp))
