@@ -22,6 +22,17 @@ data class MapaDental(val ids: List<String> = emptyList(), val solo: Boolean = f
 }
 
 /**
+ * ¿Este servicio se ofrece en el presupuesto dental? Lo de las especialidades
+ * dentales y lo que no cuelga de ninguna; en una clínica solo dental, todo.
+ * Gemelo de `esServicioDental` en la web: con Medicina General al lado, el
+ * odontólogo no ve "Consulta médica" para ponerle precio a una caries.
+ */
+fun esServicioDental(especialidadId: String?, mapa: MapaDental): Boolean {
+    if (mapa.solo || mapa.ids.isEmpty()) return true
+    return especialidadId.isNullOrBlank() || especialidadId in mapa.ids
+}
+
+/**
  * ¿Esta CITA es dental? Decide si al completarla va primero el odontograma y
  * si su tarjeta ofrece "🦷 Odontograma".
  *

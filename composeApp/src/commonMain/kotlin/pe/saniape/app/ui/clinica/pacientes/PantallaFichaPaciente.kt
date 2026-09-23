@@ -523,6 +523,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     "odontograma" -> if (esOdontologia) {
                         pe.saniape.app.ui.clinica.odontologia.OdontogramaVista(
                             pacienteId = paciente.id,
+                            mapaDental = ctx.mapaDental,
                             // Paciente dado de baja: se mira, no se marca.
                             soloLectura = paciente.estado == "Inactivo",
                         )

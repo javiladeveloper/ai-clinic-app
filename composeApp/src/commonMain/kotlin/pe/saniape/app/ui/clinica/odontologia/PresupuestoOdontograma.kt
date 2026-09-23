@@ -62,10 +62,17 @@ internal fun PresupuestoOdontograma(
     soloLectura: Boolean,
     /** Tras crear tratamientos o vincular un servicio: recargar lo de arriba. */
     onCambio: () -> Unit,
+    /** Qué especialidades son dentales (de /api/staff/contexto). */
+    mapaDental: pe.saniape.app.data.staff.MapaDental = pe.saniape.app.data.staff.MapaDental(),
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
-    var servicios by remember { mutableStateOf<List<ProcedimientoRef>>(emptyList()) }
+    // `todos` arma las líneas (un hallazgo ya vinculado nunca se pierde);
+    // `servicios` son los que se OFRECEN para elegir: solo los dentales.
+    var todos by remember { mutableStateOf<List<ProcedimientoRef>>(emptyList()) }
+    val servicios = remember(todos, mapaDental) {
+        todos.filter { pe.saniape.app.data.staff.esServicioDental(it.especialidadId, mapaDental) }
+    }
     var creando by remember { mutableStateOf(false) }
     var vinculando by remember { mutableStateOf<HallazgoDental?>(null) }
     var eligiendoExtra by remember { mutableStateOf(false) }
@@ -75,13 +82,13 @@ internal fun PresupuestoOdontograma(
     var precios by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var editandoPrecio by remember { mutableStateOf<Pair<String, String>?>(null) }  // id → nombre
 
-    LaunchedEffect(Unit) { servicios = OdontogramaRepo.serviciosDentales() }
+    LaunchedEffect(Unit) { todos = OdontogramaRepo.procedimientos() }
 
     // Solo lo que todavía no tiene tratamiento: lo ya presupuestado no se
     // vuelve a ofrecer (crearía un segundo tratamiento por la misma caries).
     val libres = remember(hallazgos) { hallazgos.filter { it.tratamientoId == null } }
-    val (lineasBase, sinServicio) = remember(libres, catalogo, servicios) {
-        agruparPresupuesto(libres, catalogo, servicios)
+    val (lineasBase, sinServicio) = remember(libres, catalogo, todos) {
+        agruparPresupuesto(libres, catalogo, todos)
     }
     // Se aplica el precio ajustado ANTES de planificar, así el tratamiento se
     // crea con lo que el médico acordó con el paciente, no con el de lista.
@@ -97,7 +104,7 @@ internal fun PresupuestoOdontograma(
     // precio, y con esa clave editar un precio volvía a marcar lo desmarcado.
     val idsServicios = lineasBase.map { it.procedimientoId }
     var marcadas by remember(idsServicios) { mutableStateOf(idsServicios.toSet()) }
-    val procPorId = remember(servicios) { servicios.associateBy { it.id } }
+    val procPorId = remember(todos) { todos.associateBy { it.id } }
 
     val total = lineas.filter { it.procedimientoId in marcadas }.sumOf { it.subtotal } +
         extras.sumOf { precioExtra(it) }

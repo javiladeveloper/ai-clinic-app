@@ -79,6 +79,8 @@ fun OdontogramaVista(
     onCambio: () -> Unit = {},
     /** En la revisión previa al diagnóstico se marca y nada más: sin presupuesto. */
     mostrarPresupuesto: Boolean = true,
+    /** Para ofrecer solo servicios dentales en una clínica mixta. */
+    mapaDental: pe.saniape.app.data.staff.MapaDental = pe.saniape.app.data.staff.MapaDental(),
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -187,6 +189,7 @@ fun OdontogramaVista(
 
         // ── Presupuesto ──────────────────────────────────────────────────
         if (mostrarPresupuesto) PresupuestoOdontograma(
+            mapaDental = mapaDental,
             pacienteId = pacienteId,
             citaId = citaId,
             hallazgos = hallazgos,

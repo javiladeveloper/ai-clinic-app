@@ -238,27 +238,6 @@ object OdontogramaRepo {
             }
             DatosDentalesPaciente(citasD.await(), hallazgosD.await(), mirandoD.await())
         }
-
-    /**
-     * Los servicios de ODONTOLOGÍA de la clínica, para el presupuesto.
-     *
-     * En una clínica mixta (medicina + odontología, o fisio + odontología) el
-     * presupuesto dental no debe ofrecer servicios de otra rama: se filtra por
-     * las especialidades cuyo rubro guardado es odontología. Si la clínica no
-     * tiene el rubro cargado (clínicas viejas), se ofrecen todos, que es lo que
-     * hacía antes.
-     */
-    suspend fun serviciosDentales(): List<ProcedimientoRef> {
-        val idsOdonto = try {
-            Supabase.client.postgrest["especialidades"]
-                .select(Columns.list("id")) { filter { eq("rubro", "odontologia") } }
-                .decodeList<JsonObject>()
-                .mapNotNull { it.str("id") }
-        } catch (_: Exception) { emptyList() }
-        val todos = procedimientos()
-        if (idsOdonto.isEmpty()) return todos
-        return todos.filter { it.especialidadId == null || it.especialidadId in idsOdonto }
-    }
 }
 
 /** Ver [OdontogramaRepo.datosDentalesPaciente]. */

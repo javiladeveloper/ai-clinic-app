@@ -336,7 +336,7 @@ fun PantallaAgenda(
                 onAccion = { odontogramaCita = null },
                 textoCancelar = "Cerrar",
             ) {
-                pe.saniape.app.ui.clinica.odontologia.OdontogramaVista(pacienteId = pac, citaId = cita.id)
+                pe.saniape.app.ui.clinica.odontologia.OdontogramaVista(pacienteId = pac, citaId = cita.id, mapaDental = ctx.mapaDental)
             }
         }
     }

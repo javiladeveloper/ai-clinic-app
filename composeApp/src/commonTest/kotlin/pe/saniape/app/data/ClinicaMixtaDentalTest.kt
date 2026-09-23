@@ -5,6 +5,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import pe.saniape.app.data.staff.MapaDental
 import pe.saniape.app.data.staff.citaEsDental
+import pe.saniape.app.data.staff.esServicioDental
 import pe.saniape.app.data.staff.pacienteEsDental
 
 /**
@@ -70,5 +71,13 @@ class ClinicaMixtaDentalTest {
     @Test fun soloDentalTodosSinOdontologiaNadie() {
         assertTrue(pacienteEsDental(soloDental))
         assertFalse(pacienteEsDental(sinOdonto, tieneHallazgos = true))
+    }
+
+    @Test fun presupuestoSoloServiciosDentalesEnClinicaMixta() {
+        assertTrue(esServicioDental("e-odonto", mixta))
+        assertFalse(esServicioDental("e-medicina", mixta))
+        assertTrue(esServicioDental(null, mixta))          // servicio viejo sin especialidad
+        assertTrue(esServicioDental("e-medicina", soloDental))
+        assertTrue(esServicioDental("x", sinOdonto))
     }
 }

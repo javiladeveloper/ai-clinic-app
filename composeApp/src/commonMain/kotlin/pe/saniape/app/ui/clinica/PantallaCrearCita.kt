@@ -476,6 +476,18 @@ fun PantallaCrearCita(
                         if (tipo == "Sesión" && tratamiento == null && tratamientos.isNotEmpty()) {
                             mensaje = "Elige el tratamiento"; return@Button
                         }
+                        // Clínica que mezcla odontología con otra especialidad: la
+                        // cita tiene que decir de cuál es, porque de eso depende que
+                        // al completarla se abra el odontograma (citaEsDental). Igual
+                        // que la web. El profesional agenda lo suyo (su especialidad
+                        // sale de él) y la sesión la toma de su tratamiento.
+                        val mixtaDental = ctx.mapaDental.ids.isNotEmpty() && !ctx.mapaDental.solo
+                        if (mixtaDental && multiEspecialidad && ctx.miTerapeutaId == null && tipo != "Sesión" &&
+                            especialidad == null && terapeuta?.especialidadIds?.singleOrNull() == null
+                        ) {
+                            mensaje = "Elige la especialidad: la clínica atiende odontología y otras, y cada una se atiende distinto."
+                            return@Button
+                        }
                         // Disponibilidad bloquea solo si NO es regularización (igual que la web).
                         val d = disponibilidad
                         if (d != null && !d.disponible && !esRegularizacion) {
