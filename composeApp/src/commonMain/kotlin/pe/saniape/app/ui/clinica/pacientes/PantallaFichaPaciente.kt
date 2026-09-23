@@ -400,6 +400,10 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 val tabs = buildList {
                     add("atenciones" to "🩺 Atenciones")
                     add("examenes" to "🔬 Exámenes")
+                    // SOLO odontología. La regla la decide la web
+                    // (/api/staff/contexto); una clínica de fisio o estética
+                    // nunca ve esta pestaña ni carga su código.
+                    if (ctx.haceOdontologia) add("odontograma" to "🦷 Odontograma")
                     if (ctx.puede("pagos")) add("pagos" to "💰 Pagos")
                     add("resumen" to "📋 Resumen")
                 }
@@ -496,6 +500,15 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         ctx = ctx, paciente = paciente, acciones = acciones,
                         onEditarClinico = { editarClinico = true },
                     )
+                    // Doble candado: aunque `tab` quedara en "odontograma" por
+                    // un estado viejo, sin odontología no se monta.
+                    "odontograma" -> if (ctx.haceOdontologia) {
+                        pe.saniape.app.ui.clinica.odontologia.OdontogramaVista(
+                            pacienteId = paciente.id,
+                            // Paciente dado de baja: se mira, no se marca.
+                            soloLectura = paciente.estado == "Inactivo",
+                        )
+                    }
                 } }
 
                 Spacer(Modifier.height(Sania.dim.xxl))

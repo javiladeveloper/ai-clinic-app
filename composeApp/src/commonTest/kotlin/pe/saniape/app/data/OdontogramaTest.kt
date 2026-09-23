@@ -184,3 +184,60 @@ class DiagnosticoTest {
         assertEquals(a, b)
     }
 }
+
+class PlanTratamientoTest {
+    private fun procCon(modo: String?, sesiones: Int? = null) = pe.saniape.app.data.staff.ProcedimientoRef(
+        id = "P", nombre = "Servicio", precio = 60.0, precioPaquete = null, especialidadId = null,
+        usaSesiones = false,
+        tarifarios = sesiones?.let { listOf(pe.saniape.app.data.staff.TarifarioRef("T", it, 300.0)) } ?: emptyList(),
+        modoCobro = modo,
+    )
+    private fun linea(piezas: List<String>, subtotal: Double, porBoca: Boolean = false) =
+        pe.saniape.app.data.staff.LineaPresupuesto(
+            procedimientoId = "P", nombre = "Resina", hallazgoNombre = "Caries",
+            piezas = piezas, hallazgoIds = piezas.map { "h$it" },
+            precioUnitario = 60.0, subtotal = subtotal, porBoca = porBoca,
+        )
+
+    @Test
+    fun por_unidades_una_por_pieza() {
+        // 3 caries = 3 resinas.
+        val p = pe.saniape.app.data.staff.planTratamiento(linea(listOf("26", "27", "36"), 180.0), procCon(null))
+        assertEquals("Unidades", p.modalidad)
+        assertEquals(3, p.cantidadUnidades)
+        assertEquals(180.0, p.precioAcordado)
+        assertEquals("Caries en pieza(s) 26, 27, 36", p.diagnostico)
+    }
+
+    @Test
+    fun por_sesiones_usa_el_primer_tarifario() {
+        val p = pe.saniape.app.data.staff.planTratamiento(linea(listOf("26"), 300.0), procCon("sesiones", 4))
+        assertEquals("Sesiones", p.modalidad)
+        assertEquals(4, p.totalSesiones)
+        assertEquals(300.0, p.precioPaquete)
+        assertEquals(null, p.cantidadUnidades)
+    }
+
+    @Test
+    fun lo_de_boca_es_UNA_sesion_suelta_no_doce_unidades() {
+        // Profilaxis marcada en 12 dientes: un acto, se cobra una vez.
+        val doce = listOf("16", "17", "18", "26", "27", "28", "36", "37", "38", "46", "47", "48")
+        val p = pe.saniape.app.data.staff.planTratamiento(linea(doce, 80.0, porBoca = true), procCon(null))
+        assertEquals("Sesión suelta", p.modalidad)
+        assertEquals(1, p.totalSesiones)
+        assertEquals(80.0, p.precioAcordado)
+        assertEquals("Caries generalizado", p.diagnostico)
+    }
+
+    @Test
+    fun marcado_en_BOCA_dice_boca_completa() {
+        val p = pe.saniape.app.data.staff.planTratamiento(linea(listOf("BOCA"), 80.0, porBoca = true), procCon(null))
+        assertEquals("Caries (Boca completa)", p.diagnostico)
+    }
+
+    @Test
+    fun ata_los_hallazgos_que_lo_originaron() {
+        val p = pe.saniape.app.data.staff.planTratamiento(linea(listOf("26", "27"), 120.0), procCon(null))
+        assertEquals(listOf("h26", "h27"), p.hallazgoIds)
+    }
+}

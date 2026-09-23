@@ -152,7 +152,11 @@ object OdontogramaRepo {
      */
     suspend fun procedimientos(especialidadId: String? = null): List<ProcedimientoRef> = try {
         Supabase.client.postgrest["procedimientos"]
-            .select(Columns.list("id, nombre, precio, precio_paquete, especialidad_id, modo_cobro, unidad_label, precio_unitario_sugerido")) {
+            .select(Columns.list(
+                "id, nombre, precio, precio_paquete, especialidad_id, modo_cobro, unidad_label, precio_unitario_sugerido, " +
+                    // El tarifario da cuántas sesiones tiene un servicio "por sesiones".
+                    "tarifarios:tarifario_paquetes(id, cantidad_sesiones, precio_total)",
+            )) {
                 filter {
                     eq("estado", "Activo")
                     if (especialidadId != null) eq("especialidad_id", especialidadId)
@@ -169,11 +173,51 @@ object OdontogramaRepo {
                     precioPaquete = o.str("precio_paquete")?.toDoubleOrNull(),
                     especialidadId = o.str("especialidad_id"),
                     usaSesiones = false,
-                    tarifarios = emptyList(),
+                    tarifarios = (o["tarifarios"] as? kotlinx.serialization.json.JsonArray).orEmpty()
+                        .mapNotNull { t ->
+                            val to = t as? JsonObject ?: return@mapNotNull null
+                            TarifarioRef(
+                                id = to.str("id") ?: return@mapNotNull null,
+                                cantidadSesiones = to.str("cantidad_sesiones")?.toIntOrNull() ?: return@mapNotNull null,
+                                precioTotal = to.str("precio_total")?.toDoubleOrNull() ?: 0.0,
+                            )
+                        },
                     modoCobro = o.str("modo_cobro"),
                     unidadLabel = o.str("unidad_label"),
                     precioUnitarioSugerido = o.str("precio_unitario_sugerido")?.toDoubleOrNull(),
                 )
             }
     } catch (_: Exception) { emptyList() }
+
+    /**
+     * Le asigna un servicio a un hallazgo del CATÁLOGO que no tenía (p. ej.
+     * "Fractura" sin servicio). Es de la clínica, no del paciente: a partir de
+     * ahí toda fractura se presupuesta con ese servicio. Igual que en la web.
+     */
+    suspend fun vincularServicio(hallazgoId: String, procedimientoId: String): Boolean = try {
+        Supabase.client.postgrest["hallazgos_dentales"]
+            .update({ set("procedimiento_id", procedimientoId) }) { filter { eq("id", hallazgoId) } }
+        true
+    } catch (_: Exception) { false }
+
+    /**
+     * Los servicios de ODONTOLOGÍA de la clínica, para el presupuesto.
+     *
+     * En una clínica mixta (medicina + odontología, o fisio + odontología) el
+     * presupuesto dental no debe ofrecer servicios de otra rama: se filtra por
+     * las especialidades cuyo rubro guardado es odontología. Si la clínica no
+     * tiene el rubro cargado (clínicas viejas), se ofrecen todos, que es lo que
+     * hacía antes.
+     */
+    suspend fun serviciosDentales(): List<ProcedimientoRef> {
+        val idsOdonto = try {
+            Supabase.client.postgrest["especialidades"]
+                .select(Columns.list("id")) { filter { eq("rubro", "odontologia") } }
+                .decodeList<JsonObject>()
+                .mapNotNull { it.str("id") }
+        } catch (_: Exception) { emptyList() }
+        val todos = procedimientos()
+        if (idsOdonto.isEmpty()) return todos
+        return todos.filter { it.especialidadId == null || it.especialidadId in idsOdonto }
+    }
 }

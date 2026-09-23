@@ -91,6 +91,10 @@ fun PantallaAgenda(
     var prefillEval by remember { mutableStateOf<PrefillCita?>(null) }
     // Modales (la cita objetivo, o null)
     var completar by remember { mutableStateOf<CitaStaff?>(null) }
+    // Odontología: la cita cuyo odontograma ya se revisó, con el diagnóstico
+    // que salió de ahí. Mientras no esté, se muestra primero la revisión.
+    var revisada by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var odontogramaCita by remember { mutableStateOf<CitaStaff?>(null) }
     var confirmar by remember { mutableStateOf<Pair<CitaStaff, AccionCita>?>(null) }
     var editar by remember { mutableStateOf<CitaStaff?>(null) }
     var pasarEval by remember { mutableStateOf<CitaStaff?>(null) }
@@ -260,10 +264,12 @@ fun PantallaAgenda(
                                         AccionTarjeta.Editar -> editar = cita
                                         AccionTarjeta.PasarEvaluacion -> pasarEval = cita
                                         AccionTarjeta.Repetir -> prefillEval = repetirDesde(cita)
+                                        AccionTarjeta.Odontograma -> odontogramaCita = cita
                                     }
                                 },
                                 onVerResumen = { resumenPacienteId = it },
                                 conteoFranja = vm.conteosFranja[cita.id] ?: 1,
+                                odontologia = ctx.haceOdontologia,
                             )
                         }
                     }
@@ -289,14 +295,48 @@ fun PantallaAgenda(
 
     // ── Modales ──
     completar?.let { cita ->
-        ModalCompletar(
-            cita = cita, especialidades = vm.especialidades, flujo = ctx.flujo,
-            onCancelar = { completar = null },
-            onConfirmar = { obs, diag, espId ->
-                completar = null
-                vm.ejecutar(AccionCita.Completar, cita, obs, diag, espId)
-            },
-        )
+        // Misma regla que ModalCompletar: la cita que evalúa pide diagnóstico.
+        val evalua = cita.tipo == "Evaluación" || (cita.tipo == "Consulta" && !ctx.flujo.usaEvaluacion)
+        val pac = cita.pacienteId
+        // SOLO odontología, y solo la cita que evalúa: primero el odontograma.
+        // Fisio, estética y el resto van directo al modal de siempre.
+        if (ctx.haceOdontologia && evalua && pac != null && revisada?.first != cita.id) {
+            pe.saniape.app.ui.clinica.odontologia.RevisionPrevia(
+                pacienteId = pac,
+                pacienteNombre = cita.pacienteNombre,
+                citaId = cita.id,
+                onContinuar = { diag -> revisada = cita.id to diag },
+                onCancelar = { completar = null; revisada = null },
+            )
+        } else {
+            ModalCompletar(
+                cita = cita, especialidades = vm.especialidades, flujo = ctx.flujo,
+                diagnosticoInicial = revisada?.takeIf { it.first == cita.id }?.second ?: "",
+                onCancelar = { completar = null; revisada = null },
+                onConfirmar = { obs, diag, espId ->
+                    completar = null
+                    revisada = null
+                    vm.ejecutar(AccionCita.Completar, cita, obs, diag, espId)
+                },
+            )
+        }
+    }
+    // Odontograma abierto desde una cita (solo odontología): lo que se marque
+    // queda atado a esa atención.
+    odontogramaCita?.takeIf { ctx.haceOdontologia }?.let { cita ->
+        val pac = cita.pacienteId ?: return@let
+        run {
+            pe.saniape.app.ui.clinica.pacientes.DialogoForm(
+                titulo = "🦷 Odontograma",
+                subtitulo = cita.pacienteNombre,
+                textoAccion = "Listo",
+                onCancelar = { odontogramaCita = null },
+                onAccion = { odontogramaCita = null },
+                textoCancelar = "Cerrar",
+            ) {
+                pe.saniape.app.ui.clinica.odontologia.OdontogramaVista(pacienteId = pac, citaId = cita.id)
+            }
+        }
     }
     confirmar?.let { (cita, accion) ->
         ConfirmacionAccion(

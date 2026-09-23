@@ -46,6 +46,8 @@ fun DialogoForm(
     accionHabilitada: Boolean = true,
     onCancelar: () -> Unit,
     onAccion: () -> Unit,
+    /** Texto del botón de salir. Casi siempre "Cancelar"; ver RevisionPrevia. */
+    textoCancelar: String = "Cancelar",
     contenido: @Composable ColumnScope.() -> Unit,
 ) {
     val c = Sania.colors
@@ -73,7 +75,7 @@ fun DialogoForm(
                 Modifier.fillMaxWidth().background(c.superficie).padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave, fontWeight = FontWeight.Bold) }
+                TextButton(onClick = onCancelar) { Text(textoCancelar, color = c.textoSuave, fontWeight = FontWeight.Bold) }
                 Box(
                     Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.md.dp))
                         .background(if (accionHabilitada) c.navy else c.borde)

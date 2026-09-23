@@ -140,6 +140,7 @@ object StaffContextoRepo {
             ),
             miTerapeutaId = o.str("miTerapeutaId"),
             usaSesiones = o.bool("usaSesiones"),
+            haceOdontologia = o.bool("haceOdontologia"),
             // Con defaults: una app nueva contra un backend viejo (o al revés)
             // no puede quedarse sin nombres para sus citas.
             flujo = o.obj("flujo")?.let { f ->

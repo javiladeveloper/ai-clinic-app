@@ -90,6 +90,13 @@ data class ContextoStaff(
     val miTerapeutaId: String?,
     val usaSesiones: Boolean,
     val flujo: FlujoClinica = FlujoClinica(),
+    /**
+     * ¿La clínica hace odontología? Decide si se muestra el odontograma. Lo
+     * calcula la WEB (/api/staff/contexto, con `haceOdontologia`): la app no
+     * tiene su propia versión de la regla. Default false: sin el dato, ninguna
+     * clínica de otro rubro ve una pestaña que no le corresponde.
+     */
+    val haceOdontologia: Boolean = false,
     val clinicas: List<ClinicaRef>,
     val tienePortal: Boolean,
 ) {

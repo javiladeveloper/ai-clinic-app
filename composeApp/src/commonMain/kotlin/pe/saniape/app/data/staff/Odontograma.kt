@@ -247,3 +247,63 @@ fun diagnosticoDesdeHallazgos(
     val texto = frases.joinToString(". ")
     return texto.replaceFirstChar { it.uppercase() } + "."
 }
+
+/** Cómo se crea el tratamiento de una línea del presupuesto. */
+data class PlanTratamiento(
+    val procedimientoId: String,
+    val modalidad: String,
+    val totalSesiones: Int?,
+    val precioPaquete: Double?,
+    val cantidadUnidades: Int?,
+    val precioUnitario: Double,
+    val precioAcordado: Double,
+    val diagnostico: String,
+    val hallazgoIds: List<String>,
+)
+
+/** ¿La línea es de la boca entera? (hallazgo de boca, o marcada en "BOCA"). */
+fun esLineaDeBoca(l: LineaPresupuesto): Boolean = l.porBoca || "BOCA" in l.piezas
+
+/**
+ * El tratamiento que sale de una línea del presupuesto, respetando cómo
+ * configuró el médico el cobro del servicio.
+ *
+ * Gemelo de `crearTratamientos` en components/odontologia/PresupuestoPanel.tsx:
+ * - servicio por SESIONES → un paquete con las sesiones del primer tarifario;
+ * - servicio SIMPLE, o hallazgo de boca → una sesión suelta (una profilaxis es
+ *   un acto, no "12 unidades" por estar marcada en 12 dientes);
+ * - lo demás → por UNIDADES: una por pieza (3 caries = 3 resinas).
+ *
+ * Dinero: el precio acordado es el subtotal de la línea, que ya descuenta el
+ * caso de boca (se cobra una vez).
+ */
+fun planTratamiento(l: LineaPresupuesto, proc: ProcedimientoRef?): PlanTratamiento {
+    val deBoca = esLineaDeBoca(l)
+    val cantidad = if (deBoca) 1 else l.piezas.size
+    val diag = when {
+        deBoca && "BOCA" in l.piezas -> "${l.hallazgoNombre} (Boca completa)"
+        deBoca -> "${l.hallazgoNombre} generalizado"
+        else -> "${l.hallazgoNombre} en pieza(s) ${l.piezas.joinToString(", ")}"
+    }
+    return when {
+        proc?.modoCobro == "sesiones" -> PlanTratamiento(
+            procedimientoId = l.procedimientoId, modalidad = "Sesiones",
+            totalSesiones = proc.tarifarios.firstOrNull()?.cantidadSesiones ?: 1,
+            precioPaquete = l.subtotal, cantidadUnidades = null,
+            precioUnitario = if (deBoca) l.subtotal else l.precioUnitario,
+            precioAcordado = l.subtotal, diagnostico = diag, hallazgoIds = l.hallazgoIds,
+        )
+        proc?.modoCobro == "simple" || deBoca -> PlanTratamiento(
+            procedimientoId = l.procedimientoId, modalidad = "Sesión suelta",
+            totalSesiones = 1, precioPaquete = null, cantidadUnidades = null,
+            precioUnitario = if (deBoca) l.subtotal else l.precioUnitario,
+            precioAcordado = l.subtotal, diagnostico = diag, hallazgoIds = l.hallazgoIds,
+        )
+        else -> PlanTratamiento(
+            procedimientoId = l.procedimientoId, modalidad = "Unidades",
+            totalSesiones = null, precioPaquete = null, cantidadUnidades = cantidad,
+            precioUnitario = l.precioUnitario, precioAcordado = l.subtotal,
+            diagnostico = diag, hallazgoIds = l.hallazgoIds,
+        )
+    }
+}

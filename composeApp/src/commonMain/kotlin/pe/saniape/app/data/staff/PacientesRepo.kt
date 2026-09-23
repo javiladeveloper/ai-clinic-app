@@ -771,6 +771,10 @@ object PacientesRepo {
         tecnicasSugeridas: String? = null,
         // Campaña aplicada, motivo del descuento y fecha de inicio (paridad web 2026-09-02).
         campaniaId: String? = null, motivoPrecio: String? = null, fechaInicio: String? = null,
+        // Odontología: los hallazgos del odontograma que originan este
+        // tratamiento. Los ata el SERVIDOR, así funciona también desde la cola
+        // offline sin que la app necesite el id del tratamiento nuevo.
+        hallazgoIds: List<String> = emptyList(),
     ): Boolean = accionTratamiento(buildJsonObject {
         put("accion", "crear"); put("pacienteId", pacienteId); put("procedimientoId", procedimientoId)
         if (terapeutaId != null) put("terapeutaId", terapeutaId)
@@ -789,6 +793,9 @@ object PacientesRepo {
         if (!campaniaId.isNullOrBlank()) put("campaniaId", campaniaId)
         if (!motivoPrecio.isNullOrBlank()) put("motivoPrecio", motivoPrecio)
         if (!fechaInicio.isNullOrBlank()) put("fechaInicio", fechaInicio)
+        if (hallazgoIds.isNotEmpty()) {
+            put("hallazgoIds", kotlinx.serialization.json.JsonArray(hallazgoIds.map { JsonPrimitive(it) }))
+        }
     })
 
     suspend fun editarTratamiento(

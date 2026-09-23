@@ -57,6 +57,11 @@ fun ModalCompletar(
     onCancelar: () -> Unit,
     onConfirmar: (observaciones: String?, diagnostico: String?, derivarEspId: String?) -> Unit,
     flujo: FlujoClinica = FlujoClinica(),
+    /**
+     * Odontología: el diagnóstico ya redactado a partir del odontograma que se
+     * marcó en el paso previo. El odontólogo lo corrige o lo acepta tal cual.
+     */
+    diagnosticoInicial: String = "",
 ) {
     val c = Sania.colors
     // La cita que EVALÚA pide diagnóstico: la Evaluación siempre, y la Consulta
@@ -64,7 +69,7 @@ fun ModalCompletar(
     // una Consulta con otro nombre). Antes García la cerraba como sesión sin
     // poder poner diagnóstico (reporte de Jonathan, demo 2026-09-05).
     val esEvaluacion = cita.tipo == "Evaluación" || (cita.tipo == "Consulta" && !flujo.usaEvaluacion)
-    var texto by remember { mutableStateOf("") }
+    var texto by remember { mutableStateOf(diagnosticoInicial) }
     var derivar by remember { mutableStateOf(false) }
     var espElegida by remember { mutableStateOf<EspecialidadRef?>(null) }
 

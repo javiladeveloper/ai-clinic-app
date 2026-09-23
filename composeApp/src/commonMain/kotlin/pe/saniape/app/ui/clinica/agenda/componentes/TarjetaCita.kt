@@ -51,6 +51,8 @@ fun TarjetaCita(
     onAccion: (AccionTarjeta) -> Unit,
     onVerResumen: (String) -> Unit = {},
     conteoFranja: Int = 1,
+    /** La clínica hace odontología: ofrece abrir el odontograma desde la cita. */
+    odontologia: Boolean = false,
 ) {
     val c = Sania.colors
     val acciones = recordarAcciones()
@@ -162,7 +164,7 @@ fun TarjetaCita(
             }
 
             // Acciones según estado (separadas por un divisor sutil)
-            val acc = accionesPara(cita.estado, cita.tipo)
+            val acc = accionesPara(cita.estado, cita.tipo, odontologia && cita.pacienteId != null)
             if (acc.isNotEmpty()) {
                 Spacer(Modifier.height(Sania.dim.md))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
@@ -177,11 +179,16 @@ fun TarjetaCita(
     }
 }
 
-enum class AccionTarjeta { Confirmar, Completar, Cancelar, Revertir, Editar, PasarEvaluacion, Repetir }
+enum class AccionTarjeta { Confirmar, Completar, Cancelar, Revertir, Editar, PasarEvaluacion, Repetir, Odontograma }
 
 /** Acciones disponibles según estado/tipo (espeja accionesCita de la web). */
 @Composable
-private fun accionesPara(estado: String, tipo: String?): List<Triple<String, AccionTarjeta, Color>> {
+private fun accionesPara(
+    estado: String,
+    tipo: String?,
+    /** Solo en clínicas de odontología y con paciente. */
+    odontograma: Boolean = false,
+): List<Triple<String, AccionTarjeta, Color>> {
     val c = Sania.colors
     val lista = mutableListOf<Triple<String, AccionTarjeta, Color>>()
     val activa = estado == "Pendiente" || estado == "Confirmada"
@@ -192,6 +199,10 @@ private fun accionesPara(estado: String, tipo: String?): List<Triple<String, Acc
     // Repetir: agendar la SIGUIENTE cita del mismo paciente en 1 toque (misma info,
     // fecha propuesta a futuro). Muy usado para citar la próxima sesión/control.
     if (estado == "Completada") lista.add(Triple("🔁 Repetir", AccionTarjeta.Repetir, c.teal))
+    // Odontograma desde la cita, en cualquier estado: el dentista lo abre para
+    // revisar o marcar sin ir a la ficha. No en las sesiones de tratamiento
+    // (ahí se atiende lo ya presupuestado). Mismo criterio que la web.
+    if (odontograma && tipo != "Sesión") lista.add(Triple("🦷 Odontograma", AccionTarjeta.Odontograma, c.info))
     if (estado != "Cancelada" && estado != "Completada") {
         lista.add(Triple("✏ Editar", AccionTarjeta.Editar, c.textoSuave))
         lista.add(Triple("✕ Cancelar", AccionTarjeta.Cancelar, c.error))

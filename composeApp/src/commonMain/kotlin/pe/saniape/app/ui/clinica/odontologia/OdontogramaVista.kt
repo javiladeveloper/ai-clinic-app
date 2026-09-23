@@ -77,6 +77,8 @@ fun OdontogramaVista(
     soloLectura: Boolean = false,
     /** Se llama cada vez que cambia algo, por si la pantalla de arriba necesita refrescar. */
     onCambio: () -> Unit = {},
+    /** En la revisión previa al diagnóstico se marca y nada más: sin presupuesto. */
+    mostrarPresupuesto: Boolean = true,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -182,6 +184,18 @@ fun OdontogramaVista(
                 )
             }
         }
+
+        // ── Presupuesto ──────────────────────────────────────────────────
+        if (mostrarPresupuesto) PresupuestoOdontograma(
+            pacienteId = pacienteId,
+            citaId = citaId,
+            hallazgos = hallazgos,
+            catalogo = catalogo,
+            soloLectura = soloLectura,
+            // El catálogo también: al asignar un servicio a un hallazgo, sin
+            // recargarlo seguiría figurando "sin servicio".
+            onCambio = { scope.launch { catalogo = OdontogramaRepo.catalogo(); recargar() } },
+        )
     }
 
     // ── Panel de un diente ────────────────────────────────────────────────
