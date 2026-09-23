@@ -9,6 +9,18 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Notificaciones en la barra (Android 13+ las pide en runtime) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Dictado por voz del odontograma. Se pide en runtime al tocar el
+         micrófono, no al abrir la app. Solo lo usa odontología. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Android 11+: sin declarar el servicio de reconocimiento de voz,
+         SpeechRecognizer.isRecognitionAvailable() devuelve false aunque el
+         teléfono lo tenga, y el dictado parecería roto. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
 
     <application
         android:localeConfig="@xml/locales_config"

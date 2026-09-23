@@ -194,6 +194,18 @@ fun agruparPresupuesto(
  * hallazgos que el catálogo pinta de azul (trabajo previo: "Corona existente").
  * Los de boca se redactan como generalizados a partir de tres piezas.
  */
+/**
+ * Hallazgos que ya nombran un cuadro general. Mismo patrón que la web
+ * (lib/odontograma.ts): si cambia allá, cambia acá.
+ */
+private val YA_GENERALES = Regex(
+    "generalizad|gingivitis|bruxismo|maloclusi|ortodoncia|bracket|profilaxis|limpieza",
+    RegexOption.IGNORE_CASE,
+)
+
+/** Pseudo-dientes: hallazgos de la boca entera, no de una pieza. No se dibujan en el diagrama. */
+val PSEUDO_DIENTES = setOf("BOCA", "GENERAL")
+
 fun diagnosticoDesdeHallazgos(
     hallazgos: List<DienteHallazgo>,
     catalogo: List<HallazgoDental>,
@@ -215,9 +227,17 @@ fun diagnosticoDesdeHallazgos(
     // Orden estable: el mismo odontograma da siempre el mismo texto.
     val frases = piezasPorHallazgo.entries.sortedBy { it.key }.map { (nombre, piezas) ->
         val ord = piezas.sortedWith(compareBy({ it.length }, { it }))
-        if (nombre in esDeBoca) {
-            if (ord.size >= 3) "$nombre generalizado"
-            else "$nombre en ${if (ord.size == 1) "zona de pieza" else "zona de piezas"} ${ord.joinToString(" y ")}"
+        // "BOCA" es un pseudo-diente: el hallazgo se marcó para la boca entera
+        // (igual que en la web). Fuerza la redacción general aunque haya una
+        // sola marca.
+        if (nombre in esDeBoca || "BOCA" in ord) {
+            if ("BOCA" in ord || ord.size >= 3) {
+                // Hay hallazgos que YA son generales por definición: decir
+                // "Gingivitis generalizado" es redundante (y mal concordado).
+                if (YA_GENERALES.containsMatchIn(nombre)) nombre else "$nombre generalizado"
+            } else {
+                "$nombre en ${if (ord.size == 1) "zona de pieza" else "zona de piezas"} ${ord.joinToString(" y ")}"
+            }
         } else {
             val lista = if (ord.size == 1) ord[0]
             else ord.dropLast(1).joinToString(", ") + " y " + ord.last()

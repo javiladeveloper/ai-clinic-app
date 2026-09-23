@@ -152,6 +152,19 @@ class DiagnosticoTest {
     }
 
     @Test
+    fun marcado_en_BOCA_se_redacta_general_aunque_sea_una_sola_marca() {
+        // "BOCA" es la marca para la boca entera (la web la usa igual).
+        assertEquals("Sarro generalizado.", diagnosticoDesdeHallazgos(listOf(h("BOCA", "s")), CAT))
+    }
+
+    @Test
+    fun los_que_ya_son_generales_no_llevan_la_palabra() {
+        // "Gingivitis generalizado" es redundante y mal concordado.
+        val r = diagnosticoDesdeHallazgos(listOf(h("BOCA", "g")), CAT)
+        assertEquals("Gingivitis.", r)
+    }
+
+    @Test
     fun el_trabajo_previo_azul_no_entra() {
         // "Corona existente" describe la boca, no algo a tratar.
         val r = diagnosticoDesdeHallazgos(listOf(h("26", "c"), h("11", "x")), CAT)
