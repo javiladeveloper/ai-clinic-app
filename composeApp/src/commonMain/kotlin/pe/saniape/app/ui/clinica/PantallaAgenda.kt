@@ -201,7 +201,7 @@ fun PantallaAgenda(
                     item {
                         BannerSinProfesional(
                             citas = vm.citasSinProfesional,
-                            flujo = ctx.flujo,
+                            flujoDe = vm::flujoDe,
                             onAsignar = { editar = it },
                         )
                     }
@@ -269,7 +269,7 @@ fun PantallaAgenda(
                                 },
                                 onVerResumen = { resumenPacienteId = it },
                                 conteoFranja = vm.conteosFranja[cita.id] ?: 1,
-                                odontologia = ctx.haceOdontologia,
+                                odontologia = vm.esDental(cita),
                             )
                         }
                     }
@@ -296,11 +296,13 @@ fun PantallaAgenda(
     // ── Modales ──
     completar?.let { cita ->
         // Misma regla que ModalCompletar: la cita que evalúa pide diagnóstico.
-        val evalua = cita.tipo == "Evaluación" || (cita.tipo == "Consulta" && !ctx.flujo.usaEvaluacion)
+        val flujoCita = vm.flujoDe(cita)
+        val evalua = cita.tipo == "Evaluación" || (cita.tipo == "Consulta" && !flujoCita.usaEvaluacion)
         val pac = cita.pacienteId
-        // SOLO odontología, y solo la cita que evalúa: primero el odontograma.
-        // Fisio, estética y el resto van directo al modal de siempre.
-        if (ctx.haceOdontologia && evalua && pac != null && revisada?.first != cita.id) {
+        // SOLO la cita dental que evalúa: primero el odontograma. Se decide por
+        // CITA: en una clínica con fisio y odontología, la evaluación de fisio
+        // va directo al modal de siempre.
+        if (vm.esDental(cita) && evalua && pac != null && revisada?.first != cita.id) {
             pe.saniape.app.ui.clinica.odontologia.RevisionPrevia(
                 pacienteId = pac,
                 pacienteNombre = cita.pacienteNombre,
@@ -310,7 +312,7 @@ fun PantallaAgenda(
             )
         } else {
             ModalCompletar(
-                cita = cita, especialidades = vm.especialidades, flujo = ctx.flujo,
+                cita = cita, especialidades = vm.especialidades, flujo = flujoCita,
                 diagnosticoInicial = revisada?.takeIf { it.first == cita.id }?.second ?: "",
                 onCancelar = { completar = null; revisada = null },
                 onConfirmar = { obs, diag, espId ->
@@ -321,9 +323,9 @@ fun PantallaAgenda(
             )
         }
     }
-    // Odontograma abierto desde una cita (solo odontología): lo que se marque
+    // Odontograma abierto desde una cita dental: lo que se marque
     // queda atado a esa atención.
-    odontogramaCita?.takeIf { ctx.haceOdontologia }?.let { cita ->
+    odontogramaCita?.takeIf { vm.esDental(it) }?.let { cita ->
         val pac = cita.pacienteId ?: return@let
         run {
             pe.saniape.app.ui.clinica.pacientes.DialogoForm(
@@ -348,6 +350,7 @@ fun PantallaAgenda(
     editar?.let { cita ->
         ModalEditarCita(
             cita = cita,
+            flujo = vm.flujoDe(cita),
             onCancelar = { editar = null },
             onGuardar = { fecha, hora -> vm.reprogramar(cita, fecha, hora) { editar = null } },
         )
@@ -402,7 +405,7 @@ fun PantallaAgenda(
 
 /** Aviso de citas sin profesional asignado (origen web). Tocar una abre el editor para asignar. */
 @Composable
-private fun BannerSinProfesional(citas: List<CitaStaff>, flujo: FlujoClinica, onAsignar: (CitaStaff) -> Unit) {
+private fun BannerSinProfesional(citas: List<CitaStaff>, flujoDe: (CitaStaff) -> FlujoClinica, onAsignar: (CitaStaff) -> Unit) {
     val c = Sania.colors
     Column(
         Modifier.fillMaxWidth().padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm)
@@ -419,7 +422,7 @@ private fun BannerSinProfesional(citas: List<CitaStaff>, flujo: FlujoClinica, on
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("${hora12(cita.hora)} · ${cita.pacienteNombre ?: "Paciente"} · ${flujo.nombreTipo(cita.tipo)}",
+                Text("${hora12(cita.hora)} · ${cita.pacienteNombre ?: "Paciente"} · ${flujoDe(cita).nombreTipo(cita.tipo)}",
                     color = c.texto, fontSize = 12.sp, modifier = Modifier.weight(1f))
                 Box(
                     Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.pend)

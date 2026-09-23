@@ -3,6 +3,7 @@ package pe.saniape.app.data.staff
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
+import kotlinx.coroutines.async
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -201,6 +202,44 @@ object OdontogramaRepo {
     } catch (_: Exception) { false }
 
     /**
+     * Lo que hace falta para decidir si la ficha de un paciente muestra la
+     * pestaña 🦷 en una clínica MIXTA (`pacienteEsDental`). Solo se pide ahí:
+     * en una clínica solo dental o sin odontología la respuesta ya se sabe.
+     *
+     * Tres lecturas chicas en paralelo: las especialidades de sus citas
+     * (incluidas las pendientes — su primer diagnóstico dental todavía no es
+     * un tratamiento), si ya tiene algo marcado, y las especialidades de quien
+     * mira (el dentista tiene que poder empezarle un odontograma).
+     */
+    suspend fun datosDentalesPaciente(pacienteId: String, miTerapeutaId: String?): DatosDentalesPaciente =
+        kotlinx.coroutines.coroutineScope {
+            val citasD = async {
+                runCatching {
+                    Supabase.client.postgrest["citas"]
+                        .select(Columns.list("especialidad_id")) {
+                            filter { eq("paciente_id", pacienteId); neq("estado", "Cancelada") }
+                            limit(200)
+                        }.decodeList<JsonObject>().mapNotNull { it.str("especialidad_id") }.distinct()
+                }.getOrDefault(emptyList())
+            }
+            val hallazgosD = async {
+                runCatching {
+                    Supabase.client.postgrest["dientes_hallazgos"]
+                        .select(Columns.list("id")) { filter { eq("paciente_id", pacienteId) }; limit(1) }
+                        .decodeList<JsonObject>().isNotEmpty()
+                }.getOrDefault(false)
+            }
+            val mirandoD = async {
+                if (miTerapeutaId == null) emptyList() else runCatching {
+                    Supabase.client.postgrest["terapeuta_especialidades"]
+                        .select(Columns.list("especialidad_id")) { filter { eq("terapeuta_id", miTerapeutaId) } }
+                        .decodeList<JsonObject>().mapNotNull { it.str("especialidad_id") }
+                }.getOrDefault(emptyList())
+            }
+            DatosDentalesPaciente(citasD.await(), hallazgosD.await(), mirandoD.await())
+        }
+
+    /**
      * Los servicios de ODONTOLOGÍA de la clínica, para el presupuesto.
      *
      * En una clínica mixta (medicina + odontología, o fisio + odontología) el
@@ -221,3 +260,10 @@ object OdontogramaRepo {
         return todos.filter { it.especialidadId == null || it.especialidadId in idsOdonto }
     }
 }
+
+/** Ver [OdontogramaRepo.datosDentalesPaciente]. */
+data class DatosDentalesPaciente(
+    val especialidadesDeCitas: List<String> = emptyList(),
+    val tieneHallazgos: Boolean = false,
+    val especialidadesDeQuienMira: List<String> = emptyList(),
+)

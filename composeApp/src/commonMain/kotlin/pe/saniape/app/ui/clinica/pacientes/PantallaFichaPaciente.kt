@@ -116,6 +116,24 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     LaunchedEffect(Unit) {
         especialidadesClinica = runCatching { PacientesRepo.especialidadesClinica() }.getOrDefault(emptyList())
     }
+    // ── Odontología, por PACIENTE ──
+    // En una clínica con fisio y odontología, el paciente de fisio no ve la
+    // pestaña 🦷 (Jonathan, 23/09/2026). Solo en ese caso hace falta mirar sus
+    // citas y hallazgos; en una solo dental o sin odontología ya se sabe.
+    val mixtaDental = ctx.mapaDental.ids.isNotEmpty() && !ctx.mapaDental.solo
+    var datosDentales by remember { mutableStateOf(pe.saniape.app.data.staff.DatosDentalesPaciente()) }
+    LaunchedEffect(paciente.id, mixtaDental, recargarToken) {
+        if (mixtaDental) datosDentales = pe.saniape.app.data.staff.OdontogramaRepo
+            .datosDentalesPaciente(paciente.id, ctx.miTerapeutaId)
+    }
+    val esOdontologia = pe.saniape.app.data.staff.pacienteEsDental(
+        ctx.mapaDental,
+        especialidadIds = datosDentales.especialidadesDeCitas + paciente.tratamientos.map { t ->
+            t.especialidadId ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id
+        },
+        tieneHallazgos = datosDentales.tieneHallazgos,
+        especialidadesDeQuienMira = datosDentales.especialidadesDeQuienMira,
+    )
     LaunchedEffect(pacienteInicial.id, recargarToken) {
         actualizando = true
         // conIndicador solo en las RECARGAS (token > 0), no en la carga inicial: al abrir
@@ -400,10 +418,10 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 val tabs = buildList {
                     add("atenciones" to "🩺 Atenciones")
                     add("examenes" to "🔬 Exámenes")
-                    // SOLO odontología. La regla la decide la web
-                    // (/api/staff/contexto); una clínica de fisio o estética
-                    // nunca ve esta pestaña ni carga su código.
-                    if (ctx.haceOdontologia) add("odontograma" to "🦷 Odontograma")
+                    // SOLO pacientes dentales (`esOdontologia`, arriba). Una
+                    // clínica de fisio o estética nunca ve esta pestaña, y en
+                    // una mixta tampoco el paciente que solo es de fisio.
+                    if (esOdontologia) add("odontograma" to "🦷 Odontograma")
                     if (ctx.puede("pagos")) add("pagos" to "💰 Pagos")
                     add("resumen" to "📋 Resumen")
                 }
@@ -502,7 +520,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     )
                     // Doble candado: aunque `tab` quedara en "odontograma" por
                     // un estado viejo, sin odontología no se monta.
-                    "odontograma" -> if (ctx.haceOdontologia) {
+                    "odontograma" -> if (esOdontologia) {
                         pe.saniape.app.ui.clinica.odontologia.OdontogramaVista(
                             pacienteId = paciente.id,
                             // Paciente dado de baja: se mira, no se marca.

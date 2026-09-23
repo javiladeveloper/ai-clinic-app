@@ -37,7 +37,8 @@ import pe.saniape.app.ui.theme.Sania
  * partir de lo marcado ("Caries en piezas 26, 27 y 36"), para corregir o
  * aceptar.
  *
- * Solo odontología: la agenda lo monta únicamente con `ctx.haceOdontologia`.
+ * Solo citas dentales: la agenda lo monta únicamente con `vm.esDental(cita)`
+ * (por cita: en una clínica con fisio y odontología, la de fisio no pasa por acá).
  * Gemelo de `components/odontologia/RevisionPrevia.tsx` en la web.
  */
 @Composable

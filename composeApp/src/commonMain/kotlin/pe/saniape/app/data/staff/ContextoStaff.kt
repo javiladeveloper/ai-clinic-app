@@ -97,6 +97,12 @@ data class ContextoStaff(
      * clínica de otro rubro ve una pestaña que no le corresponde.
      */
     val haceOdontologia: Boolean = false,
+    /**
+     * Qué especialidades son dentales. En una clínica con fisio y odontología,
+     * lo dental se decide POR CITA (`citaEsDental`) y por paciente
+     * (`pacienteEsDental`), no por clínica. También lo arma la web.
+     */
+    val mapaDental: MapaDental = MapaDental(),
     val clinicas: List<ClinicaRef>,
     val tienePortal: Boolean,
 ) {

@@ -45,6 +45,8 @@ data class CitaStaff(
     val tratamientoId: String?,
     val procedimiento: String?,
     val especialidadId: String?,  // para filtrar por especialidad
+    /** La del servicio del tratamiento: respaldo cuando la cita no trae la suya (`citaEsDental`). */
+    val especialidadServicioId: String? = null,
     val notaRecepcion: String?,   // recordatorio del tratamiento vinculado (📌)
 )
 
@@ -121,7 +123,7 @@ object AgendaRepo {
         "id, fecha, hora, estado, tipo, costo, duracion, origen, confirmada_por_paciente, " +
             "terapeuta_id, paciente_id, tratamiento_id, especialidad_id, " +
             "paciente:pacientes(nombre, telefono), terapeuta:terapeutas(nombre), " +
-            "tratamiento:tratamientos!citas_tratamiento_id_fkey(nota_recepcion, procedimiento:procedimientos(nombre)), " +
+            "tratamiento:tratamientos!citas_tratamiento_id_fkey(nota_recepcion, procedimiento:procedimientos(nombre, especialidad_id)), " +
             "sesion:sesiones!citas_sesion_id_fkey(numero)"
 
     fun mapearCita(o: JsonObject): CitaStaff {
@@ -147,6 +149,8 @@ object AgendaRepo {
                 procedimiento = (obj("tratamiento")?.get("procedimiento") as? JsonObject)
                     ?.get("nombre")?.let { (it as? JsonPrimitive)?.content?.takeIf { v -> v != "null" } },
                 especialidadId = s("especialidad_id"),
+                especialidadServicioId = (obj("tratamiento")?.get("procedimiento") as? JsonObject)
+                    ?.get("especialidad_id")?.let { (it as? JsonPrimitive)?.content?.takeIf { v -> v != "null" } },
                 notaRecepcion = (obj("tratamiento")?.get("nota_recepcion") as? JsonPrimitive)
                     ?.content?.takeIf { it != "null" && it.isNotBlank() },
             )

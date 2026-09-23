@@ -141,6 +141,13 @@ object StaffContextoRepo {
             miTerapeutaId = o.str("miTerapeutaId"),
             usaSesiones = o.bool("usaSesiones"),
             haceOdontologia = o.bool("haceOdontologia"),
+            mapaDental = MapaDental(
+                ids = (o["especialidadesOdontologia"] as? kotlinx.serialization.json.JsonArray).orEmpty()
+                    .mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } },
+                // Un backend sin el campo nuevo responde como antes, por
+                // clínica: si hace odontología, todo es dental.
+                solo = o.boolOrNull("soloOdontologia") ?: o.bool("haceOdontologia"),
+            ),
             // Con defaults: una app nueva contra un backend viejo (o al revés)
             // no puede quedarse sin nombres para sus citas.
             flujo = o.obj("flujo")?.let { f ->

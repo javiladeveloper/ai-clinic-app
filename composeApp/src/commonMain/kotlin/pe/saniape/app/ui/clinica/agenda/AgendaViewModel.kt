@@ -22,6 +22,8 @@ import pe.saniape.app.data.staff.CitaStaff
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.EspecialidadRef
 import pe.saniape.app.data.staff.TerapeutaRef
+import pe.saniape.app.data.staff.FlujoClinica
+import pe.saniape.app.data.staff.citaEsDental
 
 /**
  * ViewModel de la Agenda: ÚNICA fuente de estado y lógica. La pantalla solo
@@ -65,6 +67,27 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     val esGestor: Boolean get() = ctx.esGestor
     /** El gestor sin scope propio puede filtrar por profesional. */
     val puedeFiltrarPorPersonal: Boolean get() = ctx.miTerapeutaId == null
+
+    /** Clínica con odontología Y otras especialidades: lo dental se decide por cita. */
+    private val clinicaMixtaDental: Boolean get() = ctx.mapaDental.ids.isNotEmpty() && !ctx.mapaDental.solo
+    /** Especialidades de cada profesional: el último respaldo de `citaEsDental`. */
+    private var espsPorTerapeuta by mutableStateOf<Map<String, List<String>>>(emptyMap())
+
+    /**
+     * El flujo de la ESPECIALIDAD de la cita (si evalúa, cómo se llama). En una
+     * clínica mixta la cita dental es "Diagnóstico" aunque la clínica llame
+     * "Evaluación" a la de fisio. Sin especialidad, el de la clínica.
+     */
+    fun flujoDe(cita: CitaStaff): FlujoClinica {
+        val espId = cita.especialidadId ?: cita.especialidadServicioId
+        return ctx.flujo.paraEspecialidad(especialidades.find { it.id == espId }?.flujoPreset)
+    }
+
+    /** ¿Esta cita pasa por el odontograma? Por cita, no por clínica (gemelo de la web). */
+    fun esDental(cita: CitaStaff): Boolean = citaEsDental(
+        ctx.mapaDental, cita.especialidadId, cita.especialidadServicioId,
+        cita.terapeutaId?.let { espsPorTerapeuta[it] },
+    )
 
     /** Citas tras aplicar los filtros (lo que la pantalla pinta). */
     val citasFiltradas: List<CitaStaff>
@@ -209,12 +232,18 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             coroutineScope {
                 val espD = async { runCatching { AgendaRepo.especialidades() }.getOrDefault(emptyList()) }
                 val terD = async {
-                    if (puedeFiltrarPorPersonal) runCatching { AgendaRepo.terapeutasActivos() }.getOrDefault(emptyList())
+                    // En una clínica mixta hacen falta también para decidir qué
+                    // cita es dental, aunque quien mira no filtre por profesional.
+                    if (puedeFiltrarPorPersonal || clinicaMixtaDental)
+                        runCatching { AgendaRepo.terapeutasActivos() }.getOrDefault(emptyList())
                     else null
                 }
                 val banD = async { recargarBanners() }
                 especialidades = espD.await()
-                terD.await()?.let { terapeutas = it }
+                terD.await()?.let { ts ->
+                    espsPorTerapeuta = ts.associate { it.id to it.especialidadIds }
+                    if (puedeFiltrarPorPersonal) terapeutas = ts
+                }
                 banD.await()
             }
         }
