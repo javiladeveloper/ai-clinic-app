@@ -5,9 +5,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -18,7 +20,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -39,6 +40,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -129,19 +132,9 @@ fun OdontogramaVista(
             }
         }
 
-        // ── Arcada superior e inferior ────────────────────────────────────
-        // Cada arcada se desliza en horizontal: 16 piezas no caben en un
-        // teléfono con un tamaño que se pueda tocar. En tablet entran solas.
-        Arcada(
-            etiqueta = "Superior",
-            izquierda = cuadrantes[0], derecha = cuadrantes[1],
-            porDiente = porDiente, catalogo = catalogo,
-            onTocar = { d, cara -> if (!soloLectura) abierto = d to cara },
-        )
-        Spacer(Modifier.height(10.dp))
-        Arcada(
-            etiqueta = "Inferior",
-            izquierda = cuadrantes[2], derecha = cuadrantes[3],
+        // ── La boca: arcada superior sobre la inferior ────────────────────
+        Boca(
+            cuadrantes = cuadrantes,
             porDiente = porDiente, catalogo = catalogo,
             onTocar = { d, cara -> if (!soloLectura) abierto = d to cara },
         )
@@ -277,43 +270,164 @@ fun OdontogramaVista(
     }
 }
 
-/** Una arcada: dos cuadrantes lado a lado con la línea media en el centro. */
+/**
+ * La boca completa, adaptada al ancho.
+ *
+ * Si las 16 piezas de una arcada entran con un tamaño que se pueda tocar
+ * (tablet, teléfono girado), se ve todo junto como en papel. En un teléfono
+ * NO entran: antes cada arcada se deslizaba por su cuenta, se veía media boca
+ * y la superior quedaba desalineada de la inferior. Ahora la boca se parte en
+ * dos páginas por LADO del paciente (derecho: 18–11 sobre 48–41; izquierdo:
+ * 21–28 sobre 31–38): cada página llena el ancho con piezas grandes, las dos
+ * arcadas se mueven juntas y la línea media queda en el borde que toca.
+ * Las pestañas cuentan las piezas con hallazgos de cada lado, para que no se
+ * pase por alto lo que está en la página que no se ve.
+ */
 @Composable
-private fun Arcada(
-    etiqueta: String,
-    izquierda: List<String>,
-    derecha: List<String>,
+private fun Boca(
+    cuadrantes: List<List<String>>,
     porDiente: Map<String, List<DienteHallazgo>>,
     catalogo: List<HallazgoDental>,
     onTocar: (String, String?) -> Unit,
 ) {
     val c = Sania.colors
-    Column(
+    BoxWithConstraints(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
             .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp))
-            .padding(10.dp),
+            .padding(horizontal = 6.dp, vertical = 10.dp),
     ) {
-        Text(etiqueta, color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(6.dp))
-        Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-            izquierda.forEach { d -> Pieza(d, pintarDiente(porDiente[d].orEmpty(), catalogo), onTocar) }
-            // La línea media: sin ella, en un teléfono no se distingue dónde
-            // termina un cuadrante y empieza el otro.
-            Box(Modifier.padding(horizontal = 4.dp).width(2.dp).height(58.dp).background(c.navy.copy(alpha = 0.35f)))
-            derecha.forEach { d -> Pieza(d, pintarDiente(porDiente[d].orEmpty(), catalogo), onTocar) }
+        val porCuadrante = cuadrantes[0].size
+        val todoJunto = (maxWidth - LINEA_MEDIA) / (porCuadrante * 2) - PAD_PIEZA * 2
+        if (todoJunto >= PIEZA_MIN) {
+            val tam = minOf(todoJunto, PIEZA_MAX)
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                EtiquetaArcada("Superior")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FilaPiezas(cuadrantes[0], tam, porDiente, catalogo, onTocar)
+                    LineaMedia(tam)
+                    FilaPiezas(cuadrantes[1], tam, porDiente, catalogo, onTocar)
+                }
+                PlanoOclusal()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FilaPiezas(cuadrantes[2], tam, porDiente, catalogo, onTocar)
+                    LineaMedia(tam)
+                    FilaPiezas(cuadrantes[3], tam, porDiente, catalogo, onTocar)
+                }
+                EtiquetaArcada("Inferior")
+            }
+        } else {
+            // Una página por lado: el cuadrante llena el ancho (menos la línea media).
+            val tam = minOf((maxWidth - LINEA_MEDIA) / porCuadrante - PAD_PIEZA * 2, PIEZA_MAX)
+            val pager = rememberPagerState { 2 }
+            val scope = rememberCoroutineScope()
+            val lados = listOf(
+                Triple("Lado derecho", cuadrantes[0], cuadrantes[2]),
+                Triple("Lado izquierdo", cuadrantes[1], cuadrantes[3]),
+            )
+            Column(Modifier.fillMaxWidth()) {
+                // Pestañas: qué lado se ve, y cuántas piezas con hallazgos tiene cada uno.
+                Row(
+                    Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                        .clip(RoundedCornerShape(50)).background(c.fondo),
+                ) {
+                    lados.forEachIndexed { i, (nombre, sup, inf) ->
+                        val marcadas = (sup + inf).count { !porDiente[it].isNullOrEmpty() }
+                        val activo = pager.currentPage == i
+                        Box(
+                            Modifier.weight(1f).clip(RoundedCornerShape(50))
+                                .background(if (activo) c.navy else Color.Transparent)
+                                .clickable { scope.launch { pager.animateScrollToPage(i) } }
+                                .padding(vertical = 7.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                nombre + (if (marcadas > 0) " · $marcadas" else ""),
+                                color = if (activo) c.sobreNavy else c.textoSuave,
+                                fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                            )
+                        }
+                    }
+                }
+                HorizontalPager(state = pager, modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) { i ->
+                    val (_, sup, inf) = lados[i]
+                    // La línea media va del lado que toca: a la derecha en la página
+                    // del lado derecho (la boca se mira de frente) y a la izquierda
+                    // en la otra.
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        EtiquetaArcada("Superior")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (i == 1) LineaMedia(tam)
+                            FilaPiezas(sup, tam, porDiente, catalogo, onTocar)
+                            if (i == 0) LineaMedia(tam)
+                        }
+                        PlanoOclusal()
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (i == 1) LineaMedia(tam)
+                            FilaPiezas(inf, tam, porDiente, catalogo, onTocar)
+                            if (i == 0) LineaMedia(tam)
+                        }
+                        EtiquetaArcada("Inferior")
+                    }
+                }
+                Text(
+                    "Desliza para ver el otro lado de la boca",
+                    color = c.textoSuave, fontSize = 11.sp, textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                )
+            }
         }
     }
 }
 
+@Composable
+private fun FilaPiezas(
+    piezas: List<String>,
+    tam: Dp,
+    porDiente: Map<String, List<DienteHallazgo>>,
+    catalogo: List<HallazgoDental>,
+    onTocar: (String, String?) -> Unit,
+) {
+    piezas.forEach { d -> Pieza(d, tam, pintarDiente(porDiente[d].orEmpty(), catalogo), onTocar) }
+}
+
+/** La línea media: sin ella no se distingue dónde termina un cuadrante y empieza el otro. */
+@Composable
+private fun LineaMedia(tam: Dp) {
+    Box(
+        Modifier.padding(horizontal = (LINEA_MEDIA - 2.dp) / 2).width(2.dp).height(tam + 16.dp)
+            .background(Sania.colors.navy.copy(alpha = 0.35f)),
+    )
+}
+
+/** El plano de oclusión: separa la arcada superior de la inferior. */
+@Composable
+private fun PlanoOclusal() {
+    Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(1.dp).background(Sania.colors.borde))
+}
+
+@Composable
+private fun EtiquetaArcada(texto: String) {
+    Text(
+        texto, color = Sania.colors.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(vertical = 2.dp),
+    )
+}
+
+/** Debajo de 34dp una cara no se toca sin acertar a la de al lado. */
+private val PIEZA_MIN = 34.dp
+private val PIEZA_MAX = 52.dp
+private val PAD_PIEZA = 1.dp
+private val LINEA_MEDIA = 10.dp
+
 /** Una pieza: su número y el diagrama de 5 caras. */
 @Composable
-private fun Pieza(diente: String, pintado: PintadoDiente, onTocar: (String, String?) -> Unit) {
+private fun Pieza(diente: String, tam: Dp, pintado: PintadoDiente, onTocar: (String, String?) -> Unit) {
     val c = Sania.colors
     Column(
-        Modifier.padding(horizontal = 2.dp),
+        Modifier.padding(horizontal = PAD_PIEZA).width(tam),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        DienteDiagrama(diente, pintado, onTocarCara = { cara -> onTocar(diente, cara) })
+        DienteDiagrama(diente, tam, pintado, onTocarCara = { cara -> onTocar(diente, cara) })
         Text(
             diente,
             color = c.texto, fontSize = 11.sp, fontWeight = FontWeight.Bold,
@@ -326,16 +440,16 @@ private fun Pieza(diente: String, pintado: PintadoDiente, onTocar: (String, Stri
 /**
  * El diagrama de 5 caras de una pieza, dibujado con Canvas.
  *
- * 42dp: lo mínimo para tocar una cara con el dedo sin acertar a la de al lado.
+ * El tamaño lo decide [Boca] según el ancho disponible (34–52dp).
  * La orientación (qué cara va en qué lado) sale de `caraEnZona`, probado aparte.
  */
 @Composable
-private fun DienteDiagrama(diente: String, pintado: PintadoDiente, onTocarCara: (String) -> Unit) {
+private fun DienteDiagrama(diente: String, tam: Dp, pintado: PintadoDiente, onTocarCara: (String) -> Unit) {
     val c = Sania.colors
     val borde = c.textoSuave.copy(alpha = 0.55f)
     val vacio = c.fondo
     Canvas(
-        Modifier.size(42.dp).pointerInput(diente) {
+        Modifier.size(tam).pointerInput(diente) {
             detectTapGestures { p ->
                 val lado = size.width.toFloat()
                 val zona = zonaEn(p.x, p.y, lado, lado * MARGEN) ?: return@detectTapGestures
