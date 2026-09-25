@@ -3,7 +3,17 @@ package pe.saniape.app.data.staff
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.datetime.Clock
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -38,6 +48,55 @@ object OdontogramaRepo {
     private fun JsonObject.entero(k: String): Int =
         (this[k] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
 
+    // ── Caché y fusión de pedidos (rendimiento de la ficha dental) ────────────
+
+    /**
+     * El catálogo de hallazgos cambia rarísima vez (lo edita la clínica en la
+     * web) y lo piden el odontograma, "Piezas del plan" de CADA tratamiento,
+     * "¿Qué se le hizo hoy?" y la revisión previa. Se guarda unos minutos en
+     * memoria; se borra al cambiar de clínica o salir ([limpiarCache]).
+     */
+    private var cacheCatalogo: Pair<Long, List<HallazgoDental>>? = null
+    private const val TTL_CATALOGO_MS = 5 * 60_000L
+
+    /** Sube con cada escritura: lo pedido antes de escribir no se reutiliza después. */
+    private var generacion = 0
+
+    private val candado = Mutex()
+    private val enVuelo = mutableMapOf<String, CompletableDeferred<Any?>>()
+
+    /** Borra lo guardado (cambio de clínica / cierre de sesión). */
+    fun limpiarCache() { cacheCatalogo = null; generacion++ }
+
+    /**
+     * Si ya hay un pedido idéntico EN VUELO, espera ese en vez de lanzar otro.
+     * Si quien lo lanzó se cancela (salió de la pantalla), el que esperaba lo
+     * pide por su cuenta: nunca queda colgado.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun <T> coalescer(clave: String, pedir: suspend () -> T): T {
+        var propio = false
+        val d = candado.withLock {
+            enVuelo[clave] ?: CompletableDeferred<Any?>().also { enVuelo[clave] = it; propio = true }
+        }
+        if (!propio) {
+            return try { d.await() as T } catch (e: CancellationException) {
+                currentCoroutineContext().ensureActive()
+                pedir()
+            }
+        }
+        try {
+            val r = pedir()
+            d.complete(r)
+            return r
+        } catch (e: Throwable) {
+            d.completeExceptionally(e)
+            throw e
+        } finally {
+            withContext(NonCancellable) { candado.withLock { if (enVuelo[clave] === d) enVuelo.remove(clave) } }
+        }
+    }
+
     /**
      * El catálogo de hallazgos de la clínica (Caries, Ausente, Sarro…).
      *
@@ -45,7 +104,16 @@ object OdontogramaRepo {
      * sigue existiendo en bocas marcadas antes, y sin su nombre y color el
      * diagrama se pintaría con huecos.
      */
-    suspend fun catalogo(): List<HallazgoDental> = try {
+    suspend fun catalogo(forzar: Boolean = false): List<HallazgoDental> {
+        val ahora = Clock.System.now().toEpochMilliseconds()
+        if (!forzar) cacheCatalogo?.let { (t, lista) -> if (ahora - t < TTL_CATALOGO_MS) return lista }
+        val lista = coalescer("catalogo#$generacion") { catalogoRed() }
+        // Vacío casi siempre es un fallo de red: no se guarda, así el próximo reintenta.
+        if (lista.isNotEmpty()) cacheCatalogo = ahora to lista
+        return lista
+    }
+
+    private suspend fun catalogoRed(): List<HallazgoDental> = try {
         Supabase.client.postgrest["hallazgos_dentales"]
             .select(Columns.list("id, clinica_id, nombre, color, procedimiento_id, marca_ausente, orden, estado, por_boca")) {
                 order("orden", Order.ASCENDING)
@@ -66,12 +134,28 @@ object OdontogramaRepo {
                     porBoca = o.bool("por_boca"),
                 )
             }
-    } catch (_: Exception) { emptyList() }
+    } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyList() }
 
-    /** Lo marcado en la boca de un paciente. */
-    suspend fun hallazgos(pacienteId: String): List<DienteHallazgo> = try {
+    /**
+     * Lo marcado en la boca de un paciente.
+     *
+     * Pedidos simultáneos del mismo paciente se FUSIONAN en uno: la ficha dental
+     * monta "Piezas del plan" en cada tarjeta de tratamiento y, al recargar,
+     * todas lo piden a la vez (antes: N tratamientos = N consultas iguales).
+     * Solo se comparte lo que está EN VUELO (nunca un resultado viejo), y una
+     * escritura de este repo abre una generación nueva: lo pedido después de
+     * marcar no se cuelga de una consulta que salió antes de marcar.
+     */
+    suspend fun hallazgos(pacienteId: String): List<DienteHallazgo> =
+        hallazgosONull(pacienteId) ?: emptyList()
+
+    /** Igual que [hallazgos], pero null si falló la red (para no confundir "falló" con "no hay nada"). */
+    suspend fun hallazgosONull(pacienteId: String): List<DienteHallazgo>? =
+        coalescer("hallazgos:$pacienteId#$generacion") { hallazgosRed(pacienteId) }
+
+    private suspend fun hallazgosRed(pacienteId: String): List<DienteHallazgo>? = try {
         Supabase.client.postgrest["dientes_hallazgos"]
-            .select(Columns.list("id, paciente_id, diente, hallazgo_id, superficies, estado, cita_id, tratamiento_id, notas, fecha")) {
+            .select(Columns.list("id, paciente_id, diente, hallazgo_id, superficies, estado, cita_id, tratamiento_id, notas, fecha, sesion_id, diente_hasta")) {
                 filter { eq("paciente_id", pacienteId) }
                 order("fecha", Order.DESCENDING)
             }
@@ -92,9 +176,11 @@ object OdontogramaRepo {
                     tratamientoId = o.str("tratamiento_id"),
                     notas = o.str("notas"),
                     fecha = o.str("fecha") ?: "",
+                    sesionId = o.str("sesion_id"),
+                    dienteHasta = o.str("diente_hasta"),
                 )
             }
-    } catch (_: Exception) { emptyList() }
+    } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
 
     /**
      * Marca un hallazgo en un diente.
@@ -124,7 +210,33 @@ object OdontogramaRepo {
             if (!notas.isNullOrBlank()) put("notas", notas)
         })
         true
-    } catch (_: Exception) { false }
+    } catch (_: Exception) { false }.also { generacion++ }
+
+    /** Lo que se marca de una vez (dictado). */
+    data class NuevoHallazgo(val diente: String, val hallazgoId: String, val superficies: List<String>?)
+
+    /**
+     * Varios hallazgos en UN insert (todo o nada). Antes el dictado hacía un
+     * insert por pieza en serie: 10 piezas = 10 viajes. Todas las filas llevan
+     * las MISMAS claves (null explícito): PostgREST arma las columnas del lote
+     * con ellas. Sin clinica_id, como siempre (DEFAULT get_clinica_id()).
+     */
+    suspend fun agregarVarios(pacienteId: String, lote: List<NuevoHallazgo>, citaId: String? = null): Boolean {
+        if (lote.isEmpty()) return true
+        return try {
+            Supabase.client.postgrest["dientes_hallazgos"].insert(lote.map { h ->
+                buildJsonObject {
+                    put("paciente_id", pacienteId)
+                    put("diente", h.diente)
+                    put("hallazgo_id", h.hallazgoId)
+                    if (!h.superficies.isNullOrEmpty()) putJsonArray("superficies") { h.superficies.forEach { add(JsonPrimitive(it)) } }
+                    else put("superficies", JsonNull)
+                    if (citaId != null) put("cita_id", citaId) else put("cita_id", JsonNull)
+                }
+            })
+            true
+        } catch (_: Exception) { false }.also { generacion++ }
+    }
 
     /**
      * Pasa un hallazgo a Realizado, o lo devuelve a Pendiente.
@@ -134,15 +246,54 @@ object OdontogramaRepo {
      */
     suspend fun cambiarEstado(id: String, estado: String): Boolean = try {
         Supabase.client.postgrest["dientes_hallazgos"]
-            .update({ set("estado", estado) }) { filter { eq("id", id) } }
+            .update({
+                set("estado", estado)
+                // Devuelto a pendiente: se suelta de la sesión. Si quedaba atada,
+                // al re-completar esa sesión volvía a marcarse sola como hecha (web igual).
+                if (estado == "Pendiente") setToNull("sesion_id")
+            }) { filter { eq("id", id) } }
         true
-    } catch (_: Exception) { false }
+    } catch (_: Exception) { false }.also { generacion++ }
+
+    /**
+     * Cambia las caras de un hallazgo ya registrado: marcar otra caries en la
+     * misma pieza SUMA la cara al registro pendiente (una sola caries "MO", se
+     * cobra una vez). Orden fijo O M D V L. Vacío = pieza entera.
+     */
+    suspend fun actualizarSuperficies(id: String, caras: List<String>): Boolean = try {
+        val orden = ordenarCaras(caras)
+        Supabase.client.postgrest["dientes_hallazgos"]
+            .update({
+                if (orden.isEmpty()) setToNull("superficies")
+                else set("superficies", orden)
+            }) { filter { eq("id", id) } }
+        true
+    } catch (_: Exception) { false }.also { generacion++ }
+
+    /** Nota de ESTA pieza ("caries profunda, riesgo pulpar"): la ve quien atienda la próxima sesión. */
+    suspend fun actualizarNotas(id: String, notas: String?): Boolean = try {
+        Supabase.client.postgrest["dientes_hallazgos"]
+            .update({ set("notas", notas?.trim()?.ifBlank { null }) }) { filter { eq("id", id) } }
+        true
+    } catch (_: Exception) { false }.also { generacion++ }
+
+    /**
+     * Nombre de cada servicio por id: al marcar una pieza como hecha, su
+     * procedimiento ("Resina / restauración") se suma a lo realizado en la sesión.
+     */
+    suspend fun nombresProcedimientos(): Map<String, String> = try {
+        Supabase.client.postgrest["procedimientos"]
+            .select(Columns.list("id, nombre"))
+            .decodeList<JsonObject>()
+            .mapNotNull { o -> (o.str("id") ?: return@mapNotNull null) to (o.str("nombre") ?: "") }
+            .toMap()
+    } catch (_: Exception) { emptyMap() }
 
     /** Quita un hallazgo (se marcó el diente equivocado). */
     suspend fun borrar(id: String): Boolean = try {
         Supabase.client.postgrest["dientes_hallazgos"].delete { filter { eq("id", id) } }
         true
-    } catch (_: Exception) { false }
+    } catch (_: Exception) { false }.also { generacion++ }
 
     /**
      * Los servicios del tarifario que pueden cobrarse por un hallazgo.
@@ -199,7 +350,7 @@ object OdontogramaRepo {
         Supabase.client.postgrest["hallazgos_dentales"]
             .update({ set("procedimiento_id", procedimientoId) }) { filter { eq("id", hallazgoId) } }
         true
-    } catch (_: Exception) { false }
+    } catch (_: Exception) { false }.also { if (it) cacheCatalogo = null; generacion++ }
 
     /**
      * Lo que hace falta para decidir si la ficha de un paciente muestra la

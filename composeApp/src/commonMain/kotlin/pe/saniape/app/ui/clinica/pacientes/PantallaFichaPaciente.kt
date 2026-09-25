@@ -134,6 +134,15 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         tieneHallazgos = datosDentales.tieneHallazgos,
         especialidadesDeQuienMira = datosDentales.especialidadesDeQuienMira,
     )
+    // ¿Este tratamiento es dental? Gemelo de `tratEsDental` en la ficha web: el
+    // paciente es dental Y el servicio es de una especialidad dental (en una
+    // clínica mixta, el tratamiento de fisio del mismo paciente queda igual).
+    val tratEsDental = { t: TratamientoPaciente ->
+        esOdontologia && pe.saniape.app.data.staff.esServicioDental(
+            t.especialidadId ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id,
+            ctx.mapaDental,
+        )
+    }
     LaunchedEffect(pacienteInicial.id, recargarToken) {
         actualizando = true
         // conIndicador solo en las RECARGAS (token > 0), no en la carga inicial: al abrir
@@ -467,6 +476,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     "atenciones" -> ContenidoAtenciones(
                         ctx = ctx, paciente = paciente, hitos = hitos,
                         recargaToken = recargarToken,
+                        tratEsDental = tratEsDental,
                         onCompletarSesion = { ses, anterior, tecSug, trat -> completarSesion = CompletarSesionReq(ses, anterior, tecSug, trat) },
                         onRecargar = { recargar() },
                         onEditarTrat = { editarTratamiento = it },
@@ -757,8 +767,12 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             anterior = anterior,
             tecnicasSugeridas = req.tecnicasSugeridas,
             puedePagos = ctx.puede("pagos"),
+            // Odontología: "¿Qué se le hizo hoy?" solo en tratamientos dentales.
+            pacienteId = paciente.id,
+            tratamientoId = req.trat.id,
+            esDental = tratEsDental(req.trat),
             onCancelar = { completarSesion = null },
-            onConfirmar = { tecnicas, mejorias, dejoRx, pago ->
+            onConfirmar = { tecnicas, mejorias, dejoRx, pago, piezas ->
                 completarSesion = null
                 scope.launch {
                     // Evolución: solo desde la sesión #2 ("" limpia, null = no tocar),
@@ -768,6 +782,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         notas = tecnicas,
                         mejorias = if (ses.numero > 1) mejorias.orEmpty() else null,
                         rxPendiente = dejoRx,
+                        piezas = piezas,
                     )
                     if (ok) pe.saniape.app.ui.Toaster.exito("Sesión #${ses.numero} completada")
                     else pe.saniape.app.ui.Toaster.error("No se pudo completar la sesión")
@@ -846,10 +861,15 @@ private fun ModalCompletarSesion(
     anterior: SesionFicha?,
     tecnicasSugeridas: String?,
     puedePagos: Boolean,
+    pacienteId: String = "",
+    tratamientoId: String? = null,
+    /** Tratamiento dental: muestra "¿Qué se le hizo hoy?" (piezas del odontograma). */
+    esDental: Boolean = false,
     onCancelar: () -> Unit,
     // pago = (monto, método) si activó "¿pagó esta sesión?" — el cobro sale en el
     // MISMO paso que el completar, como la web (antes eran 2 viajes: ✓ y luego 💳).
-    onConfirmar: (tecnicas: String?, mejorias: String?, dejoRx: Boolean, pago: Pair<Double, String>?) -> Unit,
+    // piezas = ids de hallazgos hechos hoy (solo dental; null = no tocar el odontograma).
+    onConfirmar: (tecnicas: String?, mejorias: String?, dejoRx: Boolean, pago: Pair<Double, String>?, piezas: List<String>?) -> Unit,
 ) {
     val c = Sania.colors
     var cobrar by remember { mutableStateOf(false) }
@@ -874,6 +894,11 @@ private fun ModalCompletarSesion(
     var mejorias by remember { mutableStateOf(ses.mejorias.orEmpty()) }
     var dejoRx by remember { mutableStateOf(AvisoRx.dejoRx(ses)) }
     val muestraMejorias = ses.numero > 1
+    var piezas by remember { mutableStateOf<List<String>>(emptyList()) }
+    // Odontología: null = cargando la lista de piezas; false = falló la carga.
+    // Solo con la lista a la vista (true) se mandan `piezas`: mandar [] antes de
+    // tiempo le quitaría a la sesión las piezas que ya tenía.
+    var piezasListas by remember { mutableStateOf<Boolean?>(null) }
 
     // Referencia de lo registrado en la sesión anterior.
     val notasPrev = anterior?.notas?.takeIf { it.isNotBlank() }
@@ -883,11 +908,14 @@ private fun ModalCompletarSesion(
         titulo = "Completar sesión #${ses.numero}",
         subtitulo = "Registra lo realizado en la sesión",
         textoAccion = if (cobrar) "✓ Completar y cobrar" else "✓ Completar",
-        accionHabilitada = !cobrar || (pagoMonto.toDoubleOrNull() ?: 0.0) > 0,
+        accionHabilitada = (!cobrar || (pagoMonto.toDoubleOrNull() ?: 0.0) > 0) &&
+            // Dental: se espera a que cargue "¿Qué se le hizo hoy?" (un instante).
+            !(esDental && pacienteId.isNotBlank() && piezasListas == null),
         onCancelar = onCancelar,
         onAccion = {
             val pago = if (cobrar) pagoMonto.toDoubleOrNull()?.takeIf { it > 0 }?.let { it to pagoMetodo } else null
-            onConfirmar(tecnicas.trim().ifBlank { null }, mejorias.trim().ifBlank { null }, dejoRx, pago)
+            onConfirmar(tecnicas.trim().ifBlank { null }, mejorias.trim().ifBlank { null }, dejoRx, pago,
+                if (esDental && piezasListas == true) piezas else null)
         },
     ) {
         // Aviso: el paciente dejó RX pendiente en la sesión anterior (se recuerda aquí).
@@ -925,6 +953,20 @@ private fun ModalCompletarSesion(
                 mejoriasPrev?.let {
                     Text("↗ $it", color = c.ok, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
                 }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+
+        // Odontología: de TODO lo pendiente del paciente, qué se le hizo hoy.
+        // Lo marcado suma su procedimiento a lo realizado (sumarTecnica).
+        if (esDental && pacienteId.isNotBlank()) {
+            TarjetaForm(titulo = "Odontograma", icono = "🦷") {
+                pe.saniape.app.ui.clinica.odontologia.PiezasTratadas(
+                    pacienteId = pacienteId, tratamientoId = tratamientoId, sesionId = ses.id,
+                    seleccion = piezas, onSeleccion = { piezas = it },
+                    onCargado = { piezasListas = it },
+                    onProcedimiento = { nombre -> tecnicas = pe.saniape.app.data.staff.sumarTecnica(tecnicas, nombre) },
+                )
             }
             Spacer(Modifier.height(12.dp))
         }
@@ -1543,6 +1585,7 @@ private fun ContenidoAtenciones(
     paciente: PacienteStaff,
     hitos: pe.saniape.app.data.staff.HitosPaciente?,
     recargaToken: Int,
+    tratEsDental: (TratamientoPaciente) -> Boolean = { false },
     onCompletarSesion: (SesionFicha, SesionFicha?, String?, TratamientoPaciente) -> Unit,
     onRecargar: () -> Unit,
     onEditarTrat: (TratamientoPaciente) -> Unit,
@@ -1602,6 +1645,7 @@ private fun ContenidoAtenciones(
             puedeSesiones = ctx.puede("sesiones"),
             pacienteId = paciente.id, puedeFotos = ctx.can("fotosEvolutivas"),
             puedeIA = ctx.can("ia"),
+            esDental = tratEsDental(t),
             recargaToken = recargaToken,
             consultaDone = citaC != null, evalDone = citaE != null,
             citaConsulta = citaC, citaEvaluacion = citaE,

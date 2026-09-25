@@ -55,8 +55,11 @@ fun ModalCompletar(
     cita: CitaStaff,
     especialidades: List<EspecialidadRef>,
     onCancelar: () -> Unit,
-    onConfirmar: (observaciones: String?, diagnostico: String?, derivarEspId: String?) -> Unit,
+    /** piezas = ids de hallazgos hechos hoy (solo sesión dental; null = no tocar el odontograma). */
+    onConfirmar: (observaciones: String?, diagnostico: String?, derivarEspId: String?, piezas: List<String>?) -> Unit,
     flujo: FlujoClinica = FlujoClinica(),
+    /** La cita es dental (citaEsDental): la sesión muestra "¿Qué se le hizo hoy?". */
+    esDental: Boolean = false,
     /**
      * Odontología: el diagnóstico ya redactado a partir del odontograma que se
      * marcó en el paso previo. El odontólogo lo corrige o lo acepta tal cual.
@@ -72,6 +75,10 @@ fun ModalCompletar(
     var texto by remember { mutableStateOf(diagnosticoInicial) }
     var derivar by remember { mutableStateOf(false) }
     var espElegida by remember { mutableStateOf<EspecialidadRef?>(null) }
+    var piezas by remember { mutableStateOf<List<String>>(emptyList()) }
+    // true = la lista de piezas cargó; solo entonces se mandan (ver PiezasTratadas).
+    var piezasListas by remember { mutableStateOf(false) }
+    val conPiezas = esDental && !esEvaluacion && cita.tipo == "Sesión" && cita.pacienteId != null
 
     AlertDialog(
         onDismissRequest = onCancelar,
@@ -101,6 +108,17 @@ fun ModalCompletar(
                     Text("Se guardará en la ficha del paciente.", color = c.textoSuave,
                         fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
                 } else {
+                    // Odontología: de todo lo pendiente del paciente, qué se le hizo
+                    // hoy. Lo marcado suma su procedimiento a lo realizado.
+                    if (conPiezas) {
+                        pe.saniape.app.ui.clinica.odontologia.PiezasTratadas(
+                            pacienteId = cita.pacienteId!!, tratamientoId = cita.tratamientoId, sesionId = null,
+                            seleccion = piezas, onSeleccion = { piezas = it },
+                            onCargado = { piezasListas = it },
+                            onProcedimiento = { nombre -> texto = pe.saniape.app.data.staff.sumarTecnica(texto, nombre) },
+                        )
+                        Spacer(Modifier.height(Sania.dim.lg))
+                    }
                     Text("Procedimientos realizados", color = c.textoSuave, fontSize = Sania.txt.mini,
                         fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
                     pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
@@ -158,6 +176,7 @@ fun ModalCompletar(
                             texto.trim().ifBlank { null },
                             if (esEvaluacion) texto.trim().ifBlank { null } else null,
                             if (esEvaluacion && derivar) espElegida?.id else null,
+                            if (conPiezas && piezasListas) piezas else null,
                         )
                     }.padding(horizontal = 20.dp, vertical = 11.dp),
             ) { Text("✓ Guardar y completar", color = c.sobreNavy, fontWeight = FontWeight.Bold) }

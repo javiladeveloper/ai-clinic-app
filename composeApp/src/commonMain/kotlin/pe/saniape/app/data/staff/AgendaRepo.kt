@@ -197,12 +197,18 @@ object AgendaRepo {
         observaciones: String? = null,
         diagnostico: String? = null,
         derivarEspecialidadId: String? = null,
+        /** Odontología (solo citas dentales): ids de hallazgos hechos en esta sesión. null = no tocar. */
+        piezas: List<String>? = null,
+        /** Odontología: evaluación dental → foto fija del odontograma del día (la web la guarda). */
+        congelarOdontograma: Boolean = false,
     ): Boolean {
         val cuerpo = buildJsonObject {
             put("citaId", citaId)
             if (observaciones != null) put("observaciones", observaciones)
             if (!diagnostico.isNullOrBlank()) put("diagnostico", diagnostico)
             if (!derivarEspecialidadId.isNullOrBlank()) put("derivarEspecialidadId", derivarEspecialidadId)
+            if (piezas != null) put("piezas", kotlinx.serialization.json.JsonArray(piezas.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+            if (congelarOdontograma) put("odontograma", true)
         }
         return encolarCita("completar", cuerpo)
     }

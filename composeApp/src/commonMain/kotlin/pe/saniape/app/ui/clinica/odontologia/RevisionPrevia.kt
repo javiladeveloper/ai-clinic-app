@@ -10,9 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -22,7 +20,6 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import pe.saniape.app.data.staff.OdontogramaRepo
 import pe.saniape.app.data.staff.diagnosticoDesdeHallazgos
 import pe.saniape.app.ui.clinica.pacientes.DialogoForm
 import pe.saniape.app.ui.theme.Sania
@@ -51,14 +48,10 @@ fun RevisionPrevia(
 ) {
     val c = Sania.colors
     // Se recalcula cada vez que el odontograma avisa un cambio: el dentista ve
-    // crecer el texto mientras marca, así entiende de dónde sale.
-    var version by remember { mutableIntStateOf(0) }
+    // crecer el texto mientras marca, así entiende de dónde sale. Con los datos
+    // que el odontograma YA trajo: antes cada marca pedía otra vez hallazgos y
+    // catálogo a la red solo para redactar esta línea (el doble de consultas).
     var sugerido by remember { mutableStateOf("") }
-    LaunchedEffect(version) {
-        sugerido = diagnosticoDesdeHallazgos(
-            OdontogramaRepo.hallazgos(pacienteId), OdontogramaRepo.catalogo(),
-        )
-    }
 
     DialogoForm(
         titulo = "🦷 Revisión",
@@ -81,7 +74,7 @@ fun RevisionPrevia(
             pacienteId = pacienteId,
             citaId = citaId,
             mostrarPresupuesto = false,
-            onCambio = { version++ },
+            onDatos = { hallazgos, catalogo -> sugerido = diagnosticoDesdeHallazgos(hallazgos, catalogo) },
         )
 
         Spacer(Modifier.height(12.dp))

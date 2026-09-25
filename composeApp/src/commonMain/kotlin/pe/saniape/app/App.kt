@@ -123,6 +123,7 @@ fun App(
                         // no vea datos de la anterior ni caiga al panel equivocado.
                         pe.saniape.app.data.staff.StaffContextoRepo.limpiar()
                         pe.saniape.app.data.staff.DashboardRepo.limpiarCache()
+                        pe.saniape.app.data.staff.OdontogramaRepo.limpiarCache()
                         Preferencias.setModoActivo(null)
                         Preferencias.setLogoClinica(null); Preferencias.setNombreClinica(null)
                         logueado = false; modo = null

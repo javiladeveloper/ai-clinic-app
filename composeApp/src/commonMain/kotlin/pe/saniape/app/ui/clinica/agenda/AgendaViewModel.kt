@@ -267,13 +267,18 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     fun ejecutar(
         accion: AccionCita, cita: CitaStaff,
         observaciones: String? = null, diagnostico: String? = null, derivarEspId: String? = null,
+        // Odontología (solo citas dentales; ver ModalCompletar).
+        piezas: List<String>? = null, congelarOdontograma: Boolean = false,
     ) {
         if (accionando) return
         viewModelScope.launch {
             accionando = true; mensaje = null
             val ok = when (accion) {
                 AccionCita.Confirmar -> AgendaRepo.confirmar(cita.id)
-                AccionCita.Completar -> AgendaRepo.completar(cita.id, observaciones, diagnostico, derivarEspId)
+                AccionCita.Completar -> AgendaRepo.completar(
+                    cita.id, observaciones, diagnostico, derivarEspId,
+                    piezas = piezas, congelarOdontograma = congelarOdontograma,
+                )
                 AccionCita.Revertir -> AgendaRepo.revertir(cita.id)
                 AccionCita.Cancelar -> AgendaRepo.cancelar(cita.id)
             }

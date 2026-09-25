@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -25,7 +27,11 @@ import pe.saniape.app.data.staff.COLOR_REALIZADO
 import pe.saniape.app.data.staff.DienteHallazgo
 import pe.saniape.app.data.staff.HallazgoDental
 import pe.saniape.app.data.staff.SUPERFICIES
+import pe.saniape.app.data.staff.esDePiezaEntera
+import pe.saniape.app.data.staff.etiquetaHecho
 import pe.saniape.app.data.staff.nombreCara
+import pe.saniape.app.data.staff.ordenarCaras
+import pe.saniape.app.data.staff.pintarDiente
 import pe.saniape.app.ui.clinica.pacientes.DialogoForm
 import pe.saniape.app.ui.clinica.pacientes.EtqForm
 import pe.saniape.app.ui.theme.Sania
@@ -34,8 +40,16 @@ import pe.saniape.app.ui.theme.Sania
  * El panel de un diente: lo que ya tiene y los chips para marcar algo nuevo.
  *
  * Se elige la cara PRIMERO (viene preseleccionada si se tocó una en el
- * diagrama) y después el hallazgo. Sin cara elegida, el hallazgo es del diente
- * entero — que es lo correcto para "Ausente", "Corona" o "Endodoncia".
+ * diagrama; en el celular, sobre la pieza en grande) y después el hallazgo. Sin
+ * cara elegida, el hallazgo es del diente entero — lo correcto para "Ausente",
+ * "Corona" o "Endodoncia".
+ *
+ * Un hallazgo que la pieza YA tiene pendiente no se duplica: su chip (✎) le
+ * SUMA las caras elegidas. Una caries en M a la que luego se le ve otra en O
+ * queda como UNA caries MO — es una sola resina, y así se cobra. Si se toca sin
+ * cara elegida, abre el existente con sus caras para editarlas. Llegando por
+ * una cara del dibujo, tocar el hallazgo registra de una vez y cierra.
+ * Gemelo de components/odontologia/DientePanel.tsx.
  */
 @Composable
 internal fun PanelDiente(
@@ -44,45 +58,102 @@ internal fun PanelDiente(
     hallazgosDelDiente: List<DienteHallazgo>,
     catalogo: List<HallazgoDental>,
     onCerrar: () -> Unit,
-    onAgregar: (hallazgoId: String, caras: List<String>?) -> Unit,
+    /** existente != null → actualizar sus caras (ya sumadas); si no, registro nuevo. */
+    onMarcar: (hallazgoId: String, caras: List<String>?, existente: DienteHallazgo?) -> Unit,
     onAlternar: (DienteHallazgo) -> Unit,
     onQuitar: (DienteHallazgo) -> Unit,
+    onNota: (DienteHallazgo, String?) -> Unit = { _, _ -> },
 ) {
     val c = Sania.colors
     var caras by remember(diente) { mutableStateOf(carasPreseleccionadas.toSet()) }
+    // Registro pendiente cuyas caras se están editando (null = se marca uno nuevo).
+    var editando by remember(diente) { mutableStateOf<DienteHallazgo?>(null) }
+    val llegoPorCara = carasPreseleccionadas.isNotEmpty()
     val porId = remember(catalogo) { catalogo.associateBy { it.id } }
-    // Solo los ACTIVOS se ofrecen para marcar; los inactivos siguen pintándose
-    // en lo ya marcado, pero no se usan en marcas nuevas.
-    val ofrecibles = remember(catalogo) { catalogo.filter { it.estado == "Activo" } }
+    // Solo los ACTIVOS y de PIEZA se ofrecen (los de boca van en "Boca completa").
+    val ofrecibles = remember(catalogo) { catalogo.filter { it.estado == "Activo" && !it.porBoca } }
+    // Recordados: el panel se recompone con cada toque de cara (la selección);
+    // esto solo cambia cuando cambia lo registrado en la pieza.
+    val pendientePorHallazgo = remember(hallazgosDelDiente) {
+        hallazgosDelDiente.filter { it.estado == "Pendiente" }.groupBy { it.hallazgoId }.mapValues { it.value.first() }
+    }
+    // Los de pieza entera ya pendientes no tienen nada que ampliar: chip apagado.
+    val deshabilitados = remember(ofrecibles, pendientePorHallazgo) {
+        ofrecibles.filter { it.id in pendientePorHallazgo && esDePiezaEntera(it) }.map { it.id }.toSet()
+    }
+    val pintado = remember(hallazgosDelDiente, catalogo) { pintarDiente(hallazgosDelDiente, catalogo) }
 
+    fun elegir(h: HallazgoDental) {
+        val existente = pendientePorHallazgo[h.id]
+        when {
+            esDePiezaEntera(h) -> onMarcar(h.id, null, null)
+            existente != null && caras.isEmpty() -> {
+                // Sin cara elegida: se abre el existente para editar sus caras.
+                editando = existente
+                caras = existente.superficies.orEmpty().toSet()
+                return
+            }
+            existente != null -> onMarcar(h.id, ordenarCaras(existente.superficies.orEmpty() + caras), existente)
+            else -> onMarcar(h.id, caras.takeIf { it.isNotEmpty() }?.let { ordenarCaras(it) }, null)
+        }
+        if (llegoPorCara) onCerrar() else { caras = emptySet(); editando = null }
+    }
+
+    val nombreEditando = editando?.let { porId[it.hallazgoId]?.nombre }
     DialogoForm(
         titulo = "Pieza $diente",
-        subtitulo = if (caras.isEmpty()) "Diente entero" else "Cara " + caras.joinToString(", ") { nombreCara(it) },
-        textoAccion = "Listo",
+        subtitulo = if (caras.isEmpty()) "Diente entero" else "Cara " + ordenarCaras(caras).joinToString(", ") { nombreCara(it) },
+        textoAccion = editando?.let { "✓ Actualizar $nombreEditando" + (if (caras.isEmpty()) "" else " (${ordenarCaras(caras).joinToString("")})") } ?: "Listo",
         onCancelar = onCerrar,
-        onAccion = onCerrar,
+        onAccion = {
+            val e = editando
+            if (e != null) {
+                onMarcar(e.hallazgoId, ordenarCaras(caras), e)
+                editando = null; caras = emptySet()
+            } else onCerrar()
+        },
     ) {
         // ── Lo que ya tiene ──────────────────────────────────────────────
         if (hallazgosDelDiente.isNotEmpty()) {
             EtqForm("Registrado")
             hallazgosDelDiente.forEach { h ->
                 val hal = porId[h.hallazgoId]
-                val donde = h.superficies?.joinToString(", ") { nombreCara(it) } ?: "diente entero"
+                val donde = buildString {
+                    append(h.superficies?.joinToString("") ?: "diente entero")
+                    h.dienteHasta?.let { append(" · hasta la $it") }
+                }
+                val hecho = h.estado == "Realizado"
                 FilaHallazgo(
                     nombre = hal?.nombre ?: "Hallazgo",
-                    color = colorDe(if (h.estado == "Realizado") COLOR_REALIZADO else hal?.color),
-                    detalle = "${h.estado} · $donde",
+                    color = colorDe(if (hecho) COLOR_REALIZADO else hal?.color),
+                    // La caries tratada se lee "restaurada", no "realizada".
+                    detalle = (if (hecho) "✓ " + etiquetaHecho(hal?.nombre.orEmpty()) else "Pendiente") + " · $donde",
+                    realizado = hecho,
                     soloLectura = false,
                     onAlternar = { onAlternar(h) },
                     onQuitar = { onQuitar(h) },
+                    nota = h.notas,
+                    onNota = { onNota(h, it) },
                 )
             }
             Spacer(Modifier.height(14.dp))
         }
 
-        // ── Qué cara ─────────────────────────────────────────────────────
-        EtqForm("Cara (opcional)")
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        // ── Qué cara: la pieza en grande, cada cara es un blanco de dedo ──
+        EtqForm(if (editando != null) "Caras de ${nombreEditando.orEmpty()}" else "Cara (opcional)")
+        if (editando != null) {
+            Text(
+                "Esta pieza ya tiene $nombreEditando. Marca todas las caras afectadas: queda UNA sola y se cobra una vez.",
+                color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(bottom = 6.dp),
+            )
+        }
+        Box(Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+            DienteDiagrama(
+                diente = diente, tam = 150.dp, pintado = pintado, seleccion = caras,
+                onTocarCara = { cara -> caras = if (cara in caras) caras - cara else caras + cara },
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
             SUPERFICIES.forEach { cara ->
                 val sel = cara in caras
                 Box(
@@ -97,19 +168,21 @@ internal fun PanelDiente(
             }
         }
         Text(
-            "Sin cara elegida se marca el diente entero.",
+            if (llegoPorCara) "Cara elegida: toca el hallazgo y queda registrado."
+            else "Sin cara elegida se marca el diente entero.",
             color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp),
         )
 
         // ── Qué hallazgo ─────────────────────────────────────────────────
-        Spacer(Modifier.height(14.dp))
-        EtqForm("Marcar")
-        ChipsCatalogo(ofrecibles, onElegir = { h ->
-            // "Ausente" y los de boca son del diente entero por definición: una
-            // ausencia no tiene cara, así que se ignora la cara elegida.
-            val sinCaras = h.marcaAusente || h.porBoca || caras.isEmpty()
-            onAgregar(h.id, if (sinCaras) null else caras.toList().sorted())
-        })
+        if (editando == null) {
+            Spacer(Modifier.height(14.dp))
+            EtqForm("Marcar")
+            ChipsCatalogo(
+                ofrecibles, onElegir = { h -> elegir(h) }, deshabilitados = deshabilitados,
+                // ✎ = ya está pendiente en esta pieza: tocarlo le suma caras.
+                marcados = pendientePorHallazgo.keys - deshabilitados,
+            )
+        }
     }
 }
 

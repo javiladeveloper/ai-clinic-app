@@ -647,6 +647,8 @@ object PacientesRepo {
         sesionId: String, estado: String,
         motivo: String? = null, fecha: String? = null, hora: String? = null,
         notas: String? = null, mejorias: String? = null, rxPendiente: Boolean? = null,
+        /** Odontología: ids de dientes_hallazgos hechos en esta sesión. null = no tocar el odontograma. */
+        piezas: List<String>? = null,
     ): Boolean = postStaff("/api/staff/sesion/estado", buildJsonObject {
         put("sesionId", sesionId)
         put("estado", estado)
@@ -659,6 +661,8 @@ object PacientesRepo {
         // RX pendiente: columna propia en la BD (antes iba escondido como texto
         // dentro de la evolución, que ensuciaba la historia clínica).
         if (rxPendiente != null) put("rxPendiente", rxPendiente)
+        // Solo sesiones DENTALES lo mandan (una lista vacía también: deja la sesión sin piezas).
+        if (piezas != null) put("piezas", kotlinx.serialization.json.JsonArray(piezas.map { JsonPrimitive(it) }))
     })
 
     /** Pagos registrados de un tratamiento (para la PagoCard de la ficha). */

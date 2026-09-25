@@ -213,7 +213,7 @@ fun ClinicaConTabs(
                         onCerrarSesion = onCerrarSesion,
                         // Recargar el contexto maestro tras cambiar de clínica → header, ✓,
                         // pacientes y permisos pasan todos a la nueva clínica activa.
-                        onCambioClinica = { pe.saniape.app.data.staff.DashboardRepo.limpiarCache(); tab = TabClinica.Inicio; intento++ },
+                        onCambioClinica = { pe.saniape.app.data.staff.DashboardRepo.limpiarCache(); pe.saniape.app.data.staff.OdontogramaRepo.limpiarCache(); tab = TabClinica.Inicio; intento++ },
                         onAbrirSesiones = if (contexto.puede("sesiones")) ({ verSesiones = true }) else null,
                         onAbrirCaja = if (contexto.puede("pagos")) ({ verCaja = true }) else null,
                     )

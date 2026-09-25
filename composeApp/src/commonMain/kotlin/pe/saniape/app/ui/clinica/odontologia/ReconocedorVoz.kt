@@ -17,12 +17,22 @@ interface ControlDictado {
     val disponible: Boolean
     fun iniciar()
     fun detener()
+
+    /**
+     * Manos libres: el médico deja el celular a un costado y trabaja con las dos
+     * manos. Queda escuchando hasta [detener]: en cada pausa el reconocedor se
+     * reinicia solo sin perder lo dicho (el del sistema corta a los ~3 s de
+     * silencio) y la pantalla no se apaga. Por defecto, igual que [iniciar]
+     * (plataformas sin dictado nativo).
+     */
+    fun iniciarContinuo() { iniciar() }
 }
 
 /**
  * [onTexto] recibe lo reconocido; `final` = true cuando la frase terminó (el
  * texto parcial va cambiando mientras se habla). [onEscuchando] prende y apaga
- * el indicador. [onError] trae un mensaje para mostrar tal cual.
+ * el indicador (en modo continuo queda prendido hasta detener). [onError] trae
+ * un mensaje para mostrar tal cual.
  */
 @Composable
 expect fun recordarReconocedorVoz(

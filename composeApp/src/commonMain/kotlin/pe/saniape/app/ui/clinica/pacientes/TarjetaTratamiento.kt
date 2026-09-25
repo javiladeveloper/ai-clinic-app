@@ -66,6 +66,7 @@ fun TarjetaTratamiento(
     pacienteId: String = "",
     puedeFotos: Boolean = false,   // feature fotosEvolutivas (Premium)
     puedeIA: Boolean = false,      // feature ia (Plus): sugerencia de sesión
+    esDental: Boolean = false,     // tratamiento dental: "Piezas del plan" (solo odontología)
     recargaToken: Int = 0,         // cambia tras cualquier acción de la ficha → refresca las sesiones
     consultaDone: Boolean = false,   // para la barra de recorrido (de los hitos del paciente)
     evalDone: Boolean = false,
@@ -320,6 +321,14 @@ fun TarjetaTratamiento(
                     else "Atención sin sesiones — el alta se declara desde el paso “Control”.",
                     color = c.textoSuave, fontSize = 12.sp,
                 )
+                // Odontología (servicio único dental: profilaxis…): sus piezas también.
+                if (esDental && pacienteId.isNotBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    pe.saniape.app.ui.clinica.odontologia.PlanPiezas(
+                        pacienteId = pacienteId, tratamientoId = t.id, sesiones = emptyList(),
+                        recargaToken = recargaToken + cambioToken,
+                    )
+                }
                 // Fotos evolutivas ARRIBA de pagos (el antes/después es parte de la atención,
                 // no del cobro) — también en consultas/servicios (documentan resultados).
                 if (puedeFotos && pacienteId.isNotBlank()) {
@@ -337,6 +346,14 @@ fun TarjetaTratamiento(
                     CircularProgressIndicator(color = c.navy, strokeWidth = 2.dp)
                 }
                 else -> {
+                    // Odontología: arriba de las sesiones, qué piezas cubre el plan y
+                    // cuáles ya se hicieron (y en qué sesión). Otros rubros: nada.
+                    if (esDental && pacienteId.isNotBlank()) {
+                        pe.saniape.app.ui.clinica.odontologia.PlanPiezas(
+                            pacienteId = pacienteId, tratamientoId = t.id, sesiones = s,
+                            recargaToken = recargaToken + cambioToken,
+                        )
+                    }
                     if (s.isEmpty() && t.sesionesCompletadas > 0) {
                         // Inconsistencia: el contador dice que hay sesiones pero la lista vino vacía
                         // (casi siempre un fallo de carga). Ofrecer reintentar en vez de mentir.

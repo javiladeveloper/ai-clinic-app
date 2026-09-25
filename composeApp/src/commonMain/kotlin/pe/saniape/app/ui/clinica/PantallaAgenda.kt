@@ -313,12 +313,17 @@ fun PantallaAgenda(
         } else {
             ModalCompletar(
                 cita = cita, especialidades = vm.especialidades, flujo = flujoCita,
+                esDental = vm.esDental(cita),
                 diagnosticoInicial = revisada?.takeIf { it.first == cita.id }?.second ?: "",
                 onCancelar = { completar = null; revisada = null },
-                onConfirmar = { obs, diag, espId ->
+                onConfirmar = { obs, diag, espId, piezas ->
                     completar = null
                     revisada = null
-                    vm.ejecutar(AccionCita.Completar, cita, obs, diag, espId)
+                    vm.ejecutar(
+                        AccionCita.Completar, cita, obs, diag, espId, piezas = piezas,
+                        // Evaluación dental: foto fija del odontograma del día (como la web).
+                        congelarOdontograma = vm.esDental(cita) && evalua,
+                    )
                 },
             )
         }
