@@ -29,6 +29,40 @@ suspend fun enviarOEncolar(
     idTemporal: String? = null,
     dependeDe: Long? = null,
 ): Boolean {
+    val r = enviarOEncolarDetalle(tipo, endpoint, cuerpo, idTemporal, dependeDe)
+    // El "no" del servidor se muestra con SU texto (sin cupo, ficha dada de baja,
+    // sin permiso…). Antes se perdía y el usuario solo veía "No se pudo" sin saber
+    // qué arreglar. Quien necesita reaccionar al código usa [enviarOEncolarDetalle].
+    r.rechazo?.let { Toaster.error(it.error) }
+    return r.registrada
+}
+
+/**
+ * Resultado de una escritura: se registró (en el servidor o en la cola), o el
+ * servidor la rechazó ([rechazo] con su texto y `codigo`), o ni se intentó
+ * (doble toque / no se pudo encolar).
+ */
+data class ResultadoEscritura(
+    /** true = quedó registrada: en el servidor ([encolada]=false) o en la cola local. */
+    val registrada: Boolean,
+    val encolada: Boolean = false,
+    val rechazo: RechazoServidor? = null,
+) {
+    val codigo: String? get() = rechazo?.codigo
+}
+
+/**
+ * Como [enviarOEncolar], pero devuelve el detalle y NO muestra el rechazo: la
+ * pantalla decide (p. ej. ante SIN_PROFESIONAL abre el selector de profesional
+ * en vez de un toast).
+ */
+suspend fun enviarOEncolarDetalle(
+    tipo: String,
+    endpoint: String,
+    cuerpo: JsonObject,
+    idTemporal: String? = null,
+    dependeDe: Long? = null,
+): ResultadoEscritura {
     // Clave LÓGICA de la operación ("qué se está haciendo", no "qué envío es"):
     // tipo + el id sobre el que actúa. Dos toques del mismo botón comparten clave.
     val claveLogica = "$tipo|" + listOf("sesionId", "citaId", "pagoId", "tratamientoId", "pacienteId")
@@ -40,7 +74,7 @@ suspend fun enviarOEncolar(
     val reservada = mutexEnVuelo.withLock { enVuelo.add(claveLogica) }
     if (!reservada) {
         Toaster.error("Esta operación se está guardando — espera unos segundos, no la repitas")
-        return false
+        return ResultadoEscritura(registrada = false)
     }
     try {
         return pe.saniape.app.ui.conIndicador {
@@ -70,21 +104,25 @@ private suspend fun enviarOEncolarInterno(
     cuerpo: JsonObject,
     idTemporal: String?,
     dependeDe: Long?,
-): Boolean {
+): ResultadoEscritura {
     val idemKey = nuevaIdemKey()
 
     // Si el payload trae ids temporales, no tiene sentido intentarlo inline:
     // el servidor no los conoce. Va directo a la cola, que los traducirá.
     val tieneTemporales = cuerpo.toString().contains("tmp-")
     if (!tieneTemporales) {
-        when (runCatching { Sincronizador.enviarAhora(endpoint, cuerpo, idemKey) }.getOrNull()) {
-            ResultadoEnvio.OK -> return true
-            // RECHAZO del servidor (400/403…): NO encolar. Reintentarlo daría el mismo
-            // error una y otra vez, y decirle al usuario "se registrará al volver la
-            // señal" sería mentirle: el problema no es la conexión.
-            ResultadoEnvio.RECHAZADO -> return false
+        val (resultado, rechazo) = runCatching { Sincronizador.enviarAhoraDetalle(endpoint, cuerpo, idemKey) }
+            .getOrDefault(ResultadoEnvio.SIN_RED to null)
+        when (resultado) {
+            ResultadoEnvio.OK -> return ResultadoEscritura(registrada = true)
+            // RECHAZO del servidor (400/403/409 de negocio…): NO encolar. Reintentarlo
+            // daría el mismo error una y otra vez, y decirle al usuario "se registrará
+            // al volver la señal" sería mentirle: el problema no es la conexión.
+            ResultadoEnvio.RECHAZADO -> return ResultadoEscritura(
+                registrada = false, rechazo = rechazo ?: RechazoServidor("El servidor rechazó la operación"),
+            )
             // Fallo de red (o excepción) → sigue abajo y se encola.
-            else -> Unit
+            ResultadoEnvio.SIN_RED -> Unit
         }
     }
 
@@ -95,6 +133,6 @@ private suspend fun enviarOEncolarInterno(
         )
         Toaster.exito("Guardado — se registrará al volver la señal")
         Sincronizador.disparar()
-        true
-    }.getOrDefault(false)
+        ResultadoEscritura(registrada = true, encolada = true)
+    }.getOrDefault(ResultadoEscritura(registrada = false))
 }

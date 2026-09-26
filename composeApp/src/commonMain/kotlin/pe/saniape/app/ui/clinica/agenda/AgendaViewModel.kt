@@ -8,12 +8,9 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.datetime.Clock
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
-import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
-import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.data.staff.AgendaBanners
 import pe.saniape.app.data.staff.AgendaRepo
 import pe.saniape.app.data.staff.RealtimeAgenda
@@ -263,22 +260,69 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         }.getOrDefault(citas)
     }
 
+    /**
+     * Completar pendiente de elegir QUIÉN ATENDIÓ: el servidor lo rechazó con
+     * SIN_PROFESIONAL (la cita no tiene profesional y quien completa no es uno).
+     * La pantalla muestra el selector y reintenta con [completarConProfesional].
+     */
+    data class PedidoProfesional(
+        val cita: CitaStaff,
+        val observaciones: String?, val diagnostico: String?, val derivarEspId: String?,
+        val piezas: List<String>?, val congelarOdontograma: Boolean,
+    )
+    var pedirProfesional by mutableStateOf<PedidoProfesional?>(null); private set
+
+    fun cerrarPedidoProfesional() { pedirProfesional = null }
+
+    /** Reintenta el completar con el profesional elegido en el selector. */
+    fun completarConProfesional(terapeutaId: String) {
+        val p = pedirProfesional ?: return
+        pedirProfesional = null
+        ejecutar(
+            AccionCita.Completar, p.cita, p.observaciones, p.diagnostico, p.derivarEspId,
+            piezas = p.piezas, congelarOdontograma = p.congelarOdontograma, terapeutaId = terapeutaId,
+        )
+    }
+
     /** Acción genérica sobre una cita. Refresca citas + banners al terminar. */
     fun ejecutar(
         accion: AccionCita, cita: CitaStaff,
         observaciones: String? = null, diagnostico: String? = null, derivarEspId: String? = null,
         // Odontología (solo citas dentales; ver ModalCompletar).
         piezas: List<String>? = null, congelarOdontograma: Boolean = false,
+        /** Quién atendió (solo si la cita no tiene profesional). */
+        terapeutaId: String? = null,
     ) {
         if (accionando) return
         viewModelScope.launch {
             accionando = true; mensaje = null
             val ok = when (accion) {
                 AccionCita.Confirmar -> AgendaRepo.confirmar(cita.id)
-                AccionCita.Completar -> AgendaRepo.completar(
-                    cita.id, observaciones, diagnostico, derivarEspId,
-                    piezas = piezas, congelarOdontograma = congelarOdontograma,
-                )
+                AccionCita.Completar -> {
+                    val r = AgendaRepo.completarDetalle(
+                        cita.id, observaciones, diagnostico, derivarEspId,
+                        piezas = piezas, congelarOdontograma = congelarOdontograma,
+                        terapeutaId = terapeutaId,
+                    )
+                    when {
+                        r.registrada -> true
+                        // Error de NEGOCIO, no de red: no se encola ni se reintenta solo.
+                        // Falta quién atendió → se ofrece el selector en vez de un toast mudo.
+                        r.codigo == "SIN_PROFESIONAL" -> {
+                            pedirProfesional = PedidoProfesional(
+                                cita, observaciones, diagnostico, derivarEspId, piezas, congelarOdontograma,
+                            )
+                            accionando = false
+                            return@launch
+                        }
+                        else -> {
+                            r.rechazo?.let { pe.saniape.app.ui.Toaster.error(it.error) }
+                            // Sin rechazo = ni se pudo encolar: el toast genérico de abajo.
+                            if (r.rechazo != null) { recargarCitas(); accionando = false; return@launch }
+                            false
+                        }
+                    }
+                }
                 AccionCita.Revertir -> AgendaRepo.revertir(cita.id)
                 AccionCita.Cancelar -> AgendaRepo.cancelar(cita.id)
             }
@@ -303,22 +347,33 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         }
     }
 
-    /** Reprogramar (cambia fecha/hora). Escritura simple. */
-    fun reprogramar(cita: CitaStaff, fecha: String, hora: String, onFin: (Boolean) -> Unit) {
+    /**
+     * Reprogramar (fecha/hora) y/o asignar profesional, vía servidor (valida cupo,
+     * marca la sesión vinculada como Reprogramada con su motivo, cola offline).
+     * [onFin] recibe true si quedó registrado: el modal solo se cierra entonces, así
+     * un "sin cupo" deja elegir otra hora sin volver a abrirlo.
+     */
+    fun reprogramar(
+        cita: CitaStaff, fecha: String, hora: String,
+        terapeutaId: String? = null, motivo: String? = null,
+        onFin: (Boolean) -> Unit,
+    ) {
         if (accionando) return
         viewModelScope.launch {
             accionando = true
-            // Pasa tipo/tratamiento/fecha previa para sincronizar la sesión vinculada.
-            val ok = AgendaRepo.reprogramar(
-                cita.id, fecha, hora,
-                tipo = cita.tipo, tratamientoId = cita.tratamientoId, fechaAntes = cita.fecha,
-            )
-            recargarCitas()
-            recargarBanners()
-            if (ok) pe.saniape.app.ui.Toaster.exito("Cita reprogramada")
-            else pe.saniape.app.ui.Toaster.error("No se pudo reprogramar")
+            val r = AgendaRepo.reprogramar(cita.id, fecha, hora, terapeutaId = terapeutaId, motivo = motivo)
+            if (r.registrada) {
+                // Recarga PARCIAL: solo lo que cambia (citas + banners), no toda la agenda.
+                recargarCitas()
+                recargarBanners()
+                if (!r.encolada) pe.saniape.app.ui.Toaster.exito(
+                    if (fecha == cita.fecha && hora.take(5) == cita.hora.take(5)) "Cita actualizada" else "Cita reprogramada"
+                )
+            } else {
+                pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo reprogramar")
+            }
             accionando = false
-            onFin(ok)
+            onFin(r.registrada)
         }
     }
 
@@ -355,10 +410,11 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
 enum class AccionCita { Confirmar, Completar, Revertir, Cancelar }
 
 // ── Helpers de fecha (puros) ──
-fun hoyIso(): String {
-    val d = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
-    return d.iso()
-}
+/**
+ * "Hoy" en la zona de la CLÍNICA (America/Lima), no la del teléfono: gemelo de
+ * getLocalToday() de la web. Un celular con la zona mal puesta proponía mañana.
+ */
+fun hoyIso(): String = pe.saniape.app.data.staff.hoyClinicaIso()
 
 fun mananaIso(hoy: String): String {
     val p = hoy.split("-")

@@ -24,6 +24,7 @@ import pe.saniape.app.data.Supabase
 import pe.saniape.app.data.crearHttpClient
 import pe.saniape.app.data.offline.CacheLectura
 import pe.saniape.app.data.offline.enviarOEncolar
+import pe.saniape.app.data.offline.enviarOEncolarDetalle
 
 /** Una cita del staff (lista de agenda), con joins de paciente/terapeuta/tratamiento. */
 data class CitaStaff(
@@ -53,7 +54,7 @@ data class CitaStaff(
 /**
  * Lee la agenda (citas) directo de Supabase con la RLS de staff. Las acciones de
  * escritura (completar/revertir/cancelar) van por endpoints (misma lógica que la web).
- * Confirmar y reprogramar son escrituras simples → directas a Supabase.
+ * Confirmar es una escritura simple → directa a Supabase; reprogramar va por endpoint.
  */
 object AgendaRepo {
 
@@ -165,31 +166,28 @@ object AgendaRepo {
     } catch (_: Exception) { false }
 
     /**
-     * Reprogramar (cambia fecha/hora). Si la cita es tipo "Sesión", sincroniza también la
-     * fila de `sesiones` vinculada (misma fecha/hora), para que la ficha del paciente y la
-     * agenda no queden con fechas distintas para la misma sesión. La sesión se ubica por
-     * (tratamiento_id + fecha vieja), igual que la web (sesiones-acciones).
+     * Reprogramar (fecha/hora) y/o cambiar el profesional de una cita, VÍA SERVIDOR
+     * (`/api/staff/cita/reprogramar`). Antes era un UPDATE directo que movía TODAS
+     * las sesiones del tratamiento de esa fecha, no marcaba la sesión como
+     * Reprogramada, perdía el motivo, no validaba el cupo y se perdía sin señal.
+     * Ahora: la sesión vinculada pasa por la lógica canónica de la web
+     * (Reprogramada + motivo + serie + renumerar), el cupo lo valida la base y,
+     * sin señal, queda en la cola offline como cualquier otra escritura.
+     * [terapeutaId] null = no cambia el profesional.
      */
     suspend fun reprogramar(
         citaId: String, fecha: String, hora: String,
-        tipo: String? = null, tratamientoId: String? = null, fechaAntes: String? = null,
-    ): Boolean = try {
-        Supabase.client.postgrest["citas"].update({
-            set("fecha", fecha); set("hora", hora)
-        }) { filter { eq("id", citaId) } }
-        // Sincronizar la sesión vinculada (solo tipo Sesión con tratamiento y fecha previa).
-        if (tipo == "Sesión" && tratamientoId != null && !fechaAntes.isNullOrBlank()) {
-            Supabase.client.postgrest["sesiones"].update({
-                set("fecha", fecha); set("hora", hora)
-            }) {
-                filter {
-                    eq("tratamiento_id", tratamientoId)
-                    eq("fecha", fechaAntes)
-                }
-            }
+        terapeutaId: String? = null, motivo: String? = null,
+    ): pe.saniape.app.data.offline.ResultadoEscritura {
+        val cuerpo = buildJsonObject {
+            put("citaId", citaId)
+            put("fecha", fecha)
+            put("hora", hora.take(5))
+            if (!terapeutaId.isNullOrBlank()) put("terapeutaId", terapeutaId)
+            if (!motivo.isNullOrBlank()) put("motivo", motivo)
         }
-        true
-    } catch (_: Exception) { false }
+        return enviarOEncolarDetalle("cita:reprogramar", "/api/staff/cita/reprogramar", cuerpo)
+    }
 
     // ── Acciones complejas vía endpoints (kardex/comisión/contador) ──
     suspend fun completar(
@@ -201,16 +199,40 @@ object AgendaRepo {
         piezas: List<String>? = null,
         /** Odontología: evaluación dental → foto fija del odontograma del día (la web la guarda). */
         congelarOdontograma: Boolean = false,
-    ): Boolean {
-        val cuerpo = buildJsonObject {
+    ): Boolean = enviarOEncolar("cita:completar", "/api/staff/cita/completar",
+        cuerpoCompletar(citaId, observaciones, diagnostico, derivarEspecialidadId, piezas, congelarOdontograma, null))
+
+    /**
+     * Como [completar], pero devuelve el detalle del rechazo (p. ej. SIN_PROFESIONAL,
+     * para ofrecer el selector) sin mostrarlo. [terapeutaId] = quién atendió, cuando
+     * la cita no tiene profesional (el servidor lo asigna antes de completar).
+     */
+    suspend fun completarDetalle(
+        citaId: String,
+        observaciones: String? = null,
+        diagnostico: String? = null,
+        derivarEspecialidadId: String? = null,
+        piezas: List<String>? = null,
+        congelarOdontograma: Boolean = false,
+        terapeutaId: String? = null,
+    ): pe.saniape.app.data.offline.ResultadoEscritura = enviarOEncolarDetalle(
+        "cita:completar", "/api/staff/cita/completar",
+        cuerpoCompletar(citaId, observaciones, diagnostico, derivarEspecialidadId, piezas, congelarOdontograma, terapeutaId),
+    )
+
+    private fun cuerpoCompletar(
+        citaId: String, observaciones: String?, diagnostico: String?, derivarEspecialidadId: String?,
+        piezas: List<String>?, congelarOdontograma: Boolean, terapeutaId: String?,
+    ): JsonObject {
+        return buildJsonObject {
             put("citaId", citaId)
             if (observaciones != null) put("observaciones", observaciones)
             if (!diagnostico.isNullOrBlank()) put("diagnostico", diagnostico)
             if (!derivarEspecialidadId.isNullOrBlank()) put("derivarEspecialidadId", derivarEspecialidadId)
             if (piezas != null) put("piezas", kotlinx.serialization.json.JsonArray(piezas.map { kotlinx.serialization.json.JsonPrimitive(it) }))
             if (congelarOdontograma) put("odontograma", true)
+            if (!terapeutaId.isNullOrBlank()) put("terapeutaId", terapeutaId)
         }
-        return encolarCita("completar", cuerpo)
     }
 
     /**

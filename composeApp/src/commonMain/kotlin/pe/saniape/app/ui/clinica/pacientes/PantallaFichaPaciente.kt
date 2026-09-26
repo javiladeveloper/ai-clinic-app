@@ -92,6 +92,11 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     var completarSesion by remember { mutableStateOf<CompletarSesionReq?>(null) }
     // Tras completar una sesión con paquete no terminado: ofrecer agendar la próxima en 1 tap.
     var ofrecerAgendarProxima by remember { mutableStateOf<TratamientoPaciente?>(null) }
+    // La sesión se completó pero el cobro no entró: se ofrece reintentar SOLO el cobro.
+    var cobroFallido by remember { mutableStateOf<CobroFallido?>(null) }
+    var reintentandoCobro by remember { mutableStateOf(false) }
+    // Tras dar de alta (con teléfono y enlace de encuesta): ofrecer pedir la calificación.
+    var ofrecerEncuesta by remember { mutableStateOf<String?>(null) }   // enlace de WhatsApp listo
     var editandoPaciente by remember { mutableStateOf(false) }
     var menuPaciente by remember { mutableStateOf(false) }
     var crearSesionEn by remember { mutableStateOf<TratamientoPaciente?>(null) }
@@ -323,6 +328,12 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     }
                 }
 
+                // Ficha dada de baja: aviso rojo arriba (como la web). Se consulta, no se registra.
+                if (pe.saniape.app.data.staff.fichaInactiva(paciente.estado)) {
+                    Spacer(Modifier.height(Sania.dim.sm))
+                    AvisoFichaInactiva(puedeReactivar = ctx.puede("pacientes"))
+                }
+
                 // Datos: edad · ocupación
                 val datos = listOfNotNull(
                     paciente.edad?.let { "$it años" },
@@ -505,6 +516,18 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         },
                         // Registrar atención (clínico): diagnóstico/medicación/próximo control.
                         onRegistrarAtencion = { registrarAtencion = it },
+                        soloLectura = pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
+                        // Alta hecha → ofrecer la encuesta (solo con teléfono y enlace, como la web).
+                        onAltaHecha = { t ->
+                            scope.launch {
+                                val tel = paciente.telefono
+                                if (pe.saniape.app.data.staff.enlaceWhatsApp(tel) == null) return@launch
+                                val token = PacientesRepo.encuestaToken(t.id) ?: return@launch
+                                ofrecerEncuesta = pe.saniape.app.data.staff.enlaceWhatsApp(
+                                    tel, pe.saniape.app.data.staff.textoEncuestaAlta(paciente.nombre, token),
+                                )
+                            }
+                        },
                     )
                     "examenes" -> {
                         if (subiendo) {
@@ -777,20 +800,26 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 scope.launch {
                     // Evolución: solo desde la sesión #2 ("" limpia, null = no tocar),
                     // igual que la web. El aviso de RX viaja aparte, en su propia columna.
-                    val ok = PacientesRepo.cambiarEstadoSesion(
+                    val r = PacientesRepo.cambiarEstadoSesionDetalle(
                         ses.id, "Completada",
                         notas = tecnicas,
                         mejorias = if (ses.numero > 1) mejorias.orEmpty() else null,
                         rxPendiente = dejoRx,
                         piezas = piezas,
                     )
+                    val ok = r.registrada
                     if (ok) pe.saniape.app.ui.Toaster.exito("Sesión #${ses.numero} completada")
-                    else pe.saniape.app.ui.Toaster.error("No se pudo completar la sesión")
-                    // Cobro en el mismo paso (si lo activó): vinculado a la sesión.
+                    else pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo completar la sesión")
+                    // Cobro en el mismo paso (si lo activó): vinculado a la sesión. No hay un
+                    // endpoint que haga las dos cosas juntas, así que si el cobro falla se
+                    // dice claro y se ofrece reintentar SOLO el cobro (no volver a completar).
                     if (ok && pago != null) {
-                        val okPago = PacientesRepo.cobrarSesion(req.trat.id, ses.id, pago.first, pago.second, null)
-                        if (okPago) pe.saniape.app.ui.Toaster.exito("Pago registrado (${pago.second})")
-                        else pe.saniape.app.ui.Toaster.error("La sesión se completó pero el PAGO no se registró — cóbrala desde Pagos")
+                        val rPago = PacientesRepo.cobrarSesionDetalle(req.trat.id, ses.id, pago.first, pago.second, null)
+                        if (rPago.registrada) {
+                            if (!rPago.encolada) pe.saniape.app.ui.Toaster.exito("Pago registrado (${pago.second})")
+                        } else {
+                            cobroFallido = CobroFallido(req.trat.id, ses.id, ses.numero, pago.first, pago.second, rPago.rechazo?.error)
+                        }
                     }
                     // Aprender las técnicas para sugerirlas la próxima vez (fire-and-forget).
                     tecnicas?.let { TecnicasRepo.registrar(it) }
@@ -808,10 +837,9 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
 
     // Ofrecer agendar la próxima sesión tras completar (1 tap → form pre-llenado a +7 días).
     ofrecerAgendarProxima?.let { tr ->
-        val hoy = kotlinx.datetime.Clock.System.now()
-            .toLocalDateTime(kotlinx.datetime.TimeZone.currentSystemDefault()).date
-        val proxima = hoy.plus(7, kotlinx.datetime.DateTimeUnit.DAY)
-        val proximaIso = "${proxima.year}-${proxima.monthNumber.toString().padStart(2, '0')}-${proxima.dayOfMonth.toString().padStart(2, '0')}"
+        // +7 días desde el "hoy" de la CLÍNICA (America/Lima): con la zona del
+        // teléfono (o UTC) de noche proponía un día de más.
+        val proximaIso = pe.saniape.app.data.staff.sumarDiasIso(pe.saniape.app.data.staff.hoyClinicaIso(), 7)
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { ofrecerAgendarProxima = null },
             title = { Text("¿Agendar la próxima sesión?", fontWeight = FontWeight.Bold) },
@@ -833,7 +861,45 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             containerColor = c.superficie,
         )
     }
+
+    // Cobro que no entró tras completar: reintentar SOLO el cobro.
+    cobroFallido?.let { cf ->
+        DialogoCobroFallido(
+            numeroSesion = cf.numero, monto = cf.monto, metodo = cf.metodo, motivo = cf.motivo,
+            reintentando = reintentandoCobro,
+            onReintentar = {
+                if (reintentandoCobro) return@DialogoCobroFallido
+                reintentandoCobro = true
+                scope.launch {
+                    val r = PacientesRepo.cobrarSesionDetalle(cf.tratamientoId, cf.sesionId, cf.monto, cf.metodo, null)
+                    reintentandoCobro = false
+                    if (r.registrada) {
+                        cobroFallido = null
+                        if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Pago registrado (${cf.metodo})")
+                        recargar()
+                    } else {
+                        cobroFallido = cf.copy(motivo = r.rechazo?.error ?: cf.motivo)
+                    }
+                }
+            },
+            onCerrar = { cobroFallido = null },
+        )
+    }
+
+    // Encuesta de satisfacción tras el alta (WhatsApp del celular, como la web).
+    ofrecerEncuesta?.let { enlace ->
+        DialogoEncuestaAlta(
+            onPedir = { ofrecerEncuesta = null; acciones.abrirUrl(enlace) },
+            onCerrar = { ofrecerEncuesta = null },
+        )
+    }
 }
+
+/** Un cobro que falló justo después de completar su sesión (para reintentarlo solo). */
+private data class CobroFallido(
+    val tratamientoId: String, val sesionId: String, val numero: Int,
+    val monto: Double, val metodo: String, val motivo: String?,
+)
 
 /**
  * Completar una sesión (igual que la web): "Procedimientos realizados" con chips +
@@ -856,7 +922,7 @@ private fun ChipCompletar(texto: String, onClick: () -> Unit) {
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun ModalCompletarSesion(
+internal fun ModalCompletarSesion(
     ses: SesionFicha,
     anterior: SesionFicha?,
     tecnicasSugeridas: String?,
@@ -1598,6 +1664,9 @@ private fun ContenidoAtenciones(
     puedeDerivar: Boolean,
     onAgendarControl: (TratamientoPaciente) -> Unit,
     onRegistrarAtencion: (TratamientoPaciente) -> Unit,
+    /** Paciente dado de baja: se consulta, no se registra (ni tratamientos, ni sesiones, ni pagos). */
+    soloLectura: Boolean = false,
+    onAltaHecha: (TratamientoPaciente) -> Unit = {},
 ) {
     val c = Sania.colors
     // Profesional vinculado en modo "lo mío": separa SUS tratamientos (con acciones) de los
@@ -1660,6 +1729,8 @@ private fun ContenidoAtenciones(
             onDerivar = onDerivar, puedeDerivar = puedeDerivar,
             onAgendarControl = onAgendarControl,
             onRegistrarAtencion = onRegistrarAtencion,
+            soloLectura = soloLectura,
+            onAltaHecha = onAltaHecha,
         )
     }
 
@@ -1697,7 +1768,7 @@ private fun ContenidoAtenciones(
             Spacer(Modifier.height(Sania.dim.md))
             OtrosTratamientos(otros)
         }
-        if (ctx.puede("sesiones") || ctx.puede("pacientes")) {
+        if ((ctx.puede("sesiones") || ctx.puede("pacientes")) && !soloLectura) {
             Spacer(Modifier.height(Sania.dim.md))
             Box(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))

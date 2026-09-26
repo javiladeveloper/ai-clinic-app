@@ -3,6 +3,7 @@ package pe.saniape.app.data.staff
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
+import kotlinx.coroutines.async
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -116,7 +117,46 @@ object SesionesRepo {
         )
     }
 
+    /**
+     * Lo que necesita el diálogo de completar (el MISMO de la ficha) para una sesión
+     * de la lista global: la sesión como la ve la ficha (con su pago), la anterior
+     * (referencia de evolución y técnicas a repetir), las técnicas del plan y la
+     * especialidad del servicio (¿dental? → "¿Qué se le hizo hoy?"). Dos lecturas
+     * en paralelo; solo al tocar ✓ Completar.
+     */
+    suspend fun contextoCompletar(s: SesionGlobal): ContextoCompletar? = kotlinx.coroutines.coroutineScope {
+        val tratId = s.tratamientoId ?: return@coroutineScope null
+        val sesionesD = async { PacientesRepo.sesionesDe(tratId) }
+        val tratD = async {
+            runCatching {
+                Supabase.client.postgrest["tratamientos"]
+                    .select(Columns.raw("tecnicas_sugeridas, procedimiento:procedimientos(especialidad_id)")) {
+                        filter { eq("id", tratId) }
+                    }
+                    .decodeList<JsonObject>().firstOrNull()
+            }.getOrNull()
+        }
+        val sesiones = sesionesD.await()
+        val actual = sesiones.firstOrNull { it.id == s.id } ?: return@coroutineScope null
+        val anterior = sesiones.filter { it.numero < actual.numero }.maxByOrNull { it.numero }
+        val trat = tratD.await()
+        ContextoCompletar(
+            ses = actual,
+            anterior = anterior,
+            tecnicasSugeridas = trat?.str("tecnicas_sugeridas"),
+            especialidadId = (trat?.get("procedimiento") as? JsonObject)?.str("especialidad_id"),
+        )
+    }
+
     /** Servicios distintos presentes en las sesiones (para el filtro). */
     fun serviciosDe(sesiones: List<SesionGlobal>): List<String> =
         sesiones.mapNotNull { it.procedimiento }.distinct().sorted()
 }
+
+/** Datos para abrir el diálogo de completar de la ficha desde la lista global de sesiones. */
+data class ContextoCompletar(
+    val ses: SesionFicha,
+    val anterior: SesionFicha?,
+    val tecnicasSugeridas: String?,
+    val especialidadId: String?,
+)

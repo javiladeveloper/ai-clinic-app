@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -65,8 +67,20 @@ fun ModalCompletar(
      * marcó en el paso previo. El odontólogo lo corrige o lo acepta tal cual.
      */
     diagnosticoInicial: String = "",
+    /**
+     * Profesionales para "¿Quién atendió?": no-null SOLO cuando hace falta
+     * (cita que evalúa, sin profesional, y quien completa no es uno — ver
+     * pideProfesionalAlCompletar). El servidor la rechaza sin él (SIN_PROFESIONAL).
+     */
+    profesionales: List<pe.saniape.app.data.staff.TerapeutaRef>? = null,
+    /** Variante de [onConfirmar] con quién atendió (id), para cuando se pidió [profesionales]. */
+    onConfirmarConProfesional: ((observaciones: String?, diagnostico: String?, derivarEspId: String?, piezas: List<String>?, terapeutaId: String?) -> Unit)? = null,
 ) {
     val c = Sania.colors
+    var terapeutaElegido by remember { mutableStateOf<String?>(null) }
+    // Aviso de UNA vez al completar la evaluación sin diagnóstico (como la web):
+    // el diagnóstico es opcional, pero olvidarlo deja la ficha sin motivo clínico.
+    var avisoSinDiagnostico by remember { mutableStateOf(false) }
     // La cita que EVALÚA pide diagnóstico: la Evaluación siempre, y la Consulta
     // cuando el flujo no tiene Evaluación aparte (estética: su "Evaluación" es
     // una Consulta con otro nombre). Antes García la cerraba como sesión sin
@@ -125,6 +139,20 @@ fun ModalCompletar(
                         value = texto, onChange = { texto = it },
                     )
                 }
+                if (esEvaluacion && profesionales != null) {
+                    Spacer(Modifier.height(Sania.dim.lg))
+                    Text("¿Quién atendió? *", color = c.textoSuave, fontSize = Sania.txt.mini,
+                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
+                    SelectorProfesional(profesionales, terapeutaElegido) { terapeutaElegido = it }
+                }
+                if (esEvaluacion && avisoSinDiagnostico && texto.isBlank()) {
+                    Spacer(Modifier.height(Sania.dim.sm))
+                    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .background(c.pendBg).padding(horizontal = 10.dp, vertical = 8.dp)) {
+                        Text("⚠ Sin diagnóstico, la ficha queda sin motivo clínico. Escríbelo, o toca de nuevo para completar sin él.",
+                            color = c.pend, fontSize = 11.sp)
+                    }
+                }
                 if (esEvaluacion && especialidades.size > 1) {
                     Spacer(Modifier.height(Sania.dim.lg))
                     // Tarjeta de derivación (más clara que el checkbox suelto).
@@ -169,15 +197,22 @@ fun ModalCompletar(
         },
         confirmButton = {
             // Botón principal grande (full-width via padding del AlertDialog).
+            val faltaProfesional = esEvaluacion && profesionales != null && terapeutaElegido == null
             Box(
-                Modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
-                    .clickable {
-                        onConfirmar(
-                            texto.trim().ifBlank { null },
-                            if (esEvaluacion) texto.trim().ifBlank { null } else null,
-                            if (esEvaluacion && derivar) espElegida?.id else null,
-                            if (conPiezas && piezasListas) piezas else null,
-                        )
+                Modifier.clip(RoundedCornerShape(Sania.shape.md.dp))
+                    .background(if (faltaProfesional) c.borde else c.navy)
+                    .clickable(enabled = !faltaProfesional) {
+                        if (esEvaluacion && texto.isBlank() && !avisoSinDiagnostico) {
+                            avisoSinDiagnostico = true
+                            return@clickable
+                        }
+                        val obs = texto.trim().ifBlank { null }
+                        val diag = if (esEvaluacion) texto.trim().ifBlank { null } else null
+                        val esp = if (esEvaluacion && derivar) espElegida?.id else null
+                        val pz = if (conPiezas && piezasListas) piezas else null
+                        val conProf = onConfirmarConProfesional
+                        if (conProf != null) conProf(obs, diag, esp, pz, if (esEvaluacion) terapeutaElegido else null)
+                        else onConfirmar(obs, diag, esp, pz)
                     }.padding(horizontal = 20.dp, vertical = 11.dp),
             ) { Text("✓ Guardar y completar", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
         },
@@ -214,15 +249,34 @@ fun ConfirmacionAccion(cita: CitaStaff, accion: AccionCita, onCancelar: () -> Un
     )
 }
 
-/** Editar/Reprogramar cita: fecha y hora con pickers nativos. */
+/**
+ * Editar/Reprogramar cita: fecha y hora con pickers nativos, profesional (solo
+ * quien gestiona la agenda de todos) y, si es una sesión, el motivo (queda en la
+ * sesión, que pasa a "Reprogramada" — igual que el menú ⋯ de la ficha web).
+ * El cupo lo valida el servidor: si no hay, el modal sigue abierto para elegir otra hora.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ModalEditarCita(cita: CitaStaff, flujo: FlujoClinica = FlujoClinica(), onCancelar: () -> Unit, onGuardar: (fecha: String, hora: String) -> Unit) {
+fun ModalEditarCita(
+    cita: CitaStaff,
+    flujo: FlujoClinica = FlujoClinica(),
+    /** Profesionales para reasignar; null = quien mira no gestiona la agenda de otros. */
+    profesionales: List<pe.saniape.app.data.staff.TerapeutaRef>? = null,
+    guardando: Boolean = false,
+    onCancelar: () -> Unit,
+    onGuardar: (fecha: String, hora: String, terapeutaId: String?, motivo: String?) -> Unit,
+) {
     val c = Sania.colors
     var fecha by remember { mutableStateOf(cita.fecha) }
     var hora by remember { mutableStateOf(cita.hora.take(5)) }
+    var terapeutaId by remember { mutableStateOf(cita.terapeutaId) }
+    var motivo by remember { mutableStateOf("") }
     var mostrarFecha by remember { mutableStateOf(false) }
     var mostrarHora by remember { mutableStateOf(false) }
+    val esSesion = cita.tipo == "Sesión"
+    val cambiaHorario = fecha != cita.fecha || hora != cita.hora.take(5)
+    val cambiaProfesional = terapeutaId != null && terapeutaId != cita.terapeutaId
+    val hayCambios = cambiaHorario || cambiaProfesional
 
     if (mostrarFecha) {
         val estado = rememberDatePickerState()
@@ -251,29 +305,113 @@ fun ModalEditarCita(cita: CitaStaff, flujo: FlujoClinica = FlujoClinica(), onCan
     }
 
     AlertDialog(
-        onDismissRequest = onCancelar,
-        title = { Text("✏ Editar cita") },
+        onDismissRequest = { if (!guardando) onCancelar() },
+        title = { Text(if (esSesion) "📅 Reprogramar sesión" else "✏ Editar cita") },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text("Cita de ${cita.pacienteNombre ?: "paciente"} · ${flujo.nombreTipo(cita.tipo)}",
                     color = c.textoSuave, fontSize = Sania.txt.pequeno)
-                if (cita.tipo == "Sesión") {
-                    Text("También se actualizará la sesión vinculada.", color = c.textoSuave, fontSize = 11.sp)
+                if (esSesion) {
+                    Text("La sesión vinculada también se mueve y queda como Reprogramada.",
+                        color = c.textoSuave, fontSize = 11.sp)
                 }
                 Spacer(Modifier.height(Sania.dim.md))
                 SelectorBotonModal("Fecha", fecha) { mostrarFecha = true }
                 Spacer(Modifier.height(Sania.dim.sm))
                 SelectorBotonModal("Hora", hora12(hora)) { mostrarHora = true }
+                if (profesionales != null && profesionales.isNotEmpty()) {
+                    Spacer(Modifier.height(Sania.dim.md))
+                    Text("Profesional", color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    SelectorProfesional(profesionales, terapeutaId) { terapeutaId = it }
+                }
+                if (esSesion && cambiaHorario) {
+                    Spacer(Modifier.height(Sania.dim.md))
+                    Text("Motivo (opcional)", color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    OutlinedTextField(
+                        value = motivo, onValueChange = { motivo = it },
+                        placeholder = { Text("Ej. El paciente pidió cambiar la fecha…", color = c.textoSuave) },
+                        modifier = Modifier.fillMaxWidth(), minLines = 2,
+                    )
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onGuardar(fecha, hora) }) {
-                Text("Guardar cambios", color = c.navy, fontWeight = FontWeight.Bold)
+            TextButton(
+                enabled = hayCambios && !guardando,
+                onClick = { onGuardar(fecha, hora, terapeutaId.takeIf { cambiaProfesional }, motivo.trim().ifBlank { null }) },
+            ) {
+                Text(if (guardando) "Guardando…" else "Guardar cambios",
+                    color = if (hayCambios && !guardando) c.navy else c.textoSuave, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = { TextButton(onClick = onCancelar, enabled = !guardando) { Text("Cancelar", color = c.textoSuave) } },
+        containerColor = c.superficie,
+    )
+}
+
+/**
+ * "¿Quién atendió?" cuando el servidor rechazó el completar con SIN_PROFESIONAL:
+ * se elige y se reintenta (el servidor asigna el profesional y completa).
+ */
+@Composable
+fun ModalElegirProfesional(
+    cita: CitaStaff,
+    profesionales: List<pe.saniape.app.data.staff.TerapeutaRef>,
+    onCancelar: () -> Unit,
+    onElegir: (String) -> Unit,
+) {
+    val c = Sania.colors
+    var elegido by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onCancelar,
+        title = { Text("👤 ¿Quién atendió?", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text("Esta cita de ${cita.pacienteNombre ?: "el paciente"} no tiene profesional asignado. " +
+                    "Indica quién la atendió para completarla.", color = c.textoSuave, fontSize = 12.sp)
+                Spacer(Modifier.height(Sania.dim.md))
+                if (profesionales.isEmpty()) {
+                    Text("No hay profesionales activos para elegir.", color = c.error, fontSize = 12.sp)
+                } else {
+                    SelectorProfesional(profesionales, elegido) { elegido = it }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = elegido != null, onClick = { elegido?.let(onElegir) }) {
+                Text("Completar", color = if (elegido != null) c.navy else c.textoSuave, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
         containerColor = c.superficie,
     )
+}
+
+/** Lista de profesionales tocables (el elegido resaltado). */
+@Composable
+private fun SelectorProfesional(
+    profesionales: List<pe.saniape.app.data.staff.TerapeutaRef>,
+    elegido: String?,
+    onElegir: (String) -> Unit,
+) {
+    val c = Sania.colors
+    Column {
+        profesionales.forEach { p ->
+            val activo = p.id == elegido
+            Box(
+                Modifier.fillMaxWidth().padding(vertical = 3.dp)
+                    .clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .background(if (activo) c.navy else c.superficie)
+                    .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                    .clickable { onElegir(p.id) }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                Text(p.nombre, color = if (activo) c.sobreNavy else c.texto, fontSize = Sania.txt.pequeno,
+                    fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal)
+            }
+        }
+    }
 }
 
 /** "Pasar a Evaluación": elegir mismo horario o nueva hora (como la web). */

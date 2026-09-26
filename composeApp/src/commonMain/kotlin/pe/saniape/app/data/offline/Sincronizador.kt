@@ -6,7 +6,6 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
-import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +18,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import pe.saniape.app.data.Supabase
 import pe.saniape.app.data.crearHttpClient
 import pe.saniape.app.ui.Toaster
@@ -46,6 +44,38 @@ enum class ResultadoEnvio {
 }
 
 /**
+ * El "no" del servidor, con lo necesario para mostrarlo y reaccionar: el texto
+ * que escribió el endpoint y, si lo mandó, su `codigo` (p. ej. SIN_PROFESIONAL o
+ * capacidad_citas_agotada) para que la pantalla ofrezca el arreglo adecuado.
+ */
+data class RechazoServidor(val error: String, val codigo: String? = null, val status: Int = 0)
+
+/** Qué hacer con una respuesta HTTP de un endpoint de staff. */
+enum class DestinoRespuesta { OK, REINTENTAR, RECHAZO }
+
+/**
+ * Clasifica una respuesta (pura, testeable).
+ *
+ * El 409 NO es siempre "reintenta": el servidor lo usa para dos cosas muy
+ * distintas. Solo es reintentable cuando la idempotencia dice que OTRA ejecución
+ * con la misma clave sigue en curso ("Operación en curso, reintenta"). Un 409 de
+ * negocio (sin cupo, ficha dada de baja, cita ya cerrada, operación parcial por
+ * conciliar) repetido veinte veces da veinte veces lo mismo — y mientras tanto la
+ * app decía "se registrará al volver la señal". Esos se rechazan y se muestran.
+ */
+fun clasificarRespuesta(status: Int, json: JsonObject?): DestinoRespuesta {
+    if (status == 200) return DestinoRespuesta.OK
+    if (status == 409) {
+        val codigo = (json?.get("codigo") as? JsonPrimitive)?.contentOrNull
+        val noReintentable = (json?.get("reintentable") as? JsonPrimitive)?.contentOrNull == "false"
+        val error = (json?.get("error") as? JsonPrimitive)?.contentOrNull.orEmpty()
+        val enCurso = codigo == null && !noReintentable && error.contains("en curso", ignoreCase = true)
+        return if (enCurso) DestinoRespuesta.REINTENTAR else DestinoRespuesta.RECHAZO
+    }
+    return DestinoRespuesta.RECHAZO
+}
+
+/**
  * Cuántas veces se reintenta una operación antes de darla por fallida. Los ciclos
  * se disparan al volver la señal y al abrir la app, así que 20 cubre días de mala
  * conectividad sin dejar nada pendiente para siempre.
@@ -69,13 +99,20 @@ object Sincronizador {
      * tanto conviene encolarla. Así, con conexión, todo se comporta igual que antes
      * de la cola: la pantalla puede recargar y ya ve su cambio.
      */
-    suspend fun enviarAhora(endpoint: String, cuerpo: JsonObject, idemKey: String): ResultadoEnvio {
+    suspend fun enviarAhora(endpoint: String, cuerpo: JsonObject, idemKey: String): ResultadoEnvio =
+        enviarAhoraDetalle(endpoint, cuerpo, idemKey).first
+
+    /** Igual que [enviarAhora], pero con el rechazo del servidor (texto + código) si lo hubo. */
+    suspend fun enviarAhoraDetalle(
+        endpoint: String, cuerpo: JsonObject, idemKey: String,
+    ): Pair<ResultadoEnvio, RechazoServidor?> {
         val conClave = JsonObject(cuerpo + ("idempotency_key" to JsonPrimitive(idemKey)))
         val r = enviar(endpoint, conClave)
         return when {
-            r == null -> ResultadoEnvio.SIN_RED   // reintentable → encolar
-            r.exito -> ResultadoEnvio.OK
-            else -> ResultadoEnvio.RECHAZADO      // el servidor dijo que no → no encolar
+            r == null -> ResultadoEnvio.SIN_RED to null   // reintentable → encolar
+            r.exito -> ResultadoEnvio.OK to null
+            // el servidor dijo que no → no encolar
+            else -> ResultadoEnvio.RECHAZADO to RechazoServidor(r.error ?: "Error del servidor", r.codigo, r.status)
         }
     }
 
@@ -152,7 +189,10 @@ object Sincronizador {
         }
     }
 
-    private data class Respuesta(val exito: Boolean, val id: String?, val error: String?)
+    private data class Respuesta(
+        val exito: Boolean, val id: String?, val error: String?,
+        val codigo: String? = null, val status: Int = 0,
+    )
 
     /**
      * Envía una operación. Devuelve null si el fallo es de RED o de concurrencia
@@ -169,14 +209,16 @@ object Sincronizador {
                 setBody(cuerpo.toString())
             }
             val json = runCatching { Json.parseToJsonElement(resp.bodyAsText()).jsonObject }.getOrNull()
-            when (resp.status) {
-                HttpStatusCode.OK -> Respuesta(true, json?.get("id")?.jsonPrimitive?.contentOrNull, null)
-                // 409: otra ejecución con la misma clave está en curso → reintentar luego.
-                HttpStatusCode.Conflict -> null
-                else -> Respuesta(
+            when (clasificarRespuesta(resp.status.value, json)) {
+                DestinoRespuesta.OK -> Respuesta(true, (json?.get("id") as? JsonPrimitive)?.contentOrNull, null)
+                // 409 de idempotencia: otra ejecución con la misma clave está en curso → reintentar luego.
+                DestinoRespuesta.REINTENTAR -> null
+                DestinoRespuesta.RECHAZO -> Respuesta(
                     exito = false,
                     id = null,
-                    error = json?.get("error")?.jsonPrimitive?.contentOrNull ?: "HTTP ${resp.status.value}",
+                    error = (json?.get("error") as? JsonPrimitive)?.contentOrNull ?: "HTTP ${resp.status.value}",
+                    codigo = (json?.get("codigo") as? JsonPrimitive)?.contentOrNull,
+                    status = resp.status.value,
                 )
             }
         }

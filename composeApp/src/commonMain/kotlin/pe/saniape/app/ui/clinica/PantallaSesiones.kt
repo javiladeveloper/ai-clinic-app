@@ -92,7 +92,10 @@ fun PantallaSesiones(
     var filtroProf by remember { mutableStateOf(ctx.miTerapeutaId) }
 
     // Modales
-    var completar by remember { mutableStateOf<SesionGlobal?>(null) }
+    // Completar abre el MISMO diálogo de la ficha (técnicas, mejorías desde la #2,
+    // RX, cobro y en dental "¿Qué se le hizo hoy?"). Antes era 1 toque sin nada.
+    var completar by remember { mutableStateOf<Pair<SesionGlobal, pe.saniape.app.data.staff.ContextoCompletar>?>(null) }
+    var abriendoCompletar by remember { mutableStateOf<String?>(null) }   // id de la sesión que carga su contexto
     var cambioEstado by remember { mutableStateOf<Pair<SesionGlobal, String>?>(null) }
     var reasignar by remember { mutableStateOf<SesionGlobal?>(null) }
 
@@ -241,7 +244,16 @@ fun PantallaSesiones(
                             s = s, ctx = ctx,
                             onAbrirPaciente = onAbrirPaciente,
                             onCompletar = {
-                                accion("Sesión completada") { PacientesRepo.cambiarEstadoSesion(s.id, "Completada") }
+                                if (accionando || abriendoCompletar != null) return@TarjetaSesion
+                                abriendoCompletar = s.id
+                                scope.launch {
+                                    val ctxC = pe.saniape.app.ui.conIndicador(pe.saniape.app.ui.Gestion.CARGANDO) {
+                                        runCatching { SesionesRepo.contextoCompletar(s) }.getOrNull()
+                                    }
+                                    abriendoCompletar = null
+                                    if (ctxC != null) completar = s to ctxC
+                                    else pe.saniape.app.ui.Toaster.error("No se pudo abrir la sesión. Revisa tu conexión.")
+                                }
                             },
                             onEstado = { est -> cambioEstado = s to est },
                             onReasignar = { reasignar = s },
@@ -258,14 +270,76 @@ fun PantallaSesiones(
         }
     }
 
-    // ── Modal: cambio de estado / reprogramar ──
+    // ── Modal: completar (el mismo de la ficha) ──
+    completar?.let { (sg, cc) ->
+        val esDental = pe.saniape.app.data.staff.esServicioDental(cc.especialidadId, ctx.mapaDental)
+        pe.saniape.app.ui.clinica.pacientes.ModalCompletarSesion(
+            ses = cc.ses,
+            anterior = cc.anterior,
+            tecnicasSugeridas = cc.tecnicasSugeridas,
+            puedePagos = ctx.puede("pagos"),
+            pacienteId = sg.pacienteId.orEmpty(),
+            tratamientoId = sg.tratamientoId,
+            esDental = esDental,
+            onCancelar = { completar = null },
+            onConfirmar = { tecnicas, mejorias, dejoRx, pago, piezas ->
+                completar = null
+                if (accionando) return@ModalCompletarSesion
+                accionando = true
+                scope.launch {
+                    val r = PacientesRepo.cambiarEstadoSesionDetalle(
+                        sg.id, "Completada",
+                        notas = tecnicas,
+                        mejorias = if (cc.ses.numero > 1) mejorias.orEmpty() else null,
+                        rxPendiente = dejoRx,
+                        piezas = piezas,
+                    )
+                    if (r.registrada) {
+                        if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Sesión #${cc.ses.numero} completada")
+                        tecnicas?.let { runCatching { pe.saniape.app.data.staff.TecnicasRepo.registrar(it) } }
+                        val tratId = sg.tratamientoId
+                        if (pago != null && tratId != null) {
+                            val rp = PacientesRepo.cobrarSesionDetalle(tratId, sg.id, pago.first, pago.second, null)
+                            if (!rp.registrada) pe.saniape.app.ui.Toaster.error(
+                                "La sesión se completó, pero el cobro no se registró" +
+                                    (rp.rechazo?.error?.let { ": $it" } ?: "") + ". Cóbrala desde la ficha (💳 Cobrar)."
+                            )
+                        }
+                    } else {
+                        pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo completar la sesión")
+                    }
+                    accionando = false
+                    recargar()
+                }
+            },
+        )
+    }
+
+    // ── Modal: cambio de estado / reprogramar (el mismo de la ficha) ──
     cambioEstado?.let { (ses, est) ->
-        ModalEstadoSesion(
-            ses = ses, estado = est,
-            onCancelar = { cambioEstado = null },
+        pe.saniape.app.ui.clinica.pacientes.ModalEstadoSesion(
+            numero = ses.numero, estado = est,
+            fechaInicial = ses.fecha, horaInicial = ses.hora,
+            subtitulo = ses.pacienteNombre,
+            guardando = accionando,
+            onCancelar = { if (!accionando) cambioEstado = null },
             onConfirmar = { motivo, fecha, hora ->
-                cambioEstado = null
-                accion("Sesión actualizada") { PacientesRepo.cambiarEstadoSesion(ses.id, est, motivo = motivo, fecha = fecha, hora = hora) }
+                if (accionando) return@ModalEstadoSesion
+                accionando = true
+                scope.launch {
+                    val r = PacientesRepo.cambiarEstadoSesionDetalle(ses.id, est, motivo = motivo, fecha = fecha, hora = hora)
+                    accionando = false
+                    if (r.registrada) {
+                        cambioEstado = null
+                        if (!r.encolada) pe.saniape.app.ui.Toaster.exito(
+                            if (est == "Reprogramada") "Sesión reprogramada" else "Sesión marcada como $est"
+                        )
+                        recargar()
+                    } else {
+                        // El modal queda abierto (p. ej. sin cupo: elegir otra hora).
+                        pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo actualizar la sesión")
+                    }
+                }
             },
         )
     }
@@ -509,60 +583,6 @@ private fun colorEstado(estado: String, c: pe.saniape.app.ui.theme.SaniaColors):
 
 private fun fmt(v: Double): String =
     if (v % 1.0 == 0.0) v.toInt().toString() else ((v * 100).toLong() / 100.0).toString()
-
-// ── Modal de estado (Reprogramar / No asistió / Cancelar / Otro) ──
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ModalEstadoSesion(
-    ses: SesionGlobal, estado: String,
-    onCancelar: () -> Unit,
-    onConfirmar: (motivo: String?, fecha: String?, hora: String?) -> Unit,
-) {
-    val c = Sania.colors
-    val esReprog = estado == "Reprogramada"
-    var motivo by remember { mutableStateOf("") }
-    var fecha by remember { mutableStateOf(ses.fecha.ifBlank { hoyIso() }) }
-    var hora by remember { mutableStateOf(ses.hora?.take(5) ?: "09:00") }
-    var mostrarFecha by remember { mutableStateOf(false) }
-    var mostrarHora by remember { mutableStateOf(false) }
-
-    if (mostrarFecha) pe.saniape.app.ui.clinica.pacientes.DialogoFecha(
-        onElegir = { fecha = it }, onCerrar = { mostrarFecha = false })
-    if (mostrarHora) pe.saniape.app.ui.clinica.pacientes.DialogoHora(
-        hora, onElegir = { hora = it }, onCerrar = { mostrarHora = false })
-
-    DialogoForm(
-        titulo = if (esReprog) "📅 Reprogramar sesión" else "Marcar como \"$estado\"",
-        subtitulo = "Sesión #${ses.numero} · ${ses.pacienteNombre ?: ""}",
-        textoAccion = "Confirmar",
-        accionHabilitada = !esReprog || fecha.isNotBlank(),
-        onCancelar = onCancelar,
-        onAccion = { onConfirmar(motivo.trim().ifBlank { null }, if (esReprog) fecha else null, if (esReprog) hora else null) },
-    ) {
-        if (esReprog) {
-            TarjetaForm(titulo = "Nueva fecha y hora", icono = "📅") {
-                EtqForm("Fecha")
-                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                    .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                    .clickable { mostrarFecha = true }.padding(horizontal = 12.dp, vertical = 12.dp)) {
-                    Text(fecha, color = c.texto, fontSize = 14.sp)
-                }
-                Spacer(Modifier.height(10.dp))
-                EtqForm("Hora")
-                // Picker nativo (antes era texto libre: "930" o "9.30" guardaban una hora rota).
-                pe.saniape.app.ui.clinica.pacientes.CajaSelectorForm(pe.saniape.app.ui.hora12(hora)) { mostrarHora = true }
-            }
-            Spacer(Modifier.height(12.dp))
-        }
-        TarjetaForm(titulo = "Motivo" + if (esReprog) " (opcional)" else "", icono = "📝") {
-            OutlinedTextField(
-                value = motivo, onValueChange = { motivo = it },
-                placeholder = { Text("Ej. El paciente pidió cambiar la fecha…", color = c.textoSuave) },
-                modifier = Modifier.fillMaxWidth(), minLines = 2,
-            )
-        }
-    }
-}
 
 // ── Modal reasignar profesional ──
 @Composable

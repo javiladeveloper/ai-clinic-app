@@ -295,6 +295,12 @@ object PacientesRepo {
         return enviarOEncolar(tipo, path, cuerpo)
     }
 
+    /** Como [postStaff], pero con el detalle del rechazo (sin mostrarlo): la pantalla decide. */
+    private suspend fun postStaffDetalle(path: String, cuerpo: JsonObject): pe.saniape.app.data.offline.ResultadoEscritura {
+        val tipo = path.removePrefix("/api/staff/").replace('/', ':')
+        return pe.saniape.app.data.offline.enviarOEncolarDetalle(tipo, path, cuerpo)
+    }
+
     /**
      * Crea el paciente en el servidor y devuelve su id REAL (el endpoint deduplica
      * por DNI, así que puede ser el de uno ya existente). null si no hubo conexión
@@ -649,7 +655,22 @@ object PacientesRepo {
         notas: String? = null, mejorias: String? = null, rxPendiente: Boolean? = null,
         /** Odontología: ids de dientes_hallazgos hechos en esta sesión. null = no tocar el odontograma. */
         piezas: List<String>? = null,
-    ): Boolean = postStaff("/api/staff/sesion/estado", buildJsonObject {
+    ): Boolean = postStaff("/api/staff/sesion/estado",
+        cuerpoEstadoSesion(sesionId, estado, motivo, fecha, hora, notas, mejorias, rxPendiente, piezas))
+
+    /** Como [cambiarEstadoSesion], con el detalle del rechazo (no lo muestra). */
+    suspend fun cambiarEstadoSesionDetalle(
+        sesionId: String, estado: String,
+        motivo: String? = null, fecha: String? = null, hora: String? = null,
+        notas: String? = null, mejorias: String? = null, rxPendiente: Boolean? = null,
+        piezas: List<String>? = null,
+    ): pe.saniape.app.data.offline.ResultadoEscritura = postStaffDetalle("/api/staff/sesion/estado",
+        cuerpoEstadoSesion(sesionId, estado, motivo, fecha, hora, notas, mejorias, rxPendiente, piezas))
+
+    private fun cuerpoEstadoSesion(
+        sesionId: String, estado: String, motivo: String?, fecha: String?, hora: String?,
+        notas: String?, mejorias: String?, rxPendiente: Boolean?, piezas: List<String>?,
+    ): JsonObject = buildJsonObject {
         put("sesionId", sesionId)
         put("estado", estado)
         if (!motivo.isNullOrBlank()) put("motivo", motivo)
@@ -663,7 +684,7 @@ object PacientesRepo {
         if (rxPendiente != null) put("rxPendiente", rxPendiente)
         // Solo sesiones DENTALES lo mandan (una lista vacía también: deja la sesión sin piezas).
         if (piezas != null) put("piezas", kotlinx.serialization.json.JsonArray(piezas.map { JsonPrimitive(it) }))
-    })
+    }
 
     /** Pagos registrados de un tratamiento (para la PagoCard de la ficha). */
     suspend fun pagosDe(tratamientoId: String): List<PagoFicha> {
@@ -737,6 +758,17 @@ object PacientesRepo {
 
     suspend fun reasignarSesion(sesionId: String, terapeutaId: String): Boolean = accionSesion(buildJsonObject {
         put("accion", "reasignar"); put("sesionId", sesionId); put("terapeutaId", terapeutaId)
+    })
+
+    /** Como [cobrarSesion], con el detalle del rechazo (no lo muestra): para reintentar SOLO el cobro. */
+    suspend fun cobrarSesionDetalle(
+        tratamientoId: String, sesionId: String, monto: Double, metodo: String, notas: String? = null,
+    ): pe.saniape.app.data.offline.ResultadoEscritura = postStaffDetalle("/api/staff/pago/registrar", buildJsonObject {
+        put("tratamientoId", tratamientoId)
+        put("sesionId", sesionId)
+        put("monto", monto)
+        put("metodo", metodo)
+        if (!notas.isNullOrBlank()) put("notas", notas)
     })
 
     /** Cobrar una sesión (pago vinculado a la sesión) — reusa el endpoint de pago. */
@@ -1157,6 +1189,17 @@ object PacientesRepo {
         }) { filter { eq("id", citaId) } }
         true
     } catch (e: Exception) { false }
+
+    /**
+     * Token del enlace público de la encuesta de satisfacción del tratamiento (lo
+     * genera la base). null si no tiene o no se pudo leer. Igual que la web, que lo
+     * lee con la RLS del staff tras dar de alta.
+     */
+    suspend fun encuestaToken(tratamientoId: String): String? = try {
+        Supabase.client.postgrest["tratamientos"]
+            .select(Columns.list("encuesta_token")) { filter { eq("id", tratamientoId) } }
+            .decodeList<JsonObject>().firstOrNull()?.str("encuesta_token")
+    } catch (_: Exception) { null }
 
     /** Da de alta un tratamiento (paciente pasa a Alta si no le quedan otros en curso). */
     suspend fun darDeAlta(tratamientoId: String): Boolean =

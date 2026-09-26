@@ -47,7 +47,10 @@ import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.data.staff.FlujoClinica
 
 /** Estado de sesión que se puede fijar desde el menú ⋯ (igual que la web). */
-private val ESTADOS_SESION = listOf("Reprogramada", "No asistió", "Cancelada", "Otro")
+private val ESTADOS_SESION = pe.saniape.app.data.staff.ESTADOS_MENU_SESION
+
+/** Aviso cuando se intenta registrar algo en la ficha de un paciente dado de baja. */
+private const val AVISO_BAJA = "Paciente dado de baja: reactívalo para registrar sesiones, citas o pagos."
 
 /**
  * Tarjeta de un tratamiento en la ficha: cabecera (procedimiento/estado/progreso/pago)
@@ -83,7 +86,17 @@ fun TarjetaTratamiento(
     puedeDerivar: Boolean = false,
     onAgendarControl: (TratamientoPaciente) -> Unit = {},   // sin sesiones: agendar próximo control
     onRegistrarAtencion: (TratamientoPaciente) -> Unit = {},// sin sesiones: registrar medicación/receta
+    /**
+     * Ficha dada de baja (paciente Inactivo): se consulta todo, pero no se ofrece
+     * registrar sesiones, cobros ni altas (como la web). El servidor además lo rechaza.
+     */
+    soloLectura: Boolean = false,
+    /** Tras un alta correcta: la ficha ofrece la encuesta de satisfacción. */
+    onAltaHecha: (TratamientoPaciente) -> Unit = {},
 ) {
+    // Permisos EFECTIVOS: el rol decide (puede()), y la baja del paciente los apaga.
+    val puedeSesionesEf = puedeSesiones && !soloLectura
+    val puedeCobrarEf = verPagos && !soloLectura
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     var expandido by remember { mutableStateOf(false) }
@@ -99,6 +112,10 @@ fun TarjetaTratamiento(
     var cobrarSesion by remember { mutableStateOf<SesionFicha?>(null) }
     // SERVICIO ÚNICO: modal "Registrar atención" (nota de qué se hizo + cobro opcional).
     var registrarServicioAbierto by remember { mutableStateOf(false) }
+    // Cambio de estado desde el menú ⋯ (sesión, estado) → modal con fecha/motivo.
+    var cambioEstado by remember { mutableStateOf<Pair<SesionFicha, String>?>(null) }
+    // Confirmación de alta (antes era 1 toque directo, fácil de tocar por error).
+    var confirmarAlta by remember { mutableStateOf(false) }
 
     val estado = EstadosColor.cita(t.estado)
     val terminado = t.estado == "Alta" || t.estado == "Cancelado" || t.estado == "Suspendido"
@@ -207,12 +224,16 @@ fun TarjetaTratamiento(
                 puedePagos = verPagos, expandido = expandido, onEditarCita = onEditarCita,
                 onToggleSesiones = { expandido = !expandido },
                 onColapsarTarjeta = { expandido = false },
-                onAgendarControl = { onAgendarControl(t) },
+                onAgendarControl = {
+                    if (soloLectura) pe.saniape.app.ui.Toaster.error(AVISO_BAJA) else onAgendarControl(t)
+                },
                 // Servicio único: abre el modal local (nota + cobro). Consulta médica: el de siempre.
                 onRegistrarAtencion = {
-                    if (t.esServicioUnico) registrarServicioAbierto = true else onRegistrarAtencion(t)
+                    if (soloLectura) pe.saniape.app.ui.Toaster.error(AVISO_BAJA)
+                    else if (t.esServicioUnico) registrarServicioAbierto = true else onRegistrarAtencion(t)
                 },
                 onRevertirServicio = {
+                    if (soloLectura) { pe.saniape.app.ui.Toaster.error(AVISO_BAJA); return@BarraRecorrido }
                     if (accionando) return@BarraRecorrido
                     accionando = true
                     scope.launch {
@@ -222,13 +243,8 @@ fun TarjetaTratamiento(
                     }
                 },
                 onDarAlta = {
-                    if (accionando) return@BarraRecorrido
-                    accionando = true
-                    scope.launch {
-                        val ok = PacientesRepo.darDeAlta(t.id)
-                        if (ok) pe.saniape.app.ui.Toaster.exito("Tratamiento dado de alta") else pe.saniape.app.ui.Toaster.error("No se pudo dar de alta")
-                        accionando = false; onCambioRealizado()
-                    }
+                    if (soloLectura) { pe.saniape.app.ui.Toaster.error(AVISO_BAJA); return@BarraRecorrido }
+                    if (!accionando) confirmarAlta = true
                 },
             )
         }
@@ -249,7 +265,7 @@ fun TarjetaTratamiento(
         }
 
         // Acciones del tratamiento (⋯): editar / ampliar / suspender / cancelar / reactivar.
-        if (puedeSesiones) {
+        if (puedeSesionesEf) {
             Spacer(Modifier.height(6.dp))
             Box(Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
                 .clickable { menuTrat = !menuTrat }.padding(horizontal = 10.dp, vertical = 5.dp)) {
@@ -284,7 +300,7 @@ fun TarjetaTratamiento(
         }
 
         // Acción más usada a la vista: agendar sesión (tratamientos por sesiones activos).
-        if (!t.esConsulta && t.estado == "Activo" && puedeSesiones) {
+        if (!t.esConsulta && t.estado == "Activo" && puedeSesionesEf) {
             Spacer(Modifier.height(8.dp))
             Box(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
@@ -336,7 +352,8 @@ fun TarjetaTratamiento(
                 }
                 if (verPagos) {
                     Spacer(Modifier.height(Sania.dim.md))
-                    SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() })
+                    SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() },
+                        soloLectura = soloLectura)
                 }
             } else if (cargaFallo) {
                 // La carga falló (timeout/red). NO decir "sin sesiones": ofrecer reintentar.
@@ -378,8 +395,8 @@ fun TarjetaTratamiento(
                             // ¿La sesión inmediatamente anterior (por número) dejó RX pendiente?
                             val anteriorSes = s.filter { it.numero < ses.numero }.maxByOrNull { it.numero }
                             FilaSesion(
-                                ses = ses, verCosto = verPagos, puedeSesiones = puedeSesiones,
-                                puedePagos = verPagos, esAdmin = esAdmin, accionando = accionando,
+                                ses = ses, verCosto = verPagos, puedeSesiones = puedeSesionesEf,
+                                puedePagos = puedeCobrarEf, esAdmin = esAdmin, accionando = accionando,
                                 avisoRxPrevia = ses.pendiente && AvisoRx.dejoRx(anteriorSes),
                                 menuAbierto = menuDe?.id == ses.id,
                                 onToggleMenu = { menuDe = if (menuDe?.id == ses.id) null else ses },
@@ -388,15 +405,11 @@ fun TarjetaTratamiento(
                                     val anterior = s.filter { it.numero < ses.numero }.maxByOrNull { it.numero }
                                     onCompletarSesion(ses, anterior, t.tecnicasSugeridas, t)
                                 },
+                                // Reprogramada / No asistió / Cancelada / Otro: primero el modal
+                                // (fecha+hora y motivo). Antes se mandaba en un toque, sin nada.
                                 onEstado = { nuevo ->
                                     menuDe = null
-                                    if (accionando) return@FilaSesion
-                                    accionando = true
-                                    scope.launch {
-                                        val ok = PacientesRepo.cambiarEstadoSesion(ses.id, nuevo)
-                                        if (ok) pe.saniape.app.ui.Toaster.exito("Sesión actualizada") else pe.saniape.app.ui.Toaster.error("No se pudo actualizar")
-                                        accionando = false; recargarSesiones()
-                                    }
+                                    if (!accionando) cambioEstado = ses to nuevo
                                 },
                                 onEditar = { editarSesion = ses; menuDe = null },
                                 onRevertir = {
@@ -432,20 +445,14 @@ fun TarjetaTratamiento(
                     // Pagos (solo con permiso): acordado/pagado/saldo + registrar/editar/borrar.
                     if (verPagos) {
                         Spacer(Modifier.height(Sania.dim.md))
-                        SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() })
+                        SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() },
+                            soloLectura = soloLectura)
                     }
 
-                    // Dar de alta (si el tratamiento sigue en curso y puede sesiones)
-                    if (!terminado && puedeSesiones) {
+                    // Dar de alta (si el tratamiento sigue en curso y puede sesiones) — con confirmación.
+                    if (!terminado && puedeSesionesEf) {
                         Spacer(Modifier.height(Sania.dim.sm))
-                        BtnDarAlta(habilitado = !accionando) {
-                            accionando = true
-                            scope.launch {
-                                val ok = PacientesRepo.darDeAlta(t.id)
-                                if (ok) pe.saniape.app.ui.Toaster.exito("Tratamiento dado de alta") else pe.saniape.app.ui.Toaster.error("No se pudo dar de alta")
-                                accionando = false; onCambioRealizado()
-                            }
-                        }
+                        BtnDarAlta(habilitado = !accionando) { confirmarAlta = true }
                     }
                 }
             }
@@ -454,6 +461,55 @@ fun TarjetaTratamiento(
     } // cierre Row de la tarjeta (acento + contenido)
 
     // ── Modales de acciones de sesión ──
+    cambioEstado?.let { (ses, nuevo) ->
+        ModalEstadoSesion(
+            numero = ses.numero, estado = nuevo,
+            fechaInicial = ses.fecha, horaInicial = ses.hora,
+            guardando = accionando,
+            onCancelar = { if (!accionando) cambioEstado = null },
+            onConfirmar = { motivo, fecha, hora ->
+                if (accionando) return@ModalEstadoSesion
+                accionando = true
+                scope.launch {
+                    // Mismo endpoint que la web (sync de cita + serie + contador + comisión).
+                    val r = PacientesRepo.cambiarEstadoSesionDetalle(ses.id, nuevo, motivo = motivo, fecha = fecha, hora = hora)
+                    accionando = false
+                    if (r.registrada) {
+                        cambioEstado = null
+                        if (!r.encolada) pe.saniape.app.ui.Toaster.exito(
+                            if (nuevo == "Reprogramada") "Sesión reprogramada al $fecha ${hora?.let { pe.saniape.app.ui.hora12(it) } ?: ""}".trim()
+                            else "Sesión marcada como $nuevo"
+                        )
+                        recargarSesiones()
+                    } else {
+                        // Sin cupo, ficha dada de baja…: el modal queda abierto para corregir.
+                        pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo actualizar la sesión")
+                    }
+                }
+            },
+        )
+    }
+    if (confirmarAlta) {
+        DialogoConfirmarAlta(
+            // Si las sesiones no se cargaron (tarjeta sin expandir), mensaje genérico.
+            sesionesPendientes = sesiones?.count { it.pendiente },
+            onCancelar = { confirmarAlta = false },
+            onConfirmar = {
+                confirmarAlta = false
+                if (accionando) return@DialogoConfirmarAlta
+                accionando = true
+                scope.launch {
+                    val ok = PacientesRepo.darDeAlta(t.id)
+                    accionando = false
+                    if (ok) {
+                        pe.saniape.app.ui.Toaster.exito("Tratamiento dado de alta")
+                        onAltaHecha(t)
+                    } else pe.saniape.app.ui.Toaster.error("No se pudo dar de alta")
+                    onCambioRealizado()
+                }
+            },
+        )
+    }
     editarSesion?.let { ses ->
         ModalEditarSesion(ses, onCancelar = { editarSesion = null }, onGuardar = { fecha, hora, dur, costo, notas ->
             editarSesion = null
@@ -781,7 +837,11 @@ private fun ItemMenu(texto: String, color: Color, onClick: () -> Unit) {
 /** Sección de pagos del tratamiento: resumen + lista + registrar (reusa endpoint). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, onCambio: () -> Unit) {
+fun SeccionPagos(
+    t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, onCambio: () -> Unit,
+    /** Ficha dada de baja: se ven los pagos, pero no se registran/editan/borran. */
+    soloLectura: Boolean = false,
+) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     var pagos by remember { mutableStateOf<List<pe.saniape.app.data.staff.PagoFicha>?>(null) }
@@ -875,8 +935,8 @@ fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, on
                     Spacer(Modifier.width(8.dp))
                     Text(p.fecha, color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.weight(1f))
                     Text("S/ ${formato2(p.monto)}", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    // Editar / borrar (solo Admin)
-                    if (esAdmin) {
+                    // Editar / borrar (solo Admin, y no en una ficha dada de baja)
+                    if (esAdmin && !soloLectura) {
                         Spacer(Modifier.width(8.dp))
                         Text("✏", fontSize = 14.sp, modifier = Modifier.clickable {
                             editando = p.id; editMonto = formato2(p.monto); editMetodo = p.metodo; borrarId = null
@@ -915,9 +975,11 @@ fun SeccionPagos(t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, on
         }
     }
 
-    // Registrar pago
+    // Registrar pago (no en una ficha dada de baja: el historial se ve, no se escribe).
     Spacer(Modifier.height(8.dp))
-    if (!agregando) {
+    if (soloLectura) {
+        Text("Paciente dado de baja: no se registran pagos nuevos.", color = c.textoSuave, fontSize = 11.sp)
+    } else if (!agregando) {
         MiniBtn(if (saldo > 0.005) "+ Registrar pago" else "+ Pago adicional", c.navy, !guardando) {
             // Precarga el monto con el SALDO pendiente: registrar el pago completo = 1 confirmación.
             monto = if (saldo > 0.005) formato2(saldo) else ""

@@ -325,6 +325,19 @@ fun PantallaAgenda(
                         congelarOdontograma = vm.esDental(cita) && evalua,
                     )
                 },
+                // Recepción completando una evaluación SIN profesional: se pide quién
+                // atendió ANTES de enviar (el servidor la rechaza con SIN_PROFESIONAL).
+                profesionales = if (evalua && pe.saniape.app.data.staff.pideProfesionalAlCompletar(
+                        cita.tipo, cita.terapeutaId, ctx.miTerapeutaId)) vm.terapeutas.takeIf { it.isNotEmpty() } else null,
+                onConfirmarConProfesional = { obs, diag, espId, piezas, terId ->
+                    completar = null
+                    revisada = null
+                    vm.ejecutar(
+                        AccionCita.Completar, cita, obs, diag, espId, piezas = piezas,
+                        congelarOdontograma = vm.esDental(cita) && evalua,
+                        terapeutaId = terId,
+                    )
+                },
             )
         }
     }
@@ -356,8 +369,23 @@ fun PantallaAgenda(
         ModalEditarCita(
             cita = cita,
             flujo = vm.flujoDe(cita),
+            // Reasignar profesional: solo quien gestiona la agenda de todos (igual que el filtro).
+            profesionales = if (vm.puedeFiltrarPorPersonal && ctx.puede("citas")) vm.terapeutas else null,
+            guardando = vm.accionando,
             onCancelar = { editar = null },
-            onGuardar = { fecha, hora -> vm.reprogramar(cita, fecha, hora) { editar = null } },
+            // Solo se cierra si quedó registrado: "sin cupo" deja elegir otra hora ahí mismo.
+            onGuardar = { fecha, hora, terId, motivo ->
+                vm.reprogramar(cita, fecha, hora, terapeutaId = terId, motivo = motivo) { ok -> if (ok) editar = null }
+            },
+        )
+    }
+    // El servidor pidió quién atendió (SIN_PROFESIONAL): selector y reintento, sin cola.
+    vm.pedirProfesional?.let { pedido ->
+        pe.saniape.app.ui.clinica.agenda.modales.ModalElegirProfesional(
+            cita = pedido.cita,
+            profesionales = vm.terapeutas,
+            onCancelar = { vm.cerrarPedidoProfesional() },
+            onElegir = { vm.completarConProfesional(it) },
         )
     }
     pasarEval?.let { cita ->
