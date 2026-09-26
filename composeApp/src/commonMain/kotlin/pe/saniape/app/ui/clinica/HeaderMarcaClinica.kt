@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -70,16 +72,29 @@ fun HeaderMarcaClinica(
         val marcaMod = if (multiClinica && onCambiarClinica != null) {
             Modifier.clip(RoundedCornerShape(8.dp)).clickable { onCambiarClinica() }.padding(4.dp)
         } else Modifier
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = marcaMod) {
+        // La marca toma el espacio que sobra (weight) y el nombre se corta con "…":
+        // antes el nombre largo se comía el ancho y el rol, a la derecha, quedaba
+        // con unos pocos px y se partía en UNA LETRA POR LÍNEA, estirando la barra
+        // (Jonathan, 26/09/2026, captura "Médico / Especialista" vertical).
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).then(marcaMod)) {
             LogoMarcaChica(ctx, tam = LOGO_MARCA_TAM)
             Spacer(Modifier.width(10.dp))
-            Text(ctx.clinicaNombre, color = c.sobreNavy, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Column(Modifier.weight(1f, fill = false)) {
+                Text(ctx.clinicaNombre, color = c.sobreNavy, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // El rol va debajo del nombre, en una línea, no en la columna derecha.
+                if (mostrarRol) ctx.rol?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, color = c.sobreNavy.copy(alpha = 0.75f), fontSize = 12.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
             if (multiClinica && onCambiarClinica != null) {
                 Spacer(Modifier.width(4.dp))
                 Text("▾", color = c.sobreNavy.copy(alpha = 0.7f), fontSize = 14.sp)
             }
         }
 
+        Spacer(Modifier.width(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             // El "Guardando…" ya NO va aquí: este header solo lo usa la pantalla de
             // Inicio, así que en la ficha del paciente (donde más se espera) no se veía.
@@ -130,9 +145,6 @@ fun HeaderMarcaClinica(
                     }
                 }
                 Spacer(Modifier.width(6.dp))
-            }
-            if (mostrarRol) ctx.rol?.let {
-                Text(it, color = c.sobreNavy.copy(alpha = 0.8f), fontSize = 12.sp)
             }
         }
     }
