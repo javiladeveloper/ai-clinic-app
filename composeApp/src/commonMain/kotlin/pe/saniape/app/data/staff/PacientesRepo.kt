@@ -142,6 +142,8 @@ data class SesionFicha(
     /** Fisioterapia (M1): dolor EVA 0–10 al entrar / al salir. */
     val dolorInicio: Int? = null,
     val dolorFin: Int? = null,
+    /** Profesional de la sesión (la corrección del Admin lo preselecciona). */
+    val terapeutaId: String? = null,
 ) {
     val pendiente: Boolean
         get() = estado == "Planificada" || estado == "En progreso" || estado == "Reprogramada"
@@ -632,7 +634,7 @@ object PacientesRepo {
     suspend fun sesionesDe(tratamientoId: String): List<SesionFicha> {
         val filas = Supabase.client.postgrest["sesiones"]
             .select(Columns.raw(
-                "id, numero, fecha, hora, estado, costo, notas, mejorias, rx_pendiente, duracion, motivo_estado, dolor_inicio, dolor_fin, " +
+                "id, numero, fecha, hora, estado, costo, notas, mejorias, rx_pendiente, duracion, motivo_estado, dolor_inicio, dolor_fin, terapeuta_id, " +
                     "terapeuta:terapeutas(nombre), pagos:pagos_tratamiento(id, fecha)"
             )) {
                 filter { eq("tratamiento_id", tratamientoId) }
@@ -665,6 +667,7 @@ object PacientesRepo {
                 fechaPago = fechaDelPago,
                 dolorInicio = o.int("dolor_inicio"),
                 dolorFin = o.int("dolor_fin"),
+                terapeutaId = o.str("terapeuta_id"),
             )
         }
     }
@@ -774,6 +777,30 @@ object PacientesRepo {
         if (!notas.isNullOrBlank()) put("notas", notas)
     })
 
+    /**
+     * Corrección del ADMIN sobre una sesión del historial (completada / tratamiento
+     * cerrado / ficha de baja). El servidor valida el rol; no cambia estados ni pagos
+     * (el costo es solo el de la sesión, sin tocar el cobro ni la caja). Lo que va en
+     * null no se toca, salvo notas/mejorías ("" = limpiar).
+     */
+    suspend fun corregirSesion(
+        sesionId: String, fecha: String, hora: String?, duracion: Int, costo: Double?,
+        notas: String, mejorias: String?, dolorInicio: Int?, dolorFin: Int?, conEva: Boolean,
+        terapeutaId: String?,
+    ): pe.saniape.app.data.offline.ResultadoEscritura = postStaffDetalle("/api/staff/sesion/accion", buildJsonObject {
+        put("accion", "corregir"); put("sesionId", sesionId)
+        put("fecha", fecha); put("duracion", duracion)
+        if (!hora.isNullOrBlank()) put("hora", hora)
+        if (costo != null) put("costo", costo) else put("costo", kotlinx.serialization.json.JsonNull)
+        put("notas", notas)
+        if (mejorias != null) put("mejorias", mejorias)
+        if (conEva) {
+            put("dolorInicio", dolorInicio?.let { JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
+            put("dolorFin", dolorFin?.let { JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
+        }
+        if (!terapeutaId.isNullOrBlank()) put("terapeutaId", terapeutaId)
+    })
+
     suspend fun revertirSesion(sesionId: String): Boolean = accionSesion(buildJsonObject {
         put("accion", "revertir"); put("sesionId", sesionId)
     })
@@ -879,6 +906,17 @@ object PacientesRepo {
         if (medicacion != null) put("medicacion", medicacion)
         if (proximoControl != null) put("proximoControl", proximoControl)
     })
+
+    /**
+     * Corrección del ADMIN sobre un tratamiento del historial o de una ficha de baja
+     * (el servidor valida el rol). `valores` en snake_case, como el formulario web:
+     * lo que no va no se toca. Conserva el estado (un Alta sigue en Alta) y, si cambia
+     * el precio, solo recalcula estado_pago (sin tocar pagos ni caja).
+     */
+    suspend fun corregirTratamiento(tratamientoId: String, valores: JsonObject): pe.saniape.app.data.offline.ResultadoEscritura =
+        postStaffDetalle("/api/staff/tratamiento/accion", buildJsonObject {
+            put("accion", "corregir"); put("tratamientoId", tratamientoId); put("valores", valores)
+        })
 
     suspend fun cambiarEstadoTratamiento(tratamientoId: String, estado: String): Boolean =
         accionTratamiento(buildJsonObject {

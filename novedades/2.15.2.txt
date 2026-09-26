@@ -1,0 +1,10 @@
+# Novedades de la 2.15.2 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Administradores: ahora pueden corregir tratamientos y sesiones que ya pasaron al historial (dados de alta, completados o cerrados), incluso en fichas dadas de baja. Se corrigen fecha, hora, técnicas, mejorías, dolor y profesional de la sesión, y los datos del tratamiento, sin tocar pagos ni caja. Cada cambio queda registrado.
+---
+Solo para administradores:
+• "✏ Corregir" en tratamientos del historial: diagnóstico, profesional, sesiones y precio acordado. Un tratamiento dado de alta sigue de alta.
+• "✏ Corregir" en sesiones ya completadas: fecha, hora, técnicas, mejorías, dolor y profesional.
+• También en fichas dadas de baja (solo corregir, no crear registros nuevos).
+• Los pagos y la caja no cambian al corregir; si cambia el precio, el saldo se recalcula.
+• Cada corrección queda registrada en la actividad.

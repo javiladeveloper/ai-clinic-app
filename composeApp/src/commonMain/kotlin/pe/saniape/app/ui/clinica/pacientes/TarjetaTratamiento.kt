@@ -116,6 +116,8 @@ fun TarjetaTratamiento(
     var menuTrat by remember { mutableStateOf(false) }   // menú ⋯ del tratamiento
     // Sesiones objetivo de cada modal (o null).
     var editarSesion by remember { mutableStateOf<SesionFicha?>(null) }
+    // Admin corrigiendo una sesión del historial (completada / tratamiento cerrado / ficha de baja).
+    var corregirSesion by remember { mutableStateOf<SesionFicha?>(null) }
     var borrarSesion by remember { mutableStateOf<SesionFicha?>(null) }
     var reasignarSesion by remember { mutableStateOf<SesionFicha?>(null) }
     var cobrarSesion by remember { mutableStateOf<SesionFicha?>(null) }
@@ -350,6 +352,16 @@ fun TarjetaTratamiento(
             }
         }
 
+        // Ficha dada de baja: nadie registra nada nuevo, pero el ADMIN puede CORREGIR
+        // el tratamiento (el servidor valida el rol). Los demás roles no ven nada nuevo.
+        if (!puedeSesionesEf && soloLectura && esAdmin && puedeSesiones && !t.esConsulta) {
+            Spacer(Modifier.height(6.dp))
+            Box(Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                .clickable { onEditar(t) }.padding(horizontal = 10.dp, vertical = 5.dp)) {
+                Text("✏ Corregir tratamiento", color = c.texto, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
         // Acción más usada a la vista: agendar sesión (tratamientos por sesiones activos).
         if (!t.esConsulta && t.estado == "Activo" && puedeSesionesEf) {
             Spacer(Modifier.height(8.dp))
@@ -453,8 +465,12 @@ fun TarjetaTratamiento(
                         ordenadas.forEach { ses ->
                             // ¿La sesión inmediatamente anterior (por número) dejó RX pendiente?
                             val anteriorSes = s.filter { it.numero < ses.numero }.maxByOrNull { it.numero }
+                            // Admin + registro cerrado → corrección (también en una ficha de baja).
+                            val correccion = esAdmin && puedeSesiones &&
+                                pe.saniape.app.data.staff.esCorreccionSesion(esAdmin, ses.estado, t.estado, soloLectura)
                             FilaSesion(
                                 ses = ses, verCosto = verPagos, puedeSesiones = puedeSesionesEf,
+                                puedeCorregir = correccion,
                                 puedePagos = puedeCobrarEf, esAdmin = esAdmin, accionando = accionando,
                                 avisoRxPrevia = ses.pendiente && AvisoRx.dejoRx(anteriorSes),
                                 menuAbierto = menuDe?.id == ses.id,
@@ -470,7 +486,10 @@ fun TarjetaTratamiento(
                                     menuDe = null
                                     if (!accionando) cambioEstado = ses to nuevo
                                 },
-                                onEditar = { editarSesion = ses; menuDe = null },
+                                onEditar = {
+                                    menuDe = null
+                                    if (correccion) corregirSesion = ses else editarSesion = ses
+                                },
                                 onRevertir = {
                                     menuDe = null
                                     if (accionando) return@FilaSesion
@@ -605,6 +624,36 @@ fun TarjetaTratamiento(
                 recargarSesiones()
             }
         })
+    }
+    corregirSesion?.let { ses ->
+        ModalCorregirSesion(
+            ses = ses, esFisio = esFisio, guardando = accionando,
+            onCancelar = { if (!accionando) corregirSesion = null },
+            onGuardar = { f ->
+                if (accionando) return@ModalCorregirSesion
+                accionando = true
+                scope.launch {
+                    val completada = ses.estado == "Completada"
+                    val r = pe.saniape.app.ui.conIndicador(pe.saniape.app.ui.Gestion.ACTUALIZANDO) {
+                        PacientesRepo.corregirSesion(
+                            ses.id, f.fecha, f.hora, f.duracion, f.costo, f.notas,
+                            mejorias = if (completada) f.mejorias else null,
+                            dolorInicio = f.dolorInicio, dolorFin = f.dolorFin, conEva = completada && esFisio,
+                            terapeutaId = f.terapeutaId,
+                        )
+                    }
+                    accionando = false
+                    if (r.registrada) {
+                        corregirSesion = null
+                        if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Sesión corregida")
+                        recargarSesiones()
+                    } else {
+                        // Sin permiso, sin conexión definitiva…: el modal queda abierto.
+                        pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo corregir la sesión")
+                    }
+                }
+            },
+        )
     }
     reasignarSesion?.let { ses ->
         ModalReasignar(onCancelar = { reasignarSesion = null }, onElegir = { terId ->
@@ -746,6 +795,8 @@ private fun FilaSesion(
     ses: SesionFicha,
     verCosto: Boolean,
     puedeSesiones: Boolean,
+    /** Admin sobre un registro cerrado: en una ficha de baja (sin acciones) igual ve ✏. */
+    puedeCorregir: Boolean = false,
     puedePagos: Boolean,
     esAdmin: Boolean,
     accionando: Boolean,
@@ -842,6 +893,14 @@ private fun FilaSesion(
                     // Borrar es destructivo: solo Admin (igual criterio que borrar pagos).
                     if (esAdmin) ItemMenu("🗑 Borrar sesión", c.error) { onBorrar() }
                 }
+            }
+        } else if (puedeCorregir) {
+            // Ficha dada de baja: solo el Admin, y solo corregir (nada nuevo).
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconoBtn("✏", !accionando) { onEditar() }
+                Spacer(Modifier.width(8.dp))
+                Text("Corregir", color = c.textoSuave, fontSize = 11.sp)
             }
         }
     }
@@ -1197,6 +1256,116 @@ private fun ModalEditarSesion(
             CampoTexto("Costo (S/) — vacío si no aplica", costo, soloNumero = true) { costo = it }
             Spacer(Modifier.height(10.dp))
             CampoTexto("Notas / procedimientos", notas, multilinea = true) { notas = it }
+        }
+    }
+}
+
+/** Lo que guarda la corrección de una sesión del historial. */
+private data class CorreccionSesion(
+    val fecha: String, val hora: String?, val duracion: Int, val costo: Double?, val notas: String,
+    val mejorias: String, val dolorInicio: Int?, val dolorFin: Int?, val terapeutaId: String?,
+)
+
+/**
+ * Corrección del ADMIN sobre una sesión del historial: lo del modal de editar
+ * (fecha/hora/duración/costo/técnicas) + mejorías, EVA (fisio) y profesional.
+ * Gemelo del modal de la ficha web en modo corrección. No cambia estados ni cobros.
+ */
+@Composable
+private fun ModalCorregirSesion(
+    ses: SesionFicha,
+    esFisio: Boolean,
+    guardando: Boolean,
+    onCancelar: () -> Unit,
+    onGuardar: (CorreccionSesion) -> Unit,
+) {
+    val c = Sania.colors
+    val completada = ses.estado == "Completada"
+    var fecha by remember { mutableStateOf(ses.fecha) }
+    var hora by remember { mutableStateOf(ses.hora?.take(5) ?: "") }
+    var duracion by remember { mutableStateOf(ses.duracion ?: 45) }
+    var costo by remember { mutableStateOf(ses.costo?.let { formato2(it) } ?: "") }
+    var notas by remember { mutableStateOf(ses.notas ?: "") }
+    var mejorias by remember { mutableStateOf(ses.mejorias ?: "") }
+    var dolorInicio by remember { mutableStateOf(ses.dolorInicio) }
+    var dolorFin by remember { mutableStateOf(ses.dolorFin) }
+    var terapeutaId by remember { mutableStateOf(ses.terapeutaId) }
+    var terapeutas by remember { mutableStateOf<List<pe.saniape.app.data.staff.RefNombre>?>(null) }
+    var mostrarFecha by remember { mutableStateOf(false) }
+    var mostrarHora by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { terapeutas = runCatching { PacientesRepo.terapeutasActivos() }.getOrDefault(emptyList()) }
+
+    if (mostrarFecha) DialogoFecha(onElegir = { fecha = it }, onCerrar = { mostrarFecha = false })
+    if (mostrarHora) DialogoHora(hora.ifBlank { "09:00" }, onElegir = { hora = it }, onCerrar = { mostrarHora = false })
+
+    DialogoForm(
+        titulo = "✏ Corregir sesión #${ses.numero}",
+        subtitulo = null,
+        textoAccion = if (guardando) "Guardando…" else "Guardar",
+        accionHabilitada = fecha.isNotBlank() && !guardando,
+        onCancelar = onCancelar,
+        onAccion = {
+            onGuardar(CorreccionSesion(
+                fecha.trim(), hora.trim().ifBlank { null }, duracion, costo.toDoubleOrNull(), notas.trim(),
+                mejorias.trim(), dolorInicio, dolorFin, terapeutaId,
+            ))
+        },
+    ) {
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.pendBg).padding(12.dp),
+        ) {
+            Text("⚠ ${pe.saniape.app.data.staff.AVISO_CORRECCION}", color = c.pend, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(pe.saniape.app.data.staff.DETALLE_CORRECCION, color = c.pend, fontSize = 11.sp)
+        }
+        Spacer(Modifier.height(10.dp))
+        TarjetaForm(titulo = "Programación", icono = "📅") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f)) { EtqForm("Fecha"); CajaSelectorForm(fecha) { mostrarFecha = true } }
+                Column(Modifier.weight(1f)) {
+                    EtqForm("Hora")
+                    CajaSelectorForm(if (hora.isBlank()) "—" else pe.saniape.app.ui.hora12(hora)) { mostrarHora = true }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            EtqForm("Duración")
+            ChipsDuracion(duracion, onChange = { duracion = it })
+            Spacer(Modifier.height(10.dp))
+            CampoTexto("Costo (S/) — vacío si no aplica", costo, soloNumero = true) { costo = it }
+        }
+        Spacer(Modifier.height(10.dp))
+        TarjetaForm(titulo = "Atención", icono = "🩺") {
+            CampoTexto("Técnicas / procedimientos", notas, multilinea = true) { notas = it }
+            if (completada) {
+                Spacer(Modifier.height(10.dp))
+                CampoTexto("Mejorías", mejorias, multilinea = true) { mejorias = it }
+            }
+        }
+        if (completada && esFisio) {
+            Spacer(Modifier.height(10.dp))
+            pe.saniape.app.ui.clinica.fisio.BloqueEva(dolorInicio, dolorFin, onInicio = { dolorInicio = it }, onFin = { dolorFin = it })
+        }
+        Spacer(Modifier.height(10.dp))
+        TarjetaForm(titulo = "Profesional que atendió", icono = "👤") {
+            val lista = terapeutas
+            if (lista == null) Text("Cargando…", color = c.textoSuave, fontSize = 12.sp)
+            else {
+                if (ses.terapeutaNombre != null && lista.none { it.id == ses.terapeutaId }) {
+                    Text("Actual: ${ses.terapeutaNombre} (inactivo)", color = c.textoSuave, fontSize = 11.sp)
+                    Spacer(Modifier.height(4.dp))
+                }
+                lista.forEach { ter ->
+                    val elegido = ter.id == terapeutaId
+                    Box(
+                        Modifier.fillMaxWidth().padding(vertical = 3.dp)
+                            .clip(RoundedCornerShape(Sania.shape.sm.dp))
+                            .background(if (elegido) c.navy.copy(alpha = 0.12f) else c.fondo)
+                            .border(1.dp, if (elegido) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                            .clickable { terapeutaId = ter.id }.padding(horizontal = 12.dp, vertical = 10.dp),
+                    ) { Text((if (elegido) "✓ " else "") + ter.nombre, color = c.texto, fontSize = Sania.txt.cuerpo) }
+                }
+                Text("Cambia también su cita. La comisión ya generada no se mueve.", color = c.textoSuave, fontSize = 10.sp,
+                    modifier = Modifier.padding(top = 4.dp))
+            }
         }
     }
 }

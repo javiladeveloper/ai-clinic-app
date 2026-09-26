@@ -680,7 +680,19 @@ fun ModalAmpliarTratamiento(
     }
 }
 
-/** Editar tratamiento: N° sesiones + precios (según modalidad). */
+/** Lo que manda la corrección del Admin (además de sesiones/precios del editar de siempre). */
+data class CorreccionTratamiento(
+    val totalSesiones: Int?, val precioPaquete: Double?, val precioPorSesion: Double?, val precioAcordado: Double?,
+    val cantidadUnidades: Int?, val precioUnitario: Double?,
+    val diagnostico: String, val terapeutaId: String?,
+)
+
+/**
+ * Editar tratamiento: N° sesiones + precios (según modalidad).
+ * Con [onCorregir] (solo el ADMIN sobre un tratamiento cerrado o de una ficha de
+ * baja) muestra el aviso "Estás corrigiendo un registro cerrado" y suma diagnóstico
+ * y profesional; sin él, es exactamente el modal de siempre.
+ */
 @Composable
 fun ModalEditarTratamiento(
     t: pe.saniape.app.data.staff.TratamientoPaciente,
@@ -688,8 +700,16 @@ fun ModalEditarTratamiento(
     onGuardar: (totalSesiones: Int?, precioPaquete: Double?, precioPorSesion: Double?, precioAcordado: Double?,
                 diagnostico: String?, medicacion: String?, proximoControl: String?,
                 cantidadUnidades: Int?, precioUnitario: Double?) -> Unit,
+    onCorregir: ((CorreccionTratamiento) -> Unit)? = null,
 ) {
     val c = Sania.colors
+    val correccion = onCorregir != null
+    var diagnosticoC by remember { mutableStateOf(t.diagnostico ?: "") }
+    var terapeutaC by remember { mutableStateOf(t.terapeutaId) }
+    var terapeutasC by remember { mutableStateOf<List<pe.saniape.app.data.staff.RefNombre>?>(null) }
+    if (correccion) LaunchedEffect(Unit) {
+        terapeutasC = runCatching { pe.saniape.app.data.staff.PacientesRepo.terapeutasActivos() }.getOrDefault(emptyList())
+    }
     var totalSesiones by remember { mutableStateOf(t.totalSesiones.toString()) }
     var precioPaquete by remember { mutableStateOf(t.precioPaquete?.toString() ?: "") }
     var precioPorSesion by remember { mutableStateOf(t.precioPorSesion?.toString() ?: "") }
@@ -718,6 +738,33 @@ fun ModalEditarTratamiento(
                 Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
+                if (correccion) {
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.pendBg)
+                        .padding(Sania.dim.md)) {
+                        Text("⚠ ${pe.saniape.app.data.staff.AVISO_CORRECCION}", color = c.pend, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(pe.saniape.app.data.staff.DETALLE_CORRECCION, color = c.pend, fontSize = 11.sp)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Tarjeta(titulo = "Datos clínicos", icono = "🩺") {
+                        Etq("Diagnóstico")
+                        OutlinedTextField(colors = coloresCampoForm(), value = diagnosticoC, onValueChange = { diagnosticoC = it },
+                            minLines = 2, modifier = Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(10.dp))
+                        Etq("Profesional")
+                        val lista = terapeutasC
+                        if (lista == null) Text("Cargando…", color = c.textoSuave, fontSize = 12.sp)
+                        else lista.forEach { ter ->
+                            val elegido = ter.id == terapeutaC
+                            Box(
+                                Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                    .background(if (elegido) c.navy.copy(alpha = 0.12f) else c.fondo)
+                                    .border(1.dp, if (elegido) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                    .clickable { terapeutaC = ter.id }.padding(horizontal = 12.dp, vertical = 10.dp),
+                            ) { Text((if (elegido) "✓ " else "") + ter.nombre, color = c.texto, fontSize = 13.sp) }
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
                 // Estado actual (lo realizado no se pierde)
                 if (t.sesionesCompletadas > 0) {
                     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.chipBg)
@@ -780,6 +827,19 @@ fun ModalEditarTratamiento(
                         .background(if (errorSesiones) c.borde else c.navy)
                         .clickable(enabled = !errorSesiones) {
                             val esSesiones = !t.esConsulta && !esUnidades && !t.esServicioUnico
+                            if (onCorregir != null) {
+                                onCorregir(CorreccionTratamiento(
+                                    totalSesiones = if (esSesiones) totalSesiones.toIntOrNull() else null,
+                                    precioPaquete = if (esSesiones && esPaquete) precioPaquete.toDoubleOrNull() else null,
+                                    precioPorSesion = if (esSesiones && !esPaquete) precioPorSesion.toDoubleOrNull() else null,
+                                    precioAcordado = precioAcordado.toDoubleOrNull(),
+                                    cantidadUnidades = if (esUnidades) cantidadUnidades.toIntOrNull() else null,
+                                    precioUnitario = if (esUnidades) precioUnitario.toDoubleOrNull() else null,
+                                    diagnostico = diagnosticoC.trim(),
+                                    terapeutaId = terapeutaC,
+                                ))
+                                return@clickable
+                            }
                             onGuardar(
                                 if (esSesiones) totalSesiones.toIntOrNull() else null,
                                 if (esSesiones && esPaquete) precioPaquete.toDoubleOrNull() else null,

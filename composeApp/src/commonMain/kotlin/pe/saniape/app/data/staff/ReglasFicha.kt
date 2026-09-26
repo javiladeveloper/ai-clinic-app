@@ -134,3 +134,28 @@ fun fichaInactiva(estadoPaciente: String?): Boolean = estadoPaciente == "Inactiv
 fun pideProfesionalAlCompletar(tipoCita: String?, terapeutaCita: String?, miTerapeutaId: String?): Boolean =
     terapeutaCita.isNullOrBlank() && miTerapeutaId.isNullOrBlank() &&
         (tipoCita == "Evaluación" || tipoCita == "Consulta")
+
+// ── Corrección de registros cerrados (solo Admin) ──
+// Gemelo de lib/correccion-historial.ts de la web. El servidor vuelve a validar el
+// rol (acción 'corregir' de /api/staff/{sesion,tratamiento}/accion).
+
+const val AVISO_CORRECCION = "Estás corrigiendo un registro cerrado"
+const val DETALLE_CORRECCION =
+    "Solo el Admin puede hacerlo. El cambio queda registrado en la auditoría; no cambia el estado ni los cobros."
+
+private val SESION_PENDIENTE = setOf("Planificada", "En progreso", "Reprogramada")
+private val TRATAMIENTO_HISTORIAL = setOf("Alta", "Completado", "Cancelado", "Suspendido")
+
+/** La sesión ya pasó (completada, anulada…): las pendientes se editan como siempre. */
+fun sesionEnHistorial(estado: String?): Boolean = !estado.isNullOrBlank() && estado !in SESION_PENDIENTE
+
+/** El tratamiento vive en el Historial (No volvió = Suspendido). */
+fun tratamientoEnHistorial(estado: String?): Boolean = estado in TRATAMIENTO_HISTORIAL
+
+/** ¿Editar esta sesión es una CORRECCIÓN del Admin? Para cualquier otro rol: nunca. */
+fun esCorreccionSesion(esAdmin: Boolean, estadoSesion: String?, estadoTratamiento: String?, fichaInactiva: Boolean): Boolean =
+    esAdmin && (sesionEnHistorial(estadoSesion) || tratamientoEnHistorial(estadoTratamiento) || fichaInactiva)
+
+/** ¿Editar este tratamiento es una CORRECCIÓN del Admin? */
+fun esCorreccionTratamiento(esAdmin: Boolean, estadoTratamiento: String?, fichaInactiva: Boolean): Boolean =
+    esAdmin && (tratamientoEnHistorial(estadoTratamiento) || fichaInactiva)

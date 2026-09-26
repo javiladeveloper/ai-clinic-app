@@ -107,4 +107,25 @@ class ReglasFichaTest {
         assertFalse(pideProfesionalAlCompletar("Evaluación", null, "yo"))
         assertFalse(pideProfesionalAlCompletar("Sesión", null, null))
     }
+
+    // ── Corrección de registros cerrados (solo Admin) ──
+
+    @Test
+    fun soloElAdminCorrige() {
+        assertFalse(esCorreccionSesion(false, "Completada", "Alta", true))
+        assertFalse(esCorreccionTratamiento(false, "Alta", true))
+    }
+
+    @Test
+    fun adminCorrigeLoCerrado() {
+        assertTrue(esCorreccionSesion(true, "Completada", "Activo", false))
+        assertTrue(esCorreccionSesion(true, "No asistió", "Activo", false))
+        assertFalse(esCorreccionSesion(true, "Planificada", "Activo", false))
+        assertTrue(esCorreccionSesion(true, "Planificada", "Alta", false))
+        assertTrue(esCorreccionSesion(true, "Planificada", "Activo", true))
+        assertFalse(esCorreccionTratamiento(true, "Activo", false))
+        assertTrue(esCorreccionTratamiento(true, "Activo", true))
+        listOf("Alta", "Completado", "Cancelado", "Suspendido").forEach { assertTrue(tratamientoEnHistorial(it)) }
+        listOf("Planificada", "En progreso", "Reprogramada", null).forEach { assertFalse(sesionEnHistorial(it)) }
+    }
 }

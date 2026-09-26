@@ -716,8 +716,33 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
 
     // Modal editar tratamiento (precio/sesiones)
     editarTratamiento?.let { t ->
+        // Admin + tratamiento cerrado (o ficha de baja) → corrección por el endpoint
+        // 'corregir' (el servidor valida el rol). Cualquier otro caso: igual que siempre.
+        val esCorreccion = pe.saniape.app.data.staff.esCorreccionTratamiento(
+            ctx.esAdmin, t.estado, pe.saniape.app.data.staff.fichaInactiva(paciente.estado))
         ModalEditarTratamiento(
             t = t,
+            onCorregir = if (!esCorreccion) null else { k ->
+                editarTratamiento = null
+                scope.launch {
+                    val valores = kotlinx.serialization.json.buildJsonObject {
+                        k.totalSesiones?.let { put("total_sesiones", kotlinx.serialization.json.JsonPrimitive(it)) }
+                        k.precioPaquete?.let { put("precio_paquete", kotlinx.serialization.json.JsonPrimitive(it)) }
+                        k.precioPorSesion?.let { put("precio_por_sesion", kotlinx.serialization.json.JsonPrimitive(it)) }
+                        k.precioAcordado?.let { put("precio_acordado", kotlinx.serialization.json.JsonPrimitive(it)) }
+                        k.cantidadUnidades?.let { put("cantidad_unidades", kotlinx.serialization.json.JsonPrimitive(it)) }
+                        k.precioUnitario?.let { put("precio_unitario", kotlinx.serialization.json.JsonPrimitive(it)) }
+                        put("diagnostico", kotlinx.serialization.json.JsonPrimitive(k.diagnostico))
+                        k.terapeutaId?.let { put("terapeuta_id", kotlinx.serialization.json.JsonPrimitive(it)) }
+                    }
+                    val r = pe.saniape.app.ui.conIndicador(pe.saniape.app.ui.Gestion.ACTUALIZANDO) {
+                        PacientesRepo.corregirTratamiento(t.id, valores)
+                    }
+                    if (r.registrada) { if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Tratamiento corregido") }
+                    else pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo corregir el tratamiento")
+                    recargar()
+                }
+            },
             onCancelar = { editarTratamiento = null },
             onGuardar = { totalSes, precioPaq, precioSes, precioAcord, diag, medic, proxControl, cantU, precioU ->
                 editarTratamiento = null
