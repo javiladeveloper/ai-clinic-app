@@ -104,6 +104,35 @@ fun PantallaAgenda(
     var cargandoFicha by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    // ── Crear el tratamiento desde la cita (gemelo de /citas web) ──
+    // Desde "🩺 Crear tratamiento" o al completar una Evaluación. Si el paciente YA
+    // tiene tratamientos abiertos se muestran primero (crear otro es posible, pero
+    // no lo primero: así nacen los duplicados); sin ninguno, el form directo.
+    var tratCita by remember { mutableStateOf<CitaStaff?>(null) }
+    var tratDiag by remember { mutableStateOf<String?>(null) }
+    var tratPac by remember { mutableStateOf<PacienteStaff?>(null) }
+    var tratForm by remember { mutableStateOf(false) }
+    fun cerrarTratamiento() { tratCita = null; tratDiag = null; tratPac = null; tratForm = false }
+    fun abrirTratamientoDeCita(cita: CitaStaff, diagnostico: String?) {
+        val pid = cita.pacienteId ?: return
+        if (!ctx.puede("sesiones")) return
+        tratCita = cita; tratDiag = diagnostico; tratPac = null; tratForm = false
+        cargandoFicha = true
+        scope.launch {
+            val pac = runCatching { PacientesRepo.porId(pid) }.getOrNull()
+            cargandoFicha = false
+            tratPac = pac
+            if (pac?.tratamientos.orEmpty().none { it.estado == "Activo" }) tratForm = true
+        }
+    }
+    // Evaluación recién completada → se ofrece el plan (como la web).
+    LaunchedEffect(vm.ofrecerTratamiento) {
+        vm.ofrecerTratamiento?.let { o ->
+            vm.cerrarOfertaTratamiento()
+            abrirTratamientoDeCita(o.cita, o.diagnostico)
+        }
+    }
+
     if (creandoCita || prefillEval != null) {
         PantallaCrearCita(
             ctx = ctx, fechaInicial = vm.fechaSel,
@@ -265,11 +294,17 @@ fun PantallaAgenda(
                                         AccionTarjeta.PasarEvaluacion -> pasarEval = cita
                                         AccionTarjeta.Repetir -> prefillEval = repetirDesde(cita)
                                         AccionTarjeta.Odontograma -> odontogramaCita = cita
+                                        AccionTarjeta.CrearTratamiento -> abrirTratamientoDeCita(cita, null)
                                     }
                                 },
                                 onVerResumen = { resumenPacienteId = it },
                                 conteoFranja = vm.conteosFranja[cita.id] ?: 1,
                                 odontologia = vm.esDental(cita),
+                                // Crear el plan desde la cita que EVALÚA (esCitaQueEvalua de la
+                                // web), solo con permiso 'sesiones' — no 'agendar'.
+                                crearTratamiento = ctx.puede("sesiones") && vm.flujoDe(cita).let { f ->
+                                    cita.tipo == "Evaluación" || (cita.tipo == "Consulta" && f.usaConsulta && !f.usaEvaluacion)
+                                },
                             )
                         }
                     }
@@ -311,10 +346,21 @@ fun PantallaAgenda(
                 onCancelar = { completar = null; revisada = null },
             )
         } else {
+            // Fisioterapia (M5): la evaluación estructurada de ESTA cita. Holder sin
+            // estado: escribir en él no recompone la agenda. Nunca en una cita dental.
+            val evalFisio = remember(cita.id) { pe.saniape.app.ui.clinica.fisio.RefBorradorFisio() }
+            val conEvalFisio = evalua && vm.esFisio(cita) && !vm.esDental(cita) && cita.pacienteId != null
             ModalCompletar(
                 cita = cita, especialidades = vm.especialidades, flujo = flujoCita,
                 esDental = vm.esDental(cita),
                 esFisio = vm.esFisio(cita),
+                bloqueEvaluacionFisio = if (conEvalFisio) { diag ->
+                    pe.saniape.app.ui.clinica.fisio.EvaluacionFisioForm(
+                        citaId = cita.id,
+                        textoRegion = "$diag ${cita.procedimiento ?: ""}",
+                        onCambio = { evalFisio.valor = it },
+                    )
+                } else null,
                 onConfirmarFisio = { obs, piezas, mejorias, eva ->
                     completar = null
                     revisada = null
@@ -329,6 +375,7 @@ fun PantallaAgenda(
                         AccionCita.Completar, cita, obs, diag, espId, piezas = piezas,
                         // Evaluación dental: foto fija del odontograma del día (como la web).
                         congelarOdontograma = vm.esDental(cita) && evalua,
+                        evaluacionFisio = if (conEvalFisio) evalFisio.valor else null,
                     )
                 },
                 // Recepción completando una evaluación SIN profesional: se pide quién
@@ -342,6 +389,7 @@ fun PantallaAgenda(
                         AccionCita.Completar, cita, obs, diag, espId, piezas = piezas,
                         congelarOdontograma = vm.esDental(cita) && evalua,
                         terapeutaId = terId,
+                        evaluacionFisio = if (conEvalFisio) evalFisio.valor else null,
                     )
                 },
             )
@@ -435,6 +483,73 @@ fun PantallaAgenda(
             CircularProgressIndicator(color = c.navy)
         }
     }
+    // Ya tiene tratamientos abiertos: se listan antes de crear otro.
+    val pacTrat = tratPac
+    if (tratCita != null && !tratForm && pacTrat != null) {
+        val activos = pacTrat.tratamientos.filter { it.estado == "Activo" }
+        if (activos.isNotEmpty()) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { cerrarTratamiento() },
+                title = { Text("Tratamiento del paciente", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column {
+                        Text(
+                            pacTrat.nombre + " ya tiene " +
+                                (if (activos.size == 1) "un tratamiento abierto" else "${activos.size} tratamientos abiertos") + ":",
+                            color = c.textoSuave, fontSize = 13.sp,
+                        )
+                        Spacer(Modifier.size(8.dp))
+                        activos.forEach { t ->
+                            Column(
+                                Modifier.fillMaxWidth().padding(vertical = 3.dp)
+                                    .clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.chipBg)
+                                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                            ) {
+                                Text(t.procedimiento ?: "Tratamiento", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                if (t.totalSesiones > 0 && !t.esConsulta) {
+                                    Text("${t.sesionesCompletadas} de ${t.totalSesiones} sesiones", color = c.textoSuave, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = { tratForm = true }) {
+                        Text("+ Crear otro", color = c.navy, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { fichaPaciente = pacTrat; cerrarTratamiento() }) {
+                        Text("Ver ficha", color = c.textoSuave)
+                    }
+                },
+                containerColor = c.superficie,
+            )
+        }
+    }
+    // El MISMO form de la ficha, con la cita como origen y su profesional puesto.
+    val citaTrat = tratCita
+    val pidTrat = citaTrat?.pacienteId
+    if (citaTrat != null && pidTrat != null && tratForm) {
+        pe.saniape.app.ui.clinica.pacientes.ModalCrearTratamiento(
+            pacienteId = pidTrat,
+            miTerapeutaId = ctx.miTerapeutaId,
+            diagnosticoPrevio = tratDiag ?: tratPac?.diagnostico,
+            citaOrigenId = citaTrat.id,
+            terapeutaInicialId = citaTrat.terapeutaId,
+            onCancelar = { cerrarTratamiento() },
+            onGuardar = { nuevo ->
+                cerrarTratamiento()
+                scope.launch {
+                    val ok = pe.saniape.app.ui.clinica.pacientes.guardarTratamientoNuevo(pidTrat, nuevo)
+                    if (ok) pe.saniape.app.ui.Toaster.exito("Tratamiento creado")
+                    else pe.saniape.app.ui.Toaster.error("No se pudo crear el tratamiento")
+                    vm.refrescar()
+                }
+            },
+        )
+    }
+
     fichaPaciente?.let { pac ->
         Box(Modifier.fillMaxSize().background(c.fondo)) {
             PantallaFichaPaciente(ctx = ctx, pacienteInicial = pac, onCerrar = { fichaPaciente = null })

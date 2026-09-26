@@ -82,6 +82,12 @@ fun ModalCompletar(
     esFisio: Boolean = false,
     /** Cierre de la sesión de fisio: observaciones, piezas, mejorías (null = no tocar) y EVA. */
     onConfirmarFisio: ((observaciones: String?, piezas: List<String>?, mejorias: String?, eva: Pair<Int?, Int?>) -> Unit)? = null,
+    /**
+     * Fisioterapia (M5): bloque plegado "Evaluación estructurada (opcional)" dentro de
+     * la cita que EVALÚA. Recibe el diagnóstico escrito (ordena los catálogos por
+     * región). null = no aparece (dental, otros rubros): el modal queda como siempre.
+     */
+    bloqueEvaluacionFisio: (@Composable (diagnostico: String) -> Unit)? = null,
 ) {
     val c = Sania.colors
     var terapeutaElegido by remember { mutableStateOf<String?>(null) }
@@ -102,7 +108,20 @@ fun ModalCompletar(
     val conPiezas = esDental && !esEvaluacion && cita.tipo == "Sesión" && cita.pacienteId != null
     // Fisioterapia: solo en citas de Sesión (no en la evaluación) y con su callback.
     val fisioSesion = esFisio && !esEvaluacion && cita.tipo == "Sesión" && onConfirmarFisio != null
-    val pideMejorias = fisioSesion && (cita.numeroSesion ?: 0) > 1
+    // Sesión de un tratamiento: se trae la sesión anterior (referencia + "↩ Repetir"),
+    // el plan de técnicas y cuántas van completadas — igual que /citas web. Antes el
+    // cierre desde la agenda no tenía ninguno de esos atajos y las mejorías dependían
+    // de que la cita trajera el número de sesión.
+    val sesionDeTratamiento = !esEvaluacion && cita.tipo == "Sesión" && cita.tratamientoId != null
+    var cierre by remember { mutableStateOf<pe.saniape.app.data.staff.ContextoCierreCita?>(null) }
+    androidx.compose.runtime.LaunchedEffect(cita.id) {
+        val tId = cita.tratamientoId
+        if (sesionDeTratamiento && tId != null) {
+            cierre = pe.saniape.app.data.staff.contextoCierreCita(tId, cita.fecha, cita.hora, cita.numeroSesion)
+        }
+    }
+    val pideMejorias = fisioSesion &&
+        (cierre?.pideMejorias(cita.numeroSesion) ?: ((cita.numeroSesion ?: 0) > 1))
     var dolorInicio by remember { mutableStateOf<Int?>(null) }
     var dolorFin by remember { mutableStateOf<Int?>(null) }
     var mejorias by remember { mutableStateOf("") }
@@ -125,7 +144,32 @@ fun ModalCompletar(
         },
         text = {
             // Con EVA y mejorías (fisio) el contenido crece: se puede desplazar.
-            Column(if (fisioSesion) Modifier.verticalScroll(rememberScrollState()) else Modifier) {
+            Column(if (fisioSesion || sesionDeTratamiento || (esEvaluacion && bloqueEvaluacionFisio != null)) Modifier.verticalScroll(rememberScrollState()) else Modifier) {
+                // Referencia: qué se hizo la sesión anterior (como la web).
+                cierre?.anterior?.let { ant ->
+                    Column(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                            .background(c.chipBg).padding(10.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("📋 Sesión anterior (#${ant.numero} — ${fechaCortaCierre(ant.fecha)})",
+                                color = c.navy, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            val eva = pe.saniape.app.data.staff.textoEva(ant.dolorInicio, ant.dolorFin)
+                            if (fisioSesion && eva.isNotBlank()) Text(eva, color = c.textoSuave, fontSize = 11.sp)
+                        }
+                        ant.notas?.takeIf { it.isNotBlank() }?.let {
+                            Text(it, color = c.texto, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp))
+                        }
+                        ant.mejorias?.takeIf { it.isNotBlank() }?.let {
+                            Text("↗ $it", color = c.ok, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+                        }
+                        if (ant.notas.isNullOrBlank() && ant.mejorias.isNullOrBlank()) {
+                            Text("Sin observaciones registradas", color = c.textoSuave, fontSize = 11.sp,
+                                modifier = Modifier.padding(top = 2.dp))
+                        }
+                    }
+                    Spacer(Modifier.height(Sania.dim.lg))
+                }
                 if (fisioSesion) {
                     pe.saniape.app.ui.clinica.fisio.BloqueEva(
                         dolorInicio, dolorFin, onInicio = { dolorInicio = it }, onFin = { dolorFin = it },
@@ -145,6 +189,11 @@ fun ModalCompletar(
                     )
                     Text("Se guardará en la ficha del paciente.", color = c.textoSuave,
                         fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                    // Fisioterapia: evaluación estructurada, plegada y opcional (M5).
+                    bloqueEvaluacionFisio?.let { bloque ->
+                        Spacer(Modifier.height(Sania.dim.md))
+                        bloque(texto)
+                    }
                 } else {
                     // Odontología: de todo lo pendiente del paciente, qué se le hizo
                     // hoy. Lo marcado suma su procedimiento a lo realizado.
@@ -162,6 +211,26 @@ fun ModalCompletar(
                     pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
                         value = texto, onChange = { texto = it },
                     )
+                    // Fisioterapia: volver a lo de la sesión anterior o al plan del
+                    // tratamiento en un toque (`puedeRepetirTecnicas` de la web).
+                    if (fisioSesion) {
+                        fun distinto(a: String?) = !a.isNullOrBlank() &&
+                            pe.saniape.app.data.staff.TecnicasNormalizar.clave(a) != pe.saniape.app.data.staff.TecnicasNormalizar.clave(texto)
+                        val ant = cierre?.anterior
+                        val plan = cierre?.tecnicasPlan
+                        val repetir = ant?.notas?.takeIf { distinto(it) }
+                        val volverPlan = plan?.takeIf { distinto(it) }
+                        if (repetir != null || volverPlan != null) {
+                            Spacer(Modifier.height(6.dp))
+                            androidx.compose.foundation.layout.FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                if (repetir != null && ant != null) ChipAtajo("↩ Repetir técnicas de la sesión #${ant.numero}", c.navy) { texto = repetir }
+                                if (volverPlan != null) ChipAtajo("📋 Plan del tratamiento", c.textoSuave) { texto = volverPlan }
+                            }
+                        }
+                    }
                     if (dictado != null && dictado.disponible) {
                         Spacer(Modifier.height(6.dp))
                         pe.saniape.app.ui.clinica.fisio.BotonDictar(dictado, "tecnicas")
@@ -270,6 +339,17 @@ fun ModalCompletar(
         containerColor = c.superficie,
         shape = RoundedCornerShape(Sania.shape.lg.dp),
     )
+}
+
+/** Chip de atajo del cierre de sesión ("↩ Repetir…", "📋 Plan…"). */
+@Composable
+private fun ChipAtajo(texto: String, color: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+    val c = Sania.colors
+    Box(
+        Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.superficie)
+            .border(1.dp, color, RoundedCornerShape(Sania.shape.pill.dp))
+            .clickable { onClick() }.padding(horizontal = 10.dp, vertical = 5.dp),
+    ) { Text(texto, color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
 }
 
 /** Confirmación antes de cancelar/revertir (evita miss-clicks, como la web). */
@@ -570,4 +650,9 @@ private fun SelectorBotonModal(label: String, valor: String, onClick: () -> Unit
 private fun millisISO(millis: Long): String {
     val d = Instant.fromEpochMilliseconds(millis).toLocalDateTime(TimeZone.UTC).date
     return "${d.year}-${d.monthNumber.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}"
+}
+/** "2026-09-18" → "18/09" (día/mes, como la referencia corta de la web). */
+private fun fechaCortaCierre(iso: String): String {
+    val p = iso.take(10).split("-")
+    return if (p.size == 3) "${p[2]}/${p[1]}" else iso
 }

@@ -113,13 +113,16 @@ fun TecnicasInput(value: String, onChange: (String) -> Unit) {
         // Sugerencias
         if (filtradas.isNotEmpty()) {
             Spacer(Modifier.padding(top = 6.dp))
+            // Rótulo: sin él, los chips grises no se leían como "tócame" (reporte 2.15.0).
+            Text(if (texto.isBlank()) "Frecuentes en tu clínica · toca para agregar" else "Coinciden · toca para agregar",
+                color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(bottom = 4.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 filtradas.forEach { sug ->
                     Box(
                         Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
                             .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.pill.dp))
-                            .clickable { agregar(sug) }.padding(horizontal = 10.dp, vertical = 4.dp),
-                    ) { Text(sug, color = c.textoSuave, fontSize = 11.sp) }
+                            .clickable { agregar(sug) }.padding(horizontal = 10.dp, vertical = 5.dp),
+                    ) { Text("+ $sug", color = c.navy, fontSize = 12.sp) }
                 }
             }
         }

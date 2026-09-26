@@ -159,6 +159,22 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             especialidadesProfesional = t.especialidadesProfesional,
         )
     }
+    // ¿Pestaña 📏 Evaluación? (M5/M6/M8, gemelo de `pacienteEsFisio`). Con los datos que
+    // la ficha YA tiene (tratamientos + citas de los hitos): sin consultas extra. Un
+    // paciente dental nunca la ve, aunque quien mire sea fisio.
+    val esPacienteFisio = pe.saniape.app.data.staff.pacienteEsFisio(
+        ctx.mapaFisio,
+        atenciones = paciente.tratamientos.map { t ->
+            pe.saniape.app.data.staff.AtencionFisio(
+                especialidadServicioId = t.especialidadId
+                    ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id,
+                especialidadesProfesional = t.especialidadesProfesional,
+            )
+        } + (hitos?.let { it.evaluaciones + it.consultas }.orEmpty()).map {
+            pe.saniape.app.data.staff.AtencionFisio(especialidadId = it.especialidadId)
+        },
+        especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
+    )
     // "Nuevo paquete" (M3): abre el form de tratamiento prellenado con este.
     var renovarDesde by remember { mutableStateOf<TratamientoPaciente?>(null) }
     LaunchedEffect(pacienteInicial.id, recargarToken) {
@@ -472,6 +488,8 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     // clínica de fisio o estética nunca ve esta pestaña, y en
                     // una mixta tampoco el paciente que solo es de fisio.
                     if (esOdontologia) add("odontograma" to "🦷 Odontograma")
+                    // SOLO pacientes de fisioterapia (`esPacienteFisio`, arriba).
+                    if (esPacienteFisio) add("evaluacion" to "📏 Evaluación")
                     if (ctx.puede("pagos")) add("pagos" to "💰 Pagos")
                     add("resumen" to "📋 Resumen")
                 }
@@ -585,6 +603,20 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     )
                     // Doble candado: aunque `tab` quedara en "odontograma" por
                     // un estado viejo, sin odontología no se monta.
+                    // 📏 Evaluación fisio: consulta SOLO al abrirse (la monta este `when`).
+                    "evaluacion" -> if (esPacienteFisio) {
+                        pe.saniape.app.ui.clinica.fisio.EvaluacionFisioTab(
+                            pacienteId = paciente.id,
+                            tratamientos = paciente.tratamientos.map {
+                                pe.saniape.app.ui.clinica.fisio.TratamientoEval(
+                                    it.id, it.procedimiento ?: it.especialidadNombre ?: "Tratamiento", it.citaOrigenId,
+                                )
+                            },
+                            textoRegion = paciente.diagnostico,
+                            puedeEditar = ctx.puede("sesiones") && !pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
+                            miTerapeutaId = ctx.miTerapeutaId,
+                        )
+                    }
                     "odontograma" -> if (esOdontologia) {
                         pe.saniape.app.ui.clinica.odontologia.OdontogramaVista(
                             pacienteId = paciente.id,
@@ -1815,6 +1847,16 @@ private fun ContenidoAtenciones(
     Column {
         // Tratamientos: cada tarjeta lleva SU barra de recorrido (sin duplicar arriba).
         Etiqueta("Tratamientos")
+        // "➕ Nuevo tratamiento" ARRIBA, como el encabezado de "Planes de atención" en la
+        // web: abajo de todo quedaba escondido tras las tarjetas y el médico no lo veía.
+        if ((ctx.puede("sesiones") || ctx.puede("pacientes")) && !soloLectura) {
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+                    .background(c.navy).clickable { onNuevoTratamiento() }.padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) { Text("➕ Nuevo tratamiento", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
+            Spacer(Modifier.height(Sania.dim.sm))
+        }
         if (mios.isEmpty() && otros.isEmpty()) {
             Text("Sin tratamientos registrados.", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
         } else {
@@ -1845,14 +1887,6 @@ private fun ContenidoAtenciones(
         if (otros.isNotEmpty()) {
             Spacer(Modifier.height(Sania.dim.md))
             OtrosTratamientos(otros)
-        }
-        if ((ctx.puede("sesiones") || ctx.puede("pacientes")) && !soloLectura) {
-            Spacer(Modifier.height(Sania.dim.md))
-            Box(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
-                    .background(c.navy).clickable { onNuevoTratamiento() }.padding(vertical = 12.dp),
-                contentAlignment = Alignment.Center,
-            ) { Text("➕ Nuevo tratamiento", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
         }
     }
 }

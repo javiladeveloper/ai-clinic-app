@@ -275,10 +275,21 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         val cita: CitaStaff,
         val observaciones: String?, val diagnostico: String?, val derivarEspId: String?,
         val piezas: List<String>?, val congelarOdontograma: Boolean,
+        /** Fisio (M5): la evaluación estructurada llenada, para no perderla en el reintento. */
+        val evaluacionFisio: pe.saniape.app.data.staff.BorradorEvaluacionFisio? = null,
     )
     var pedirProfesional by mutableStateOf<PedidoProfesional?>(null); private set
 
     fun cerrarPedidoProfesional() { pedirProfesional = null }
+
+    /**
+     * Tras completar una EVALUACIÓN: ofrecer crear el tratamiento sin salir de la
+     * agenda (gemelo de /citas web: `abrirTratamientoDeCita` tras completar la
+     * evaluación). Solo a quien gestiona tratamientos ('sesiones'), como la web.
+     */
+    data class OfertaTratamiento(val cita: CitaStaff, val diagnostico: String?)
+    var ofrecerTratamiento by mutableStateOf<OfertaTratamiento?>(null); private set
+    fun cerrarOfertaTratamiento() { ofrecerTratamiento = null }
 
     /** Reintenta el completar con el profesional elegido en el selector. */
     fun completarConProfesional(terapeutaId: String) {
@@ -287,6 +298,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         ejecutar(
             AccionCita.Completar, p.cita, p.observaciones, p.diagnostico, p.derivarEspId,
             piezas = p.piezas, congelarOdontograma = p.congelarOdontograma, terapeutaId = terapeutaId,
+            evaluacionFisio = p.evaluacionFisio,
         )
     }
 
@@ -301,6 +313,8 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         /** Fisioterapia (sesión): evolución (null = no tocar) y EVA (null = no es fisio). */
         mejorias: String? = null,
         eva: Pair<Int?, Int?>? = null,
+        /** Fisioterapia (evaluación): lo llenado en "Evaluación estructurada" (null = nada). */
+        evaluacionFisio: pe.saniape.app.data.staff.BorradorEvaluacionFisio? = null,
     ) {
         if (accionando) return
         viewModelScope.launch {
@@ -321,6 +335,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                         r.codigo == "SIN_PROFESIONAL" -> {
                             pedirProfesional = PedidoProfesional(
                                 cita, observaciones, diagnostico, derivarEspId, piezas, congelarOdontograma,
+                                evaluacionFisio,
                             )
                             accionando = false
                             return@launch
@@ -350,6 +365,28 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                     AccionCita.Cancelar -> "Cita cancelada"
                 }
                 pe.saniape.app.ui.Toaster.exito(txt)
+                // Fisioterapia: la evaluación estructurada (opcional). Aparte, para no
+                // demorar la recarga de la agenda; nunca bloquea: la cita ya quedó
+                // completada y, si falla, solo se avisa (gemelo de guardarEvaluacionDeCita).
+                if (accion == AccionCita.Completar && evaluacionFisio != null) {
+                    viewModelScope.launch {
+                        val okFisio = pe.saniape.app.data.staff.EvaluacionFisioRepo.guardarDeCita(
+                            evaluacionFisio, cita.id, cita.pacienteId, cita.tratamientoId, cita.fecha,
+                            terapeutaId ?: cita.terapeutaId ?: ctx.miTerapeutaId,
+                        )
+                        if (okFisio == false) pe.saniape.app.ui.Toaster.error(
+                            "La evaluación se completó, pero no se guardó la evaluación estructurada. Cárgala desde la ficha (pestaña 📏 Evaluación).",
+                        )
+                    }
+                }
+                // Evaluación completada → el siguiente paso natural es el plan (como la web).
+                if (accion == AccionCita.Completar && cita.tipo == "Evaluación" &&
+                    ctx.puede("sesiones") && cita.pacienteId != null) {
+                    ofrecerTratamiento = OfertaTratamiento(
+                        cita.copy(terapeutaId = terapeutaId ?: cita.terapeutaId, estado = "Completada"),
+                        diagnostico?.trim()?.ifBlank { null },
+                    )
+                }
             } else pe.saniape.app.ui.Toaster.error("No se pudo, intenta de nuevo")
             recargarCitas()
             recargarBanners()

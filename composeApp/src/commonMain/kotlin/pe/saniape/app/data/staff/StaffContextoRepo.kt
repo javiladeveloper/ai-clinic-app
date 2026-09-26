@@ -52,6 +52,7 @@ object StaffContextoRepo {
         servicios = o?.bool("servicios") ?: false,
         equipo = o?.bool("equipo") ?: false,
         ajustes = o?.bool("ajustes") ?: false,
+        reportes = o?.bool("reportes") ?: false,
     )
 
     private fun features(o: JsonObject?): PlanFeatures = PlanFeatures(

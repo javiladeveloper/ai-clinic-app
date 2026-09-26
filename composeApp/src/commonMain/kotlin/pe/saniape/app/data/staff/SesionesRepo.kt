@@ -160,3 +160,66 @@ data class ContextoCompletar(
     val tecnicasSugeridas: String?,
     val especialidadId: String?,
 )
+
+/**
+ * Lo que el cierre de una SESIÓN necesita cuando se completa desde la AGENDA
+ * (gemelo de `abrirCompletarSesion` en /citas web): la sesión de esta cita, la
+ * última completada antes (referencia + "↩ Repetir técnicas"), cuántas van
+ * completadas (mejorías desde la #2 cuando la cita no trae número) y las técnicas
+ * del plan del tratamiento ("📋 Plan").
+ */
+data class ContextoCierreCita(
+    val sesion: SesionFicha?,
+    val anterior: SesionFicha?,
+    val completadas: Int,
+    val tecnicasPlan: String?,
+) {
+    /** Mejorías desde la sesión #2 — `pideMejorias` de lib/cierre-sesion.ts. */
+    fun pideMejorias(numeroCita: Int?): Boolean {
+        val n = sesion?.numero?.takeIf { it > 0 } ?: numeroCita?.takeIf { it > 0 }
+        return if (n != null) n > 1 else completadas > 0
+    }
+}
+
+/**
+ * Arma el [ContextoCierreCita] a partir de las sesiones del tratamiento (puro,
+ * testeable). La sesión de la cita: por número si la cita lo trae; si no, la del
+ * mismo día (y la misma hora si hay dos), como la web.
+ */
+fun armarContextoCierre(
+    sesiones: List<SesionFicha>, fecha: String, hora: String?, numeroCita: Int?, tecnicasPlan: String?,
+): ContextoCierreCita {
+    val vivas = sesiones.filter { it.estado != "Cancelada" && it.estado != "No asistió" }
+    val propia = numeroCita?.let { n -> vivas.firstOrNull { it.numero == n } } ?: run {
+        val delDia = vivas.filter { it.fecha.take(10) == fecha.take(10) }
+        if (delDia.size == 1) delDia.first()
+        else delDia.firstOrNull { (it.hora ?: "").take(5) == (hora ?: "").take(5) }
+    }
+    val completadas = sesiones.filter { it.estado == "Completada" }
+    val anterior = completadas
+        .filter { it.id != propia?.id && (propia == null || propia.numero <= 0 || it.numero < propia.numero) }
+        .maxByOrNull { it.numero }
+    return ContextoCierreCita(
+        sesion = propia,
+        anterior = anterior,
+        completadas = completadas.count { it.id != propia?.id },
+        tecnicasPlan = tecnicasPlan?.takeIf { it.isNotBlank() },
+    )
+}
+
+/** Lecturas del [ContextoCierreCita] (2 en paralelo, solo al abrir el cierre). null = no se pudo. */
+suspend fun contextoCierreCita(
+    tratamientoId: String, fecha: String, hora: String?, numeroCita: Int?,
+): ContextoCierreCita? = kotlinx.coroutines.coroutineScope {
+    val sesionesD = async { runCatching { PacientesRepo.sesionesDe(tratamientoId) }.getOrNull() }
+    val planD = async {
+        runCatching {
+            Supabase.client.postgrest["tratamientos"]
+                .select(Columns.raw("tecnicas_sugeridas")) { filter { eq("id", tratamientoId) } }
+                .decodeList<JsonObject>().firstOrNull()
+                ?.let { (it["tecnicas_sugeridas"] as? JsonPrimitive)?.content?.takeIf { v -> v != "null" } }
+        }.getOrNull()
+    }
+    val sesiones = sesionesD.await() ?: return@coroutineScope null
+    armarContextoCierre(sesiones, fecha, hora, numeroCita, planD.await())
+}

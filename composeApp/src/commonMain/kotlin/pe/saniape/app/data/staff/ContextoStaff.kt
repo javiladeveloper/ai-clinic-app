@@ -124,6 +124,7 @@ data class ContextoStaff(
         "servicios" -> permisos.servicios
         "equipo" -> permisos.equipo
         "ajustes" -> permisos.ajustes
+        "reportes" -> permisos.reportes
         else -> false
     }
 
@@ -182,6 +183,8 @@ data class Permisos(
     val servicios: Boolean,
     val equipo: Boolean,
     val ajustes: Boolean,
+    /** Reportes (web /reportes). Default false: un backend sin la clave no lo abre. */
+    val reportes: Boolean = false,
 )
 
 data class PlanEstado(

@@ -130,6 +130,33 @@ fun PantallaMasClinica(
                     Spacer(Modifier.height(Sania.dim.lg))
                 }
 
+                // Administración: los módulos de gestión que la app todavía no tiene
+                // (finanzas, comisiones, equipo, servicios, ajustes…). Antes un Admin no
+                // veía NINGUNA opción de administración en la app; ahora las ve con los
+                // MISMOS permisos que el menú de la web y se abren en la web.
+                val modulosAdmin = modulosAdministracion(ctx)
+                if (modulosAdmin.isNotEmpty()) {
+                    val acciones = pe.saniape.app.ui.recordarAcciones()
+                    Text("ADMINISTRACIÓN", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
+                    Text("Se abren en la web (inicia sesión con tu misma cuenta).", color = c.textoSuave, fontSize = 11.sp)
+                    Spacer(Modifier.height(Sania.dim.sm))
+                    modulosAdmin.forEach { (etq, ruta) ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(bottom = Sania.dim.sm)
+                                .clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { acciones.abrirUrl("${pe.saniape.app.data.Supabase.SITE_URL}$ruta") }
+                                .padding(Sania.dim.lg),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(etq, color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
+                            Text("↗", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                        }
+                    }
+                    Spacer(Modifier.height(Sania.dim.md))
+                }
+
                 // Apariencia (preferencia personal del dispositivo — todos los roles).
                 Text("APARIENCIA", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(Sania.dim.sm))
@@ -250,5 +277,27 @@ fun PantallaMasClinica(
                 Spacer(Modifier.height(Sania.dim.xl))
             }
         }
+    }
+}
+/**
+ * Módulos de gestión que viven en la web, con los MISMOS permisos que su menú
+ * (components/layout/Sidebar.tsx). (etiqueta, ruta). El plan lo resuelve la web
+ * al abrir (candado de plan), no se duplica acá.
+ */
+internal fun modulosAdministracion(ctx: ContextoStaff): List<Pair<String, String>> = buildList {
+    if (ctx.puede("finanzas")) add("💸  Finanzas y caja" to "/finanzas")
+    if (ctx.puede("comisiones")) add("💰  Comisiones" to "/comisiones")
+    if (ctx.puede("reportes")) add("📊  Reportes" to "/reportes")
+    if (ctx.puede("pacientes")) add("🔄  Retención" to "/seguimiento")
+    if (ctx.esAdmin) add("📈  Actividad del equipo" to "/actividad")
+    if (ctx.puede("equipo")) add("👥  Equipo y accesos" to "/equipo")
+    if (ctx.puede("servicios")) {
+        add("💊  Servicios" to "/procedimientos")
+        add("🏥  Especialidades" to "/especialidades")
+        add("🎉  Campañas" to "/campanias")
+    }
+    if (ctx.puede("ajustes")) {
+        add("💎  Mi plan" to "/suscripcion")
+        add("⚙️  Ajustes de la clínica" to "/configuracion")
     }
 }

@@ -53,6 +53,11 @@ fun TarjetaCita(
     conteoFranja: Int = 1,
     /** La clínica hace odontología: ofrece abrir el odontograma desde la cita. */
     odontologia: Boolean = false,
+    /**
+     * "🩺 Crear tratamiento" sin salir de la agenda (gemelo de /citas web). Lo
+     * decide la pantalla: cita que EVALÚA según el flujo + permiso 'sesiones'.
+     */
+    crearTratamiento: Boolean = false,
 ) {
     val c = Sania.colors
     val acciones = recordarAcciones()
@@ -164,7 +169,8 @@ fun TarjetaCita(
             }
 
             // Acciones según estado (separadas por un divisor sutil)
-            val acc = accionesPara(cita.estado, cita.tipo, odontologia && cita.pacienteId != null)
+            val acc = accionesPara(cita.estado, cita.tipo, odontologia && cita.pacienteId != null,
+                crearTratamiento = crearTratamiento && cita.pacienteId != null)
             if (acc.isNotEmpty()) {
                 Spacer(Modifier.height(Sania.dim.md))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
@@ -179,7 +185,7 @@ fun TarjetaCita(
     }
 }
 
-enum class AccionTarjeta { Confirmar, Completar, Cancelar, Revertir, Editar, PasarEvaluacion, Repetir, Odontograma }
+enum class AccionTarjeta { Confirmar, Completar, Cancelar, Revertir, Editar, PasarEvaluacion, Repetir, Odontograma, CrearTratamiento }
 
 /** Acciones disponibles según estado/tipo (espeja accionesCita de la web). */
 @Composable
@@ -188,6 +194,7 @@ private fun accionesPara(
     tipo: String?,
     /** Solo en clínicas de odontología y con paciente. */
     odontograma: Boolean = false,
+    crearTratamiento: Boolean = false,
 ): List<Triple<String, AccionTarjeta, Color>> {
     val c = Sania.colors
     val lista = mutableListOf<Triple<String, AccionTarjeta, Color>>()
@@ -203,6 +210,8 @@ private fun accionesPara(
     // revisar o marcar sin ir a la ficha. No en las sesiones de tratamiento
     // (ahí se atiende lo ya presupuestado). Mismo criterio que la web.
     if (odontograma && tipo != "Sesión") lista.add(Triple("🦷 Odontograma", AccionTarjeta.Odontograma, c.info))
+    // Crear el plan desde la cita que evalúa (no cancelada), como la web.
+    if (crearTratamiento && estado != "Cancelada") lista.add(Triple("🩺 Crear tratamiento", AccionTarjeta.CrearTratamiento, c.purple))
     if (estado != "Cancelada" && estado != "Completada") {
         lista.add(Triple("✏ Editar", AccionTarjeta.Editar, c.textoSuave))
         lista.add(Triple("✕ Cancelar", AccionTarjeta.Cancelar, c.error))

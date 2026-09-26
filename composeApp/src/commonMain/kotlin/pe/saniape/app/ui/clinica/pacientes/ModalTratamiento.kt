@@ -94,6 +94,12 @@ fun ModalCrearTratamiento(
      * ampliaciones), con sus precios; todo se puede cambiar antes de crear.
      */
     renovacion: pe.saniape.app.data.staff.TratamientoPaciente? = null,
+    /**
+     * Creación rápida DESDE LA AGENDA (gemelo de /citas web): la cita que evaluó es
+     * el origen del plan y su profesional quien lo lleva. Vienen ya puestos.
+     */
+    citaOrigenId: String? = null,
+    terapeutaInicialId: String? = null,
 ) {
     val c = Sania.colors
     var procedimientos by remember { mutableStateOf<List<ProcedimientoRef>>(emptyList()) }
@@ -149,6 +155,16 @@ fun ModalCrearTratamiento(
                 especialidad = esps.find { it.id == espId } ?: especialidad
             }
         }
+        // Desde la agenda: la cita de origen (si es una Evaluación completada, se
+        // elige en la lista y trae su especialidad) y el profesional que atendió.
+        if (miTerapeutaId == null) terapeutaInicialId?.let { tId -> terapeuta = ters.find { it.id == tId } ?: terapeuta }
+        citaOrigenId?.let { cId ->
+            evaluaciones.find { it.id == cId }?.let { ev ->
+                evaluacion = ev
+                ev.especialidadId?.let { eId -> especialidad = esps.find { it.id == eId } ?: especialidad }
+                if (miTerapeutaId == null) ev.terapeutaId?.let { tId -> terapeuta = ters.find { it.id == tId } ?: terapeuta }
+            }
+        }
         // Nuevo paquete: mismo servicio/profesional/evaluación de origen que el que se acaba.
         renovacion?.let { r ->
             if (miTerapeutaId == null) r.terapeutaId?.let { tId -> terapeuta = ters.find { it.id == tId } ?: terapeuta }
@@ -192,8 +208,10 @@ fun ModalCrearTratamiento(
             }
             // Modo unidades: prellenar el precio por unidad sugerido.
             precioUnitario = (p.precioUnitarioSugerido ?: p.precio).toString()
-            // Servicio único (simple + precio > 0): el acordado arranca en el precio base.
-            if (p.modoCobro == "simple" && p.precio > 0) precioAcordado = p.precio.toString()
+            // Servicio único: el acordado NO se prellena (igual que la web): el precio base se
+            // muestra aparte y como ayuda en el campo; vacío = se cobra el base. Antes se
+            // escribía el base en el campo y parecía un precio que nadie había puesto.
+            precioAcordado = ""
             // Plantilla elegida: SUS valores comerciales mandan sobre el prefill del servicio.
             renovPend?.let { r ->
                 r.modalidad?.takeIf { it == "Paquete" || it == "Sesión suelta" }?.let { modalidad = it }
@@ -352,7 +370,7 @@ fun ModalCrearTratamiento(
                                             if (tar != null) { totalSesiones = tar.cantidadSesiones.toString(); precioPaquete = tar.precioTotal.toString() }
                                             else { precioPaquete = p.precioPaquete?.toString() ?: ""; totalSesiones = "10" }
                                             precioUnitario = (p.precioUnitarioSugerido ?: p.precio).toString()
-                                            precioAcordado = if (p.modoCobro == "simple" && p.precio > 0) p.precio.toString() else ""
+                                            precioAcordado = ""
                                         }
                                     }.padding(4.dp))
                             }
@@ -423,7 +441,7 @@ fun ModalCrearTratamiento(
                         }
                         Spacer(Modifier.height(10.dp))
                         Etq("Precio acordado (S/) — opcional")
-                        CampoNum(precioAcordado) { precioAcordado = it }
+                        CampoNum(precioAcordado, ayuda = if (total > 0) "Vacío = total S/ ${formatoNum(total)}" else "Vacío = cantidad × precio") { precioAcordado = it }
                         Text("Solo si se negoció distinto al total (cantidad × precio).",
                             color = c.textoSuave, fontSize = 10.sp)
                     }
@@ -433,9 +451,9 @@ fun ModalCrearTratamiento(
                         Etq("Precio base del servicio")
                         SelectorBox("S/ ${proc?.precio ?: 0.0}", bloqueado = true) {}
                         Spacer(Modifier.height(10.dp))
-                        Etq("Precio acordado (S/)")
-                        CampoNum(precioAcordado) { precioAcordado = it }
-                        Text("Prellenado con el precio base; ajústalo si se negoció otro. " +
+                        Etq("Precio acordado (S/) — opcional")
+                        CampoNum(precioAcordado, ayuda = "S/ ${formatoNum(proc?.precio ?: 0.0)} (precio de lista)") { precioAcordado = it }
+                        Text("Vacío = se cobra el precio de lista; escríbelo solo si se negoció otro. " +
                             "El servicio se registra al realizarse (paso “Por hacer”).",
                             color = c.textoSuave, fontSize = 10.sp)
                     }
@@ -470,7 +488,7 @@ fun ModalCrearTratamiento(
                         }
                         Spacer(Modifier.height(10.dp))
                         Etq("Precio acordado (S/) — opcional")
-                        CampoNum(precioAcordado) { precioAcordado = it }
+                        CampoNum(precioAcordado, ayuda = "Vacío = precio base") { precioAcordado = it }
                         Text("Solo si se negoció un precio distinto al base.", color = c.textoSuave, fontSize = 10.sp)
                     }
                 } else if (esConsulta) {
@@ -479,7 +497,7 @@ fun ModalCrearTratamiento(
                         // La medicación/receta NO se pide al crear: el médico aún no atendió.
                         // Se registra al EDITAR el tratamiento, después de la atención.
                         Etq("Costo de la consulta (S/) — opcional")
-                        CampoNum(precioAcordado) { precioAcordado = it }
+                        CampoNum(precioAcordado, ayuda = "Ej. 80 — vacío si es gratis") { precioAcordado = it }
                         Text("Déjalo vacío si es gratis. La medicación y el próximo control se " +
                             "registran al editar, después de atender.", color = c.textoSuave, fontSize = 10.sp)
                     }
@@ -547,10 +565,15 @@ fun ModalCrearTratamiento(
                                         else if (usaSesiones) 1 else null,
                                     precioPaquete = if (usaSesiones && modalidad == "Paquete") precioPaquete.toDoubleOrNull() else null,
                                     precioPorSesion = if (usaSesiones && modalidad == "Sesión suelta") precioPorSesion.toDoubleOrNull() else null,
+                                    // Vacío = precio de lista (igual que la web): unidades → cantidad ×
+                                    // precio; servicio único → el precio base del servicio.
                                     precioAcordado = precioAcordado.toDoubleOrNull()
-                                        ?: if (esUnidades && totalUnidades > 0) totalUnidades else null,
+                                        ?: if (esUnidades && totalUnidades > 0) totalUnidades
+                                        else if (esServUnico) p.precio else null,
                                     diagnostico = diagnostico.trim().ifBlank { null },
-                                    citaOrigenId = evaluacion?.id,
+                                    // La cita de la agenda cuenta aunque no esté en la lista
+                                    // (una Consulta que evalúa, en flujos sin Evaluación).
+                                    citaOrigenId = evaluacion?.id ?: citaOrigenId,
                                     // Medicación y próximo control NO se piden al crear (se llenan al editar tras atender).
                                     medicacion = null,
                                     proximoControl = null,
@@ -572,6 +595,27 @@ fun ModalCrearTratamiento(
             }
         }
     }
+}
+
+/**
+ * Guarda el tratamiento del form (mismo endpoint y campos que la ficha). Para los
+ * otros lugares que lo crean (agenda); cuenta el uso de la plantilla si hubo.
+ */
+suspend fun guardarTratamientoNuevo(pacienteId: String, nuevo: TratamientoNuevo): Boolean {
+    val ok = PacientesRepo.crearTratamiento(
+        pacienteId = pacienteId, procedimientoId = nuevo.procedimientoId,
+        terapeutaId = nuevo.terapeutaId, modalidad = nuevo.modalidad,
+        totalSesiones = nuevo.totalSesiones, precioPaquete = nuevo.precioPaquete,
+        precioPorSesion = nuevo.precioPorSesion, precioAcordado = nuevo.precioAcordado,
+        diagnostico = nuevo.diagnostico, citaOrigenId = nuevo.citaOrigenId,
+        medicacion = nuevo.medicacion, proximoControl = nuevo.proximoControl,
+        cantidadUnidades = nuevo.cantidadUnidades, precioUnitario = nuevo.precioUnitario,
+        tecnicasSugeridas = nuevo.tecnicasSugeridas,
+        campaniaId = nuevo.campaniaId, motivoPrecio = nuevo.motivoPrecio,
+        fechaInicio = nuevo.fechaInicio,
+    )
+    if (ok) nuevo.plantillaId?.let { runCatching { PacientesRepo.contarUsoPlantilla(it) } }
+    return ok
 }
 
 /** "80" o "79.50" — para mostrar montos sin colas de decimales. */
@@ -928,9 +972,11 @@ private fun Etq(t: String) {
 }
 
 @Composable
-private fun CampoNum(value: String, onChange: (String) -> Unit) {
-    OutlinedTextField(colors = coloresCampoForm(), 
+private fun CampoNum(value: String, ayuda: String? = null, onChange: (String) -> Unit) {
+    OutlinedTextField(colors = coloresCampoForm(),
         value = value, onValueChange = { onChange(it.filter { ch -> ch.isDigit() || ch == '.' }) },
+        // Ayuda gris (placeholder): se ve mientras el campo está vacío y NUNCA se guarda.
+        placeholder = ayuda?.let { a -> { Text(a, color = Sania.colors.textoSuave) } },
         singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth(),
     )
