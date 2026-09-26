@@ -103,6 +103,12 @@ data class ContextoStaff(
      * (`pacienteEsDental`), no por clínica. También lo arma la web.
      */
     val mapaDental: MapaDental = MapaDental(),
+    /**
+     * Qué especialidades son de fisioterapia (EVA, curva de dolor, renovación,
+     * "No volvió"…). Por cita/tratamiento con `citaEsFisio`. Lo arma la web; un
+     * backend sin el campo deja el mapa vacío y la app se comporta como antes.
+     */
+    val mapaFisio: MapaFisio = MapaFisio(),
     val clinicas: List<ClinicaRef>,
     val tienePortal: Boolean,
 ) {

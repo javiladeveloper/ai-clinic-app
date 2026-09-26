@@ -148,6 +148,19 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             ctx.mapaDental,
         )
     }
+    // ¿Este tratamiento es de FISIOTERAPIA? (EVA, curva de dolor, renovación, "No
+    // volvió", dictado). Misma cadena que la web: servicio → profesional. Sin el mapa
+    // (backend viejo o clínica sin fisio) da false y la ficha queda como siempre.
+    val tratEsFisio = { t: TratamientoPaciente ->
+        pe.saniape.app.data.staff.citaEsFisio(
+            ctx.mapaFisio,
+            especialidadServicioId = t.especialidadId
+                ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id,
+            especialidadesProfesional = t.especialidadesProfesional,
+        )
+    }
+    // "Nuevo paquete" (M3): abre el form de tratamiento prellenado con este.
+    var renovarDesde by remember { mutableStateOf<TratamientoPaciente?>(null) }
     LaunchedEffect(pacienteInicial.id, recargarToken) {
         actualizando = true
         // conIndicador solo en las RECARGAS (token > 0), no en la carga inicial: al abrir
@@ -334,6 +347,14 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     AvisoFichaInactiva(puedeReactivar = ctx.puede("pacientes"))
                 }
 
+                // Fisio (M10): faltas SIN aviso ("No asistió"). Solo visibilidad; los datos
+                // ya vienen con las citas de los hitos (sin consulta extra).
+                val faltas = hitos?.faltasSinAviso ?: 0
+                if (faltas > 0 && (ctx.mapaFisio.solo || paciente.tratamientos.any { tratEsFisio(it) })) {
+                    Spacer(Modifier.height(Sania.dim.sm))
+                    pe.saniape.app.ui.clinica.fisio.AvisoFaltasSinAviso(faltas)
+                }
+
                 // Datos: edad · ocupación
                 val datos = listOfNotNull(
                     paciente.edad?.let { "$it años" },
@@ -488,6 +509,8 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         ctx = ctx, paciente = paciente, hitos = hitos,
                         recargaToken = recargarToken,
                         tratEsDental = tratEsDental,
+                        tratEsFisio = tratEsFisio,
+                        onNuevoPaquete = { renovarDesde = it },
                         onCompletarSesion = { ses, anterior, tecSug, trat -> completarSesion = CompletarSesionReq(ses, anterior, tecSug, trat) },
                         onRecargar = { recargar() },
                         onEditarTrat = { editarTratamiento = it },
@@ -568,15 +591,18 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         }
     }
 
-    // Modal crear tratamiento
-    if (creandoTratamiento) {
+    // Modal crear tratamiento (o "📦 Nuevo paquete" prellenado con el que se acaba — M3).
+    val renovar = renovarDesde
+    if (creandoTratamiento || renovar != null) {
         ModalCrearTratamiento(
             pacienteId = paciente.id,
             miTerapeutaId = ctx.miTerapeutaId,
-            diagnosticoPrevio = paciente.diagnostico,
-            onCancelar = { creandoTratamiento = false },
+            diagnosticoPrevio = renovar?.diagnostico ?: paciente.diagnostico,
+            renovacion = renovar,
+            onCancelar = { creandoTratamiento = false; renovarDesde = null },
             onGuardar = { nuevo ->
                 creandoTratamiento = false
+                renovarDesde = null
                 scope.launch {
                     val ok = PacientesRepo.crearTratamiento(
                         pacienteId = paciente.id, procedimientoId = nuevo.procedimientoId,
@@ -794,8 +820,9 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             pacienteId = paciente.id,
             tratamientoId = req.trat.id,
             esDental = tratEsDental(req.trat),
+            esFisio = tratEsFisio(req.trat),
             onCancelar = { completarSesion = null },
-            onConfirmar = { tecnicas, mejorias, dejoRx, pago, piezas ->
+            onConfirmar = { tecnicas, mejorias, dejoRx, pago, piezas, eva ->
                 completarSesion = null
                 scope.launch {
                     // Evolución: solo desde la sesión #2 ("" limpia, null = no tocar),
@@ -806,6 +833,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         mejorias = if (ses.numero > 1) mejorias.orEmpty() else null,
                         rxPendiente = dejoRx,
                         piezas = piezas,
+                        eva = eva,
                     )
                     val ok = r.registrada
                     if (ok) pe.saniape.app.ui.Toaster.exito("Sesión #${ses.numero} completada")
@@ -931,11 +959,17 @@ internal fun ModalCompletarSesion(
     tratamientoId: String? = null,
     /** Tratamiento dental: muestra "¿Qué se le hizo hoy?" (piezas del odontograma). */
     esDental: Boolean = false,
+    /**
+     * Sesión de FISIOTERAPIA (`citaEsFisio`): EVA al entrar/salir, chips de mejoría
+     * de fisio y dictado 🎤. En false el modal queda exactamente como antes.
+     */
+    esFisio: Boolean = false,
     onCancelar: () -> Unit,
     // pago = (monto, método) si activó "¿pagó esta sesión?" — el cobro sale en el
     // MISMO paso que el completar, como la web (antes eran 2 viajes: ✓ y luego 💳).
     // piezas = ids de hallazgos hechos hoy (solo dental; null = no tocar el odontograma).
-    onConfirmar: (tecnicas: String?, mejorias: String?, dejoRx: Boolean, pago: Pair<Double, String>?, piezas: List<String>?) -> Unit,
+    // eva = (dolor al entrar, al salir) solo en fisio; null = no se manda nada.
+    onConfirmar: (tecnicas: String?, mejorias: String?, dejoRx: Boolean, pago: Pair<Double, String>?, piezas: List<String>?, eva: Pair<Int?, Int?>?) -> Unit,
 ) {
     val c = Sania.colors
     var cobrar by remember { mutableStateOf(false) }
@@ -966,6 +1000,14 @@ internal fun ModalCompletarSesion(
     // tiempo le quitaría a la sesión las piezas que ya tenía.
     var piezasListas by remember { mutableStateOf<Boolean?>(null) }
 
+    // Fisioterapia: EVA (opcional) + dictado a técnicas / mejorías.
+    var dolorInicio by remember { mutableStateOf(ses.dolorInicio) }
+    var dolorFin by remember { mutableStateOf(ses.dolorFin) }
+    val dictado = if (esFisio) pe.saniape.app.ui.clinica.fisio.recordarDictadoCampos { campo, texto ->
+        if (campo == "tecnicas") tecnicas = pe.saniape.app.data.staff.sumarTecnicasDictadas(tecnicas, texto)
+        else mejorias = pe.saniape.app.data.staff.unirDictado(mejorias, texto)
+    } else null
+
     // Referencia de lo registrado en la sesión anterior.
     val notasPrev = anterior?.notas?.takeIf { it.isNotBlank() }
     val mejoriasPrev = anterior?.mejorias?.takeIf { it.isNotBlank() }
@@ -981,7 +1023,8 @@ internal fun ModalCompletarSesion(
         onAccion = {
             val pago = if (cobrar) pagoMonto.toDoubleOrNull()?.takeIf { it > 0 }?.let { it to pagoMetodo } else null
             onConfirmar(tecnicas.trim().ifBlank { null }, mejorias.trim().ifBlank { null }, dejoRx, pago,
-                if (esDental && piezasListas == true) piezas else null)
+                if (esDental && piezasListas == true) piezas else null,
+                if (esFisio) dolorInicio to dolorFin else null)
         },
     ) {
         // Aviso: el paciente dejó RX pendiente en la sesión anterior (se recuerda aquí).
@@ -1037,10 +1080,23 @@ internal fun ModalCompletarSesion(
             Spacer(Modifier.height(12.dp))
         }
 
+        // Fisioterapia: dolor al entrar / al salir (opcional).
+        if (esFisio) {
+            pe.saniape.app.ui.clinica.fisio.BloqueEva(
+                dolorInicio, dolorFin, onInicio = { dolorInicio = it }, onFin = { dolorFin = it },
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+
         TarjetaForm(titulo = "Procedimientos realizados", icono = "🩹") {
             pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
                 value = tecnicas, onChange = { tecnicas = it },
             )
+            // Fisioterapia: dictar las técnicas ("TENS y compresa caliente") → chips para revisar.
+            if (dictado != null && dictado.disponible) {
+                Spacer(Modifier.height(6.dp))
+                pe.saniape.app.ui.clinica.fisio.BotonDictar(dictado, "tecnicas")
+            }
             // De dónde viene lo que ya está escrito: que el fisio sepa que lo trajo el
             // sistema (para leerlo y ajustar), no que lo tecleó él.
             val vienePrevia = anterior?.notas?.takeIf { it.isNotBlank() } == tecnicas && tecnicas.isNotBlank()
@@ -1076,7 +1132,14 @@ internal fun ModalCompletarSesion(
                 )
                 // Chips rápidos: los añaden al texto en vez de teclear (evolución típica).
                 Spacer(Modifier.height(8.dp))
-                androidx.compose.foundation.layout.FlowRow(
+                if (esFisio) {
+                    // Fisioterapia: los mismos chips que la web (tocar agrega / quita) + dictado.
+                    pe.saniape.app.ui.clinica.fisio.ChipsMejoriaFisio(mejorias) { mejorias = it }
+                    if (dictado != null && dictado.disponible) {
+                        Spacer(Modifier.height(8.dp))
+                        pe.saniape.app.ui.clinica.fisio.BotonDictar(dictado, "mejorias")
+                    }
+                } else androidx.compose.foundation.layout.FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
@@ -1652,6 +1715,8 @@ private fun ContenidoAtenciones(
     hitos: pe.saniape.app.data.staff.HitosPaciente?,
     recargaToken: Int,
     tratEsDental: (TratamientoPaciente) -> Boolean = { false },
+    tratEsFisio: (TratamientoPaciente) -> Boolean = { false },
+    onNuevoPaquete: (TratamientoPaciente) -> Unit = {},
     onCompletarSesion: (SesionFicha, SesionFicha?, String?, TratamientoPaciente) -> Unit,
     onRecargar: () -> Unit,
     onEditarTrat: (TratamientoPaciente) -> Unit,
@@ -1715,6 +1780,10 @@ private fun ContenidoAtenciones(
             pacienteId = paciente.id, puedeFotos = ctx.can("fotosEvolutivas"),
             puedeIA = ctx.can("ia"),
             esDental = tratEsDental(t),
+            esFisio = tratEsFisio(t),
+            onNuevoPaquete = onNuevoPaquete,
+            citasFuturasPendientes = hitos?.citasFuturasPendientes.orEmpty()
+                .filter { it.first == t.id }.map { it.second },
             recargaToken = recargaToken,
             consultaDone = citaC != null, evalDone = citaE != null,
             citaConsulta = citaC, citaEvaluacion = citaE,

@@ -88,6 +88,12 @@ fun ModalCrearTratamiento(
     diagnosticoPrevio: String?,   // del paciente/evaluación, para precargar
     onCancelar: () -> Unit,
     onGuardar: (TratamientoNuevo) -> Unit,
+    /**
+     * Fisioterapia (M3) · "📦 Nuevo paquete": el tratamiento que se acaba. Prellena
+     * el MISMO servicio, profesional, modalidad y tamaño del paquete ORIGINAL (sin
+     * ampliaciones), con sus precios; todo se puede cambiar antes de crear.
+     */
+    renovacion: pe.saniape.app.data.staff.TratamientoPaciente? = null,
 ) {
     val c = Sania.colors
     var procedimientos by remember { mutableStateOf<List<ProcedimientoRef>>(emptyList()) }
@@ -111,6 +117,8 @@ fun ModalCrearTratamiento(
     var plantilla by remember { mutableStateOf<PlantillaRef?>(null) }
     // La plantilla se aplica DESPUÉS del prefill del servicio (LaunchedEffect) para no ser pisada.
     var plantillaPend by remember { mutableStateOf<PlantillaRef?>(null) }
+    // Igual que la plantilla: la renovación se aplica DESPUÉS del prefill del servicio.
+    var renovPend by remember { mutableStateOf(renovacion) }
     // medicación y próximo control: no se piden al crear (se llenan al editar tras atender).
     // Campañas de descuento vigentes (⚡ promos): se ofrecen al elegir el servicio.
     var campanias by remember { mutableStateOf<List<pe.saniape.app.data.staff.CampaniaApp>>(emptyList()) }
@@ -140,6 +148,16 @@ fun ModalCrearTratamiento(
             miTer?.especialidadIds?.singleOrNull()?.let { espId ->
                 especialidad = esps.find { it.id == espId } ?: especialidad
             }
+        }
+        // Nuevo paquete: mismo servicio/profesional/evaluación de origen que el que se acaba.
+        renovacion?.let { r ->
+            if (miTerapeutaId == null) r.terapeutaId?.let { tId -> terapeuta = ters.find { it.id == tId } ?: terapeuta }
+            r.citaOrigenId?.let { cId -> evaluacion = evaluaciones.find { it.id == cId } }
+            val pr = procedimientos.find { it.id == r.procedimientoId }
+            if (pr != null) {
+                pr.especialidadId?.let { eId -> especialidad = esps.find { it.id == eId } ?: especialidad }
+                proc = pr   // dispara el prefill del servicio; luego se aplica renovPend
+            } else renovPend = null
         }
     }
 
@@ -177,6 +195,13 @@ fun ModalCrearTratamiento(
             // Servicio único (simple + precio > 0): el acordado arranca en el precio base.
             if (p.modoCobro == "simple" && p.precio > 0) precioAcordado = p.precio.toString()
             // Plantilla elegida: SUS valores comerciales mandan sobre el prefill del servicio.
+            renovPend?.let { r ->
+                r.modalidad?.takeIf { it == "Paquete" || it == "Sesión suelta" }?.let { modalidad = it }
+                (r.sesionesBase ?: r.totalSesiones).takeIf { it > 0 }?.let { totalSesiones = it.toString() }
+                r.precioPaquete?.let { precioPaquete = it.toString() }
+                r.precioPorSesion?.let { precioPorSesion = it.toString() }
+                renovPend = null
+            }
             plantillaPend?.let { pl ->
                 pl.modalidad?.takeIf { it == "Paquete" || it == "Sesión suelta" }?.let { modalidad = it }
                 pl.totalSesiones?.let { totalSesiones = it.toString() }
@@ -211,7 +236,7 @@ fun ModalCrearTratamiento(
         ) {
             // ── Header navy (el "negro" de la marca) ──────────────────────
             Column(Modifier.fillMaxWidth().background(c.navyDark).padding(horizontal = 18.dp, vertical = 16.dp)) {
-                Text("Nuevo tratamiento", color = c.sobreNavy, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                Text(if (renovacion != null) "📦 Nuevo paquete" else "Nuevo tratamiento", color = c.sobreNavy, fontSize = 19.sp, fontWeight = FontWeight.Bold)
                 Text(
                     when {
                         esUnidades -> "Por unidades · ${proc?.unidadLabel ?: "unidades"} × precio"

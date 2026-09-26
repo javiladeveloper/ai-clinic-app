@@ -70,6 +70,15 @@ fun TarjetaTratamiento(
     puedeFotos: Boolean = false,   // feature fotosEvolutivas (Premium)
     puedeIA: Boolean = false,      // feature ia (Plus): sugerencia de sesión
     esDental: Boolean = false,     // tratamiento dental: "Piezas del plan" (solo odontología)
+    /**
+     * Tratamiento de FISIOTERAPIA (`citaEsFisio`): curva de dolor, aviso de renovación
+     * y "🚪 No volvió". En false la tarjeta queda exactamente como antes.
+     */
+    esFisio: Boolean = false,
+    /** "📦 Nuevo paquete" del aviso de renovación (abre el form prellenado). */
+    onNuevoPaquete: (TratamientoPaciente) -> Unit = {},
+    /** sesion_id de las citas futuras pendientes de ESTE tratamiento (de los hitos). */
+    citasFuturasPendientes: List<String?> = emptyList(),
     recargaToken: Int = 0,         // cambia tras cualquier acción de la ficha → refresca las sesiones
     consultaDone: Boolean = false,   // para la barra de recorrido (de los hitos del paciente)
     evalDone: Boolean = false,
@@ -116,6 +125,9 @@ fun TarjetaTratamiento(
     var cambioEstado by remember { mutableStateOf<Pair<SesionFicha, String>?>(null) }
     // Confirmación de alta (antes era 1 toque directo, fácil de tocar por error).
     var confirmarAlta by remember { mutableStateOf(false) }
+    // Fisio (M4): modal "No volvió" abierto (con cuántas citas/sesiones futuras tiene).
+    var noVolvioFuturas by remember { mutableStateOf<Int?>(null) }
+    var guardandoNoVolvio by remember { mutableStateOf(false) }
 
     val estado = EstadosColor.cita(t.estado)
     val terminado = t.estado == "Alta" || t.estado == "Cancelado" || t.estado == "Suspendido"
@@ -189,6 +201,14 @@ fun TarjetaTratamiento(
                     }
                     val sub = listOfNotNull(t.especialidadNombre, t.terapeutaNombre?.let { "con $it" }).joinToString(" · ")
                     if (sub.isNotBlank()) Text(sub, color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 1.dp))
+                    // M4: por qué y cuándo se cerró por abandono (solo si se marcó así).
+                    if (pe.saniape.app.data.staff.esNoVolvio(t.estado, t.noVolvio)) {
+                        val cuando = t.cerradoAt?.take(10)?.split("-")?.takeIf { it.size == 3 }
+                            ?.let { (a, m, d) -> "$d/$m/$a" }
+                        Text(listOfNotNull("🚪 No volvió", t.motivoCierre, cuando).joinToString(" · "),
+                            color = c.pend, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 2.dp))
+                    }
                 }
                 Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(estado.bg)
                     .padding(horizontal = 8.dp, vertical = 3.dp)) {
@@ -264,6 +284,19 @@ fun TarjetaTratamiento(
             }
         }
 
+        // Fisio (M3): al paquete le quedan 1–2 sesiones → ofrecer renovar.
+        if (esFisio) {
+            pe.saniape.app.data.staff.avisoRenovacion(t.estado, t.modalidad, t.totalSesiones, t.sesionesCompletadas)
+                ?.let { restantes ->
+                    Spacer(Modifier.height(8.dp))
+                    pe.saniape.app.ui.clinica.fisio.AvisoRenovacion(
+                        restantes = restantes,
+                        onAmpliar = if (puedeSesionesEf) ({ onAmpliar(t) }) else null,
+                        onNuevoPaquete = if (puedeSesionesEf && t.procedimientoId != null) ({ onNuevoPaquete(t) }) else null,
+                    )
+                }
+        }
+
         // Acciones del tratamiento (⋯): editar / ampliar / suspender / cancelar / reactivar.
         if (puedeSesionesEf) {
             Spacer(Modifier.height(6.dp))
@@ -290,6 +323,24 @@ fun TarjetaTratamiento(
                     when (t.estado) {
                         "Activo" -> {
                             ItemMenu("⏸ Suspender", c.pend) { menuTrat = false; onCambiarEstadoTrat(t.id, "Suspendido") }
+                            // Fisio (M4): cierre por abandono con motivo. No dental (libera piezas),
+                            // ni Unidades/Consulta (no tienen "sesiones que faltan").
+                            if (esFisio && !esDental && pe.saniape.app.data.staff.puedeMarcarNoVolvio(t.estado, t.modalidad, t.totalSesiones)) {
+                                ItemMenu("🚪 No volvió", c.pend) {
+                                    menuTrat = false
+                                    if (accionando) return@ItemMenu
+                                    scope.launch {
+                                        // Cuántas citas/sesiones futuras pendientes tiene (una sesión con
+                                        // su cita cuenta una vez). Las sesiones se piden solo si la
+                                        // tarjeta no las tenía cargadas.
+                                        val lista = sesiones ?: runCatching { PacientesRepo.sesionesDe(t.id) }.getOrNull().orEmpty()
+                                        val hoy = pe.saniape.app.data.staff.hoyClinicaIso()
+                                        val conCita = citasFuturasPendientes.filterNotNull().toSet()
+                                        noVolvioFuturas = citasFuturasPendientes.size +
+                                            lista.count { it.pendiente && it.fecha >= hoy && it.id !in conCita }
+                                    }
+                                }
+                            }
                             ItemMenu("✗ Cancelar", c.error) { menuTrat = false; onCambiarEstadoTrat(t.id, "Cancelado") }
                         }
                         "Suspendido", "Cancelado" ->
@@ -363,6 +414,14 @@ fun TarjetaTratamiento(
                     CircularProgressIndicator(color = c.navy, strokeWidth = 2.dp)
                 }
                 else -> {
+                    // Fisioterapia (M1): curva del dolor EVA por sesión, solo si hay datos.
+                    if (esFisio) {
+                        val puntos = pe.saniape.app.data.staff.curvaDolor(s)
+                        if (puntos.isNotEmpty()) {
+                            pe.saniape.app.ui.clinica.fisio.CurvaDolor(puntos)
+                            Spacer(Modifier.height(Sania.dim.sm))
+                        }
+                    }
                     // Odontología: arriba de las sesiones, qué piezas cubre el plan y
                     // cuáles ya se hicieron (y en qué sesión). Otros rubros: nada.
                     if (esDental && pacienteId.isNotBlank()) {
@@ -506,6 +565,32 @@ fun TarjetaTratamiento(
                         onAltaHecha(t)
                     } else pe.saniape.app.ui.Toaster.error("No se pudo dar de alta")
                     onCambioRealizado()
+                }
+            },
+        )
+    }
+    // Fisio (M4) · "No volvió": cierre por abandono (misma acción canónica que la web).
+    noVolvioFuturas?.let { futuras ->
+        pe.saniape.app.ui.clinica.fisio.ModalNoVolvio(
+            nombreTratamiento = t.procedimiento ?: "El tratamiento",
+            futurasPendientes = futuras,
+            guardando = guardandoNoVolvio,
+            onCancelar = { noVolvioFuturas = null },
+            onConfirmar = { d ->
+                if (guardandoNoVolvio) return@ModalNoVolvio
+                guardandoNoVolvio = true
+                scope.launch {
+                    val r = PacientesRepo.marcarNoVolvio(t.id, d.motivo, d.detalle, d.fecha, d.cancelarFuturas)
+                    guardandoNoVolvio = false
+                    if (r.registrada) {
+                        noVolvioFuturas = null
+                        if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Tratamiento cerrado: no volvió. Puedes reactivarlo si regresa.")
+                        // Pudo cancelar sesiones futuras: la recarga de la ficha (recargaToken)
+                        // vuelve a leer las sesiones si la tarjeta las tenía cargadas.
+                        onCambioRealizado()
+                    } else {
+                        pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo cerrar el tratamiento")
+                    }
                 }
             },
         )

@@ -80,6 +80,17 @@ data class TratamientoPaciente(
     val cantidadUnidades: Int? = null,
     val precioUnitario: Double? = null,
     val unidadLabel: String? = null,     // "folículos", "piezas"… (del procedimiento)
+    // ── Fisioterapia (M3/M4): renovar el paquete y "No volvió" ──
+    val procedimientoId: String? = null,
+    /** Tamaño del paquete ORIGINAL (no null = se amplió): el "Nuevo paquete" lo repite. */
+    val sesionesBase: Int? = null,
+    val citaOrigenId: String? = null,
+    /** Cerrado por abandono (estado Suspendido + no_volvio). */
+    val noVolvio: Boolean = false,
+    val motivoCierre: String? = null,
+    val cerradoAt: String? = null,
+    /** Especialidades del profesional: el último respaldo de `citaEsFisio`. */
+    val especialidadesProfesional: List<String> = emptyList(),
 ) {
     /** Monto total acordado del tratamiento (igual que la web). */
     val montoAcordado: Double
@@ -128,6 +139,9 @@ data class SesionFicha(
      * entrar ya en un cierre de caja de un día anterior.
      */
     val fechaPago: String? = null,
+    /** Fisioterapia (M1): dolor EVA 0–10 al entrar / al salir. */
+    val dolorInicio: Int? = null,
+    val dolorFin: Int? = null,
 ) {
     val pendiente: Boolean
         get() = estado == "Planificada" || estado == "En progreso" || estado == "Reprogramada"
@@ -222,6 +236,10 @@ data class HitosPaciente(
     // TODAS las consultas/evaluaciones completadas (cada tarjeta filtra las de SU especialidad).
     val consultas: List<CitaHito> = emptyList(),
     val evaluaciones: List<CitaHito> = emptyList(),
+    /** Fisio (M10): citas marcadas "No asistió" (sin aviso). Solo visibilidad. */
+    val faltasSinAviso: Int = 0,
+    /** Citas futuras Pendiente/Confirmada: (tratamientoId, sesionId) — para "No volvió". */
+    val citasFuturasPendientes: List<Pair<String, String?>> = emptyList(),
 )
 
 /** Una evaluación completada del paciente (origen de un tratamiento). */
@@ -357,6 +375,7 @@ object PacientesRepo {
             precio_paquete, precio_por_sesion, precio_acordado, terapeuta_id,
             cantidad_unidades, precio_unitario,
             diagnostico, medicacion, proximo_control, nota_recepcion, tecnicas_sugeridas,
+            procedimiento_id, sesiones_base, cita_origen_id, no_volvio, motivo_cierre, cerrado_at,
             procedimiento:procedimientos(nombre, especialidad_id, modo_cobro, precio, unidad_label, especialidad:especialidades(nombre, usa_sesiones)),
             terapeuta:terapeutas(id, nombre, especialidades:terapeuta_especialidades(especialidad:especialidades(id, nombre)))
         )
@@ -613,7 +632,7 @@ object PacientesRepo {
     suspend fun sesionesDe(tratamientoId: String): List<SesionFicha> {
         val filas = Supabase.client.postgrest["sesiones"]
             .select(Columns.raw(
-                "id, numero, fecha, hora, estado, costo, notas, mejorias, rx_pendiente, duracion, motivo_estado, " +
+                "id, numero, fecha, hora, estado, costo, notas, mejorias, rx_pendiente, duracion, motivo_estado, dolor_inicio, dolor_fin, " +
                     "terapeuta:terapeutas(nombre), pagos:pagos_tratamiento(id, fecha)"
             )) {
                 filter { eq("tratamiento_id", tratamientoId) }
@@ -644,6 +663,8 @@ object PacientesRepo {
                 motivoEstado = o.str("motivo_estado"),
                 pagada = tienePago,
                 fechaPago = fechaDelPago,
+                dolorInicio = o.int("dolor_inicio"),
+                dolorFin = o.int("dolor_fin"),
             )
         }
     }
@@ -656,7 +677,7 @@ object PacientesRepo {
         /** Odontología: ids de dientes_hallazgos hechos en esta sesión. null = no tocar el odontograma. */
         piezas: List<String>? = null,
     ): Boolean = postStaff("/api/staff/sesion/estado",
-        cuerpoEstadoSesion(sesionId, estado, motivo, fecha, hora, notas, mejorias, rxPendiente, piezas))
+        cuerpoEstadoSesion(sesionId, estado, motivo, fecha, hora, notas, mejorias, rxPendiente, piezas, null))
 
     /** Como [cambiarEstadoSesion], con el detalle del rechazo (no lo muestra). */
     suspend fun cambiarEstadoSesionDetalle(
@@ -664,12 +685,15 @@ object PacientesRepo {
         motivo: String? = null, fecha: String? = null, hora: String? = null,
         notas: String? = null, mejorias: String? = null, rxPendiente: Boolean? = null,
         piezas: List<String>? = null,
+        /** Fisioterapia: (dolor al entrar, al salir). null = no es fisio → no se manda nada. */
+        eva: Pair<Int?, Int?>? = null,
     ): pe.saniape.app.data.offline.ResultadoEscritura = postStaffDetalle("/api/staff/sesion/estado",
-        cuerpoEstadoSesion(sesionId, estado, motivo, fecha, hora, notas, mejorias, rxPendiente, piezas))
+        cuerpoEstadoSesion(sesionId, estado, motivo, fecha, hora, notas, mejorias, rxPendiente, piezas, eva))
 
     private fun cuerpoEstadoSesion(
         sesionId: String, estado: String, motivo: String?, fecha: String?, hora: String?,
         notas: String?, mejorias: String?, rxPendiente: Boolean?, piezas: List<String>?,
+        eva: Pair<Int?, Int?>?,
     ): JsonObject = buildJsonObject {
         put("sesionId", sesionId)
         put("estado", estado)
@@ -684,6 +708,8 @@ object PacientesRepo {
         if (rxPendiente != null) put("rxPendiente", rxPendiente)
         // Solo sesiones DENTALES lo mandan (una lista vacía también: deja la sesión sin piezas).
         if (piezas != null) put("piezas", kotlinx.serialization.json.JsonArray(piezas.map { JsonPrimitive(it) }))
+        // Fisioterapia (M1): EVA 0–10. Solo sesiones de fisio lo mandan (null = limpiar).
+        if (eva != null) { put("dolorInicio", eva.first); put("dolorFin", eva.second) }
     }
 
     /** Pagos registrados de un tratamiento (para la PagoCard de la ficha). */
@@ -873,6 +899,21 @@ object PacientesRepo {
     /** SERVICIO ÚNICO: revertir el servicio realizado (vuelve a Activo; el pago se conserva). */
     suspend fun revertirServicio(tratamientoId: String): Boolean =
         cambiarEstadoTratamiento(tratamientoId, "Activo")
+
+    /**
+     * Fisioterapia (M4) · "No volvió": cierra el tratamiento abandonado (Suspendido +
+     * no_volvio) con motivo y fecha; opcionalmente cancela lo futuro. Misma acción
+     * canónica que la ficha web (`marcarNoVolvioAccion`). Reactivar = estado Activo.
+     */
+    suspend fun marcarNoVolvio(
+        tratamientoId: String, motivo: String, detalle: String?, fecha: String, cancelarFuturas: Boolean,
+    ): pe.saniape.app.data.offline.ResultadoEscritura = postStaffDetalle("/api/staff/tratamiento/accion", buildJsonObject {
+        put("accion", "no_volvio"); put("tratamientoId", tratamientoId)
+        put("motivo", motivo)
+        if (!detalle.isNullOrBlank()) put("detalle", detalle.trim())
+        put("fecha", fecha)
+        put("cancelarFuturas", cancelarFuturas)
+    })
 
     suspend fun ampliarTratamiento(tratamientoId: String, sesionesExtra: Int, montoExtra: Double, nota: String?): Boolean =
         accionTratamiento(buildJsonObject {
@@ -1113,7 +1154,7 @@ object PacientesRepo {
         val citasD = async {
             runCatching {
                 Supabase.client.postgrest["citas"]
-                    .select(Columns.raw("id, fecha, hora, tipo, estado, costo, notas, especialidad_id, tratamiento_id, terapeuta:terapeutas(nombre)")) {
+                    .select(Columns.raw("id, fecha, hora, tipo, estado, costo, notas, especialidad_id, tratamiento_id, sesion_id, no_asistio, terapeuta:terapeutas(nombre)")) {
                         filter { eq("paciente_id", pacienteId) }
                         order("fecha", Order.DESCENDING)
                     }
@@ -1176,6 +1217,11 @@ object PacientesRepo {
             ultimaAtencionFecha = ultima?.str("fecha"),
             consultas = consultas,
             evaluaciones = evaluaciones,
+            // Misma lista (sin consulta extra): faltas sin aviso y citas futuras pendientes.
+            faltasSinAviso = filas.count { esFaltaSinAviso(it.str("estado"), it.str("notas"), it.bool("no_asistio") == true) },
+            citasFuturasPendientes = filas
+                .filter { (it.str("fecha") ?: "") >= hoy && it.str("estado") in listOf("Pendiente", "Confirmada") }
+                .mapNotNull { f -> f.str("tratamiento_id")?.let { it to f.str("sesion_id") } },
         )
     }
 
@@ -1250,6 +1296,13 @@ object PacientesRepo {
                 cantidadUnidades = t.int("cantidad_unidades"),
                 precioUnitario = t.dbl("precio_unitario"),
                 unidadLabel = procObj?.str("unidad_label"),
+                procedimientoId = t.str("procedimiento_id"),
+                sesionesBase = t.int("sesiones_base"),
+                citaOrigenId = t.str("cita_origen_id"),
+                noVolvio = t.bool("no_volvio") == true,
+                motivoCierre = t.str("motivo_cierre"),
+                cerradoAt = t.str("cerrado_at"),
+                especialidadesProfesional = espsProf?.mapNotNull { it.str("id") }?.distinct().orEmpty(),
             )
         }
         return PacienteStaff(

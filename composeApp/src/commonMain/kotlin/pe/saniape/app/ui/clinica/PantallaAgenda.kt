@@ -314,6 +314,12 @@ fun PantallaAgenda(
             ModalCompletar(
                 cita = cita, especialidades = vm.especialidades, flujo = flujoCita,
                 esDental = vm.esDental(cita),
+                esFisio = vm.esFisio(cita),
+                onConfirmarFisio = { obs, piezas, mejorias, eva ->
+                    completar = null
+                    revisada = null
+                    vm.ejecutar(AccionCita.Completar, cita, obs, piezas = piezas, mejorias = mejorias, eva = eva)
+                },
                 diagnosticoInicial = revisada?.takeIf { it.first == cita.id }?.second ?: "",
                 onCancelar = { completar = null; revisada = null },
                 onConfirmar = { obs, diag, espId, piezas ->

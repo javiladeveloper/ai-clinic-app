@@ -272,7 +272,9 @@ fun PantallaSesiones(
 
     // ── Modal: completar (el mismo de la ficha) ──
     completar?.let { (sg, cc) ->
-        val esDental = pe.saniape.app.data.staff.esServicioDental(cc.especialidadId, ctx.mapaDental)
+        // esServicioDental da true cuando la clínica NO tiene odontología (DALU): sin
+        // este chequeo, completar desde Sesiones mostraba "¿Qué se le hizo hoy?" en fisio.
+        val esDental = ctx.haceOdontologia && pe.saniape.app.data.staff.esServicioDental(cc.especialidadId, ctx.mapaDental)
         pe.saniape.app.ui.clinica.pacientes.ModalCompletarSesion(
             ses = cc.ses,
             anterior = cc.anterior,
@@ -281,8 +283,10 @@ fun PantallaSesiones(
             pacienteId = sg.pacienteId.orEmpty(),
             tratamientoId = sg.tratamientoId,
             esDental = esDental,
+            // Fisioterapia (EVA, chips, dictado): por el servicio del tratamiento, como la web.
+            esFisio = pe.saniape.app.data.staff.citaEsFisio(ctx.mapaFisio, especialidadServicioId = cc.especialidadId),
             onCancelar = { completar = null },
-            onConfirmar = { tecnicas, mejorias, dejoRx, pago, piezas ->
+            onConfirmar = { tecnicas, mejorias, dejoRx, pago, piezas, eva ->
                 completar = null
                 if (accionando) return@ModalCompletarSesion
                 accionando = true
@@ -293,6 +297,7 @@ fun PantallaSesiones(
                         mejorias = if (cc.ses.numero > 1) mejorias.orEmpty() else null,
                         rxPendiente = dejoRx,
                         piezas = piezas,
+                        eva = eva,
                     )
                     if (r.registrada) {
                         if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Sesión #${cc.ses.numero} completada")

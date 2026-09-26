@@ -75,6 +75,13 @@ fun ModalCompletar(
     profesionales: List<pe.saniape.app.data.staff.TerapeutaRef>? = null,
     /** Variante de [onConfirmar] con quién atendió (id), para cuando se pidió [profesionales]. */
     onConfirmarConProfesional: ((observaciones: String?, diagnostico: String?, derivarEspId: String?, piezas: List<String>?, terapeutaId: String?) -> Unit)? = null,
+    /**
+     * Sesión de FISIOTERAPIA (`citaEsFisio`): EVA al entrar/salir, mejorías con los
+     * chips de fisio (desde la sesión #2) y dictado 🎤. En false, como siempre.
+     */
+    esFisio: Boolean = false,
+    /** Cierre de la sesión de fisio: observaciones, piezas, mejorías (null = no tocar) y EVA. */
+    onConfirmarFisio: ((observaciones: String?, piezas: List<String>?, mejorias: String?, eva: Pair<Int?, Int?>) -> Unit)? = null,
 ) {
     val c = Sania.colors
     var terapeutaElegido by remember { mutableStateOf<String?>(null) }
@@ -93,6 +100,16 @@ fun ModalCompletar(
     // true = la lista de piezas cargó; solo entonces se mandan (ver PiezasTratadas).
     var piezasListas by remember { mutableStateOf(false) }
     val conPiezas = esDental && !esEvaluacion && cita.tipo == "Sesión" && cita.pacienteId != null
+    // Fisioterapia: solo en citas de Sesión (no en la evaluación) y con su callback.
+    val fisioSesion = esFisio && !esEvaluacion && cita.tipo == "Sesión" && onConfirmarFisio != null
+    val pideMejorias = fisioSesion && (cita.numeroSesion ?: 0) > 1
+    var dolorInicio by remember { mutableStateOf<Int?>(null) }
+    var dolorFin by remember { mutableStateOf<Int?>(null) }
+    var mejorias by remember { mutableStateOf("") }
+    val dictado = if (fisioSesion) pe.saniape.app.ui.clinica.fisio.recordarDictadoCampos { campo, dicho ->
+        if (campo == "tecnicas") texto = pe.saniape.app.data.staff.sumarTecnicasDictadas(texto, dicho)
+        else mejorias = pe.saniape.app.data.staff.unirDictado(mejorias, dicho)
+    } else null
 
     AlertDialog(
         onDismissRequest = onCancelar,
@@ -107,7 +124,14 @@ fun ModalCompletar(
             }
         },
         text = {
-            Column {
+            // Con EVA y mejorías (fisio) el contenido crece: se puede desplazar.
+            Column(if (fisioSesion) Modifier.verticalScroll(rememberScrollState()) else Modifier) {
+                if (fisioSesion) {
+                    pe.saniape.app.ui.clinica.fisio.BloqueEva(
+                        dolorInicio, dolorFin, onInicio = { dolorInicio = it }, onFin = { dolorFin = it },
+                    )
+                    Spacer(Modifier.height(Sania.dim.lg))
+                }
                 if (esEvaluacion) {
                     Text("Diagnóstico / Motivo", color = c.textoSuave, fontSize = Sania.txt.mini,
                         fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
@@ -138,6 +162,27 @@ fun ModalCompletar(
                     pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
                         value = texto, onChange = { texto = it },
                     )
+                    if (dictado != null && dictado.disponible) {
+                        Spacer(Modifier.height(6.dp))
+                        pe.saniape.app.ui.clinica.fisio.BotonDictar(dictado, "tecnicas")
+                    }
+                    if (pideMejorias) {
+                        Spacer(Modifier.height(Sania.dim.lg))
+                        Text("Mejorías / evolución", color = c.textoSuave, fontSize = Sania.txt.mini,
+                            fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
+                        OutlinedTextField(
+                            colors = pe.saniape.app.ui.clinica.pacientes.coloresCampoForm(),
+                            value = mejorias, onValueChange = { mejorias = it },
+                            placeholder = { Text("Ej: Menos dolor al caminar…", color = c.textoSuave) },
+                            modifier = Modifier.fillMaxWidth(), minLines = 2,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        pe.saniape.app.ui.clinica.fisio.ChipsMejoriaFisio(mejorias) { mejorias = it }
+                        if (dictado != null && dictado.disponible) {
+                            Spacer(Modifier.height(8.dp))
+                            pe.saniape.app.ui.clinica.fisio.BotonDictar(dictado, "mejorias")
+                        }
+                    }
                 }
                 if (esEvaluacion && profesionales != null) {
                     Spacer(Modifier.height(Sania.dim.lg))
@@ -211,6 +256,11 @@ fun ModalCompletar(
                         val esp = if (esEvaluacion && derivar) espElegida?.id else null
                         val pz = if (conPiezas && piezasListas) piezas else null
                         val conProf = onConfirmarConProfesional
+                        val fisio = onConfirmarFisio
+                        if (fisioSesion && fisio != null) {
+                            fisio(obs, pz, if (pideMejorias) mejorias.trim().ifBlank { null } else null, dolorInicio to dolorFin)
+                            return@clickable
+                        }
                         if (conProf != null) conProf(obs, diag, esp, pz, if (esEvaluacion) terapeutaElegido else null)
                         else onConfirmar(obs, diag, esp, pz)
                     }.padding(horizontal = 20.dp, vertical = 11.dp),

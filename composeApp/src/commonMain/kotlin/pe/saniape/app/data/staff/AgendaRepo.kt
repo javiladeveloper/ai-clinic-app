@@ -200,7 +200,7 @@ object AgendaRepo {
         /** Odontología: evaluación dental → foto fija del odontograma del día (la web la guarda). */
         congelarOdontograma: Boolean = false,
     ): Boolean = enviarOEncolar("cita:completar", "/api/staff/cita/completar",
-        cuerpoCompletar(citaId, observaciones, diagnostico, derivarEspecialidadId, piezas, congelarOdontograma, null))
+        cuerpoCompletar(citaId, observaciones, diagnostico, derivarEspecialidadId, piezas, congelarOdontograma, null, null, null))
 
     /**
      * Como [completar], pero devuelve el detalle del rechazo (p. ej. SIN_PROFESIONAL,
@@ -215,14 +215,19 @@ object AgendaRepo {
         piezas: List<String>? = null,
         congelarOdontograma: Boolean = false,
         terapeutaId: String? = null,
+        /** Fisioterapia (sesión): evolución. null = no se manda. */
+        mejorias: String? = null,
+        /** Fisioterapia: EVA (al entrar, al salir). null = no es fisio → no se manda nada. */
+        eva: Pair<Int?, Int?>? = null,
     ): pe.saniape.app.data.offline.ResultadoEscritura = enviarOEncolarDetalle(
         "cita:completar", "/api/staff/cita/completar",
-        cuerpoCompletar(citaId, observaciones, diagnostico, derivarEspecialidadId, piezas, congelarOdontograma, terapeutaId),
+        cuerpoCompletar(citaId, observaciones, diagnostico, derivarEspecialidadId, piezas, congelarOdontograma, terapeutaId, mejorias, eva),
     )
 
     private fun cuerpoCompletar(
         citaId: String, observaciones: String?, diagnostico: String?, derivarEspecialidadId: String?,
         piezas: List<String>?, congelarOdontograma: Boolean, terapeutaId: String?,
+        mejorias: String?, eva: Pair<Int?, Int?>?,
     ): JsonObject {
         return buildJsonObject {
             put("citaId", citaId)
@@ -232,6 +237,8 @@ object AgendaRepo {
             if (piezas != null) put("piezas", kotlinx.serialization.json.JsonArray(piezas.map { kotlinx.serialization.json.JsonPrimitive(it) }))
             if (congelarOdontograma) put("odontograma", true)
             if (!terapeutaId.isNullOrBlank()) put("terapeutaId", terapeutaId)
+            if (mejorias != null) put("mejorias", mejorias)
+            if (eva != null) { put("dolorInicio", eva.first); put("dolorFin", eva.second) }
         }
     }
 

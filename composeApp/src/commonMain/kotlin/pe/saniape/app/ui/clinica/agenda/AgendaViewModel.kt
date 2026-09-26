@@ -86,6 +86,12 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         cita.terapeutaId?.let { espsPorTerapeuta[it] },
     )
 
+    /** ¿Esta cita es de fisioterapia? (EVA, mejorías, dictado al completar). Gemelo de `citaEsFisio`. */
+    fun esFisio(cita: CitaStaff): Boolean = pe.saniape.app.data.staff.citaEsFisio(
+        ctx.mapaFisio, cita.especialidadId, cita.especialidadServicioId,
+        cita.terapeutaId?.let { espsPorTerapeuta[it] },
+    )
+
     /** Citas tras aplicar los filtros (lo que la pantalla pinta). */
     val citasFiltradas: List<CitaStaff>
         get() = citas.filter { c ->
@@ -292,6 +298,9 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         piezas: List<String>? = null, congelarOdontograma: Boolean = false,
         /** Quién atendió (solo si la cita no tiene profesional). */
         terapeutaId: String? = null,
+        /** Fisioterapia (sesión): evolución (null = no tocar) y EVA (null = no es fisio). */
+        mejorias: String? = null,
+        eva: Pair<Int?, Int?>? = null,
     ) {
         if (accionando) return
         viewModelScope.launch {
@@ -303,6 +312,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                         cita.id, observaciones, diagnostico, derivarEspId,
                         piezas = piezas, congelarOdontograma = congelarOdontograma,
                         terapeutaId = terapeutaId,
+                        mejorias = mejorias, eva = eva,
                     )
                     when {
                         r.registrada -> true
