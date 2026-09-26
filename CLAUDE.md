@@ -33,6 +33,14 @@ var en 8, endpoint en 6). Requiere el secret `VERCEL_DEPLOY_HOOK` además de tok
 **Antes de taggear:** subir `versionCode` en `composeApp/build.gradle.kts` (si no, la
 tienda rechaza con "version code usado"). Historial: v6=AAB manual, v7=1er CI, v8=actual.
 
+✨ **PASO OBLIGATORIO antes de taguear: `novedades/<versionName>.txt`** (p. ej.
+`novedades/2.15.2.txt` para `produccion-v2.15.2`). Arriba de `---` el resumen que va a
+Play Console como "Novedades de esta versión" (≤ 500 caracteres); abajo, el detalle
+que la app muestra en el diálogo "✨ Novedades" la primera vez que se abre tras
+actualizar (y en Más). Si falta, el CI falla antes de compilar. Revisar sin taguear:
+`gradlew.bat :composeApp:prepararNotasPlay -PversionNotas=2.15.2`. Detalle en
+`docs/ci-cd-despliegue.md` → "Novedades de cada versión".
+
 📖 **`docs/ci-cd-despliegue.md`** tiene TODO: los secrets (Play + Vercel), cómo se creó la
 cuenta de servicio de Google Play, y — clave — **los errores que superamos** al montarlo
 (gradlew +x, gem permisos, "Invalid JWT Signature" → JSON en base64, "version code usado").

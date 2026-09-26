@@ -79,6 +79,18 @@ fun App(
             }
         }
 
+        // "Novedades de la versión": solo en el panel de CLÍNICA (las notas hablan
+        // de agenda, odontograma, sesiones… nada de eso le sirve al paciente) y
+        // una sola vez por versión. Se decide al entrar al panel, no en la intro.
+        var novedades by remember { mutableStateOf<pe.saniape.app.data.Novedades.NotasVersion?>(null) }
+        var novedadesRevisadas by remember { mutableStateOf(false) }
+        LaunchedEffect(logueado, modo) {
+            if (logueado == true && modo == "clinica" && !novedadesRevisadas) {
+                novedadesRevisadas = true
+                novedades = runCatching { pe.saniape.app.data.Novedades.pendientesAlAbrir() }.getOrNull()
+            }
+        }
+
         LaunchedEffect(Unit) {
             Supabase.client.auth.sessionStatus.collect { status ->
                 when (status) {
@@ -181,6 +193,17 @@ fun App(
                     pe.saniape.app.ui.DialogoActualizacion(
                         onActualizar = { acciones.abrirUrl(url); avisoDescartado = true },
                         onMasTarde = { avisoDescartado = true },
+                    )
+                } ?: novedades?.takeIf { introLista && modo == "clinica" }?.let { n ->
+                    // 4) Recién actualizada: qué trae esta versión (una sola vez).
+                    //    Va detrás de los avisos de actualización para no apilar
+                    //    dos diálogos; si hay uno, espera a que se cierre.
+                    pe.saniape.app.ui.DialogoNovedades(
+                        notas = n,
+                        onCerrar = {
+                            pe.saniape.app.data.Novedades.marcarVista()
+                            novedades = null
+                        },
                     )
                 }
             }

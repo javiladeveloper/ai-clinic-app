@@ -9,8 +9,10 @@ import android.content.SharedPreferences
  */
 actual object Preferencias {
     private var prefs: SharedPreferences? = null
+    private var appContext: Context? = null
 
     fun init(context: Context) {
+        if (appContext == null) appContext = context.applicationContext
         if (prefs == null) {
             prefs = context.applicationContext.getSharedPreferences("sania_prefs", Context.MODE_PRIVATE)
         }
@@ -50,5 +52,20 @@ actual object Preferencias {
             if (nombre == null) remove("nombre_clinica") else putString("nombre_clinica", nombre)
             apply()
         }
+    }
+
+    actual fun ultimaNovedadVista(): String? = prefs?.getString("novedad_vista", null)
+
+    actual fun setUltimaNovedadVista(version: String) {
+        prefs?.edit()?.putString("novedad_vista", version)?.apply()
+    }
+
+    actual fun esInstalacionNueva(): Boolean {
+        val ctx = appContext ?: return false
+        return runCatching {
+            @Suppress("DEPRECATION")
+            val info = ctx.packageManager.getPackageInfo(ctx.packageName, 0)
+            info.firstInstallTime == info.lastUpdateTime
+        }.getOrDefault(false)
     }
 }

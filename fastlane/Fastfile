@@ -3,6 +3,25 @@
 # variables de entorno desde GitHub Actions (ver .github/workflows/).
 
 # ─────────────────────────── ANDROID ───────────────────────────
+
+# Novedades de la versión: el CI deja el texto en
+# fastlane/metadata/android/<locale>/changelogs/<versionCode>.txt (tarea Gradle
+# prepararNotasPlay, desde novedades/<versionName>.txt) y supply lo sube como
+# "Novedades de esta versión". skip_upload_metadata/images/screenshots siguen en
+# true: la FICHA se edita en Play Console; solo viajan las notas del release.
+#
+# Si Play rechaza el IDIOMA de las notas (la ficha no tiene ese idioma, p. ej.
+# PLAY_LOCALE mal puesto), publicar importa más que las notas: se reintenta sin
+# ellas y queda un aviso en el log. El edit fallido no se confirmó, así que el
+# segundo intento sube el mismo AAB sin chocar con el versionCode.
+def subir_a_play(opciones)
+  upload_to_play_store(**opciones)
+rescue => e
+  raise unless e.message =~ /language|locale|idioma|release ?notes/i
+  UI.important("⚠️ Play rechazó las novedades (#{e.message}). Se publica SIN notas: revisa la variable PLAY_LOCALE.")
+  upload_to_play_store(**opciones.merge(skip_upload_changelogs: true))
+end
+
 platform :android do
   # OJO: sube al canal de PRUEBAS CERRADAS (Closed testing), cuyo track en la API de
   # Google se llama "alpha" (el nombre por defecto del canal cerrado). NO es "internal"
@@ -11,7 +30,7 @@ platform :android do
   # porque el workflow la invoca así (fastlane android internal); lo que manda es el track.
   desc "Sube el AAB (ya compilado por Gradle) a Play Store, canal 'alpha' (Pruebas cerradas)"
   lane :internal do
-    upload_to_play_store(
+    subir_a_play(
       package_name: "pe.saniape.app",
       track: "alpha",                          # alpha = canal de PRUEBAS CERRADAS
       aab: "composeApp/build/outputs/bundle/release/composeApp-release.aab",
@@ -21,12 +40,14 @@ platform :android do
       skip_upload_metadata: true,
       skip_upload_images: true,
       skip_upload_screenshots: true,
+      metadata_path: "fastlane/metadata/android",
+      skip_upload_changelogs: false,           # las novedades SÍ viajan (ver subir_a_play)
     )
   end
 
   desc "Sube a producción y LANZA (el tag produccion-* promete live, no borrador)"
   lane :production do
-    upload_to_play_store(
+    subir_a_play(
       package_name: "pe.saniape.app",
       track: "production",
       aab: "composeApp/build/outputs/bundle/release/composeApp-release.aab",
@@ -39,6 +60,8 @@ platform :android do
       skip_upload_metadata: true,
       skip_upload_images: true,
       skip_upload_screenshots: true,
+      metadata_path: "fastlane/metadata/android",
+      skip_upload_changelogs: false,           # las novedades SÍ viajan (ver subir_a_play)
     )
   end
 end

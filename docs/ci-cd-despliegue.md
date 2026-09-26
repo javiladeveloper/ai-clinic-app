@@ -36,6 +36,71 @@ git tag ios-v2.1.0 && git push origin ios-v2.1.0
 
 ---
 
+## ✨ Novedades de cada versión (PASO OBLIGATORIO antes de taguear)
+
+Cada release de Android lleva sus notas, en español y en lenguaje de la clínica.
+**Una sola fuente:** `novedades/<versionName>.txt` (raíz del repo). De ahí salen:
+
+1. **Play Console** → "Novedades de esta versión". El CI corre
+   `gradlew :composeApp:prepararNotasPlay`, que copia el resumen a
+   `fastlane/metadata/android/<locale>/changelogs/<versionCode>.txt` (generado, no se
+   commitea) y `upload_to_play_store` lo sube.
+2. **La app** → diálogo "✨ Novedades de la versión X.Y.Z" que sale **una sola vez**
+   la primera vez que la clínica abre el panel tras actualizar (no en una instalación
+   nueva, no en el portal del paciente). También en **Más → Novedades de la versión**.
+   Gradle embebe todos los `novedades/*.txt` al compilar (`generarNovedades` →
+   objeto `NovedadesGeneradas`; lógica en `data/Novedades.kt`).
+
+### Formato del archivo
+
+```
+# comentario (no se publica en ningún lado)
+Odontología: resumen corto… (esto va a Play: MÁXIMO 500 caracteres)
+Fisioterapia: …
+---
+Odontología:
+• detalle que ve la clínica en la app
+• …
+Arreglos:
+• …
+```
+
+- Arriba de `---`: **resumen para Play** (≤ 500 caracteres; el CI falla si se pasa).
+- Abajo de `---` (opcional): **detalle para la app**. Si no hay detalle, la app
+  muestra el resumen. Una línea que termina en `:` y no empieza con viñeta es título
+  de grupo; `•`, `-` o `*` son viñetas.
+- Hablarle a la clínica ("anotas qué se hizo hoy"), no al programador (nada de
+  "endpoint", "cola 4xx", nombres de archivos).
+
+### Cómo se agrega en cada release
+
+1. Crear `novedades/2.15.2.txt` (el nombre = lo que va después de la `v` del tag:
+   `produccion-v2.15.2` → `2.15.2`).
+2. Revisarlo sin taguear:
+   `gradlew.bat :composeApp:prepararNotasPlay -PversionNotas=2.15.2`
+   (imprime `N/500 caracteres`; borra después `fastlane/metadata/` si quieres, está
+   en .gitignore).
+3. Commit + push a `master`, **después** el tag.
+
+Si falta el archivo, el paso **"Verificar y preparar novedades de la versión"** del
+workflow falla ANTES de compilar con `✗ FALTAN LAS NOVEDADES DE LA VERSIÓN X.Y.Z` —
+no se gasta el build ni se publica sin notas. Arreglo: crear el archivo, commit, y
+volver a empujar el tag (`git tag -f … && git push -f origin <tag>`, o borrar y
+recrear el tag).
+
+### Idioma de la ficha (locale)
+
+Play solo acepta notas en un idioma que la ficha tenga. El locale sale de la
+**variable de repo `PLAY_LOCALE`** (GitHub → Settings → Secrets and variables →
+Actions → *Variables*); si no existe se usa **`es-419`** (Español, Latinoamérica).
+Verificarlo en Play Console → *Presencia en Google Play → Ficha de Play Store
+principal* (el idioma predeterminado; si es "Español (España)" poner `es-ES`, si es
+"Español (Estados Unidos)" `es-US`). Si el idioma no coincide y Play rechaza las
+notas, el Fastfile (`subir_a_play`) reintenta **sin notas** para no tumbar el
+release y deja un aviso "⚠️ Play rechazó las novedades" en el log.
+
+---
+
 ## Secretos a configurar (una sola vez)
 
 ### 🤖 Android (5 secretos)
@@ -142,7 +207,9 @@ o replica esto (ej. iOS, u otra app), que los tenga en cuenta:
   5. La propagación de permisos puede tardar ~minutos.
 
 ### Regla de oro para cada release
-Subir el número de versión ANTES de taggear:
+Escribir `novedades/<versionName>.txt` ANTES de taguear (ver "Novedades de cada
+versión" arriba); si falta, el CI se corta. El versionCode de Android ya lo sube
+el CI desde el tag. Para iOS, subir el número de versión ANTES de taggear:
 - Android: `versionCode` en `composeApp/build.gradle.kts`.
 - iOS: `CFBundleVersion` en `iosApp/iosApp/Info.plist`.
 Si no, la tienda rechaza con "ya usado".

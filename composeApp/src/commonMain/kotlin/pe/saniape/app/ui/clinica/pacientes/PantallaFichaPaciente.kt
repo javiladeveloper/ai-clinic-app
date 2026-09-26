@@ -317,9 +317,18 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         modifier = Modifier.fillMaxWidth().clickable {
                             menuPaciente = false
                             scope.launch {
-                                val ok = PacientesRepo.cambiarEstadoPaciente(paciente.id, if (inactivo) "Nuevo" else "Inactivo")
-                                if (ok) pe.saniape.app.ui.Toaster.exito(if (inactivo) "Paciente reactivado" else "Paciente dado de baja")
-                                else pe.saniape.app.ui.Toaster.error("No se pudo actualizar")
+                                if (inactivo) {
+                                    // Reactivar por el endpoint compartido con la web: el
+                                    // estado de vuelta lo decide el servidor por su historia
+                                    // (antes era siempre 'Nuevo', aunque tuviera un plan en curso).
+                                    val r = pe.saniape.app.data.staff.ReactivarRepo.reactivar(paciente.id)
+                                    if (r.ok) pe.saniape.app.ui.Toaster.exito("Paciente reactivado" + (r.estado?.let { " · $it" } ?: ""))
+                                    else pe.saniape.app.ui.Toaster.error(r.error ?: "No se pudo reactivar")
+                                } else {
+                                    val ok = PacientesRepo.cambiarEstadoPaciente(paciente.id, "Inactivo")
+                                    if (ok) pe.saniape.app.ui.Toaster.exito("Paciente dado de baja")
+                                    else pe.saniape.app.ui.Toaster.error("No se pudo actualizar")
+                                }
                                 recargar()
                             }
                         }.padding(horizontal = Sania.dim.xl, vertical = Sania.dim.md),

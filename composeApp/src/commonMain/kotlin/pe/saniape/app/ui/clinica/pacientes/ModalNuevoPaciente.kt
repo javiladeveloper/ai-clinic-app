@@ -20,6 +20,7 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,7 +33,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import pe.saniape.app.data.staff.FichaDeBaja
+import pe.saniape.app.data.staff.ReactivarRepo
+import pe.saniape.app.data.staff.documentoCompleto
+import pe.saniape.app.data.staff.textoFichaDeBaja
 import pe.saniape.app.data.staff.PacienteStaff
 import pe.saniape.app.data.staff.PacientesRepo
 import pe.saniape.app.ui.theme.Sania
@@ -79,6 +89,59 @@ fun ModalNuevoPaciente(
     var guardando by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
+    // ── Paciente DADO DE BAJA que vuelve (paridad con PacienteForm web) ──
+    // Al escribir su documento se detecta su ficha de baja: sus datos se cargan
+    // (solo en lo que está vacío) y "Reactivar" ACTUALIZA esa misma ficha —con
+    // todo su historial— en vez de crear otra o chocar con su DNI.
+    var fichaBaja by remember { mutableStateOf<FichaDeBaja?>(null) }
+    var reactivando by remember { mutableStateOf(false) }
+
+    fun cargarFichaBaja(f: FichaDeBaja) {
+        fun vacio(v: String) = v.isBlank()
+        if (vacio(nombre)) nombre = f.nombre
+        f.dni?.let { d -> dni = d; paisDoc = if (d.length == 8 && d.all { it.isDigit() }) "PE" else "CL"; sinDocumento = false }
+        if (vacio(telefono)) f.telefono?.let { telefono = it }
+        if (vacio(edad)) f.edad?.let { edad = it.toString() }
+        if (vacio(email)) f.email?.let { email = it }
+        if (vacio(ocupacion)) f.ocupacion?.let { ocupacion = it }
+        if (vacio(talla)) f.talla?.let { talla = it.toString() }
+        if (vacio(peso)) f.peso?.let { peso = it.toString() }
+        if (vacio(motivo)) f.diagnostico?.let { motivo = it }
+        if (vacio(observaciones)) f.observaciones?.let { observaciones = it }
+        f.flag?.let { flag = it }
+        if (vacio(tipoPatologia)) f.tipoPatologia?.let { tipoPatologia = it }
+        if (vacio(antecedentes)) f.antecedentes?.let { antecedentes = it }
+        if (vacio(sintomas) && f.patologias.isNotEmpty()) sintomas = f.patologias.joinToString(", ")
+        if (vacio(alergias)) f.alergias?.let { alergias = it }
+        if (vacio(medicacion)) f.medicacionActual?.let { medicacion = it }
+        if (antecedentes.isNotBlank() || alergias.isNotBlank() || medicacion.isNotBlank()) verAntecedentes = true
+        fichaBaja = f
+        reactivando = true
+        existente = null
+        avisoDni = null
+        error = null
+    }
+
+    fun descartarReactivacion() {
+        fichaBaja = null; reactivando = false
+        dni = ""; nombre = ""; telefono = ""; edad = ""; email = ""; ocupacion = ""
+        talla = ""; peso = ""; motivo = ""; observaciones = ""; flag = "verde"
+        tipoPatologia = ""; antecedentes = ""; sintomas = ""; alergias = ""; medicacion = ""
+    }
+
+    // Detección al escribir (con pausa): una consulta chica a la base propia, no
+    // al padrón. Con el formulario aún vacío (el DNI va primero) se carga sola.
+    LaunchedEffect(dni, paisDoc, reactivando, sinDocumento) {
+        if (reactivando || sinDocumento || !documentoCompleto(dni, paisDoc)) {
+            if (!reactivando) fichaBaja = null
+            return@LaunchedEffect
+        }
+        delay(350)
+        val f = ReactivarRepo.porDocumento(dni.trim())
+        fichaBaja = f
+        if (f != null && nombre.isBlank() && telefono.isBlank()) cargarFichaBaja(f)
+    }
+
     fun buscarDni() {
         val d = dni.trim()
         if (paisDoc != "PE" || d.length != 8 || buscandoDni) return
@@ -86,7 +149,10 @@ fun ModalNuevoPaciente(
         scope.launch {
             // 1) ¿Ya existe en la clínica? (anti-duplicados)
             val ya = PacientesRepo.porDni(d)
-            if (ya != null) {
+            val baja = if (ya?.estado == "Inactivo") ReactivarRepo.porDocumento(d) else null
+            if (baja != null) {
+                cargarFichaBaja(baja)
+            } else if (ya != null) {
                 existente = ya
                 avisoDni = "Ya registrado: ${ya.nombre}"
             } else {
@@ -100,18 +166,55 @@ fun ModalNuevoPaciente(
     }
 
     DialogoForm(
-        titulo = "Nuevo paciente",
-        subtitulo = "Los antecedentes clínicos son opcionales",
-        textoAccion = if (guardando) "Creando…" else "Crear paciente",
+        titulo = if (reactivando) "Reactivar paciente" else "Nuevo paciente",
+        subtitulo = if (reactivando) "Corrige solo lo que cambió" else "Los antecedentes clínicos son opcionales",
+        textoAccion = when {
+            reactivando && guardando -> "Reactivando…"
+            reactivando -> "↻ Reactivar paciente"
+            guardando -> "Creando…"
+            else -> "Crear paciente"
+        },
         accionHabilitada = nombre.isNotBlank() && !guardando && existente == null,
         onCancelar = { if (!guardando) onCancelar() },
         onAccion = {
             if (nombre.isBlank() || guardando) return@DialogoForm
             guardando = true; error = null
             scope.launch {
+                // Reactivar: se ACTUALIZA su ficha de siempre (mismo id, mismo
+                // historial) y el servidor decide el estado de vuelta.
+                val fb = fichaBaja
+                if (reactivando && fb != null) {
+                    val cambios = buildJsonObject {
+                        fun t(k: String, v: String) { v.trim().takeIf { it.isNotBlank() }?.let { put(k, it) } }
+                        t("nombre", nombre); t("telefono", telefono); t("email", email)
+                        t("ocupacion", ocupacion); t("diagnostico", motivo); t("observaciones", observaciones)
+                        t("antecedentes", antecedentes); t("alergias", alergias)
+                        t("medicacion_actual", medicacion); t("tipo_patologia", tipoPatologia)
+                        t("flag", flag)
+                        if (fb.dni == null && !sinDocumento) t("dni", dni)
+                        edad.toIntOrNull()?.let { put("edad", it) }
+                        talla.toIntOrNull()?.takeIf { it > 0 }?.let { put("talla", it) }
+                        peso.toDoubleOrNull()?.takeIf { it > 0 }?.let { put("peso", it) }
+                        val pats = sintomas.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                        if (pats.isNotEmpty()) put("patologias", JsonArray(pats.map { JsonPrimitive(it) }))
+                    }
+                    val r = ReactivarRepo.reactivar(fb.id, cambios)
+                    guardando = false
+                    if (!r.ok || r.id == null) { error = r.error ?: "No se pudo reactivar"; return@launch }
+                    pe.saniape.app.ui.Toaster.exito("Ficha reactivada · ${r.estado ?: ""}".trimEnd(' ', '·'))
+                    val p = runCatching { PacientesRepo.porId(r.id) }.getOrNull()
+                    if (p != null) onCreado(p) else onCancelar()
+                    return@launch
+                }
                 // Dedup final por si no usó el botón buscar (cualquier documento).
                 val d = if (sinDocumento) "" else dni.trim()
                 val ya = if (d.length >= 5) PacientesRepo.porDni(d) else null
+                if (ya?.estado == "Inactivo") {
+                    // Dado de baja: pasar a reactivar SU ficha (lo escrito se respeta).
+                    val baja = ReactivarRepo.porDocumento(d)
+                    guardando = false
+                    if (baja != null) { cargarFichaBaja(baja); return@launch }
+                }
                 if (ya != null) { existente = ya; avisoDni = "Ya registrado: ${ya.nombre}"; guardando = false; return@launch }
                 val creado = PacientesRepo.crearPaciente(
                     nombre = nombre, dni = d.ifBlank { null },
@@ -169,6 +272,8 @@ fun ModalNuevoPaciente(
                             "PE" -> "8 dígitos"; "CL" -> "12345678-9"; else -> "Nº de pasaporte"
                         }, color = c.textoSuave) },
                         singleLine = true,
+                        // Reactivando: el documento es la llave de su ficha ("Cambiar documento").
+                        readOnly = reactivando && fichaBaja?.dni != null,
                         keyboardOptions = if (paisDoc == "PE")
                             KeyboardOptions(keyboardType = KeyboardType.Number) else KeyboardOptions.Default,
                         modifier = Modifier.weight(1f),
@@ -209,6 +314,38 @@ fun ModalNuevoPaciente(
                         .background(c.navy).clickable { onCreado(p) }.padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center,
                 ) { Text("→ Abrir la ficha de ${p.nombre}", color = c.sobreNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+            }
+
+            // Volvió un paciente dado de baja: su ficha, con sus datos.
+            fichaBaja?.let { f ->
+                Spacer(Modifier.height(8.dp))
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .background(c.ok.copy(alpha = 0.12f))
+                        .border(1.5.dp, c.ok, RoundedCornerShape(Sania.shape.sm.dp))
+                        .padding(12.dp),
+                ) {
+                    Text("↻ " + if (reactivando) textoFichaDeBaja(f).substringBefore(" · ¿") else textoFichaDeBaja(f),
+                        color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (reactivando) "Sus datos ya están cargados: corrige solo lo que cambió. Al reactivar se usa SU ficha —no se crea otra— y su historial" +
+                            (if (f.nTratamientos > 0) " (${f.nTratamientos} tratamiento${if (f.nTratamientos > 1) "s" else ""})" else "") + " queda tal cual."
+                        else "Su documento ya está registrado en la clínica.",
+                        color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (!reactivando) Box(
+                            Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.ok)
+                                .clickable { cargarFichaBaja(f) }.padding(horizontal = 12.dp, vertical = 8.dp),
+                        ) { Text("Cargar sus datos y reactivar", color = c.sobreNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                        Box(
+                            Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { descartarReactivacion() }.padding(horizontal = 12.dp, vertical = 8.dp),
+                        ) { Text("Cambiar documento", color = c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                    }
+                }
             }
 
             Spacer(Modifier.height(10.dp))

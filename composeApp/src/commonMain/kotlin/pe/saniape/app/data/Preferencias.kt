@@ -21,4 +21,19 @@ expect object Preferencias {
     fun setLogoClinica(url: String?)
     fun nombreClinica(): String?
     fun setNombreClinica(nombre: String?)
+
+    /**
+     * versionName cuyas "Novedades" ya se mostraron (o se saltaron). NO se limpia
+     * al cerrar sesión: es del teléfono, no de la cuenta. Ver [Novedades].
+     */
+    fun ultimaNovedadVista(): String?
+    fun setUltimaNovedadVista(version: String)
+
+    /**
+     * true si la app se instaló por primera vez y nunca se actualizó (en ese
+     * caso no hay "novedades" que contar). Android: firstInstallTime ==
+     * lastUpdateTime. iOS: no hay dato del sistema; se infiere de que no haya
+     * ninguna preferencia guardada todavía.
+     */
+    fun esInstalacionNueva(): Boolean
 }

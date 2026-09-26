@@ -62,7 +62,10 @@ class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
         get() = pacientes.filter { p ->
             coincideBusqueda(p.nombre, p.dni.takeIf { verContacto }, p.diagnostico, busqueda) &&
                 when (filtroEstado) {
-                    null -> p.estado != "Inactivo"   // por defecto, sin inactivos
+                    // Por defecto, sin inactivos — EXCEPTO al buscar: a quien vuelve
+                    // tras la baja hay que poder encontrarlo (si no, "no existe" y se
+                    // registra de nuevo). Igual que la web.
+                    null -> p.estado != "Inactivo" || busqueda.isNotBlank()
                     "todos" -> true
                     else -> p.estado == filtroEstado
                 }

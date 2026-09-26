@@ -207,6 +207,23 @@ fun PantallaMasClinica(
                     Spacer(Modifier.height(Sania.dim.md))
                 }
 
+                // Novedades: lo mismo que salió solo al actualizar, para volver a verlo.
+                val notas = remember { pe.saniape.app.data.Novedades.paraConsultar() }
+                if (notas != null) {
+                    var verNovedades by remember { mutableStateOf(false) }
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                            .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                            .clickable { verNovedades = true }.padding(Sania.dim.lg),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("✨ Novedades de la versión", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
+                        Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                    }
+                    if (verNovedades) pe.saniape.app.ui.DialogoNovedades(notas = notas, onCerrar = { verNovedades = false })
+                    Spacer(Modifier.height(Sania.dim.md))
+                }
+
                 // Cerrar sesión
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))

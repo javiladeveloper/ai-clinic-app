@@ -306,3 +306,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 }
+// Novedades de cada versión (novedades/<versionName>.txt): la app las embebe y el
+// CI las manda a Play Console. Ver composeApp/novedades.gradle.kts y
+// docs/ci-cd-despliegue.md → "Novedades de cada versión".
+extra["versionNameApp"] = android.defaultConfig.versionName
+extra["versionCodeApp"] = android.defaultConfig.versionCode
+apply(from = "novedades.gradle.kts")
+kotlin.sourceSets.getByName("commonMain").kotlin.srcDir(tasks.named("generarNovedades"))

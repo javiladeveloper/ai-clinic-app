@@ -36,4 +36,15 @@ actual object Preferencias {
         if (nombre == null) defaults.removeObjectForKey("nombre_clinica")
         else defaults.setObject(nombre, "nombre_clinica")
     }
+
+    actual fun ultimaNovedadVista(): String? = defaults.stringForKey("novedad_vista")
+
+    actual fun setUltimaNovedadVista(version: String) {
+        defaults.setObject(version, "novedad_vista")
+    }
+
+    // iOS no expone la fecha de instalación vs actualización: si nunca se guardó
+    // nada (ni modo, ni tema, ni clínica), es una instalación nueva.
+    actual fun esInstalacionNueva(): Boolean =
+        modoActivo() == null && tema() == null && nombreClinica() == null
 }

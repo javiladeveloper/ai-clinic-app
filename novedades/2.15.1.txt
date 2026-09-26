@@ -1,0 +1,33 @@
+# Novedades de la 2.15.1 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+# Arriba de la línea --- : el RESUMEN que va a Play Console (máx. 500 caracteres).
+# Abajo de la línea ---  : el DETALLE que ve la clínica en la app al actualizar.
+Odontología: anota qué se hizo hoy en cada pieza, suma caras, dictado manos libres, CPO-D, pincel, pieza grande y modo para mostrarle al paciente.
+Fisioterapia: dolor 0-10 al cerrar la sesión, chips de mejoría, dictado, curva de dolor, aviso para renovar el paquete y "No volvió".
+Arreglos: tu rol se ve bien en la cabecera, cambiar estado pide motivo, el alta pide confirmación y envía la encuesta, y la fecha de hoy va en hora de Lima.
+---
+Odontología:
+• Al completar una sesión dental anotas qué se le hizo hoy, desde la ficha o desde la agenda.
+• Puedes sumar caras a una pieza sin borrar lo que ya tenía.
+• La tarjeta del tratamiento muestra las piezas del plan.
+• Dictado manos libres: un toque dicta seguido y mantener presionado dicta mientras hablas. La pantalla no se apaga mientras dictas.
+• Más símbolos en el odontograma, índice CPO-D y notas por pieza.
+• Pincel para marcar varias piezas seguidas y pieza en grande para ver el detalle.
+• Modo "Mostrar al paciente" para explicarle su odontograma.
+• El odontograma carga y responde más rápido.
+Fisioterapia:
+• Al cerrar la sesión marcas el dolor del 0 al 10 y la mejoría con chips de un toque.
+• Dictado por voz en las notas de la sesión.
+• Curva de dolor: ves cómo fue bajando sesión a sesión.
+• Cuando le quedan pocas sesiones, la ficha sugiere renovar el paquete.
+• "No volvió" cierra el tratamiento de quien abandonó, con su motivo.
+• La ficha avisa las faltas sin aviso del paciente.
+Arreglos:
+• Tu rol ya no se corta letra por letra en la cabecera.
+• Cambiar el estado de una sesión pide el motivo; "Reprogramada" pide fecha y hora, incluso sin señal.
+• Completar desde Sesiones abre el formulario completo, y si falla el cobro reintentas solo el cobro.
+• Si una evaluación no tiene profesional, la app pregunta quién atendió.
+• Sin señal: lo que el sistema rechazó ya no se reintenta sin fin.
+• Dar de alta pide confirmación y envía la encuesta por WhatsApp; una ficha dada de baja queda en solo lectura.
+• La fecha de hoy y la próxima cita usan la hora de Lima.
+• En clínicas sin odontología, completar desde Sesiones ya no trata la sesión como dental.

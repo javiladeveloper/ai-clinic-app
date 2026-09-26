@@ -96,6 +96,22 @@ jobs:
       - name: Configurar Gradle (cache)
         uses: gradle/actions/setup-gradle@v4
 
+      # NOVEDADES DE ESTA VERSIÓN (obligatorio). Sale de novedades/<versionName>.txt
+      # — el mismo archivo que la app muestra en el diálogo "Novedades" al
+      # actualizar. Valida que exista y que el resumen quepa en Play (≤ 500) y lo
+      # deja en fastlane/metadata/android/<locale>/changelogs/<versionCode>.txt,
+      # que es lo que upload_to_play_store manda como "Novedades de esta versión".
+      # Va ANTES de compilar: si falta, el release se corta aquí con un mensaje
+      # claro, sin gastar el build ni publicar sin notas.
+      # Idioma: variable de repo PLAY_LOCALE (Settings → Variables) = el idioma
+      # de la ficha de Play; por defecto es-419 (Español, Latinoamérica).
+      - name: Verificar y preparar novedades de la versión
+        env:
+          PLAY_LOCALE: ${{ vars.PLAY_LOCALE }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :composeApp:prepararNotasPlay -PlocalePlay="${PLAY_LOCALE:-es-419}"
+
       # Reconstruye el keystore de firma desde secrets (nunca vive en el repo).
       # KEYSTORE_BASE64 = el .jks codificado en base64.
       - name: Restaurar keystore de firma
