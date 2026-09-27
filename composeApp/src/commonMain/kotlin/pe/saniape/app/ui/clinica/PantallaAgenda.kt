@@ -180,7 +180,9 @@ fun PantallaAgenda(
                 filtroEstado = vm.filtroEstado, onEstado = { vm.cambiarFiltroEstado(it) },
                 filtroTipo = vm.filtroTipo, onTipo = { vm.cambiarFiltroTipo(it) },
                 especialidades = vm.especialidades,
-                filtroEspecialidad = vm.filtroEspecialidad, onEspecialidad = { vm.cambiarFiltroEspecialidad(it) },
+                muestraEspecialidad = vm.muestraFiltroEspecialidad,
+                seleccionEspecialidades = vm.seleccionEspecialidades,
+                onEspecialidades = { vm.cambiarSeleccionEspecialidades(it) },
                 verHistorial = vm.verHistorial, onVerHistorial = { vm.alternarHistorial() },
             )
 
@@ -194,7 +196,8 @@ fun PantallaAgenda(
                 contentPadding = PaddingValues(bottom = Sania.dim.xl),
             ) {
                 // Banners (mañana / vencidas / derivaciones)
-                vm.banners?.let { b ->
+                // Con el filtro de especialidad aplicado (sin filtro: los de siempre).
+                vm.bannersVisibles?.let { b ->
                     item {
                         BannersAgendaUI(
                             banners = b,

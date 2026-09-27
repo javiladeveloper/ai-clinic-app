@@ -266,14 +266,17 @@ object AgendaRepo {
      */
     suspend fun especialidades(): List<EspecialidadRef> {
         val filas = Supabase.client.postgrest["especialidades"]
-            .select(Columns.list("id, nombre, flujo_preset")) {
+            .select(Columns.list("id, nombre, flujo_preset, color, icono")) {
                 filter { eq("estado", "Activa") }
                 order("nombre", Order.ASCENDING)
             }
             .decodeList<JsonObject>()
         return filas.mapNotNull {
             val id = it.str("id") ?: return@mapNotNull null
-            EspecialidadRef(id, it.str("nombre") ?: "", it["flujo_preset"] as? JsonObject)
+            EspecialidadRef(
+                id, it.str("nombre") ?: "", it["flujo_preset"] as? JsonObject,
+                color = it.str("color"), icono = it.str("icono"),
+            )
         }
     }
 
@@ -456,7 +459,11 @@ object AgendaRepo {
 }
 
 /** [flujoPreset] = flujo propio de la especialidad; null = hereda el de la clínica. */
-data class EspecialidadRef(val id: String, val nombre: String, val flujoPreset: JsonObject? = null)
+data class EspecialidadRef(
+    val id: String, val nombre: String, val flujoPreset: JsonObject? = null,
+    /** Color e ícono que eligió la clínica (chips del filtro de la agenda). */
+    val color: String? = null, val icono: String? = null,
+)
 data class RefNombre(val id: String, val nombre: String)
 /** Terapeuta con sus especialidades (para filtrar por especialidad en el form). */
 data class TerapeutaRef(val id: String, val nombre: String, val especialidadIds: List<String>)

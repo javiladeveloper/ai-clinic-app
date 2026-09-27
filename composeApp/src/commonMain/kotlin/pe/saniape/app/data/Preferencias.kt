@@ -36,4 +36,13 @@ expect object Preferencias {
      * ninguna preferencia guardada todavía.
      */
     fun esInstalacionNueva(): Boolean
+
+    /**
+     * Filtro de especialidad de la agenda (ids separados por coma; null = Todas).
+     * Por [clave] (clínica + usuario): es una preferencia de trabajo de quien usa
+     * ESTE teléfono, no un dato de la clínica. NO se limpia al cerrar sesión: la
+     * clave ya lleva el usuario.
+     */
+    fun filtroEspecialidadAgenda(clave: String): String?
+    fun setFiltroEspecialidadAgenda(clave: String, valor: String?)
 }

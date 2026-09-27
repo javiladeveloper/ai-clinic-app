@@ -60,6 +60,15 @@ actual object Preferencias {
         prefs?.edit()?.putString("novedad_vista", version)?.apply()
     }
 
+    actual fun filtroEspecialidadAgenda(clave: String): String? = prefs?.getString("filtro_esp:$clave", null)
+
+    actual fun setFiltroEspecialidadAgenda(clave: String, valor: String?) {
+        prefs?.edit()?.apply {
+            if (valor == null) remove("filtro_esp:$clave") else putString("filtro_esp:$clave", valor)
+            apply()
+        }
+    }
+
     actual fun esInstalacionNueva(): Boolean {
         val ctx = appContext ?: return false
         return runCatching {

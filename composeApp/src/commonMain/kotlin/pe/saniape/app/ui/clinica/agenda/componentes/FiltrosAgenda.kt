@@ -30,6 +30,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.EspecialidadRef
+import pe.saniape.app.data.staff.SIN_ESPECIALIDAD
+import pe.saniape.app.data.staff.alternarOpcion
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.data.staff.FlujoClinica
 
@@ -49,10 +56,13 @@ fun FiltrosAgenda(
     filtroEstado: String?, onEstado: (String?) -> Unit,
     filtroTipo: String?, onTipo: (String?) -> Unit,
     flujo: FlujoClinica = FlujoClinica(),
-    // Filtro por especialidad (si la clínica tiene varias) — reemplaza al de profesional,
-    // que era redundante (con la especialidad basta para buscar rápido).
+    // Filtro por especialidad, VARIAS a la vez (gemelo del de /citas web). Solo se
+    // muestra si [muestraEspecialidad]: 2+ especialidades y agenda de todos (el
+    // profesional vinculado ve la suya, sin filtro). Vacío = Todas.
     especialidades: List<EspecialidadRef> = emptyList(),
-    filtroEspecialidad: String? = null, onEspecialidad: (String?) -> Unit = {},
+    muestraEspecialidad: Boolean = false,
+    seleccionEspecialidades: List<String> = emptyList(),
+    onEspecialidades: (List<String>) -> Unit = {},
     // Ver historial (citas pasadas) — toggle.
     verHistorial: Boolean = false, onVerHistorial: () -> Unit = {},
 ) {
@@ -60,7 +70,8 @@ fun FiltrosAgenda(
     var abierto by remember { mutableStateOf(false) }
 
     // Cuántos filtros hay activos (para el contador del botón).
-    val activos = listOf(filtroEstado, filtroTipo, filtroEspecialidad).count { it != null }
+    val activos = listOf(filtroEstado, filtroTipo).count { it != null } +
+        (if (muestraEspecialidad && seleccionEspecialidades.isNotEmpty()) 1 else 0)
 
     Column(Modifier.fillMaxWidth().padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm)) {
         // Fila: búsqueda + botón Filtros
@@ -96,16 +107,10 @@ fun FiltrosAgenda(
                     TIPOS.filter { flujo.usaTipo(it) }.map { it as String? to flujo.nombreTipo(it) },
                 onElegir = onTipo,
             )
-            // Especialidad (si la clínica tiene más de una)
-            if (especialidades.size > 1) {
-                Spacer(Modifier.height(6.dp))
-                DropdownFiltro(
-                    etiqueta = "Especialidad",
-                    valor = especialidades.find { it.id == filtroEspecialidad }?.nombre,
-                    opciones = listOf<Pair<String?, String>>(null to "Todas las especialidades") +
-                        especialidades.map { it.id as String? to it.nombre },
-                    onElegir = onEspecialidad,
-                )
+            // Especialidad (si la clínica tiene más de una): chips, varias a la vez.
+            if (muestraEspecialidad) {
+                Spacer(Modifier.height(Sania.dim.sm))
+                ChipsEspecialidad(especialidades, seleccionEspecialidades, onEspecialidades)
             }
             Spacer(Modifier.height(Sania.dim.sm))
             // Ver historial — toggle
@@ -124,6 +129,72 @@ fun FiltrosAgenda(
             }
         }
     }
+}
+
+/**
+ * Chips del filtro de especialidad: "Todas", cada especialidad con su color y
+ * "Sin especialidad" (las citas a las que no se les puede saber). Se envuelven
+ * en filas: a 390 px no se desbordan.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ChipsEspecialidad(
+    especialidades: List<EspecialidadRef>,
+    seleccion: List<String>,
+    onCambio: (List<String>) -> Unit,
+) {
+    val c = Sania.colors
+    val ids = especialidades.map { it.id }
+    Column {
+        Text("Especialidades", color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 4.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            ChipOpcion("Todas", marcado = seleccion.isEmpty(), color = null) { onCambio(emptyList()) }
+            especialidades.forEach { e ->
+                ChipOpcion(
+                    (e.icono?.let { "$it " } ?: "") + e.nombre,
+                    marcado = e.id in seleccion, color = colorEspecialidad(e.color),
+                ) { onCambio(alternarOpcion(seleccion, e.id, ids)) }
+            }
+            ChipOpcion("Sin especialidad", marcado = SIN_ESPECIALIDAD in seleccion, color = null) {
+                onCambio(alternarOpcion(seleccion, SIN_ESPECIALIDAD, ids))
+            }
+        }
+    }
+}
+
+/** Un chip marcable. El texto va siempre en el color de texto del tema (legible en claro
+ *  y en oscuro); el color de la especialidad va en el punto y en el borde. */
+@Composable
+private fun ChipOpcion(texto: String, marcado: Boolean, color: Color?, onClick: () -> Unit) {
+    val c = Sania.colors
+    val acento = color ?: c.navy
+    Row(
+        Modifier.heightIn(min = 36.dp).clip(RoundedCornerShape(Sania.shape.pill.dp))
+            .background(if (marcado) acento.copy(alpha = 0.16f) else c.superficie)
+            .border(if (marcado) 1.5.dp else 1.dp, if (marcado) acento else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (marcado) {
+            Text("✓", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(5.dp))
+        } else if (color != null) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(texto, color = c.texto, fontSize = 12.sp,
+            fontWeight = if (marcado) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
+    }
+}
+
+/** Color hex de la especialidad ("#16a34a"); null si no hay o no se entiende. */
+private fun colorEspecialidad(hex: String?): Color? = hex?.takeIf { it.isNotBlank() }?.let {
+    runCatching { Color(("ff" + it.removePrefix("#").take(6)).toLong(16)) }.getOrNull()
 }
 
 @Composable

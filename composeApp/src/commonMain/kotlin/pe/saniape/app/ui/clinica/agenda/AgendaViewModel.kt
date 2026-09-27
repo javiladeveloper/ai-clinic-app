@@ -21,6 +21,7 @@ import pe.saniape.app.data.staff.EspecialidadRef
 import pe.saniape.app.data.staff.TerapeutaRef
 import pe.saniape.app.data.staff.FlujoClinica
 import pe.saniape.app.data.staff.citaEsDental
+import io.github.jan.supabase.auth.auth
 
 /**
  * ViewModel de la Agenda: ÚNICA fuente de estado y lógica. La pantalla solo
@@ -48,7 +49,12 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     var filtroEstado by mutableStateOf<String?>(null); private set
     var filtroTipo by mutableStateOf<String?>(null); private set
     var filtroTerapeuta by mutableStateOf<String?>(null); private set   // solo gestores
-    var filtroEspecialidad by mutableStateOf<String?>(null); private set
+    /**
+     * Especialidades elegidas en el filtro (varias; vacío = Todas). Cruda: lo
+     * guardado en el teléfono, que se valida contra las especialidades al usarse
+     * ([seleccionEspecialidades]) porque pueden no haber llegado todavía.
+     */
+    private var seleccionEspGuardada by mutableStateOf<List<String>>(emptyList())
 
     // ── Vista historial + paginación (igual que la web) ──
     var verHistorial by mutableStateOf(false); private set
@@ -64,6 +70,28 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     val esGestor: Boolean get() = ctx.esGestor
     /** El gestor sin scope propio puede filtrar por profesional. */
     val puedeFiltrarPorPersonal: Boolean get() = ctx.miTerapeutaId == null
+
+    /**
+     * Filtro por especialidad: solo si la clínica tiene 2+ especialidades y quien
+     * mira ve la agenda de todos. Al profesional vinculado (su agenda ya viene
+     * acotada a él) no se le muestra ni se le aplica: ve lo mismo que antes.
+     */
+    val muestraFiltroEspecialidad: Boolean get() = puedeFiltrarPorPersonal && especialidades.size > 1
+
+    /** La selección válida hoy (vacía = Todas, o si el filtro no se muestra). */
+    val seleccionEspecialidades: List<String>
+        get() = if (!muestraFiltroEspecialidad) emptyList()
+                else pe.saniape.app.data.staff.normalizarSeleccion(seleccionEspGuardada, especialidades.map { it.id })
+
+    /** ¿La cita pasa el filtro de especialidad? Sin filtro puesto, siempre sí. */
+    private fun pasaEsp(cita: CitaStaff, sel: List<String>, ofrecidos: Set<String>): Boolean =
+        pe.saniape.app.data.staff.citaPasaFiltroEspecialidad(cita, sel, espsPorTerapeuta, ofrecidos)
+
+    /** Clave de la preferencia: clínica + usuario (null sin sesión: no se guarda). */
+    private val claveFiltroEsp: String? by lazy {
+        runCatching { pe.saniape.app.data.Supabase.client.auth.currentUserOrNull()?.id }.getOrNull()
+            ?.let { "${ctx.clinicaId}:$it" }
+    }
 
     /** Clínica con odontología Y otras especialidades: lo dental se decide por cita. */
     private val clinicaMixtaDental: Boolean get() = ctx.mapaDental.ids.isNotEmpty() && !ctx.mapaDental.solo
@@ -94,14 +122,17 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
 
     /** Citas tras aplicar los filtros (lo que la pantalla pinta). */
     val citasFiltradas: List<CitaStaff>
-        get() = citas.filter { c ->
+        get() {
+            val sel = seleccionEspecialidades
+            val ofrecidos = especialidades.map { it.id }.toSet()
+            return citas.filter { c ->
             (busqueda.isBlank() ||
                 (c.pacienteNombre?.contains(busqueda, ignoreCase = true) == true) ||
                 (c.procedimiento?.contains(busqueda, ignoreCase = true) == true)) &&
                 (filtroEstado == null || c.estado == filtroEstado) &&
                 (filtroTipo == null || c.tipo == filtroTipo) &&
                 (filtroTerapeuta == null || c.terapeutaId == filtroTerapeuta) &&
-                (filtroEspecialidad == null || c.especialidadId == filtroEspecialidad)
+                pasaEsp(c, sel, ofrecidos)
         }.sortedWith(
             // Orden de la agenda (mismo criterio que compararCitas en la web):
             //  1) Las CANCELADAS siempre al fondo del todo.
@@ -139,6 +170,29 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                 0
             }
         )
+        }
+
+    /**
+     * Banners con el filtro de especialidad aplicado: mañana y vencidas por la
+     * especialidad de la cita; derivaciones por la de DESTINO (la que atenderá).
+     * Sin filtro puesto, los mismos de siempre.
+     */
+    val bannersVisibles: BannersAgenda?
+        get() {
+            val b = banners ?: return null
+            val sel = seleccionEspecialidades
+            if (sel.isEmpty()) return b
+            val ofrecidos = especialidades.map { it.id }.toSet()
+            return b.copy(
+                manana = b.manana.filter { pasaEsp(it.cita, sel, ofrecidos) },
+                vencidas = b.vencidas.filter { pasaEsp(it, sel, ofrecidos) },
+                derivaciones = b.derivaciones.filter {
+                    pe.saniape.app.data.staff.pasaFiltroEspecialidad(
+                        pe.saniape.app.data.staff.opcionDeEspecialidad(it.especialidadDestinoId, ofrecidos), sel,
+                    )
+                },
+            )
+        }
 
     /** Citas del día sin profesional asignado (aviso "⚠ Asignar"). */
     val citasSinProfesional: List<CitaStaff>
@@ -167,12 +221,26 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     fun cambiarFiltroEstado(v: String?) { filtroEstado = v }
     fun cambiarFiltroTipo(v: String?) { filtroTipo = v }
     fun cambiarFiltroTerapeuta(v: String?) { filtroTerapeuta = v }
-    fun cambiarFiltroEspecialidad(v: String?) { filtroEspecialidad = v }
+    /** Nueva selección del filtro de especialidad (vacía = Todas). Se recuerda en el teléfono. */
+    fun cambiarSeleccionEspecialidades(v: List<String>) {
+        seleccionEspGuardada = v
+        claveFiltroEsp?.let { clave ->
+            runCatching {
+                pe.saniape.app.data.Preferencias.setFiltroEspecialidadAgenda(clave, pe.saniape.app.data.staff.codificarSeleccion(v))
+            }
+        }
+    }
 
     // Suscripción Realtime a la tabla `citas`: mantiene la agenda al día sin recargar.
     private var realtimeJob: kotlinx.coroutines.Job? = null
 
     init {
+        // Lo que eligió la última vez en este teléfono (se valida al llegar las especialidades).
+        seleccionEspGuardada = claveFiltroEsp?.let { clave ->
+            runCatching {
+                pe.saniape.app.data.staff.decodificarSeleccion(pe.saniape.app.data.Preferencias.filtroEspecialidadAgenda(clave))
+            }.getOrNull()
+        }.orEmpty()
         cargarDia(fechaSel)
         cargarAuxiliares()
         // Auto-refresco en vivo: si desde la web se agenda/cambia/cancela una cita, la

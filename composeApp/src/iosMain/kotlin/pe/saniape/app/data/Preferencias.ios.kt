@@ -43,6 +43,13 @@ actual object Preferencias {
         defaults.setObject(version, "novedad_vista")
     }
 
+    actual fun filtroEspecialidadAgenda(clave: String): String? = defaults.stringForKey("filtro_esp:$clave")
+
+    actual fun setFiltroEspecialidadAgenda(clave: String, valor: String?) {
+        if (valor == null) defaults.removeObjectForKey("filtro_esp:$clave")
+        else defaults.setObject(valor, "filtro_esp:$clave")
+    }
+
     // iOS no expone la fecha de instalación vs actualización: si nunca se guardó
     // nada (ni modo, ni tema, ni clínica), es una instalación nueva.
     actual fun esInstalacionNueva(): Boolean =
