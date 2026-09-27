@@ -21,6 +21,7 @@ class RecetasPortalTest {
               "fecha": "2026-09-27", "validaHasta": "2026-10-27", "vigente": true,
               "diagnostico": "Faringitis aguda", "cie10": "J02.9",
               "indicacionesGenerales": null, "clinica": "Clínica X", "clinicaSlug": "x", "clinicaLogo": null,
+              "clinicaDireccion": "Av. Bolognesi 123", "clinicaTelefono": null,
               "prescriptor": { "nombre": "Dr. Pérez", "colegiatura": "CMP 45678", "profesion": "Médico Cirujano", "especialidad": null },
               "items": [
                 { "dci": "Amoxicilina", "marca": null, "concentracion": "500 mg", "forma": "Tableta",
@@ -49,6 +50,10 @@ class RecetasPortalTest {
         assertEquals("21 (veintiuno) tabletas", r.items[0].cantidadTexto)
         assertNull(r.items[0].marca)
         assertTrue(r.vigente)
+        // Campos del establecimiento: opcionales (null o ausentes) sin romper.
+        assertEquals("Av. Bolognesi 123", r.clinicaDireccion)
+        assertNull(r.clinicaTelefono)
+        assertNull(r.clinicaCiudad)
     }
 
     @Test fun laVigenciaSeRecalculaConLaFechaDeHoy() {

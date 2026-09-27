@@ -127,6 +127,12 @@ fun TarjetaReceta(r: RecetaPortal, aviso: String) {
 
                 // Establecimiento y prescriptor (lo que exige la receta, DS 014-2011-SA art. 56).
                 r.clinica?.let { Dato("Establecimiento", it) }
+                // Dirección y ciudad juntas ("Av. Bolognesi 123, Tacna"), sin repetir la
+                // ciudad si la dirección ya la trae; sin ninguna de las dos, no hay fila.
+                val ciudad = r.clinicaCiudad?.takeIf { r.clinicaDireccion?.contains(it, ignoreCase = true) != true }
+                listOfNotNull(r.clinicaDireccion, ciudad).joinToString(", ")
+                    .takeIf { it.isNotBlank() }?.let { Dato("Dirección", it) }
+                r.clinicaTelefono?.let { Dato("Teléfono", it) }
                 r.prescriptor?.let { p ->
                     Dato("Prescriptor", listOfNotNull(p.nombre, p.profesion, p.especialidad).joinToString(" · "))
                     if (p.colegiatura.isNotBlank()) Dato("Colegiatura", p.colegiatura)

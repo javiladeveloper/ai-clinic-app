@@ -56,6 +56,10 @@ data class RecetaPortal(
     val indicacionesGenerales: String?,
     val clinica: String?,
     val clinicaLogo: String?,
+    /** Datos del establecimiento congelados al emitir (pueden faltar). */
+    val clinicaDireccion: String? = null,
+    val clinicaTelefono: String? = null,
+    val clinicaCiudad: String? = null,
     val prescriptor: PrescriptorReceta?,
     val items: List<MedicamentoReceta>,
 )
@@ -115,6 +119,9 @@ fun parsearRecetas(texto: String, hoy: String): RecetasDelPaciente? {
             indicacionesGenerales = o.str("indicacionesGenerales"),
             clinica = o.str("clinica"),
             clinicaLogo = o.str("clinicaLogo"),
+            clinicaDireccion = o.str("clinicaDireccion"),
+            clinicaTelefono = o.str("clinicaTelefono"),
+            clinicaCiudad = o.str("clinicaCiudad"),
             prescriptor = p?.str("nombre")?.let { nombre ->
                 PrescriptorReceta(
                     nombre = nombre,
