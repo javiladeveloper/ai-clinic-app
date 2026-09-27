@@ -55,7 +55,7 @@ object StaffContextoRepo {
         reportes = o?.bool("reportes") ?: false,
     )
 
-    private fun features(o: JsonObject?): PlanFeatures = PlanFeatures(
+    private fun features(o: JsonObject?, plan: JsonObject?): PlanFeatures = PlanFeatures(
         finanzas = o?.bool("finanzas") ?: false,
         comisiones = o?.bool("comisiones") ?: false,
         reportes = o?.bool("reportes") ?: false,
@@ -65,7 +65,30 @@ object StaffContextoRepo {
         derivaciones = o?.bool("derivaciones") ?: false,
         examenes = o?.bool("examenes") ?: false,
         fotosEvolutivas = o?.bool("fotosEvolutivas") ?: false,
+        // Vive en features (resolverPlan) o suelto en planEstado: se aceptan los dos.
+        maxEspacioDocumentosMB = o?.intOrNull("maxEspacioDocumentosMB") ?: plan?.intOrNull("maxEspacioDocumentosMB"),
     )
+
+    /** Módulos clínicos. Sin el objeto (backend viejo) → todo apagado, como siempre. */
+    private fun modulos(o: JsonObject?): ModulosClinicos {
+        if (o == null) return ModulosClinicos()
+        val campos = (o["camposTriaje"] as? kotlinx.serialization.json.JsonArray)
+            ?.mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } }
+        fun ids(k: String) = (o[k] as? kotlinx.serialization.json.JsonArray).orEmpty()
+            .mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } }
+        val flujoMedico = o.bool("flujoMedico")
+        val recetas = o.bool("recetas")
+        return ModulosClinicos(
+            flujoMedico = flujoMedico,
+            recetas = recetas,
+            recetasOptIn = o.bool("recetasOptIn"),
+            triaje = o.bool("triaje"),
+            camposTriaje = leerCamposTriaje(campos),
+            // Con el interruptor apagado el mapa no cuenta aunque viniera lleno.
+            mapaMedico = if (flujoMedico) MapaClinico(ids("especialidadesMedicas"), o.bool("soloMedico")) else MapaClinico(),
+            mapaReceta = if (recetas) MapaClinico(ids("especialidadesReceta"), o.bool("soloReceta")) else MapaClinico(),
+        )
+    }
 
     /** Resultado de cargar el contexto. */
     sealed class Resultado {
@@ -137,7 +160,7 @@ object StaffContextoRepo {
                 efectivo = plan?.str("efectivo") ?: "Basico",
                 vencido = plan?.bool("vencido") ?: false,
                 diasRestantes = plan?.intOrNull("diasRestantes"),
-                features = features(plan?.obj("features")),
+                features = features(plan?.obj("features"), plan),
             ),
             miTerapeutaId = o.str("miTerapeutaId"),
             usaSesiones = o.bool("usaSesiones"),
@@ -191,6 +214,7 @@ object StaffContextoRepo {
             sedesPermitidas = (o["sedesPermitidas"] as? kotlinx.serialization.json.JsonArray)
                 ?.mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } }
                 ?.takeIf { it.isNotEmpty() },
+            modulosClinicos = modulos(o.obj("modulosClinicos")),
         )
     }
 

@@ -220,6 +220,126 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             return m
         }
 
+    // ── Sala de espera (triaje o flujo médico; solo HOY) ─────────────────────
+    // Gemelo de /citas web: cada cita de HOY lleva su etapa de llegada, deducida
+    // de su atención (etapaLlegada). Con el triaje, todas las citas de la
+    // clínica; solo con el flujo médico, las de atención médica. Sin interruptores
+    // (DALU, RENOVA) todo esto queda en null/vacío y NO se consulta nada más.
+    private val modulos get() = ctx.modulosClinicos
+    val triajeOn: Boolean get() = modulos.triaje
+    val salaEsperaOn: Boolean get() = modulos.salaEspera
+    /** Campos que mide la clínica en su triaje. */
+    val camposTriaje: List<String> get() = modulos.camposTriaje
+
+    /** Lo que dijo el servidor de las atenciones de hoy (por cita). */
+    private var llegadasServidor by mutableStateOf<Map<String, pe.saniape.app.data.staff.AtencionLlegada>>(emptyMap())
+    /**
+     * Lo registrado EN ESTE TELÉFONO que el servidor todavía no confirma (sin
+     * señal va a la cola): se pinta encima hasta que la relectura lo traiga.
+     */
+    private var llegadasLocales by mutableStateOf<Map<String, pe.saniape.app.data.staff.AtencionLlegada>>(emptyMap())
+
+    /** Atención de hoy de una cita (servidor + lo registrado aquí). */
+    fun atencionDe(cita: CitaStaff): pe.saniape.app.data.staff.AtencionLlegada? =
+        pe.saniape.app.data.staff.fusionarLlegada(llegadasServidor[cita.id], llegadasLocales[cita.id])
+
+    /**
+     * ¿La cita va por la consulta guiada? Por CITA (gemela de `esMedicaGuiada`):
+     * especialidad médica y no dental. La consulta guiada se abre en la web.
+     */
+    fun esMedicaGuiada(cita: CitaStaff): Boolean = pe.saniape.app.data.staff.citaEsMedicaGuiada(
+        modulos.mapaMedico, esDental(cita), cita.especialidadId, cita.especialidadServicioId,
+        cita.terapeutaId?.let { espsPorTerapeuta[it] },
+    )
+
+    /** Etapa de llegada de la cita (null = sin sala de espera: la tarjeta de siempre). */
+    fun etapaDe(cita: CitaStaff): pe.saniape.app.data.staff.EtapaLlegada? {
+        if (!salaEsperaOn || cita.fecha.take(10) != hoy) return null
+        if (!triajeOn && !esMedicaGuiada(cita)) return null
+        return pe.saniape.app.data.staff.etapaLlegada(cita.estado, false, atencionDe(cita))
+    }
+
+    /** Filtro rápido "🪑 En sala de espera (N)" (solo mirando hoy, sin búsqueda). */
+    var soloEspera by mutableStateOf(false); private set
+    val mirandoHoy: Boolean get() = salaEsperaOn && busqueda.isBlank() && !verHistorial && fechaSel == hoy
+    val enEspera: List<CitaStaff>
+        get() = if (!mirandoHoy) emptyList()
+                else citasFiltradas.filter { pe.saniape.app.data.staff.enSalaDeEspera(etapaDe(it)) }
+    /** Lo que la lista pinta: con el filtro, quien llegó primero arriba (es a quien le toca). */
+    val citasVisibles: List<CitaStaff>
+        get() = if (mirandoHoy && soloEspera) enEspera.sortedBy { c -> atencionDe(c)?.let { it.llegadaAt ?: it.triajeAt }.orEmpty() }
+                else citasFiltradas
+    fun alternarSoloEspera() { soloEspera = !soloEspera }
+
+    /** Cita a la que se le está marcando la llegada (para el "…" del botón). */
+    var marcandoLlegada by mutableStateOf<String?>(null); private set
+    var guardandoTriaje by mutableStateOf(false); private set
+
+    /** Relee las atenciones de HOY (solo con sala de espera). Conserva lo que había si falla. */
+    private suspend fun recargarLlegadas() {
+        if (!salaEsperaOn) return
+        val m = runCatching { pe.saniape.app.data.staff.AtencionMedicaRepo.llegadasDelDia(hoy) }.getOrNull() ?: return
+        llegadasServidor = m
+        // Lo local que el servidor ya tiene, sobra.
+        llegadasLocales = llegadasLocales.filterNot { (id, local) -> pe.saniape.app.data.staff.servidorAlDia(m[id], local) }
+    }
+
+    /**
+     * "🔔 Llegó": el paciente pasa a la sala de espera. Se pinta AL INSTANTE (con
+     * o sin señal); si el servidor la rechaza, se deshace y se avisa.
+     */
+    fun marcarLlegada(cita: CitaStaff) {
+        if (marcandoLlegada != null) return
+        viewModelScope.launch {
+            marcandoLlegada = cita.id
+            val previa = atencionDe(cita)
+            val ahora = kotlinx.datetime.Clock.System.now().toString()
+            val base = previa ?: pe.saniape.app.data.staff.AtencionLlegada(id = null, citaId = cita.id)
+            llegadasLocales = llegadasLocales + (cita.id to base.copy(llegadaAt = previa?.llegadaAt ?: ahora))
+            val r = pe.saniape.app.data.staff.AtencionMedicaRepo.marcarLlegada(cita.id)
+            marcandoLlegada = null
+            if (!r.registrada) {
+                llegadasLocales = llegadasLocales - cita.id
+                pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo marcar la llegada")
+                return@launch
+            }
+            if (!r.encolada) {
+                val quien = cita.pacienteNombre ?: "Paciente"
+                pe.saniape.app.ui.Toaster.exito(if (triajeOn) "$quien en sala de espera — falta el triaje" else "$quien en sala de espera")
+                recargarLlegadas()
+            }
+        }
+    }
+
+    /**
+     * Guarda el triaje de la cita. [onFin] recibe null si quedó registrado (en el
+     * servidor o en la cola) o el motivo del rechazo, para mostrarlo en el
+     * formulario sin cerrarlo.
+     */
+    fun guardarTriaje(cita: CitaStaff, valores: Map<String, String>, motivo: String, onFin: (String?) -> Unit) {
+        if (guardandoTriaje) return
+        viewModelScope.launch {
+            guardandoTriaje = true
+            val vitales = pe.saniape.app.data.staff.cuerpoVitalesTriaje(valores, camposTriaje)
+            val r = pe.saniape.app.data.staff.AtencionMedicaRepo.guardarTriaje(cita.id, vitales, motivo)
+            guardandoTriaje = false
+            if (!r.registrada) {
+                onFin(r.rechazo?.error ?: "No se pudo guardar el triaje")
+                return@launch
+            }
+            val ahora = kotlinx.datetime.Clock.System.now().toString()
+            val local = pe.saniape.app.data.staff.atencionLocalDeTriaje(cita.id, valores, camposTriaje, ahora, atencionDe(cita))
+            llegadasLocales = llegadasLocales + (cita.id to local)
+            if (!r.encolada) {
+                pe.saniape.app.ui.Toaster.exito(
+                    if (esMedicaGuiada(cita)) "Triaje registrado: el médico lo verá en la consulta" else "Triaje registrado"
+                )
+                recargarLlegadas()
+            }
+            onFin(null)
+        }
+    }
+
     fun cambiarBusqueda(v: String) { busqueda = v }
     fun cambiarFiltroEstado(v: String?) { filtroEstado = v }
     fun cambiarFiltroTipo(v: String?) { filtroTipo = v }
@@ -262,6 +382,17 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                     if (verHistorial) cargarLista() else cargarDia(fechaSel)
                     recargarBanners()
                 }
+        }
+        // Sala de espera: la web refresca las llegadas cada 45 s (recepción marca,
+        // el médico lo ve). Lo mismo aquí, y SOLO con triaje/flujo médico.
+        if (salaEsperaOn) {
+            viewModelScope.launch {
+                while (true) {
+                    kotlinx.coroutines.delay(45_000)
+                    // Mirando otro día no hay nada de hoy que pintar: no se consulta.
+                    if (fechaSel == hoy || verHistorial) recargarLlegadas()
+                }
+            }
         }
         realtimeJob = RealtimeAgenda.suscribir(viewModelScope) {
             // Recarga lo que esté visible ahora mismo (día concreto o lista), sin spinner.
@@ -311,7 +442,12 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             // Spinner completo solo si aún no hay nada; si ya hay citas (cambio de día),
             // mantenemos la lista visible y mostramos "Actualizando…" (no parpadea a spinner).
             if (citas.isEmpty()) cargando = true else recargando = true
-            citas = runCatching { AgendaRepo.citasDelDia(fecha, ctx.miTerapeutaId) }.getOrDefault(emptyList())
+            coroutineScope {
+                // Las llegadas de hoy van EN PARALELO con la agenda (sin cascada).
+                val lleg = async { recargarLlegadas() }
+                citas = runCatching { AgendaRepo.citasDelDia(fecha, ctx.miTerapeutaId) }.getOrDefault(emptyList())
+                lleg.await()
+            }
             cargando = false; recargando = false
         }
     }
@@ -336,7 +472,8 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                 val terD = async {
                     // En una clínica mixta hacen falta también para decidir qué
                     // cita es dental, aunque quien mira no filtre por profesional.
-                    if (puedeFiltrarPorPersonal || clinicaMixtaDental)
+                    if (puedeFiltrarPorPersonal || clinicaMixtaDental ||
+                        (ctx.modulosClinicos.mapaMedico.activo && !ctx.modulosClinicos.mapaMedico.solo))
                         runCatching { AgendaRepo.terapeutasActivos() }.getOrDefault(emptyList())
                     else null
                 }
@@ -359,6 +496,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
 
     /** Recarga las citas según el modo actual (lista paginada vs día). */
     private suspend fun recargarCitas() {
+        recargarLlegadas()
         citas = runCatching {
             if (verHistorial) AgendaRepo.citasPaginadas(verHistorial, pagina, ctx.miTerapeutaId, hoy)
             else AgendaRepo.citasDelDia(fechaSel, ctx.miTerapeutaId)

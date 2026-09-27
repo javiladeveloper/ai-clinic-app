@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.CitaStaff
+import pe.saniape.app.data.staff.EtapaLlegada
 import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.recordarAcciones
 import pe.saniape.app.ui.theme.EstadosColor
@@ -58,6 +59,11 @@ fun TarjetaCita(
      * decide la pantalla: cita que EVALÚA según el flujo + permiso 'sesiones'.
      */
     crearTratamiento: Boolean = false,
+    /**
+     * Sala de espera de la cita (solo HOY, con triaje o flujo médico). null =
+     * la tarjeta de siempre: DALU y RENOVA no ven ningún cambio.
+     */
+    sala: SalaTarjeta? = null,
 ) {
     val c = Sania.colors
     val acciones = recordarAcciones()
@@ -137,6 +143,9 @@ fun TarjetaCita(
                 Text(sub, color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
             }
 
+            // Sala de espera: ○ Por llegar · 🔔 Llegó · 12 min · 🩺 Triaje ✓ PA 120/80 · ▶ En consulta.
+            sala?.let { IndicadorLlegada(it) }
+
             // Chips: costo, Web, Asignar (discretos, en una línea)
             val chips = buildList {
                 if (puedeVerCosto) {
@@ -170,7 +179,8 @@ fun TarjetaCita(
 
             // Acciones según estado (separadas por un divisor sutil)
             val acc = accionesPara(cita.estado, cita.tipo, odontologia && cita.pacienteId != null,
-                crearTratamiento = crearTratamiento && cita.pacienteId != null)
+                crearTratamiento = crearTratamiento && cita.pacienteId != null,
+                sala = sala?.takeIf { cita.pacienteId != null })
             if (acc.isNotEmpty()) {
                 Spacer(Modifier.height(Sania.dim.md))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
@@ -185,7 +195,52 @@ fun TarjetaCita(
     }
 }
 
-enum class AccionTarjeta { Confirmar, Completar, Cancelar, Revertir, Editar, PasarEvaluacion, Repetir, Odontograma, CrearTratamiento }
+enum class AccionTarjeta {
+    Confirmar, Completar, Cancelar, Revertir, Editar, PasarEvaluacion, Repetir, Odontograma, CrearTratamiento,
+    /** Sala de espera: "🔔 Llegó" y "🩺 Triaje". */
+    Llego, Triaje,
+    /** "▶ Atender": la consulta guiada (se abre en la web). */
+    Atender,
+}
+
+/**
+ * Lo que la tarjeta necesita de la sala de espera (lo arma el ViewModel con
+ * `etapaLlegada`). [medica] = la cita va por la consulta guiada.
+ */
+data class SalaTarjeta(
+    val etapa: pe.saniape.app.data.staff.EtapaLlegada,
+    val atencion: pe.saniape.app.data.staff.AtencionLlegada?,
+    val triajeOn: Boolean,
+    val medica: Boolean,
+    val marcando: Boolean,
+    /** Minutos en la sala (desde la llegada), o null. */
+    val minutos: Int?,
+)
+
+/**
+ * Indicador de la sala bajo la cita (gemelo de `indicadorLlegada` de /citas).
+ * "Atendido" no se repite: ya lo dice el badge "Completada".
+ */
+@Composable
+private fun IndicadorLlegada(s: SalaTarjeta) {
+    val c = Sania.colors
+    val espera = pe.saniape.app.data.staff.textoEspera(s.minutos)
+    val (texto, color) = when (s.etapa) {
+        EtapaLlegada.ATENDIDO -> return
+        EtapaLlegada.POR_LLEGAR -> "○ ${EtapaLlegada.POR_LLEGAR.nombre}" to c.textoSuave
+        EtapaLlegada.EN_CONSULTA -> "▶ ${EtapaLlegada.EN_CONSULTA.nombre}" to c.purple
+        EtapaLlegada.LLEGO -> "🔔 ${EtapaLlegada.LLEGO.nombre}$espera${if (s.triajeOn) " · sin triaje" else ""}" to c.pend
+        EtapaLlegada.TRIAJE -> {
+            val partes = pe.saniape.app.data.staff.resumenTriaje(s.atencion)
+            "🩺 ${EtapaLlegada.TRIAJE.nombre}${if (partes.isNotBlank()) " $partes" else ""}$espera" to c.ok
+        }
+    }
+    Text(texto, color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold, lineHeight = 14.sp,
+        modifier = Modifier.padding(top = 4.dp))
+    if (s.etapa == EtapaLlegada.TRIAJE) s.atencion?.triajePorNombre?.let {
+        Text("Tomado por $it", color = c.textoSuave, fontSize = 10.sp)
+    }
+}
 
 /** Acciones disponibles según estado/tipo (espeja accionesCita de la web). */
 @Composable
@@ -195,13 +250,37 @@ private fun accionesPara(
     /** Solo en clínicas de odontología y con paciente. */
     odontograma: Boolean = false,
     crearTratamiento: Boolean = false,
+    sala: SalaTarjeta? = null,
 ): List<Triple<String, AccionTarjeta, Color>> {
     val c = Sania.colors
     val lista = mutableListOf<Triple<String, AccionTarjeta, Color>>()
     val activa = estado == "Pendiente" || estado == "Confirmada"
-    if (estado == "Pendiente") lista.add(Triple("✓ Confirmar", AccionTarjeta.Confirmar, c.ok))
+    // SALA DE ESPERA (gemelo de `principalSala` de /citas): la acción del MOMENTO
+    // reemplaza a Confirmar/Completar mientras el paciente recorre la sala:
+    // por llegar → Llegó; llegó → Triaje (si la clínica lo toma); después →
+    // Atender (consulta guiada, en la web) o Completar. Lo demás queda detrás.
+    val principal: AccionTarjeta? = when {
+        sala == null || !activa -> null
+        sala.etapa == EtapaLlegada.POR_LLEGAR -> AccionTarjeta.Llego
+        sala.etapa == EtapaLlegada.LLEGO && sala.triajeOn -> AccionTarjeta.Triaje
+        else -> AccionTarjeta.Atender
+    }
+    val textoAtender = if (sala?.medica == true) (if (sala.etapa == EtapaLlegada.EN_CONSULTA) "▶ Continuar" else "▶ Atender") else "✓ Completar"
+    val accionAtender = if (sala?.medica == true) AccionTarjeta.Atender else AccionTarjeta.Completar
+    val textoTriaje = if (sala?.atencion?.triajeAt != null) "🩺 Triaje ✓ (corregir)" else "🩺 Triaje"
+    when (principal) {
+        AccionTarjeta.Llego -> lista.add(Triple(if (sala?.marcando == true) "…" else "🔔 Llegó", AccionTarjeta.Llego, c.ok))
+        AccionTarjeta.Triaje -> lista.add(Triple("🩺 Triaje", AccionTarjeta.Triaje, c.info))
+        AccionTarjeta.Atender -> lista.add(Triple(textoAtender, accionAtender, c.navy))
+        else -> Unit
+    }
+    if (principal != null) {
+        if (estado == "Pendiente") lista.add(Triple("✓ Confirmar", AccionTarjeta.Confirmar, c.ok))
+        if (sala?.triajeOn == true && principal != AccionTarjeta.Triaje) lista.add(Triple(textoTriaje, AccionTarjeta.Triaje, c.info))
+        if (principal != AccionTarjeta.Atender) lista.add(Triple(textoAtender, accionAtender, c.navy))
+    } else if (estado == "Pendiente") lista.add(Triple("✓ Confirmar", AccionTarjeta.Confirmar, c.ok))
     if (tipo == "Consulta" && activa) lista.add(Triple("→ Evaluación", AccionTarjeta.PasarEvaluacion, c.info))
-    if (activa) lista.add(Triple("✓ Completar", AccionTarjeta.Completar, c.navy))
+    if (activa && principal == null) lista.add(Triple("✓ Completar", AccionTarjeta.Completar, c.navy))
     if (estado == "Completada" || estado == "Cancelada") lista.add(Triple("↩ Revertir", AccionTarjeta.Revertir, c.pend))
     // Repetir: agendar la SIGUIENTE cita del mismo paciente en 1 toque (misma info,
     // fecha propuesta a futuro). Muy usado para citar la próxima sesión/control.

@@ -4,6 +4,7 @@ import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -108,6 +109,17 @@ fun PantallaAgenda(
     var fichaPaciente by remember { mutableStateOf<PacienteStaff?>(null) }
     var cargandoFicha by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val acciones = pe.saniape.app.ui.recordarAcciones()
+    // Sala de espera: la cita a la que se le toma el triaje, y un reloj para el
+    // "· 12 min" de quien espera (solo con sala de espera; DALU no lo arranca).
+    var triajeCita by remember { mutableStateOf<CitaStaff?>(null) }
+    var ahora by remember { mutableStateOf(kotlinx.datetime.Clock.System.now()) }
+    LaunchedEffect(vm.salaEsperaOn) {
+        while (vm.salaEsperaOn) {
+            kotlinx.coroutines.delay(30_000)
+            ahora = kotlinx.datetime.Clock.System.now()
+        }
+    }
 
     // ── Crear el tratamiento desde la cita (gemelo de /citas web) ──
     // Desde "🩺 Crear tratamiento" o al completar una Evaluación. Si el paciente YA
@@ -294,13 +306,23 @@ fun PantallaAgenda(
                     }
                 }
 
+                // Sala de espera (triaje o flujo médico): filtro rápido del día de hoy.
+                // Sin sala de espera (DALU, RENOVA) no aparece.
+                if (vm.mirandoHoy && !vm.cargando) {
+                    item { ChipSalaEspera(vm.enEspera.size, vm.soloEspera) { vm.alternarSoloEspera() } }
+                }
+
                 when {
                     // Andamio con la forma de las tarjetas de cita: dice qué viene
                     // y evita el salto al llegar los datos.
                     vm.cargando -> item { CargandoLista(filas = 5) }
-                    vm.citasFiltradas.isEmpty() -> item {
+                    vm.citasVisibles.isEmpty() -> item {
                         Box(Modifier.fillMaxWidth().padding(Sania.dim.lg)) {
                             when {
+                                vm.mirandoHoy && vm.soloEspera -> pe.saniape.app.ui.clinica.EstadoVacio(
+                                    emoji = "🪑", titulo = "Nadie en sala de espera ahora",
+                                    subtitulo = "Marca \"🔔 Llegó\" cuando el paciente llegue.",
+                                )
                                 vm.citas.isEmpty() && vm.verHistorial -> pe.saniape.app.ui.clinica.EstadoVacio(
                                     emoji = "🗂", titulo = "Historial vacío",
                                     subtitulo = "Aún no hay citas registradas.",
@@ -318,7 +340,7 @@ fun PantallaAgenda(
                             }
                         }
                     }
-                    else -> items(vm.citasFiltradas, key = { it.id }) { cita ->
+                    else -> items(vm.citasVisibles, key = { it.id }) { cita ->
                         Box(Modifier.padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm / 2)) {
                             TarjetaCita(
                                 cita = cita,
@@ -337,6 +359,13 @@ fun PantallaAgenda(
                                         AccionTarjeta.Repetir -> prefillEval = repetirDesde(cita)
                                         AccionTarjeta.Odontograma -> odontogramaCita = cita
                                         AccionTarjeta.CrearTratamiento -> abrirTratamientoDeCita(cita, null)
+                                        AccionTarjeta.Llego -> vm.marcarLlegada(cita)
+                                        AccionTarjeta.Triaje -> triajeCita = cita
+                                        // La consulta guiada aún no está en la app: se abre en la web.
+                                        AccionTarjeta.Atender -> {
+                                            pe.saniape.app.ui.Toaster.info(AVISO_ABRIR_EN_WEB)
+                                            acciones.abrirUrl("${pe.saniape.app.data.Supabase.SITE_URL}/atencion/${cita.id}")
+                                        }
                                     }
                                 },
                                 onVerResumen = { resumenPacienteId = it },
@@ -346,6 +375,16 @@ fun PantallaAgenda(
                                 // web), solo con permiso 'sesiones' — no 'agendar'.
                                 crearTratamiento = ctx.puede("sesiones") && vm.flujoDe(cita).let { f ->
                                     cita.tipo == "Evaluación" || (cita.tipo == "Consulta" && f.usaConsulta && !f.usaEvaluacion)
+                                },
+                                sala = vm.etapaDe(cita)?.let { etapa ->
+                                    val a = vm.atencionDe(cita)
+                                    pe.saniape.app.ui.clinica.agenda.componentes.SalaTarjeta(
+                                        etapa = etapa, atencion = a, triajeOn = vm.triajeOn,
+                                        medica = vm.esMedicaGuiada(cita),
+                                        marcando = vm.marcandoLlegada == cita.id,
+                                        minutos = if (pe.saniape.app.data.staff.enSalaDeEspera(etapa))
+                                            pe.saniape.app.data.staff.minutosEsperando(a?.llegadaAt ?: a?.triajeAt, ahora) else null,
+                                    )
                                 },
                             )
                         }
@@ -371,6 +410,22 @@ fun PantallaAgenda(
     }
 
     // ── Modales ──
+    // "🩺 Triaje": solo las mediciones que toma la clínica. Se cierra al quedar
+    // registrado (servidor o cola); el "no" del servidor se muestra adentro.
+    triajeCita?.let { cita ->
+        pe.saniape.app.ui.clinica.agenda.modales.ModalTriaje(
+            cita = cita,
+            campos = vm.camposTriaje,
+            flujoMedico = vm.esMedicaGuiada(cita),
+            guardando = vm.guardandoTriaje,
+            onCancelar = { triajeCita = null },
+            onGuardar = { valores, motivo, onRechazo ->
+                vm.guardarTriaje(cita, valores, motivo) { error ->
+                    if (error == null) triajeCita = null else onRechazo(error)
+                }
+            },
+        )
+    }
     completar?.let { cita ->
         // Misma regla que ModalCompletar: la cita que evalúa pide diagnóstico.
         val flujoCita = vm.flujoDe(cita)
@@ -661,6 +716,42 @@ fun PantallaAgenda(
         }
     }
 }
+
+/** Lo que se abre en el navegador pide la sesión WEB (el Bearer de la app no pasa). */
+internal const val AVISO_ABRIR_EN_WEB =
+    "Se abrirá en el navegador; si pide iniciar sesión, entra con tu misma cuenta."
+
+/**
+ * "🪑 En sala de espera (N)" (gemelo del filtro de /citas): con el filtro,
+ * solo quienes llegaron, por orden de llegada.
+ */
+@Composable
+private fun ChipSalaEspera(n: Int, activo: Boolean, onClick: () -> Unit) {
+    val c = Sania.colors
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = Sania.dim.lg, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+                .background(if (activo) c.pendBg else c.superficie)
+                .bordePill(if (activo) c.pend else c.borde)
+                .clickable { onClick() }
+                .padding(horizontal = 12.dp, vertical = 7.dp),
+        ) {
+            Text("🪑 En sala de espera ($n)", color = if (activo) c.pend else c.texto,
+                fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
+        if (activo) {
+            Spacer(Modifier.width(8.dp))
+            Text("Por orden de llegada · ver todas", color = c.textoSuave, fontSize = 11.sp,
+                modifier = Modifier.clickable { onClick() })
+        }
+    }
+}
+
+private fun Modifier.bordePill(color: androidx.compose.ui.graphics.Color): Modifier =
+    this.then(Modifier.border(1.5.dp, color, RoundedCornerShape(Sania.shape.pill.dp)))
 
 /** Aviso de citas sin profesional asignado (origen web). Tocar una abre el editor para asignar. */
 @Composable

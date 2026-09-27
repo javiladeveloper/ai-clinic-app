@@ -125,6 +125,12 @@ data class ContextoStaff(
     val sedeActualId: String? = null,
     /** perfiles.sedes_permitidas. null = todas. */
     val sedesPermitidas: List<String>? = null,
+    /**
+     * Módulos clínicos de la clínica (triaje, flujo médico, recetas). Los
+     * resuelve la web con `resolverModulosClinicos` (interruptor o default del
+     * rubro). Un backend sin el campo → todo apagado: la app se ve como siempre.
+     */
+    val modulosClinicos: ModulosClinicos = ModulosClinicos(),
 ) {
     /** Permiso granular (mismo significado que puede() en la web). */
     fun puede(key: String): Boolean = when (key) {
@@ -218,6 +224,11 @@ data class PlanFeatures(
     val derivaciones: Boolean,
     val examenes: Boolean,
     val fotosEvolutivas: Boolean,
+    /**
+     * Tope de espacio para documentos de la ficha (MB). null = sin límite
+     * (Premium/Plus); Básico = 1024. Adjuntar documentos es de TODOS los planes.
+     */
+    val maxEspacioDocumentosMB: Int? = null,
 )
 
 data class ClinicaRef(val id: String, val nombre: String)
