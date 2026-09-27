@@ -39,7 +39,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import pe.saniape.app.data.AVISO_RECETA_POR_DEFECTO
+import pe.saniape.app.data.RecetasDelPaciente
+import pe.saniape.app.data.RecetasRepo
 import pe.saniape.app.data.Documento
 import pe.saniape.app.data.ResultadoPortal
 import pe.saniape.app.data.ResultadoPago
@@ -50,7 +57,8 @@ import pe.saniape.app.ui.theme.Sania
 
 /**
  * Tab Salud — mi(s) tratamiento(s) con progreso + timeline, saldo (si la clínica
- * lo habilitó) y mis documentos. Igual que MiTratamiento de la web.
+ * lo habilitó), mis recetas (si tiene) y mis documentos. Igual que MiTratamiento
+ * y MisRecetas de la web.
  */
 @Composable
 fun PantallaSalud() {
@@ -62,6 +70,9 @@ fun PantallaSalud() {
     var tratamientos by remember { mutableStateOf<List<Tratamiento>>(emptyList()) }
     var saldos by remember { mutableStateOf<Map<String, Saldo>>(emptyMap()) }
     var documentos by remember { mutableStateOf<List<Documento>>(emptyList()) }
+    // Recetas: null = no se sabe (endpoint ausente en un servidor viejo, sin red y
+    // sin caché). En ese caso — y si no tiene ninguna — la sección no aparece.
+    var recetas by remember { mutableStateOf<RecetasDelPaciente?>(null) }
 
     // En vivo: cuando la clinica confirma el vinculo desde la web, el historial
     // aparece solo. Esta pantalla cargaba una sola vez, asi que el paciente veia
@@ -80,16 +91,30 @@ fun PantallaSalud() {
     // Mercado Pago — el saldo se refresca aunque Realtime no haya conectado.
     LaunchedEffect(recargar, Reanudacion.contador) {
         errorCarga = false
+        // Lo guardado primero (la farmacia suele no tener señal); el servidor lo corrige.
+        if (recetas == null) recetas = withContext(Dispatchers.Default) { RecetasRepo.guardadas() }
         try {
-            when (val rt = SaludRepo.tratamientos()) {
-                is ResultadoPortal.Ok -> tratamientos = rt.datos
-                is ResultadoPortal.Error -> errorCarga = true
+            // Las cuatro consultas EN PARALELO (antes iban en fila: la pantalla
+            // esperaba la suma de todas). Cada una atrapa su propio fallo para no
+            // cancelar a las demás.
+            coroutineScope {
+                val dTrat = async { runCatching { SaludRepo.tratamientos() }.getOrDefault(ResultadoPortal.Error) }
+                val dSaldos = async { runCatching { SaludRepo.saldos() } }
+                val dDocs = async { runCatching { SaludRepo.documentos() } }
+                val dRecetas = async { runCatching { RecetasRepo.cargar() }.getOrNull() }
+                when (val rt = dTrat.await()) {
+                    is ResultadoPortal.Ok -> tratamientos = rt.datos
+                    is ResultadoPortal.Error -> errorCarga = true
+                }
+                dSaldos.await().onSuccess { saldos = it }.onFailure { errorCarga = true }
+                dDocs.await().onSuccess { documentos = it }.onFailure { errorCarga = true }
+                // Null = no se pudo saber: se conserva lo que ya había (caché).
+                dRecetas.await()?.let { recetas = it }
             }
-            saldos = SaludRepo.saldos()
-            documentos = SaludRepo.documentos()
         } catch (_: Exception) { errorCarga = true }
         finally { cargando = false }
     }
+    val listaRecetas = recetas?.recetas.orEmpty()
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -103,7 +128,7 @@ fun PantallaSalud() {
                 cargando -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                     CircularProgressIndicator(color = c.navy)
                 }
-                errorCarga && tratamientos.isEmpty() && documentos.isEmpty() ->
+                errorCarga && tratamientos.isEmpty() && documentos.isEmpty() && listaRecetas.isEmpty() ->
                     Box(Modifier.fillMaxSize().padding(Sania.dim.xxl), Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("⚠", fontSize = 44.sp)
@@ -119,7 +144,7 @@ fun PantallaSalud() {
                                 modifier = Modifier.clickable { cargando = true; recargar++ })
                         }
                     }
-                tratamientos.isEmpty() && documentos.isEmpty() ->
+                tratamientos.isEmpty() && documentos.isEmpty() && listaRecetas.isEmpty() ->
                     Box(Modifier.fillMaxSize().padding(Sania.dim.xxl), Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("💙", fontSize = 44.sp)
@@ -141,6 +166,17 @@ fun PantallaSalud() {
                     if (ordenados.isNotEmpty()) {
                         item { Etiqueta("MI TRATAMIENTO") }
                         items(ordenados) { t -> TarjetaTratamiento(t, saldos[t.id]) }
+                    }
+                    // 💊 Mis recetas: solo si tiene alguna (un paciente de fisio no ve nada nuevo).
+                    if (listaRecetas.isNotEmpty()) {
+                        item {
+                            if (ordenados.isNotEmpty()) Spacer(Modifier.height(Sania.dim.sm))
+                            Etiqueta("💊 MIS RECETAS")
+                        }
+                        item { AvisoCopiaReceta(recetas?.aviso ?: AVISO_RECETA_POR_DEFECTO) }
+                        items(listaRecetas, key = { "receta-" + it.id }) { r ->
+                            TarjetaReceta(r, recetas?.aviso ?: AVISO_RECETA_POR_DEFECTO)
+                        }
                     }
                     if (documentos.isNotEmpty()) {
                         item { Spacer(Modifier.height(Sania.dim.sm)); Etiqueta("MIS DOCUMENTOS") }
