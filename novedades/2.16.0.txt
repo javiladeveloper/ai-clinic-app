@@ -1,0 +1,12 @@
+# Novedades de la 2.16.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Agenda más rápida: filtro por especialidad, "No vino" en un toque, "Agendar siguiente" al terminar una cita, cobrar al completar desde la agenda y el último método de pago del paciente ya elegido. El buscador encuentra pacientes sin tildes y por DNI. Al agendar la sesión se propone el profesional del diagnóstico. Clínicas con varias sedes: eliges tu sede del día y ves solo su agenda y caja.
+---
+• Filtro por especialidad en la agenda (puedes elegir varias).
+• "No vino": marca la falta con confirmación.
+• "Agendar siguiente" al terminar una atención.
+• Cobrar al completar la cita desde la agenda; se propone el último método de pago del paciente.
+• Buscador de pacientes sin tildes, por DNI y en el servidor.
+• La sesión nueva propone al profesional que hizo el diagnóstico y la fecha del día elegido.
+• Mensajes de error claros al agendar.
+• Varias sedes: "¿En qué sede trabajas hoy?" y el chip 🏢 para cambiarla; agenda, inicio, caja y sesiones de esa sede.
