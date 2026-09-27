@@ -20,6 +20,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,7 +56,9 @@ fun PantallaCajaHoy(ctx: ContextoStaff) {
             .onSuccess { movs = it; fallo = false }
             .onFailure { fallo = true }
     }
-    LaunchedEffect(ctx.clinicaId) { cargar() }
+    // Multisede: la caja es de la sede activa; al cambiarla se recarga UNA vez.
+    val sedeActiva by pe.saniape.app.data.staff.SedeActiva.estado.collectAsState()
+    LaunchedEffect(ctx.clinicaId, sedeActiva.filtro) { movs = null; cargar() }
 
     if (registrando) {
         ModalRegistrarMovimiento(
@@ -79,8 +82,11 @@ fun PantallaCajaHoy(ctx: ContextoStaff) {
                     .padding(horizontal = Sania.dim.xl, vertical = Sania.dim.lg),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("💰 Caja de hoy", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f))
+                Column(Modifier.weight(1f)) {
+                    Text("💰 Caja de hoy", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
+                    // Multisede: la caja es POR SEDE (cada local cuenta su cajón).
+                    ChipSede(Modifier.padding(top = 2.dp))
+                }
                 Box(
                     Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.navy)
                         .clickable { registrando = true }

@@ -111,6 +111,20 @@ data class ContextoStaff(
     val mapaFisio: MapaFisio = MapaFisio(),
     val clinicas: List<ClinicaRef>,
     val tienePortal: Boolean,
+    /**
+     * Multisede (lo resuelve la web en /api/staff/contexto con la MISMA regla que
+     * SedeProvider: plan + interruptor + 2 sedes activas). Un backend viejo no
+     * manda los campos → false / vacío / null y la app se ve igual que siempre.
+     */
+    val multiSede: Boolean = false,
+    /** Sedes activas que ESTE usuario puede elegir (ya cruzadas con sedesPermitidas). */
+    val sedes: List<SedeRef> = emptyList(),
+    /** La principal: las filas SIN sede cuentan como suyas. */
+    val sedePrincipalId: String? = null,
+    /** perfiles.sede_actual_id (null es ambiguo: consolidado o sin elegir, como en la web). */
+    val sedeActualId: String? = null,
+    /** perfiles.sedes_permitidas. null = todas. */
+    val sedesPermitidas: List<String>? = null,
 ) {
     /** Permiso granular (mismo significado que puede() en la web). */
     fun puede(key: String): Boolean = when (key) {
@@ -207,3 +221,12 @@ data class PlanFeatures(
 )
 
 data class ClinicaRef(val id: String, val nombre: String)
+
+/** Una sede de la clínica (multisede). */
+data class SedeRef(
+    val id: String,
+    val nombre: String,
+    val direccion: String? = null,
+    val distrito: String? = null,
+    val esPrincipal: Boolean = false,
+)

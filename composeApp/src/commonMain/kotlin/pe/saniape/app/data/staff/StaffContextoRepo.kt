@@ -173,6 +173,24 @@ object StaffContextoRepo {
                 ClinicaRef(id, c.str("nombre") ?: "Clínica")
             },
             tienePortal = o.bool("tienePortal"),
+            // Multisede: parseo tolerante. Sin los campos (backend viejo, o
+            // clínica de un solo local) todo queda en su default y no cambia nada.
+            multiSede = o.bool("multiSede"),
+            sedes = (o["sedes"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull {
+                val s = it as? JsonObject ?: return@mapNotNull null
+                SedeRef(
+                    id = s.str("id") ?: return@mapNotNull null,
+                    nombre = s.str("nombre") ?: "Sede",
+                    direccion = s.str("direccion"),
+                    distrito = s.str("distrito"),
+                    esPrincipal = s.bool("es_principal"),
+                )
+            },
+            sedePrincipalId = o.str("sedePrincipalId"),
+            sedeActualId = o.str("sedeActualId"),
+            sedesPermitidas = (o["sedesPermitidas"] as? kotlinx.serialization.json.JsonArray)
+                ?.mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } }
+                ?.takeIf { it.isNotEmpty() },
         )
     }
 
@@ -181,5 +199,7 @@ object StaffContextoRepo {
         // siguiente que entre no debe poder arrancar con la clínica del anterior.
         claveCache()?.let { CacheLectura.borrar(it) }
         actual = null
+        SedeActiva.limpiar()
+        SedesAgendaRepo.limpiarCache()
     }
 }

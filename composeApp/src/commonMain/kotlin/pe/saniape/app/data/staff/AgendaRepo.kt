@@ -72,13 +72,17 @@ object AgendaRepo {
     suspend fun citasDelDia(fecha: String, miTerapeutaId: String?): List<CitaStaff> {
         // Con respaldo local: el día que ya se vio se vuelve a ver sin señal
         // (la clave lleva el scope para no mezclar "mis citas" con "todas").
-        val clave = CacheLectura.claveAgenda(fecha) + (miTerapeutaId?.let { ":$it" } ?: "")
+        // Multisede: solo las citas de la sede activa (la principal incluye las sin
+        // sede). Sin multisede o en "todas las sedes", filtro null = como siempre.
+        val sede = SedeActiva.filtro
+        val clave = CacheLectura.claveAgenda(fecha) + (miTerapeutaId?.let { ":$it" } ?: "") + (sede?.clave ?: "")
         val filas = filasConRespaldo(clave) {
             Supabase.client.postgrest["citas"]
                 .select(Columns.raw(SELECT_CITA)) {
                     filter {
                         eq("fecha", fecha)
                         if (miTerapeutaId != null) eq("terapeuta_id", miTerapeutaId)
+                        filtroSede(sede)
                     }
                     order("hora", Order.ASCENDING)
                 }
@@ -101,6 +105,7 @@ object AgendaRepo {
                 filter {
                     if (!verHistorial) gte("fecha", hoy)
                     if (miTerapeutaId != null) eq("terapeuta_id", miTerapeutaId)
+                    filtroSede(SedeActiva.filtro)
                 }
                 // La hora sigue a la fecha: en el HISTORIAL lo más reciente va
                 // arriba (fecha y hora descendentes), y en "próximas" lo que
@@ -543,13 +548,17 @@ object AgendaRepo {
         terapeutaId: String?, tratamientoId: String?, costo: Double, duracion: Int, notas: String?,
         especialidadId: String? = null, diagnostico: String? = null,
         campaniaId: String? = null,
+        // Multisede: la sede de la cita. Va EN el cuerpo, así la cola offline la
+        // lleva aunque al sincronizar el usuario ya esté en otra sede. null = la
+        // base decide (clínica de un solo local: el cuerpo queda igual que antes).
+        sedeId: String? = null,
     ): pe.saniape.app.data.offline.ResultadoEscritura {
         if (token() == null) return pe.saniape.app.data.offline.ResultadoEscritura(
             registrada = false, rechazo = pe.saniape.app.data.offline.RechazoServidor("Tu sesión expiró. Vuelve a entrar."),
         )
         return enviarOEncolarDetalle("cita:crear", "/api/staff/cita/crear", cuerpoCrearCita(
             pacienteId, tipo, fecha, hora, terapeutaId, tratamientoId, costo, duracion, notas,
-            especialidadId, diagnostico, campaniaId,
+            especialidadId, diagnostico, campaniaId, sedeId,
         ))
     }
 
@@ -557,6 +566,7 @@ object AgendaRepo {
         pacienteId: String, tipo: String, fecha: String, hora: String,
         terapeutaId: String?, tratamientoId: String?, costo: Double, duracion: Int, notas: String?,
         especialidadId: String?, diagnostico: String?, campaniaId: String?,
+        sedeId: String? = null,
     ): JsonObject = buildJsonObject {
         put("pacienteId", pacienteId)
         put("tipo", tipo)
@@ -570,6 +580,7 @@ object AgendaRepo {
         put("duracion", duracion)
         if (!notas.isNullOrBlank()) put("notas", notas)
         if (!campaniaId.isNullOrBlank()) put("campaniaId", campaniaId)
+        if (!sedeId.isNullOrBlank()) put("sedeId", sedeId)
     }
 
     /** Crea una cita vía endpoint (maneja sesión vinculada + notificación). */
@@ -650,6 +661,8 @@ object AgendaBanners {
     private const val SEL = AgendaRepo.SELECT_CITA
 
     suspend fun cargar(hoy: String, manana: String, miTerapeutaId: String?, esGestor: Boolean): BannersAgenda {
+        // Multisede: los avisos (mañana / vencidas) son de la sede activa, como la agenda.
+        val sede = SedeActiva.filtro
         // Mañana: citas de mañana no completadas.
         val mananaCitas = Supabase.client.postgrest["citas"]
             .select(Columns.raw(SEL)) {
@@ -658,6 +671,7 @@ object AgendaBanners {
                     neq("estado", "Completada")
                     neq("estado", "Cancelada")
                     if (miTerapeutaId != null) eq("terapeuta_id", miTerapeutaId)
+                    filtroSede(sede)
                 }
                 order("hora", Order.ASCENDING)
             }
@@ -677,6 +691,7 @@ object AgendaBanners {
                     gte("fecha", hace7)
                     isIn("estado", listOf("Pendiente", "Confirmada"))
                     if (miTerapeutaId != null) eq("terapeuta_id", miTerapeutaId)
+                    filtroSede(sede)
                 }
                 order("fecha", Order.DESCENDING)
                 limit(50)

@@ -28,6 +28,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,8 +71,12 @@ fun PantallaInicioStaff(
     // Muestra al instante lo último cargado (sobrevive al cambio de tab) y refresca en
     // segundo plano. Spinner de pantalla completa SOLO la primera vez (sin caché).
     // Memoria (cambio de tab) → disco (app recién abierta, incluso sin señal) → nada.
-    var stats by remember { mutableStateOf(DashboardRepo.cache ?: DashboardRepo.desdeDisco()) }
-    var cargando by remember { mutableStateOf(DashboardRepo.cache == null) }
+    // Multisede: las stats son de la sede activa. Al cambiar de sede se recargan
+    // UNA vez (clave del efecto de abajo); sin multisede la sede es siempre "".
+    val sedeActiva by pe.saniape.app.data.staff.SedeActiva.estado.collectAsState()
+    val sedeFiltro = sedeActiva.filtro?.sedeId ?: ""
+    var stats by remember(sedeFiltro) { mutableStateOf(DashboardRepo.cacheVigente ?: DashboardRepo.desdeDisco()) }
+    var cargando by remember(sedeFiltro) { mutableStateOf(stats == null) }
     // 🔔 Notificaciones in-app (misma tabla que la campanita web). No es push (eso será FCM).
     var notifs by remember { mutableStateOf<List<pe.saniape.app.data.staff.NotificacionClinica>>(emptyList()) }
     var verNotifs by remember { mutableStateOf(false) }
@@ -85,6 +90,13 @@ fun PantallaInicioStaff(
     // montaje, así que al volver a la app tras agendar una cita la agenda seguía
     // mostrando lo de antes y había que refrescar a mano. Ahora cada vuelta al
     // frente vuelve a consultar.
+    // Cambio de sede: SOLO las stats (notificaciones y metas no son por sede).
+    var primeraSede by remember { mutableStateOf(true) }
+    LaunchedEffect(sedeFiltro) {
+        if (primeraSede) { primeraSede = false; return@LaunchedEffect }
+        try { DashboardRepo.stats()?.let { stats = it } } catch (_: Exception) {}
+        cargando = false
+    }
     LaunchedEffect(pe.saniape.app.ui.Reanudacion.contador) {
         // Refresca aunque haya caché (para traer lo nuevo), pero sin borrar la pantalla:
         // si ya hay stats visibles, el spinner no aparece (cargando ya es false).

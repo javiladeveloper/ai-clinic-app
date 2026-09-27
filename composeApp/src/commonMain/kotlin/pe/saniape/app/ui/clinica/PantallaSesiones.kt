@@ -31,6 +31,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -121,6 +122,15 @@ fun PantallaSesiones(
         }
     }
 
+    // Multisede: la lista es de la sede activa. Al cambiar de sede solo se
+    // recarga la lista (los profesionales no dependen de la sede).
+    val sedeActiva by pe.saniape.app.data.staff.SedeActiva.estado.collectAsState()
+    var primeraSede by remember { mutableStateOf(true) }
+    LaunchedEffect(sedeActiva.filtro) {
+        if (primeraSede) { primeraSede = false; return@LaunchedEffect }
+        recargar()
+    }
+
     LaunchedEffect(intento) {
         recargar()
         if (ctx.esGestor) {
@@ -157,6 +167,7 @@ fun PantallaSesiones(
                     Text("Sesiones", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
                     Text("${sesiones.size} sesiones registradas", color = c.sobreNavy.copy(alpha = 0.7f),
                         fontSize = Sania.txt.pequeno)
+                    ChipSede(Modifier.padding(top = 4.dp))
                 }
             }
 

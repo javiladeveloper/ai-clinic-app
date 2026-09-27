@@ -37,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import pe.saniape.app.data.staff.CampaniaApp
 import pe.saniape.app.data.staff.CatalogosCobroRepo
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -189,10 +190,47 @@ fun PantallaCrearCita(
             tipo = tiposVisibles.first().valor
         }
     }
-    // Profesionales filtrados por la especialidad elegida (o todos si no se eligió).
-    val terapeutasFiltrados = especialidad?.let { e ->
+    // ── Multisede (gemelo de CitaForm web) ──
+    // La cita va a la sede ACTIVA; si el Admin mira "todas las sedes", elige
+    // aquí (por defecto la principal). Solo se ofrecen las sedes del usuario.
+    // Sin multisede: nada de esto se pinta ni se consulta, y no se manda sede.
+    val sedeEstado by pe.saniape.app.data.staff.SedeActiva.estado.collectAsState()
+    val multiSede = sedeEstado.multiSede
+    var sedeId by remember {
+        mutableStateOf(
+            if (!sedeEstado.multiSede) null
+            else sedeEstado.sedeId.ifEmpty { null }
+                ?: sedeEstado.principalId?.takeIf { p -> sedeEstado.sedes.any { it.id == p } }
+                ?: sedeEstado.sedes.firstOrNull()?.id
+        )
+    }
+    var datosSede by remember { mutableStateOf<pe.saniape.app.data.staff.SedesAgendaRepo.DatosSede?>(null) }
+    LaunchedEffect(multiSede) {
+        if (multiSede) datosSede = runCatching { pe.saniape.app.data.staff.SedesAgendaRepo.datos(ctx.clinicaId) }.getOrNull()
+    }
+    val filtroSedeForm = if (multiSede) sedeId?.let { pe.saniape.app.data.staff.FiltroSede(it, sedeEstado.principalId) } else null
+
+    // Profesionales filtrados por la especialidad elegida (o todos si no se eligió)
+    // y, con multisede, por los que atienden en ESA sede ese día (los sin horario
+    // o a demanda, por su sede base). El ya elegido no desaparece de la lista.
+    val terapeutasFiltrados = (especialidad?.let { e ->
         terapeutas.filter { e.id in it.especialidadIds }
-    } ?: terapeutas
+    } ?: terapeutas).let { lista ->
+        val d = datosSede
+        if (filtroSedeForm == null || d == null) lista
+        else pe.saniape.app.data.staff.profesionalesEnSede(
+            terapeutas = lista, idDe = { it.id }, base = d.base, franjas = d.franjas,
+            dia = pe.saniape.app.data.staff.diaCorto(fecha), f = filtroSedeForm, mantener = terapeuta?.id,
+        )
+    }
+    // ¿El elegido no atiende en esta sede ese día? (aviso, no bloqueo; como la web)
+    val elegidoFueraDeSede = run {
+        val d = datosSede; val t = terapeuta
+        filtroSedeForm != null && d != null && t != null && pe.saniape.app.data.staff.profesionalesEnSede(
+            terapeutas = listOf(t), idDe = { it.id }, base = d.base, franjas = d.franjas,
+            dia = pe.saniape.app.data.staff.diaCorto(fecha), f = filtroSedeForm,
+        ).isEmpty()
+    }
 
     // Disponibilidad en vivo (igual que la web): bloquea si no disponible (futura),
     // advierte si hay solapamiento. Se recalcula al cambiar profesional/fecha/hora.
@@ -324,7 +362,9 @@ fun PantallaCrearCita(
         ModalVerHorarios(
             fecha = fecha, hora = hora,
             duracion = duracion,
-            soloTerapeutaIds = especialidad?.let { e -> terapeutas.filter { e.id in it.especialidadIds }.map { it.id } },
+            // Multisede: solo los de la sede de la cita (ya filtrados arriba).
+            soloTerapeutaIds = if (filtroSedeForm != null && datosSede != null) terapeutasFiltrados.map { it.id }
+                else especialidad?.let { e -> terapeutas.filter { e.id in it.especialidadIds }.map { it.id } },
             onElegir = { id ->
                 terapeuta = terapeutas.find { it.id == id }; terapeutaAMano = true; precargado = null
                 mostrarHorarios = false
@@ -370,6 +410,22 @@ fun PantallaCrearCita(
                 // odontología, fisioterapia entra por Consulta y odontología
                 // directo al Diagnóstico; preguntar el tipo primero ofrecería
                 // etapas que esa especialidad no tiene.
+                // Sede (multisede): la activa, o a elegir si el Admin está en "todas".
+                if (multiSede && sedeEstado.sedes.isNotEmpty()) {
+                    Spacer(Modifier.height(Sania.dim.md))
+                    Etiqueta("Sede")
+                    if (sedeEstado.sedeId.isNotEmpty() || sedeEstado.sedes.size == 1) {
+                        SelectorBoton("🏢 " + (sedeEstado.sedes.find { it.id == sedeId }?.nombre ?: "Sede"), bloqueado = true) {}
+                    } else {
+                        SelectorLista(
+                            items = sedeEstado.sedes, elegido = sedeEstado.sedes.find { it.id == sedeId },
+                            etiqueta = { "🏢 " + it.nombre },
+                            onElegir = { sedeId = it.id },
+                            placeholder = "Elige la sede",
+                        )
+                    }
+                }
+
                 if (multiEspecialidad && ctx.miTerapeutaId == null) {
                     Spacer(Modifier.height(Sania.dim.md))
                     Etiqueta("Especialidad")
@@ -474,6 +530,10 @@ fun PantallaCrearCita(
                         },
                         placeholder = "Sin asignar",
                     )
+                    if (elegidoFueraDeSede) {
+                        Text("⚠ No atiende en esta sede ese día", color = c.pend, fontSize = 11.sp,
+                            modifier = Modifier.padding(top = 4.dp))
+                    }
                     // De dónde salió el profesional precargado (discreto; se cambia arriba).
                     precargado?.takeIf { it.id == terapeuta?.id }?.let { s ->
                         Text("↺ ${s.texto} · puedes cambiarlo", color = c.textoSuave, fontSize = 11.sp,
@@ -549,6 +609,9 @@ fun PantallaCrearCita(
                             mensaje = "Elige la especialidad: la clínica atiende odontología y otras, y cada una se atiende distinto."
                             return@Button
                         }
+                        if (multiSede && sedeId == null) {
+                            mensaje = "Elige la sede de la cita"; return@Button
+                        }
                         // Disponibilidad bloquea solo si NO es regularización (igual que la web).
                         val d = disponibilidad
                         if (d != null && !d.disponible && !esRegularizacion) {
@@ -582,6 +645,8 @@ fun PantallaCrearCita(
                                 especialidadId = espId,
                                 diagnostico = if (tipo == "Evaluación") diagnostico.ifBlank { null } else null,
                                 campaniaId = if (tipo != "Sesión") promoAplicada?.id else null,
+                                // Multisede: la sede viaja en el cuerpo (también en la cola offline).
+                                sedeId = if (multiSede) sedeId else null,
                             )
                             guardando = false
                             if (r.registrada) {

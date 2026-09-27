@@ -164,10 +164,14 @@ fun PantallaAgenda(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     LogoMarcaChica(ctx)
                     Spacer(Modifier.width(10.dp))
-                    Text("Agenda", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
+                    Column {
+                        Text("Agenda", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
+                        // Multisede: la agenda es la de esta sede. Sin multisede no pinta nada.
+                        ChipSede(Modifier.padding(top = 2.dp))
+                    }
                 }
                 // Agendar (crear cita) solo con permiso 'agendar' (recepción/admin). El profesional
                 // que solo atiende ve su agenda pero no agenda.

@@ -76,14 +76,25 @@ object SesionesRepo {
      * igual que la web (`s.terapeuta_id === miTerapeutaId`).
      */
     suspend fun listar(soloTerapeutaId: String? = null, limite: Int = 400): List<SesionGlobal> {
+        // Multisede: la sede de una sesión es la de su cita (citas.sesion_id);
+        // sin cita o con cita sin sede = la principal. Gemelo de `sedePorSesion`
+        // (web). Solo con sede elegida se pide la cita: sin multisede la consulta
+        // es exactamente la de siempre (ni se nombra la columna sede_id).
+        val sede = SedeActiva.filtro
+        val select = if (sede == null) SELECT else "$SELECT, citas_sede:citas!citas_sesion_id_fkey(sede_id)"
         val filas = Supabase.client.postgrest["sesiones"]
-            .select(Columns.raw(SELECT)) {
+            .select(Columns.raw(select)) {
                 order("fecha", Order.DESCENDING)
                 order("numero", Order.DESCENDING)
                 limit(limite.toLong())
             }
             .decodeList<JsonObject>()
-        val sesiones = filas.mapNotNull { mapear(it) }
+        val deLaSede = if (sede == null) filas else filas.filter { o ->
+            val sedeCita = (o["citas_sede"] as? JsonArray).orEmpty()
+                .firstNotNullOfOrNull { (it as? JsonObject)?.str("sede_id") }
+            enSede(sedeCita, sede)
+        }
+        val sesiones = deLaSede.mapNotNull { mapear(it) }
         return if (soloTerapeutaId == null) sesiones
         else sesiones.filter { it.terapeutaId == soloTerapeutaId }
     }

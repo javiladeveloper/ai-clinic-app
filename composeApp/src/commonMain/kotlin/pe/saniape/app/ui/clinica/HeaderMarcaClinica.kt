@@ -87,6 +87,9 @@ fun HeaderMarcaClinica(
                     Text(it, color = c.sobreNavy.copy(alpha = 0.75f), fontSize = 12.sp,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+                // Multisede: la sede en la que trabaja hoy (tocable para cambiarla).
+                // Sin multisede no pinta nada.
+                ChipSede(Modifier.padding(top = 4.dp))
             }
             if (multiClinica && onCambiarClinica != null) {
                 Spacer(Modifier.width(4.dp))

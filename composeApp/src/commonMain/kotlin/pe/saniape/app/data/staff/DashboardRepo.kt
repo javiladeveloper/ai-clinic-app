@@ -52,6 +52,15 @@ object DashboardRepo {
     var cache: StatsDashboard? = null
         private set
 
+    /** Sede con la que se cargó [cache] ("" = sin sede). Al cambiar de sede no se muestra la de otra. */
+    private var cacheSede: String = ""
+
+    /** [cache] solo si es de la sede activa (sin multisede: siempre). */
+    val cacheVigente: StatsDashboard?
+        get() = cache?.takeIf { cacheSede == sedeActual() }
+
+    private fun sedeActual(): String = SedeActiva.filtro?.sedeId ?: ""
+
     fun limpiarCache() {
         claveDisco()?.let { CacheLectura.borrar(it) }
         cache = null
@@ -59,7 +68,10 @@ object DashboardRepo {
 
     /** En disco va por usuario: un celular compartido no mezcla Inicios. */
     private fun claveDisco(): String? =
-        Supabase.client.auth.currentSessionOrNull()?.user?.id?.let { CacheLectura.claveInicio(it) }
+        Supabase.client.auth.currentSessionOrNull()?.user?.id?.let {
+            // Multisede: el Inicio de cada sede se guarda aparte. Sin sede, la clave de siempre.
+            CacheLectura.claveInicio(it) + sedeActual().let { s -> if (s.isEmpty()) "" else ":sede=$s" }
+        }
 
     /**
      * Lo último que se vio, SIN red (caché en disco). Sin esto, abrir la app
@@ -68,7 +80,7 @@ object DashboardRepo {
      */
     fun desdeDisco(): StatsDashboard? = runCatching {
         val crudo = CacheLectura.leer(claveDisco() ?: return null) ?: return null
-        parsear(json.parseToJsonElement(crudo).jsonObject).also { cache = it }
+        parsear(json.parseToJsonElement(crudo).jsonObject).also { cache = it; cacheSede = sedeActual() }
     }.getOrNull()
 
     private fun JsonObject.str(k: String): String? =
@@ -80,14 +92,19 @@ object DashboardRepo {
 
     suspend fun stats(): StatsDashboard? {
         val tk = token() ?: return null
-        val resp = http.get("${Supabase.SITE_URL}/api/dashboard/stats") {
+        // Multisede: las stats de la sede activa (?sede=, misma regla que la web).
+        // Sin sede elegida (o sin multisede) la URL es la de siempre.
+        val sede = sedeActual()
+        val clave = claveDisco()
+        val url = "${Supabase.SITE_URL}/api/dashboard/stats" + if (sede.isEmpty()) "" else "?sede=$sede"
+        val resp = http.get(url) {
             header("Authorization", "Bearer $tk")
         }
         if (resp.status != HttpStatusCode.OK) return null
         val crudo = resp.bodyAsText()
-        claveDisco()?.let { CacheLectura.guardar(it, crudo) }
+        clave?.let { CacheLectura.guardar(it, crudo) }
         return parsear(json.parseToJsonElement(crudo).jsonObject)
-            .also { cache = it }   // guarda el último resultado para mostrarlo al instante al volver
+            .also { cache = it; cacheSede = sede }   // guarda el último resultado para mostrarlo al instante al volver
     }
 
     private fun parsear(o: JsonObject): StatsDashboard {

@@ -8,6 +8,9 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.plus
@@ -245,6 +248,21 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         cargarAuxiliares()
         // Auto-refresco en vivo: si desde la web se agenda/cambia/cancela una cita, la
         // agenda visible se recarga sola. Best-effort — si no conecta, no pasa nada.
+        // Multisede: al cambiar de sede se recargan UNA vez las citas visibles y
+        // los avisos (catálogos y profesionales no dependen de la sede). drop(1):
+        // el valor actual ya se usó en la carga de arriba. Sin multisede el filtro
+        // es siempre null y esto nunca dispara.
+        viewModelScope.launch {
+            pe.saniape.app.data.staff.SedeActiva.estado
+                .map { it.filtro }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect {
+                    pagina = 0
+                    if (verHistorial) cargarLista() else cargarDia(fechaSel)
+                    recargarBanners()
+                }
+        }
         realtimeJob = RealtimeAgenda.suscribir(viewModelScope) {
             // Recarga lo que esté visible ahora mismo (día concreto o lista), sin spinner.
             if (verHistorial) cargarLista() else cargarDia(fechaSel)

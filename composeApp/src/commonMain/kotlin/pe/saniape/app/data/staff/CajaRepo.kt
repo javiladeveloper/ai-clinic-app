@@ -58,6 +58,9 @@ object CajaRepo {
                 comprobante?.trim()?.takeIf { it.isNotBlank() }?.let {
                     put("comprobante", kotlinx.serialization.json.JsonPrimitive(it))
                 }
+                // Multisede: el movimiento es de la sede activa (en "todas las sedes"
+                // o sin multisede no se manda y la base decide, como siempre).
+                SedeActiva.filtro?.let { put("sede_id", kotlinx.serialization.json.JsonPrimitive(it.sedeId)) }
             }
         )
         null
@@ -75,7 +78,12 @@ object CajaRepo {
     suspend fun movimientosDeHoy(): List<MovimientoCaja> {
         val filas = Supabase.client.postgrest["movimientos"]
             .select(Columns.raw("id, tipo, categoria, descripcion, monto, metodo_pago, fecha, created_at, paciente:pacientes(nombre)")) {
-                filter { eq("fecha", hoyISO()) }
+                filter {
+                    eq("fecha", hoyISO())
+                    // Multisede: los movimientos de la sede activa (la principal
+                    // incluye los sin sede). "Todas las sedes": sin filtro.
+                    filtroSede(SedeActiva.filtro)
+                }
                 order("created_at", Order.DESCENDING)
             }
             .decodeList<JsonObject>()

@@ -31,6 +31,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -96,6 +97,11 @@ fun ClinicaConTabs(
         cargando = true; error = null
         when (val r = StaffContextoRepo.cargar()) {
             is StaffContextoRepo.Resultado.Ok -> {
+                // Multisede: resolver la sede de hoy ANTES de pintar las pantallas,
+                // así la primera carga ya sale filtrada (sin cargar dos veces).
+                // Sin multisede no hace nada.
+                pe.saniape.app.data.staff.SedesAgendaRepo.limpiarCache()
+                pe.saniape.app.data.staff.SedeActiva.iniciar(r.contexto)
                 ctx = r.contexto
                 // Recordar la marca de la clínica activa para que la intro al REABRIR la app
                 // muestre su logo (no el de Sania) antes de cargar el contexto.
@@ -144,6 +150,17 @@ fun ClinicaConTabs(
                     ) { Text("Reintentar", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
                 }
             }
+        }
+        return
+    }
+
+    // Multisede sin sede elegida todavía: primero la pregunta, y recién después
+    // las pantallas. Así no se carga nada "de todas las sedes" para quien no
+    // puede verlo, ni se carga dos veces. Sin multisede esto nunca aplica.
+    val sedeEstado by pe.saniape.app.data.staff.SedeActiva.estado.collectAsState()
+    if (sedeEstado.multiSede && (sedeEstado.obligatorio || sedeEstado.sinSedes)) {
+        Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
+            DialogoSede()
         }
         return
     }
@@ -240,6 +257,9 @@ fun ClinicaConTabs(
                     PantallaCajaHoy(ctx = contexto)
                 }
             }
+            // Multisede: "¿En qué sede trabajas hoy?" (obligatorio si aún no eligió,
+            // o a pedido desde el chip). Sin multisede no pinta nada.
+            DialogoSede()
             // Buscador global (header) → al elegir, abre la ficha en overlay.
             AnimatedVisibility(visible = verBuscador, enter = entrarDetalle(), exit = salirDetalle()) {
                 Box(Modifier.fillMaxSize().background(c.fondo)) {

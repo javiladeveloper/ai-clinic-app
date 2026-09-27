@@ -966,7 +966,23 @@ object PacientesRepo {
         fecha: String, hora: String,
         duracion: Int = 45, estado: String = "Planificada",
         costo: Double? = null, notas: String? = null,
+    ): Boolean {
+        // Multisede: la sesión va a la sede "de origen" del tratamiento (la de su
+        // última cita con sede), como la web (useSesiones). Si no hay, la sede
+        // activa. Sin multisede no se consulta nada y el cuerpo es el de siempre.
+        val sedeId = if (!SedeActiva.estado.value.multiSede) null
+            else SedesAgendaRepo.sedeUltimaCitaTratamiento(tratamientoId)
+                ?.takeIf { s -> SedeActiva.estado.value.sedes.any { it.id == s } }
+                ?: SedeActiva.filtro?.sedeId
+        return crearSesionCuerpo(pacienteId, tratamientoId, terapeutaId, fecha, hora, duracion, estado, costo, notas, sedeId)
+    }
+
+    private suspend fun crearSesionCuerpo(
+        pacienteId: String, tratamientoId: String, terapeutaId: String?,
+        fecha: String, hora: String, duracion: Int, estado: String,
+        costo: Double?, notas: String?, sedeId: String?,
     ): Boolean = postStaff("/api/staff/cita/crear", buildJsonObject {
+        if (sedeId != null) put("sedeId", sedeId)
         put("pacienteId", pacienteId); put("tipo", "Sesión")
         put("tratamientoId", tratamientoId); put("fecha", fecha); put("hora", hora)
         if (terapeutaId != null) put("terapeutaId", terapeutaId)
