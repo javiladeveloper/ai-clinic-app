@@ -61,6 +61,11 @@ import pe.saniape.app.data.staff.EstadoProfesional
 import pe.saniape.app.data.staff.RefNombre
 import pe.saniape.app.data.staff.TerapeutaRef
 import pe.saniape.app.data.staff.TratamientoRef
+import pe.saniape.app.data.staff.EvaluacionPrevia
+import pe.saniape.app.data.staff.SugerenciaProfesional
+import pe.saniape.app.data.staff.profesionalSugerido
+import pe.saniape.app.data.staff.horaInicialNuevaCita
+import pe.saniape.app.data.staff.hoyClinicaIso
 import pe.saniape.app.ui.ManejarAtras
 import pe.saniape.app.ui.theme.Sania
 
@@ -132,9 +137,17 @@ fun PantallaCrearCita(
     var paciente by remember { mutableStateOf<RefNombre?>(null) }
     var tratamiento by remember { mutableStateOf<TratamientoRef?>(null) }
     var terapeuta by remember { mutableStateOf<TerapeutaRef?>(null) }
+    // ¿Lo eligió quien agenda (o vino prefijado)? Entonces ninguna sugerencia lo pisa.
+    var terapeutaAMano by remember { mutableStateOf(prefill?.terapeutaId != null) }
+    // El precargado por tratamiento/diagnóstico (para la ayuda bajo el selector).
+    var precargado by remember { mutableStateOf<SugerenciaProfesional?>(null) }
+    var evaluaciones by remember { mutableStateOf<List<EvaluacionPrevia>>(emptyList()) }
     var especialidad by remember { mutableStateOf<EspecialidadRef?>(null) }
     var fecha by remember { mutableStateOf(prefill?.fecha ?: fechaInicial) }
-    var hora by remember { mutableStateOf(prefill?.hora ?: pe.saniape.app.ui.proximaHoraEnPunto()) }
+    // Un día futuro arranca 09:00 (como la web); hoy, la próxima hora en punto.
+    var hora by remember {
+        mutableStateOf(prefill?.hora ?: horaInicialNuevaCita(fechaInicial, hoyClinicaIso(), pe.saniape.app.ui.proximaHoraEnPunto()))
+    }
     var costo by remember { mutableStateOf("0") }
     var diagnostico by remember { mutableStateOf("") }
     var notas by remember { mutableStateOf("") }
@@ -238,6 +251,34 @@ fun PantallaCrearCita(
         prefill?.tratamientoId?.let { tid -> tratamiento = tratamientos.find { it.id == tid } }
     }
 
+    // Profesional por defecto de una cita de tratamiento (Sesión): el del
+    // tratamiento → el que hizo su evaluación/diagnóstico → lo de siempre.
+    // Gemelo de la web (ProfesionalSugerido.kt). El profesional vinculado queda
+    // fijado a sí mismo, así que ahí no se consulta nada.
+    val quiereSugerencia = tipo == "Sesión" && ctx.miTerapeutaId == null
+    LaunchedEffect(paciente?.id, quiereSugerencia) {
+        val p = paciente
+        evaluaciones = if (p != null && quiereSugerencia) {
+            runCatching {
+                AgendaRepo.evaluacionesPaciente(p.id, ctx.flujo.usaConsulta && !ctx.flujo.usaEvaluacion)
+            }.getOrDefault(emptyList())
+        } else emptyList()
+    }
+    val sugerencia = remember(quiereSugerencia, paciente?.id, tratamiento, evaluaciones, terapeutas, especialidad) {
+        if (!quiereSugerencia || paciente == null) null
+        else profesionalSugerido(
+            tratamientoTerapeutaId = tratamiento?.terapeutaId,
+            evaluaciones = evaluaciones,
+            especialidadId = tratamiento?.especialidadId ?: especialidad?.id,
+            activos = terapeutas.associate { it.id to it.especialidadIds },
+        )
+    }
+    LaunchedEffect(sugerencia) {
+        val s = sugerencia ?: return@LaunchedEffect
+        if (terapeutaAMano) return@LaunchedEffect
+        terapeutas.find { it.id == s.id }?.let { terapeuta = it; precargado = s }
+    }
+
     // Pickers nativos
     if (mostrarFecha) {
         val estado = rememberDatePickerState()
@@ -277,7 +318,10 @@ fun PantallaCrearCita(
             fecha = fecha, hora = hora,
             duracion = duracion,
             soloTerapeutaIds = especialidad?.let { e -> terapeutas.filter { e.id in it.especialidadIds }.map { it.id } },
-            onElegir = { id -> terapeuta = terapeutas.find { it.id == id }; mostrarHorarios = false },
+            onElegir = { id ->
+                terapeuta = terapeutas.find { it.id == id }; terapeutaAMano = true; precargado = null
+                mostrarHorarios = false
+            },
             onCerrar = { mostrarHorarios = false },
         )
     }
@@ -351,7 +395,7 @@ fun PantallaCrearCita(
                 Etiqueta("Paciente")
                 SelectorPacienteBuscable(
                     items = pacientes, elegido = paciente,
-                    onElegir = { paciente = it; terapeuta = null; tratamiento = null },
+                    onElegir = { paciente = it; terapeuta = null; tratamiento = null; terapeutaAMano = false; precargado = null },
                 )
 
                 // Tratamiento (solo Sesión)
@@ -361,7 +405,9 @@ fun PantallaCrearCita(
                     SelectorLista(
                         items = tratamientos, elegido = tratamiento,
                         etiqueta = { "${it.procedimiento} — ${it.modalidad}" },
-                        onElegir = { tr -> tratamiento = tr; tr.terapeutaId?.let { tid -> terapeuta = terapeutas.find { it.id == tid } } },
+                        // El profesional lo pone la sugerencia (tratamiento → diagnóstico),
+                        // salvo que quien agenda ya haya elegido uno a mano.
+                        onElegir = { tr -> tratamiento = tr },
                         placeholder = "Elegir tratamiento",
                     )
                 }
@@ -408,6 +454,7 @@ fun PantallaCrearCita(
                         items = terapeutasFiltrados, elegido = terapeuta, etiqueta = { it.nombre },
                         onElegir = { t ->
                             terapeuta = t
+                            terapeutaAMano = true; precargado = null
                             // Al elegir profesional, auto-rellenar su especialidad si tiene UNA sola
                             // (igual que la web). Así no queda en "Todas" cuando ya hay profesional.
                             if (especialidad == null) {
@@ -418,6 +465,11 @@ fun PantallaCrearCita(
                         },
                         placeholder = "Sin asignar",
                     )
+                    // De dónde salió el profesional precargado (discreto; se cambia arriba).
+                    precargado?.takeIf { it.id == terapeuta?.id }?.let { s ->
+                        Text("↺ ${s.texto} · puedes cambiarlo", color = c.textoSuave, fontSize = 11.sp,
+                            modifier = Modifier.padding(top = 4.dp))
+                    }
                 }
 
                 // Costo (si tiene permiso pagos)

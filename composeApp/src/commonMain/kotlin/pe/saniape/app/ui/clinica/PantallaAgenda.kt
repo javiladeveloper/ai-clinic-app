@@ -135,7 +135,9 @@ fun PantallaAgenda(
 
     if (creandoCita || prefillEval != null) {
         PantallaCrearCita(
-            ctx = ctx, fechaInicial = vm.fechaSel,
+            // El día que se está mirando en la tira (buscando un espacio); si ya
+            // pasó, hoy. Gemelo de fechaParaNuevaCita de la web.
+            ctx = ctx, fechaInicial = pe.saniape.app.data.staff.fechaParaNuevaCita(vm.fechaSel, pe.saniape.app.data.staff.hoyClinicaIso()),
             prefill = prefillEval,
             onListo = { creandoCita = false; prefillEval = null; vm.refrescar() },
             onCancelar = { creandoCita = false; prefillEval = null },
@@ -218,7 +220,11 @@ fun PantallaAgenda(
                                     tipo = "Evaluación",
                                     pacienteId = d.pacienteId,
                                     pacienteNombre = d.pacienteNombre,
-                                    fecha = vm.fechaSel, hora = "09:00",
+                                    // Como "+ Nueva": el día mirado si es futuro; si no, hoy.
+                                    fecha = pe.saniape.app.data.staff.fechaParaNuevaCita(vm.fechaSel, pe.saniape.app.data.staff.hoyClinicaIso()),
+                                    hora = pe.saniape.app.data.staff.horaInicialNuevaCita(
+                                        pe.saniape.app.data.staff.fechaParaNuevaCita(vm.fechaSel, pe.saniape.app.data.staff.hoyClinicaIso()),
+                                        pe.saniape.app.data.staff.hoyClinicaIso(), pe.saniape.app.ui.proximaHoraEnPunto()),
                                     terapeutaId = null,
                                     especialidadId = d.especialidadDestinoId,
                                 )

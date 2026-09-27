@@ -326,7 +326,7 @@ object AgendaRepo {
     suspend fun tratamientosActivos(pacienteId: String): List<TratamientoRef> {
         val filas = Supabase.client.postgrest["tratamientos"]
             .select(
-                Columns.raw("id, modalidad, terapeuta_id, procedimiento:procedimientos(nombre)")
+                Columns.raw("id, modalidad, terapeuta_id, procedimiento:procedimientos(nombre, especialidad_id)")
             ) {
                 filter { eq("paciente_id", pacienteId); eq("estado", "Activo") }
             }
@@ -338,6 +338,39 @@ object AgendaRepo {
                 procedimiento = it.nested("procedimiento")?.str("nombre") ?: "Tratamiento",
                 modalidad = it.str("modalidad") ?: "",
                 terapeutaId = it.str("terapeuta_id"),
+                especialidadId = it.nested("procedimiento")?.str("especialidad_id"),
+            )
+        }
+    }
+
+    /**
+     * Las últimas citas que EVALUARON al paciente (completadas, con profesional),
+     * para sugerir al mismo profesional al agendar su tratamiento
+     * ([profesionalSugerido]). Acotada: un paciente, 5 filas, solo al agendar una
+     * Sesión. [consultaEvalua]: en los flujos donde la Consulta es la cita que
+     * evalúa (sin etapa de Evaluación) también cuenta la Consulta. Gemelo de
+     * `hooks/useEvaluacionesPaciente.ts` (web).
+     */
+    suspend fun evaluacionesPaciente(pacienteId: String, consultaEvalua: Boolean): List<EvaluacionPrevia> {
+        val tipos = if (consultaEvalua) listOf("Evaluación", "Consulta") else listOf("Evaluación")
+        val filas = Supabase.client.postgrest["citas"]
+            .select(Columns.raw("terapeuta_id, especialidad_id, fecha, hora")) {
+                filter {
+                    eq("paciente_id", pacienteId); eq("estado", "Completada")
+                    isIn("tipo", tipos)
+                }
+                order("fecha", Order.DESCENDING)
+                order("hora", Order.DESCENDING)
+                // Las sin profesional se descartan abajo; 8 deja margen para ellas.
+                limit(8)
+            }
+            .decodeList<JsonObject>()
+        return filas.mapNotNull {
+            EvaluacionPrevia(
+                terapeutaId = it.str("terapeuta_id") ?: return@mapNotNull null,
+                especialidadId = it.str("especialidad_id"),
+                fecha = it.str("fecha") ?: return@mapNotNull null,
+                hora = it.str("hora"),
             )
         }
     }
@@ -467,7 +500,11 @@ data class EspecialidadRef(
 data class RefNombre(val id: String, val nombre: String)
 /** Terapeuta con sus especialidades (para filtrar por especialidad en el form). */
 data class TerapeutaRef(val id: String, val nombre: String, val especialidadIds: List<String>)
-data class TratamientoRef(val id: String, val procedimiento: String, val modalidad: String, val terapeutaId: String?)
+data class TratamientoRef(
+    val id: String, val procedimiento: String, val modalidad: String, val terapeutaId: String?,
+    /** La especialidad del servicio del tratamiento (para validar la sugerencia de profesional). */
+    val especialidadId: String? = null,
+)
 
 /**
  * Una solicitud pendiente de agendar (un profesional derivó o pidió un examen interno;
