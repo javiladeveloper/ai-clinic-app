@@ -91,7 +91,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     // Sesión a completar + su anterior (referencia de evolución) + técnicas del plan (precarga).
     var completarSesion by remember { mutableStateOf<CompletarSesionReq?>(null) }
     // Tras completar una sesión con paquete no terminado: ofrecer agendar la próxima en 1 tap.
-    var ofrecerAgendarProxima by remember { mutableStateOf<TratamientoPaciente?>(null) }
+    var ofrecerAgendarProxima by remember { mutableStateOf<OfertaProximaFicha?>(null) }
     // La sesión se completó pero el cobro no entró: se ofrece reintentar SOLO el cobro.
     var cobroFallido by remember { mutableStateOf<CobroFallido?>(null) }
     var reintentandoCobro by remember { mutableStateOf(false) }
@@ -555,10 +555,15 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         puedeDerivar = ctx.can("derivaciones") && especialidadesClinica.size > 1,
                         // Agendar control: cita vinculada AL TRATAMIENTO de origen (trazabilidad).
                         onAgendarControl = { t ->
+                            // La fecha del próximo control anotado en el tratamiento (si
+                            // no hay o ya pasó, hoy) y su profesional.
+                            val hoyCtl = pe.saniape.app.data.staff.hoyClinicaIso()
+                            val fechaCtl = pe.saniape.app.data.staff.fechaParaAgendarControl(t.proximoControl, hoyCtl)
                             crearCita = pe.saniape.app.ui.clinica.PrefillCita(
                                 tipo = "Consulta",
                                 pacienteId = paciente.id, pacienteNombre = paciente.nombre,
-                                fecha = pe.saniape.app.ui.clinica.agenda.hoyIso(), hora = "09:00",
+                                fecha = fechaCtl,
+                                hora = pe.saniape.app.data.staff.horaInicialNuevaCita(fechaCtl, hoyCtl, pe.saniape.app.ui.proximaHoraEnPunto()),
                                 terapeutaId = t.terapeutaId,
                                 especialidadId = especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id,
                                 tratamientoId = t.id,
@@ -672,6 +677,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             t = t,
             miTerapeutaId = ctx.miTerapeutaId,
             puedePagos = ctx.puede("pagos"),
+            pacienteId = paciente.id,
             onCancelar = { crearSesionEn = null },
             onGuardar = { fecha, hora, dur, terapeutaId, estado, costo, notas, pago ->
                 crearSesionEn = null
@@ -689,6 +695,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     if (ok && pago != null) {
                         val okPago = PacientesRepo.registrarPago(
                             t.id, pago.first, pago.second, "Pago de la sesión del $fecha")
+                        if (okPago) pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(paciente.id, pago.second)
                         if (okPago) pe.saniape.app.ui.Toaster.exito("Pago registrado (${pago.second})")
                         else pe.saniape.app.ui.Toaster.error("La sesión se creó pero el PAGO no se registró — usa la sección Pagos")
                     }
@@ -910,6 +917,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     if (ok && pago != null) {
                         val rPago = PacientesRepo.cobrarSesionDetalle(req.trat.id, ses.id, pago.first, pago.second, null)
                         if (rPago.registrada) {
+                            pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(paciente.id, pago.second)
                             if (!rPago.encolada) pe.saniape.app.ui.Toaster.exito("Pago registrado (${pago.second})")
                         } else {
                             cobroFallido = CobroFallido(req.trat.id, ses.id, ses.numero, pago.first, pago.second, rPago.rechazo?.error)
@@ -918,11 +926,33 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     // Aprender las técnicas para sugerirlas la próxima vez (fire-and-forget).
                     tecnicas?.let { TecnicasRepo.registrar(it) }
                     recargar()
-                    // Si es paquete y aún quedan sesiones por hacer, ofrecer agendar la próxima
-                    // en 1 tap (evita ir a agenda → +Nueva → buscar paciente → tipo → fecha).
+                    // Si aún quedan sesiones por hacer, ofrecer agendar la próxima en 1 tap
+                    // (evita ir a agenda → +Nueva → buscar paciente → tipo → fecha): con el
+                    // intervalo del servicio (o +7 días), a la MISMA hora y con el MISMO
+                    // profesional de la sesión recién atendida. No se ofrece si ya tiene
+                    // la siguiente agendada (crearía un duplicado) ni si no quedan.
                     val tr = req.trat
-                    if (ok && tr.usaSesiones && (tr.sesionesCompletadas + 1) < tr.totalSesiones) {
-                        ofrecerAgendarProxima = tr
+                    if (ok && tr.usaSesiones && ctx.puede("sesiones")) {
+                        val hoyProx = pe.saniape.app.data.staff.hoyClinicaIso()
+                        val oferta = if (!r.encolada) {
+                            pe.saniape.app.data.staff.SiguienteSesionRepo.evaluar(tr.id, hoyProx, excluirSesionId = ses.id)
+                        } else if ((tr.sesionesCompletadas + 1) < tr.totalSesiones) {
+                            // Sin señal (quedó en la cola): la regla local de siempre.
+                            pe.saniape.app.data.staff.OfertaSiguienteSesion(
+                                tratamientoId = tr.id,
+                                fecha = pe.saniape.app.data.staff.fechaSugeridaSiguienteSesion(hoyProx, null),
+                                intervaloDias = 7,
+                                quedan = tr.totalSesiones - (tr.sesionesCompletadas + 1),
+                                terapeutaTratamientoId = tr.terapeutaId, especialidadId = tr.especialidadId,
+                            )
+                        } else null
+                        if (oferta != null) {
+                            ofrecerAgendarProxima = OfertaProximaFicha(
+                                tr = tr, oferta = oferta,
+                                hora = ses.hora?.take(5)?.takeIf { it.length == 5 } ?: pe.saniape.app.ui.proximaHoraEnPunto(),
+                                terapeutaId = ses.terapeutaId ?: tr.terapeutaId,
+                            )
+                        }
                     }
                 }
             },
@@ -930,26 +960,27 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     }
 
     // Ofrecer agendar la próxima sesión tras completar (1 tap → form pre-llenado a +7 días).
-    ofrecerAgendarProxima?.let { tr ->
-        // +7 días desde el "hoy" de la CLÍNICA (America/Lima): con la zona del
+    ofrecerAgendarProxima?.let { op ->
+        val tr = op.tr
+        // Fecha desde el "hoy" de la CLÍNICA (America/Lima): con la zona del
         // teléfono (o UTC) de noche proponía un día de más.
-        val proximaIso = pe.saniape.app.data.staff.sumarDiasIso(pe.saniape.app.data.staff.hoyClinicaIso(), 7)
+        val proximaIso = op.oferta.fecha
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { ofrecerAgendarProxima = null },
-            title = { Text("¿Agendar la próxima sesión?", fontWeight = FontWeight.Bold) },
-            text = { Text("Quedan ${tr.totalSesiones - (tr.sesionesCompletadas + 1)} sesión(es). Puedes agendarla para dentro de una semana ($proximaIso) y ajustar la hora.", color = c.textoSuave, fontSize = 13.sp) },
+            title = { Text("📅 ¿Agendar la siguiente sesión?", fontWeight = FontWeight.Bold) },
+            text = { Text("Quedan ${op.oferta.quedan} sesión(es). Se propone el ${pe.saniape.app.data.staff.fechaLegibleCorta(proximaIso)} a las ${pe.saniape.app.ui.hora12(op.hora)} con el mismo profesional; puedes ajustarlo antes de guardar.", color = c.textoSuave, fontSize = 13.sp) },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
                     ofrecerAgendarProxima = null
                     crearCita = pe.saniape.app.ui.clinica.PrefillCita(
                         tipo = "Sesión",
                         pacienteId = paciente.id, pacienteNombre = paciente.nombre,
-                        fecha = proximaIso, hora = pe.saniape.app.ui.proximaHoraEnPunto(),
-                        terapeutaId = tr.terapeutaId,
-                        especialidadId = tr.especialidadId,
+                        fecha = proximaIso, hora = op.hora,
+                        terapeutaId = op.terapeutaId,
+                        especialidadId = tr.especialidadId ?: op.oferta.especialidadId,
                         tratamientoId = tr.id,
                     )
-                }) { Text("Agendar (+7 días)", color = c.navy, fontWeight = FontWeight.Bold) }
+                }) { Text("Agendar (+${op.oferta.intervaloDias} días)", color = c.navy, fontWeight = FontWeight.Bold) }
             },
             dismissButton = { androidx.compose.material3.TextButton(onClick = { ofrecerAgendarProxima = null }) { Text("Ahora no", color = c.textoSuave) } },
             containerColor = c.superficie,
@@ -968,6 +999,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     val r = PacientesRepo.cobrarSesionDetalle(cf.tratamientoId, cf.sesionId, cf.monto, cf.metodo, null)
                     reintentandoCobro = false
                     if (r.registrada) {
+                        pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(paciente.id, cf.metodo)
                         cobroFallido = null
                         if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Pago registrado (${cf.metodo})")
                         recargar()
@@ -988,6 +1020,14 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         )
     }
 }
+
+/** "Agendar siguiente" pendiente de confirmar: la oferta + la hora y el profesional de la sesión atendida. */
+private data class OfertaProximaFicha(
+    val tr: TratamientoPaciente,
+    val oferta: pe.saniape.app.data.staff.OfertaSiguienteSesion,
+    val hora: String,
+    val terapeutaId: String?,
+)
 
 /** Un cobro que falló justo después de completar su sesión (para reintentarlo solo). */
 private data class CobroFallido(
@@ -1040,7 +1080,7 @@ internal fun ModalCompletarSesion(
     val c = Sania.colors
     var cobrar by remember { mutableStateOf(false) }
     var pagoMonto by remember { mutableStateOf(ses.costo?.let { v -> if (v > 0) formatoMonto(v) else "" } ?: "") }
-    var pagoMetodo by remember { mutableStateOf("Efectivo") }
+    var pagoMetodo by rememberMetodoPagoInicial(pacienteId)
     val muestraPago = puedePagos && !ses.pagada
     // Precarga de técnicas, por orden de utilidad real:
     //  1. lo que YA tenga esta sesión (se está editando),
@@ -1245,47 +1285,14 @@ internal fun ModalCompletarSesion(
         }
 
         // Cobro en el mismo paso (paridad con la web): toggle "¿pagó esta sesión?".
+        // El mismo bloque que el cierre de sesión desde la agenda (BloqueCobroSesion).
         if (muestraPago) {
             Spacer(Modifier.height(12.dp))
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                    .background(if (cobrar) c.chipBg else c.fondo)
-                    .border(1.dp, if (cobrar) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                    .clickable { cobrar = !cobrar }
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    Modifier.size(22.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
-                        .background(if (cobrar) c.navy else c.superficie)
-                        .border(1.dp, if (cobrar) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
-                    contentAlignment = Alignment.Center,
-                ) { if (cobrar) Text("✓", color = c.sobreNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("¿El paciente pagó esta sesión?", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Text("El cobro se registra junto con el completar", color = c.textoSuave, fontSize = 11.sp,
-                        modifier = Modifier.padding(top = 1.dp))
-                }
-                Text("💳", fontSize = 16.sp)
-            }
-            if (cobrar) {
-                Spacer(Modifier.height(8.dp))
-                TarjetaForm(titulo = "Cobro", icono = "💳") {
-                    EtqForm("Monto (S/)")
-                    androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(),
-                        value = pagoMonto,
-                        onValueChange = { pagoMonto = it.filter { ch -> ch.isDigit() || ch == '.' } },
-                        singleLine = true,
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    EtqForm("Método")
-                    ChipsMetodoPago(pagoMetodo) { pagoMetodo = it }
-                }
-            }
+            BloqueCobroSesion(
+                cobrar = cobrar, onCobrar = { cobrar = it },
+                monto = pagoMonto, onMonto = { pagoMonto = it },
+                metodo = pagoMetodo, onMetodo = { pagoMetodo = it },
+            )
         }
     }
 }
@@ -1305,6 +1312,7 @@ private fun ModalCrearSesion(
     t: TratamientoPaciente,
     miTerapeutaId: String?,
     puedePagos: Boolean,
+    pacienteId: String? = null,
     onCancelar: () -> Unit,
     // pago = (monto, método) si activó "¿el paciente pagó?" — momento 1 del cobro (web).
     onGuardar: (fecha: String, hora: String, duracion: Int, terapeutaId: String?, estado: String, costo: Double?, notas: String?, pago: Pair<Double, String>?) -> Unit,
@@ -1313,7 +1321,7 @@ private fun ModalCrearSesion(
     val esPaquete = t.modalidad == "Paquete"
     var cobrar by remember { mutableStateOf(false) }
     var pagoMonto by remember { mutableStateOf("") }
-    var pagoMetodo by remember { mutableStateOf("Efectivo") }
+    var pagoMetodo by rememberMetodoPagoInicial(pacienteId)
     var fecha by remember { mutableStateOf(pe.saniape.app.ui.clinica.agenda.hoyIso()) }
     var hora by remember { mutableStateOf(pe.saniape.app.ui.proximaHoraEnPunto()) }
     var duracion by remember { mutableStateOf(45) }
@@ -1341,7 +1349,9 @@ private fun ModalCrearSesion(
     val fechaPasada = fecha < hoy
 
     if (mostrarFecha) {
-        val estadoP = androidx.compose.material3.rememberDatePickerState()
+        // Abre en la fecha que ya tiene el campo, no en hoy.
+        val estadoP = androidx.compose.material3.rememberDatePickerState(
+            initialSelectedDateMillis = pe.saniape.app.data.staff.isoAMillisUtc(fecha))
         androidx.compose.material3.DatePickerDialog(
             onDismissRequest = { mostrarFecha = false },
             confirmButton = {
@@ -1520,7 +1530,9 @@ private fun ModalEditarCitaHito(
     var mostrarHora by remember { mutableStateOf(false) }
 
     if (mostrarFecha) {
-        val estadoP = androidx.compose.material3.rememberDatePickerState()
+        // Abre en la fecha que ya tiene el campo, no en hoy.
+        val estadoP = androidx.compose.material3.rememberDatePickerState(
+            initialSelectedDateMillis = pe.saniape.app.data.staff.isoAMillisUtc(fecha))
         androidx.compose.material3.DatePickerDialog(
             onDismissRequest = { mostrarFecha = false },
             confirmButton = {

@@ -2,6 +2,9 @@ package pe.saniape.app.ui.clinica.pacientes
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -215,4 +218,57 @@ fun AvisoFichaInactiva(puedeReactivar: Boolean) {
 private fun formatoSoles(n: Double): String {
     val centavos = kotlin.math.round(n * 100).toLong()
     return "${centavos / 100}.${(centavos % 100).toString().padStart(2, '0')}"
+}
+
+/**
+ * "¿El paciente pagó esta sesión?" + monto + método: el bloque de cobro del
+ * cierre de una sesión. Uno solo para la ficha y la agenda (antes solo la ficha
+ * lo tenía y desde la agenda el cobro era un segundo viaje).
+ */
+@Composable
+fun BloqueCobroSesion(
+    cobrar: Boolean, onCobrar: (Boolean) -> Unit,
+    monto: String, onMonto: (String) -> Unit,
+    metodo: String, onMetodo: (String) -> Unit,
+) {
+    val c = Sania.colors
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+            .background(if (cobrar) c.chipBg else c.fondo)
+            .border(1.dp, if (cobrar) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+            .clickable { onCobrar(!cobrar) }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(22.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                .background(if (cobrar) c.navy else c.superficie)
+                .border(1.dp, if (cobrar) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
+            contentAlignment = Alignment.Center,
+        ) { if (cobrar) Text("✓", color = c.sobreNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text("¿El paciente pagó esta sesión?", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text("El cobro se registra junto con el completar", color = c.textoSuave, fontSize = 11.sp,
+                modifier = Modifier.padding(top = 1.dp))
+        }
+        Text("💳", fontSize = 16.sp)
+    }
+    if (cobrar) {
+        Spacer(Modifier.height(8.dp))
+        TarjetaForm(titulo = "Cobro", icono = "💳") {
+            EtqForm("Monto (S/)")
+            androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(),
+                value = monto,
+                onValueChange = { onMonto(it.filter { ch -> ch.isDigit() || ch == '.' }) },
+                singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(10.dp))
+            EtqForm("Método")
+            ChipsMetodoPago(metodo) { onMetodo(it) }
+        }
+    }
 }

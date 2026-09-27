@@ -98,6 +98,11 @@ fun PantallaAgenda(
     var confirmar by remember { mutableStateOf<Pair<CitaStaff, AccionCita>?>(null) }
     var editar by remember { mutableStateOf<CitaStaff?>(null) }
     var pasarEval by remember { mutableStateOf<CitaStaff?>(null) }
+    // "✗ No vino" de una vencida: confirmación con motivo + "📅 Reponer".
+    var noVino by remember { mutableStateOf<CitaStaff?>(null) }
+    // Derivación cuya evaluación se está agendando: se marca procesada SOLO si la
+    // cita se guarda (antes se marcaba al abrir el form, aunque se cancelara).
+    var derivacionPendiente by remember { mutableStateOf<String?>(null) }
     // Resumen clínico (popup al tocar el nombre) + ficha completa que abre desde ahí.
     var resumenPacienteId by remember { mutableStateOf<String?>(null) }
     var fichaPaciente by remember { mutableStateOf<PacienteStaff?>(null) }
@@ -139,8 +144,13 @@ fun PantallaAgenda(
             // pasó, hoy. Gemelo de fechaParaNuevaCita de la web.
             ctx = ctx, fechaInicial = pe.saniape.app.data.staff.fechaParaNuevaCita(vm.fechaSel, pe.saniape.app.data.staff.hoyClinicaIso()),
             prefill = prefillEval,
+            onGuardada = { fecha ->
+                derivacionPendiente?.let { vm.marcarDerivacion(it) }
+                derivacionPendiente = null
+                vm.citaGuardadaEn(fecha)
+            },
             onListo = { creandoCita = false; prefillEval = null; vm.refrescar() },
-            onCancelar = { creandoCita = false; prefillEval = null },
+            onCancelar = { creandoCita = false; prefillEval = null; derivacionPendiente = null },
         )
         return
     }
@@ -193,6 +203,24 @@ fun PantallaAgenda(
                     modifier = Modifier.padding(horizontal = Sania.dim.lg, vertical = 4.dp))
             }
 
+            // Se agendó una cita en OTRO día del que se mira: atajo para ir a verla.
+            vm.citaAgendadaEn?.let { f ->
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = Sania.dim.lg, vertical = 4.dp)
+                        .clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.okBg)
+                        .padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("✓ Agendada para el ${pe.saniape.app.data.staff.fechaLegibleCorta(f)}",
+                        color = c.ok, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Text("Ver día →", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+                            .clickable { vm.seleccionarDia(f) }.padding(horizontal = 10.dp, vertical = 8.dp))
+                    Text("✕", color = c.textoSuave, fontSize = 13.sp,
+                        modifier = Modifier.clickable { vm.cerrarAvisoCitaAgendada() }.padding(8.dp))
+                }
+            }
+
             LazyColumn(
                 Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = Sania.dim.xl),
@@ -208,14 +236,15 @@ fun PantallaAgenda(
                                 if (vino) {
                                     if (cita.tipo == "Evaluación" || cita.tipo == "Sesión") completar = cita
                                     else vm.ejecutar(AccionCita.Completar, cita)
-                                } else vm.ejecutar(AccionCita.Cancelar, cita)
+                                } else noVino = cita   // confirma y registra "No asistió" (no cancela de un toque)
                             },
                             onReagendarVencida = { editar = it },   // abre el modal de fecha/hora
                             // Agendar la evaluación de la derivación: form pre-llenado con el
                             // paciente + tipo Evaluación + especialidad de destino. El profesional
-                            // queda opcional (en rayos X puede no haber uno propio). Marca procesada.
+                            // queda opcional (en rayos X puede no haber uno propio). Se marca
+                            // procesada al GUARDAR la cita (si se cancela, sigue pendiente).
                             onAgendarDerivacion = { d ->
-                                vm.marcarDerivacion(d.id)
+                                derivacionPendiente = d.id
                                 prefillEval = PrefillCita(
                                     tipo = "Evaluación",
                                     pacienteId = d.pacienteId,
@@ -359,6 +388,15 @@ fun PantallaAgenda(
             // estado: escribir en él no recompone la agenda. Nunca en una cita dental.
             val evalFisio = remember(cita.id) { pe.saniape.app.ui.clinica.fisio.RefBorradorFisio() }
             val conEvalFisio = evalua && vm.esFisio(cita) && !vm.esDental(cita) && cita.pacienteId != null
+            // Cobro en el mismo cierre de una SESIÓN (como la ficha), solo con permiso de pagos.
+            val metodoCobro = pe.saniape.app.ui.clinica.pacientes.rememberMetodoPagoInicial(cita.pacienteId)
+            val cobro = remember(cita.id) {
+                pe.saniape.app.ui.clinica.agenda.modales.CobroCierreAgenda(
+                    montoInicial = cita.costo?.takeIf { it > 0 }?.let { v -> if (v % 1.0 == 0.0) v.toInt().toString() else v.toString() } ?: "",
+                    metodo = metodoCobro,
+                )
+            }
+            val conCobro = !evalua && cita.tipo == "Sesión" && cita.tratamientoId != null && ctx.puede("pagos")
             ModalCompletar(
                 cita = cita, especialidades = vm.especialidades, flujo = flujoCita,
                 esDental = vm.esDental(cita),
@@ -370,10 +408,12 @@ fun PantallaAgenda(
                         onCambio = { evalFisio.valor = it },
                     )
                 } else null,
+                cobro = if (conCobro) cobro else null,
                 onConfirmarFisio = { obs, piezas, mejorias, eva ->
                     completar = null
                     revisada = null
-                    vm.ejecutar(AccionCita.Completar, cita, obs, piezas = piezas, mejorias = mejorias, eva = eva)
+                    vm.ejecutar(AccionCita.Completar, cita, obs, piezas = piezas, mejorias = mejorias, eva = eva,
+                        pago = if (conCobro) cobro.pago() else null)
                 },
                 diagnosticoInicial = revisada?.takeIf { it.first == cita.id }?.second ?: "",
                 onCancelar = { completar = null; revisada = null },
@@ -385,6 +425,7 @@ fun PantallaAgenda(
                         // Evaluación dental: foto fija del odontograma del día (como la web).
                         congelarOdontograma = vm.esDental(cita) && evalua,
                         evaluacionFisio = if (conEvalFisio) evalFisio.valor else null,
+                        pago = if (conCobro) cobro.pago() else null,
                     )
                 },
                 // Recepción completando una evaluación SIN profesional: se pide quién
@@ -440,6 +481,57 @@ fun PantallaAgenda(
             onGuardar = { fecha, hora, terId, motivo ->
                 vm.reprogramar(cita, fecha, hora, terapeutaId = terId, motivo = motivo) { ok -> if (ok) editar = null }
             },
+        )
+    }
+    // "✗ No vino": confirmar la falta (con motivo) o reponerla en otra fecha.
+    noVino?.let { cita ->
+        pe.saniape.app.ui.clinica.agenda.modales.ModalNoAsistio(
+            cita = cita, flujo = vm.flujoDe(cita), guardando = vm.accionando,
+            onCancelar = { noVino = null },
+            onMarcar = { motivo -> vm.noAsistio(cita, motivo) { ok -> if (ok) noVino = null } },
+            onReponer = { noVino = null; editar = cita },
+        )
+    }
+    // Cobro que no entró tras completar la sesión: reintentar SOLO el cobro.
+    vm.cobroFallido?.let { cf ->
+        pe.saniape.app.ui.clinica.pacientes.DialogoCobroFallido(
+            numeroSesion = cf.numero, monto = cf.monto, metodo = cf.metodo, motivo = cf.motivo,
+            reintentando = vm.reintentandoCobro,
+            onReintentar = { vm.reintentarCobro() },
+            onCerrar = { vm.cerrarCobroFallido() },
+        )
+    }
+    // "📅 Agendar siguiente" tras completar una sesión (después del cobro fallido, si lo hubo).
+    vm.ofrecerSiguiente?.takeIf { vm.cobroFallido == null }?.let { os ->
+        val horaSig = os.cita.hora.take(5).takeIf { it.length == 5 } ?: pe.saniape.app.ui.proximaHoraEnPunto()
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { vm.cerrarOfertaSiguiente() },
+            title = { Text("📅 ¿Agendar la siguiente sesión?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "${os.cita.pacienteNombre ?: "El paciente"}: quedan ${os.oferta.quedan} sesión(es). Se propone el " +
+                        "${pe.saniape.app.data.staff.fechaLegibleCorta(os.oferta.fecha)} a las ${hora12(horaSig)}" +
+                        (os.cita.terapeutaNombre?.let { " con $it" } ?: "") + "; puedes ajustarlo antes de guardar.",
+                    color = c.textoSuave, fontSize = 13.sp,
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    vm.cerrarOfertaSiguiente()
+                    prefillEval = PrefillCita(
+                        tipo = "Sesión",
+                        pacienteId = os.cita.pacienteId, pacienteNombre = os.cita.pacienteNombre,
+                        fecha = os.oferta.fecha, hora = horaSig,
+                        terapeutaId = os.cita.terapeutaId ?: os.oferta.terapeutaTratamientoId,
+                        especialidadId = os.cita.especialidadId ?: os.oferta.especialidadId,
+                        tratamientoId = os.oferta.tratamientoId,
+                    )
+                }) { Text("Agendar (+${os.oferta.intervaloDias} días)", color = c.navy, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { vm.cerrarOfertaSiguiente() }) { Text("Ahora no", color = c.textoSuave) }
+            },
+            containerColor = c.superficie,
         )
     }
     // El servidor pidió quién atendió (SIN_PROFESIONAL): selector y reintento, sin cola.

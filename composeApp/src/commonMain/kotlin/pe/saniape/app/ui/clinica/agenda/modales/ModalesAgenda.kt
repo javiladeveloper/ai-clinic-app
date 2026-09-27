@@ -88,6 +88,13 @@ fun ModalCompletar(
      * región). null = no aparece (dental, otros rubros): el modal queda como siempre.
      */
     bloqueEvaluacionFisio: (@Composable (diagnostico: String) -> Unit)? = null,
+    /**
+     * Cobro en el mismo cierre ("¿El paciente pagó esta sesión?"), como la ficha.
+     * Solo lo pasa la agenda para una Sesión de un tratamiento y con permiso
+     * 'pagos'; null = no aparece (el modal queda como siempre). Quien llama lee
+     * [CobroCierreAgenda.pago] al confirmar.
+     */
+    cobro: CobroCierreAgenda? = null,
 ) {
     val c = Sania.colors
     var terapeutaElegido by remember { mutableStateOf<String?>(null) }
@@ -144,7 +151,7 @@ fun ModalCompletar(
         },
         text = {
             // Con EVA y mejorías (fisio) el contenido crece: se puede desplazar.
-            Column(if (fisioSesion || sesionDeTratamiento || (esEvaluacion && bloqueEvaluacionFisio != null)) Modifier.verticalScroll(rememberScrollState()) else Modifier) {
+            Column(if (fisioSesion || sesionDeTratamiento || cobro != null || (esEvaluacion && bloqueEvaluacionFisio != null)) Modifier.verticalScroll(rememberScrollState()) else Modifier) {
                 // Referencia: qué se hizo la sesión anterior (como la web).
                 cierre?.anterior?.let { ant ->
                     Column(
@@ -267,6 +274,14 @@ fun ModalCompletar(
                             color = c.pend, fontSize = 11.sp)
                     }
                 }
+                if (cobro != null && !esEvaluacion && cita.tipo == "Sesión") {
+                    Spacer(Modifier.height(Sania.dim.lg))
+                    pe.saniape.app.ui.clinica.pacientes.BloqueCobroSesion(
+                        cobrar = cobro.cobrar, onCobrar = { cobro.cobrar = it },
+                        monto = cobro.monto, onMonto = { cobro.monto = it },
+                        metodo = cobro.metodo.value, onMetodo = { cobro.metodo.value = it },
+                    )
+                }
                 if (esEvaluacion && especialidades.size > 1) {
                     Spacer(Modifier.height(Sania.dim.lg))
                     // Tarjeta de derivación (más clara que el checkbox suelto).
@@ -312,10 +327,13 @@ fun ModalCompletar(
         confirmButton = {
             // Botón principal grande (full-width via padding del AlertDialog).
             val faltaProfesional = esEvaluacion && profesionales != null && terapeutaElegido == null
+            // Cobro activado sin monto: no se deja confirmar (como la ficha).
+            val faltaMonto = cobro != null && !esEvaluacion && !cobro.valido
+            val bloqueado = faltaProfesional || faltaMonto
             Box(
                 Modifier.clip(RoundedCornerShape(Sania.shape.md.dp))
-                    .background(if (faltaProfesional) c.borde else c.navy)
-                    .clickable(enabled = !faltaProfesional) {
+                    .background(if (bloqueado) c.borde else c.navy)
+                    .clickable(enabled = !bloqueado) {
                         if (esEvaluacion && texto.isBlank() && !avisoSinDiagnostico) {
                             avisoSinDiagnostico = true
                             return@clickable
@@ -333,11 +351,81 @@ fun ModalCompletar(
                         if (conProf != null) conProf(obs, diag, esp, pz, if (esEvaluacion) terapeutaElegido else null)
                         else onConfirmar(obs, diag, esp, pz)
                     }.padding(horizontal = 20.dp, vertical = 11.dp),
-            ) { Text("✓ Guardar y completar", color = c.sobreNavy, fontWeight = FontWeight.Bold) }
+            ) {
+                Text(if (cobro?.cobrar == true && !esEvaluacion) "✓ Completar y cobrar" else "✓ Guardar y completar",
+                    color = c.sobreNavy, fontWeight = FontWeight.Bold)
+            }
         },
         dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
         containerColor = c.superficie,
         shape = RoundedCornerShape(Sania.shape.lg.dp),
+    )
+}
+
+/**
+ * Estado del cobro en el cierre de una sesión desde la agenda. Holder con estado
+ * propio para no cambiar las firmas de los callbacks de [ModalCompletar]: la
+ * agenda lo crea por cita y lee [pago] al confirmar. [metodo] viene de
+ * `rememberMetodoPagoInicial` (arranca en el último método del paciente).
+ */
+class CobroCierreAgenda(montoInicial: String, val metodo: androidx.compose.runtime.MutableState<String>) {
+    var cobrar by mutableStateOf(false)
+    var monto by mutableStateOf(montoInicial)
+    val valido: Boolean get() = !cobrar || (monto.toDoubleOrNull() ?: 0.0) > 0
+    /** (monto, método) si se activó y el monto es válido; null = no se cobra. */
+    fun pago(): Pair<Double, String>? =
+        if (cobrar) monto.toDoubleOrNull()?.takeIf { it > 0 }?.let { it to metodo.value } else null
+}
+
+/**
+ * "✗ No vino" de una cita vencida: ya NO cancela de un toque. Pide confirmar y
+ * registra la falta ("No asistió", con motivo opcional) — la sesión no se borra —
+ * u ofrece reponerla en otra fecha/hora (el modal de reprogramar de siempre).
+ */
+@Composable
+fun ModalNoAsistio(
+    cita: CitaStaff,
+    flujo: FlujoClinica = FlujoClinica(),
+    guardando: Boolean = false,
+    onCancelar: () -> Unit,
+    onMarcar: (motivo: String?) -> Unit,
+    onReponer: () -> Unit,
+) {
+    val c = Sania.colors
+    var motivo by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = { if (!guardando) onCancelar() },
+        title = { Text("🚫 ¿El paciente no vino?", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text("${cita.pacienteNombre ?: "Paciente"} · ${flujo.nombreTipo(cita.tipo)} del ${cita.fecha} ${hora12(cita.hora)}",
+                    color = c.textoSuave, fontSize = Sania.txt.pequeno)
+                Spacer(Modifier.height(Sania.dim.sm))
+                Text(
+                    if (cita.tipo == "Sesión") "Se registra la falta: la sesión queda como \"No asistió\" (no se borra) y cuenta para el riesgo de inasistencia."
+                    else "Se registra la falta: la cita queda como \"No asistió\" y cuenta para el riesgo de inasistencia.",
+                    color = c.texto, fontSize = 12.sp,
+                )
+                Spacer(Modifier.height(Sania.dim.md))
+                Text("Motivo (opcional)", color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                OutlinedTextField(
+                    value = motivo, onValueChange = { motivo = it },
+                    placeholder = { Text("Ej. No contestó, avisó tarde…", color = c.textoSuave) },
+                    modifier = Modifier.fillMaxWidth(), minLines = 2,
+                    colors = pe.saniape.app.ui.clinica.pacientes.coloresCampoForm(),
+                )
+                Spacer(Modifier.height(Sania.dim.lg))
+                BotonModal(if (guardando) "Guardando…" else "🚫 Marcar \"No asistió\"", c.error, c.sobreNavy, lleno = true) {
+                    if (!guardando) onMarcar(motivo.trim().ifBlank { null })
+                }
+                Spacer(Modifier.height(Sania.dim.sm))
+                BotonModal("📅 Reponer en otra fecha", c.navy, c.navy, lleno = false) { if (!guardando) onReponer() }
+                Spacer(Modifier.height(Sania.dim.sm))
+                BotonModal("Volver", c.textoSuave, c.textoSuave, lleno = false) { if (!guardando) onCancelar() }
+            }
+        },
+        confirmButton = {},   // botones dentro del cuerpo, a ancho completo
+        containerColor = c.superficie,
     )
 }
 
@@ -409,7 +497,8 @@ fun ModalEditarCita(
     val hayCambios = cambiaHorario || cambiaProfesional
 
     if (mostrarFecha) {
-        val estado = rememberDatePickerState()
+        // Abre en la fecha que ya tiene el campo, no en hoy.
+        val estado = rememberDatePickerState(initialSelectedDateMillis = pe.saniape.app.data.staff.isoAMillisUtc(fecha))
         DatePickerDialog(
             onDismissRequest = { mostrarFecha = false },
             confirmButton = {
@@ -556,7 +645,7 @@ fun ModalPasarEvaluacion(cita: CitaStaff, onCancelar: () -> Unit, onElegir: (fec
     var mostrarHora by remember { mutableStateOf(false) }
 
     if (mostrarFecha) {
-        val estado = rememberDatePickerState()
+        val estado = rememberDatePickerState(initialSelectedDateMillis = pe.saniape.app.data.staff.isoAMillisUtc(fecha))
         DatePickerDialog(
             onDismissRequest = { mostrarFecha = false },
             confirmButton = { TextButton(onClick = { estado.selectedDateMillis?.let { fecha = millisISO(it) }; mostrarFecha = false }) { Text("Aceptar", color = c.navy) } },

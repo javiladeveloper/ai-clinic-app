@@ -58,15 +58,20 @@ fun PantallaBuscarPaciente(
         // scopePacientes: si el fisio tiene permiso de pacientes ve TODA la clínica
         // (como recepción); solo en modo clínico se acota a los suyos. Antes filtraba
         // siempre por miTerapeutaId → un fisio-gestor no encontraba a nadie aquí.
-        pacientes = runCatching { PacientesRepo.listar(ctx.scopePacientes) }.getOrDefault(emptyList())
+        // Lo último visto (caché local) al instante; la red lo refresca detrás.
+        // Sin red y sin caché, lista vacía como antes.
+        PacientesRepo.listarDeCache(ctx.scopePacientes).takeIf { it.isNotEmpty() }?.let { pacientes = it }
+        pacientes = runCatching { PacientesRepo.listar(ctx.scopePacientes) }.getOrNull() ?: pacientes ?: emptyList()
     }
 
     val filtrados = remember(query, pacientes) {
         val q = query.trim()
         val base = pacientes ?: emptyList()
         if (q.isBlank()) base.take(20)   // sin búsqueda: los primeros (recientes)
+        // Misma regla que la lista de pacientes: sin tildes, cada palabra en
+        // cualquier orden ("jorge oli" encuentra a "JORGE YOCELYN OLIVERA"), y DNI.
         else base.filter {
-            it.nombre.contains(q, ignoreCase = true) || (it.dni?.contains(q) == true)
+            pe.saniape.app.ui.clinica.pacientes.coincideBusqueda(it.nombre, it.dni, null, q)
         }.take(40)
     }
 

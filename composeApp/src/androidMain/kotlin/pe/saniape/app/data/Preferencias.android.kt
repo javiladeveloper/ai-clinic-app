@@ -69,6 +69,15 @@ actual object Preferencias {
         }
     }
 
+    actual fun texto(clave: String): String? = prefs?.getString("txt:$clave", null)
+
+    actual fun setTexto(clave: String, valor: String?) {
+        prefs?.edit()?.apply {
+            if (valor == null) remove("txt:$clave") else putString("txt:$clave", valor)
+            apply()
+        }
+    }
+
     actual fun esInstalacionNueva(): Boolean {
         val ctx = appContext ?: return false
         return runCatching {

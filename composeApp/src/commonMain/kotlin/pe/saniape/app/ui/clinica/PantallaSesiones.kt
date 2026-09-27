@@ -305,6 +305,7 @@ fun PantallaSesiones(
                         val tratId = sg.tratamientoId
                         if (pago != null && tratId != null) {
                             val rp = PacientesRepo.cobrarSesionDetalle(tratId, sg.id, pago.first, pago.second, null)
+                            if (rp.registrada) pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(sg.pacienteId, pago.second)
                             if (!rp.registrada) pe.saniape.app.ui.Toaster.error(
                                 "La sesión se completó, pero el cobro no se registró" +
                                     (rp.rechazo?.error?.let { ": $it" } ?: "") + ". Cóbrala desde la ficha (💳 Cobrar)."

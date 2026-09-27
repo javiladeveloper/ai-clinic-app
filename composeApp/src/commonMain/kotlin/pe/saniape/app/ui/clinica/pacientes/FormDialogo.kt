@@ -149,9 +149,11 @@ fun CajaSelectorForm(valor: String, onClick: () -> Unit) {
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun DialogoFecha(onElegir: (String) -> Unit, onCerrar: () -> Unit) {
+fun DialogoFecha(onElegir: (String) -> Unit, onCerrar: () -> Unit, inicial: String? = null) {
     val c = Sania.colors
-    val estadoP = androidx.compose.material3.rememberDatePickerState()
+    // [inicial] = la fecha que ya tiene el campo (null = abre en hoy, como antes).
+    val estadoP = androidx.compose.material3.rememberDatePickerState(
+        initialSelectedDateMillis = pe.saniape.app.data.staff.isoAMillisUtc(inicial))
     androidx.compose.material3.DatePickerDialog(
         onDismissRequest = onCerrar,
         confirmButton = {
@@ -245,6 +247,26 @@ fun rememberMetodosPago(): List<String> {
             .getOrNull()?.takeIf { it.isNotEmpty() }?.let { estado.value = it }
     }
     return estado.value
+}
+
+/**
+ * Estado del método de pago de un cobro, arrancando en el último usado por ESE
+ * paciente (o por quien usa el teléfono; si no, "Efectivo"). Cuando llegan los
+ * métodos de la clínica, si el elegido no está entre ellos y nadie lo tocó, se
+ * vuelve a elegir entre los reales. Ver [pe.saniape.app.data.staff.MetodoPagoPreferido].
+ */
+@Composable
+fun rememberMetodoPagoInicial(pacienteId: String?): androidx.compose.runtime.MutableState<String> {
+    val metodos = rememberMetodosPago()
+    val estado = androidx.compose.runtime.remember(pacienteId) {
+        androidx.compose.runtime.mutableStateOf(pe.saniape.app.data.staff.MetodoPagoPreferido.inicial(pacienteId, metodos))
+    }
+    androidx.compose.runtime.LaunchedEffect(metodos) {
+        if (estado.value !in metodos) {
+            estado.value = pe.saniape.app.data.staff.MetodoPagoPreferido.inicial(pacienteId, metodos)
+        }
+    }
+    return estado
 }
 
 /** Chips de MÉTODO DE PAGO desde la configuración de la clínica (con fallback). */

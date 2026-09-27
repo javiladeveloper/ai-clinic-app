@@ -109,6 +109,11 @@ fun PantallaCrearCita(
     onListo: () -> Unit,
     onCancelar: () -> Unit,
     prefill: PrefillCita? = null,
+    /**
+     * Se llama con la FECHA de la cita recién guardada, antes de [onListo]: la
+     * agenda la usa para ofrecer "Ver día" cuando se agendó en otro día.
+     */
+    onGuardada: (fecha: String) -> Unit = {},
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -281,7 +286,9 @@ fun PantallaCrearCita(
 
     // Pickers nativos
     if (mostrarFecha) {
-        val estado = rememberDatePickerState()
+        // Abre en la fecha que ya tiene el campo (no en hoy): al ajustar una
+        // fecha sugerida (+7 días, próximo control) no hay que volver a buscarla.
+        val estado = rememberDatePickerState(initialSelectedDateMillis = pe.saniape.app.data.staff.isoAMillisUtc(fecha))
         DatePickerDialog(
             onDismissRequest = { mostrarFecha = false },
             confirmButton = {
@@ -335,7 +342,9 @@ fun PantallaCrearCita(
                     .padding(horizontal = Sania.dim.lg, vertical = Sania.dim.lg),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(if (prefill != null) "Nueva evaluación" else "Nueva cita",
+                // Con prefill nombra lo que se agenda ("Agendar sesión"); antes decía
+                // siempre "Nueva evaluación", también al agendar una sesión o un control.
+                Text(pe.saniape.app.data.staff.tituloFormularioCita(prefill != null, flujoEfectivo.nombreTipo(tipo)),
                     color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
             }
 
@@ -564,7 +573,7 @@ fun PantallaCrearCita(
                             // Especialidad: la elegida, o la del profesional si solo tiene una.
                             val espId = especialidad?.id
                                 ?: terapeuta?.especialidadIds?.singleOrNull()
-                            val ok = AgendaRepo.crearCita(
+                            val r = AgendaRepo.crearCitaDetalle(
                                 pacienteId = p.id, tipo = tipo, fecha = fecha, hora = hora,
                                 terapeutaId = terId, tratamientoId = tratamiento?.id,
                                 costo = costo.toDoubleOrNull() ?: 0.0,
@@ -575,8 +584,15 @@ fun PantallaCrearCita(
                                 campaniaId = if (tipo != "Sesión") promoAplicada?.id else null,
                             )
                             guardando = false
-                            if (ok) { pe.saniape.app.ui.Toaster.exito("Cita agendada"); onListo() }
-                            else mensaje = "No se pudo agendar. Intenta de nuevo."
+                            if (r.registrada) {
+                                if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Cita agendada")
+                                onGuardada(fecha)
+                                onListo()
+                            } else {
+                                // El motivo real del servidor (cupo lleno, paciente de baja,
+                                // sin permiso...); el genérico solo si ni se pudo intentar.
+                                mensaje = r.rechazo?.error ?: "No se pudo agendar. Intenta de nuevo."
+                            }
                         }
                     },
                     enabled = !guardando,
@@ -665,8 +681,11 @@ private fun <T> SelectorLista(
 
 /**
  * Selector de paciente con BUSCADOR: al abrir muestra un campo de texto; escribir
- * filtra por nombre (en cliente). Evita scrollear una lista larga uno por uno.
- * Al elegir, muestra el nombre fijo con opción de cambiar.
+ * filtra por nombre o DNI. Misma regla que la lista de pacientes
+ * (`coincideBusqueda`: sin tildes, cada palabra en cualquier orden). Filtra al
+ * instante lo que ya está en el teléfono y, desde 2 letras, pregunta también al
+ * servidor (con pausa): así aparece quien no entró en los 500 precargados
+ * (DALU tiene más). Sin señal se queda con lo local.
  */
 @Composable
 private fun SelectorPacienteBuscable(
@@ -677,7 +696,7 @@ private fun SelectorPacienteBuscable(
     var query by remember { mutableStateOf("") }
 
     Column {
-        SelectorBoton(elegido?.nombre ?: "Buscar paciente por nombre…") {
+        SelectorBoton(elegido?.nombre ?: "Buscar paciente por nombre o DNI…") {
             abierto = !abierto
             if (abierto) query = ""
         }
@@ -688,27 +707,54 @@ private fun SelectorPacienteBuscable(
                 .padding(8.dp)) {
                 OutlinedTextField(
                     value = query, onValueChange = { query = it },
-                    placeholder = { Text("Escribe un nombre…", color = c.textoSuave) },
+                    placeholder = { Text("Nombre o DNI…", color = c.textoSuave) },
                     singleLine = true, modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(6.dp))
-                val filtrados = remember(query, items) {
+                // Resultados del servidor para la búsqueda actual (null = aún no / sin señal).
+                var remotos by remember { mutableStateOf<Pair<String, List<RefNombre>>?>(null) }
+                var buscandoRemoto by remember { mutableStateOf(false) }
+                LaunchedEffect(query) {
+                    val q = query.trim()
+                    if (q.length < 2) { remotos = null; buscandoRemoto = false; return@LaunchedEffect }
+                    kotlinx.coroutines.delay(300)   // pausa: no una consulta por tecla
+                    buscandoRemoto = true
+                    val r = runCatching { AgendaRepo.buscarPacientes(q) }.getOrNull()
+                    buscandoRemoto = false
+                    if (r != null) remotos = q to r
+                }
+                val filtrados = remember(query, items, remotos) {
                     val q = query.trim()
                     if (q.isBlank()) items.take(30)
-                    else items.filter { it.nombre.contains(q, ignoreCase = true) }.take(40)
+                    else {
+                        val delServidor = remotos?.takeIf { it.first == q }?.second.orEmpty()
+                        (items + delServidor).distinctBy { it.id }
+                            .filter { pe.saniape.app.ui.clinica.pacientes.coincideBusqueda(it.nombre, it.dni, null, q) }
+                            .take(40)
+                    }
                 }
                 Column(Modifier.fillMaxWidth().heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
                     if (filtrados.isEmpty()) {
                         Text(
-                            if (query.isBlank()) "Escribe para buscar." else "Sin coincidencias.",
+                            when {
+                                query.isBlank() -> "Escribe para buscar."
+                                buscandoRemoto -> "Buscando…"
+                                else -> "Sin coincidencias."
+                            },
                             color = c.textoSuave, fontSize = Sania.txt.pequeno,
                             modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
                         )
                     } else filtrados.forEach { item ->
-                        Text(item.nombre, color = c.texto, fontSize = Sania.txt.cuerpo,
-                            modifier = Modifier.fillMaxWidth()
+                        Column(
+                            Modifier.fillMaxWidth()
                                 .clickable { onElegir(item); abierto = false; query = "" }
-                                .padding(horizontal = 10.dp, vertical = 12.dp))
+                                .padding(horizontal = 10.dp, vertical = 10.dp),
+                        ) {
+                            Text(item.nombre, color = c.texto, fontSize = Sania.txt.cuerpo)
+                            item.dni?.takeIf { it.isNotBlank() }?.let {
+                                Text("DNI $it", color = c.textoSuave, fontSize = 11.sp)
+                            }
+                        }
                     }
                 }
             }

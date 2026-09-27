@@ -260,8 +260,21 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     fun seleccionarDia(iso: String) {
         verHistorial = false
         fechaSel = iso
+        citaAgendadaEn = null
         cargarDia(iso)
     }
+
+    /**
+     * Fecha de la cita recién agendada cuando NO es el día que se está mirando:
+     * la agenda muestra "✓ Agendada para … · Ver día". null = nada que ofrecer.
+     */
+    var citaAgendadaEn by mutableStateOf<String?>(null); private set
+
+    /** El formulario guardó una cita para [fecha]: si es otro día, ofrecer ir a verlo. */
+    fun citaGuardadaEn(fecha: String) {
+        citaAgendadaEn = if (verHistorial || fecha == fechaSel) null else fecha
+    }
+    fun cerrarAvisoCitaAgendada() { citaAgendadaEn = null }
 
     /** Alterna la vista lista (historial/todas) vs el día seleccionado. */
     fun alternarHistorial() {
@@ -359,6 +372,84 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     var ofrecerTratamiento by mutableStateOf<OfertaTratamiento?>(null); private set
     fun cerrarOfertaTratamiento() { ofrecerTratamiento = null }
 
+    /**
+     * Tras completar una SESIÓN: "📅 Agendar siguiente" con la fecha sugerida
+     * (intervalo del servicio o +7 días), la MISMA hora y el MISMO profesional de
+     * la sesión atendida. Solo si quedan sesiones y no hay ya una futura.
+     */
+    data class OfertaSiguiente(val cita: CitaStaff, val oferta: pe.saniape.app.data.staff.OfertaSiguienteSesion)
+    var ofrecerSiguiente by mutableStateOf<OfertaSiguiente?>(null); private set
+    fun cerrarOfertaSiguiente() { ofrecerSiguiente = null }
+
+    /** Cobro que no entró tras completar la sesión desde la agenda (para reintentar SOLO el cobro). */
+    data class CobroFallidoAgenda(
+        val cita: CitaStaff, val tratamientoId: String, val numero: Int,
+        val monto: Double, val metodo: String, val motivo: String?,
+    )
+    var cobroFallido by mutableStateOf<CobroFallidoAgenda?>(null); private set
+    var reintentandoCobro by mutableStateOf(false); private set
+    fun cerrarCobroFallido() { cobroFallido = null }
+
+    /**
+     * Cobra la sesión recién completada desde la agenda (mismo endpoint que la
+     * ficha: pago vinculado a la sesión + caja + recálculo). La sesión puede
+     * haber nacido al completar: se lee del vínculo que deja la cita. Si la
+     * completación quedó en la cola (sin señal), el pago entra también a la cola
+     * como abono del tratamiento con la fecha en la nota (como "Nueva sesión").
+     * Devuelve null si entró, o el motivo del fallo.
+     */
+    private suspend fun cobrarSesionDeCita(
+        cita: CitaStaff, tratamientoId: String, monto: Double, metodo: String, encolada: Boolean,
+    ): Pair<Int, String?> {
+        if (encolada) {
+            val ok = pe.saniape.app.data.staff.PacientesRepo.registrarPago(
+                tratamientoId, monto, metodo, "Pago de la sesión del ${cita.fecha}")
+            if (ok) pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(cita.pacienteId, metodo)
+            return (cita.numeroSesion ?: 0) to (if (ok) null else "no se pudo guardar el pago")
+        }
+        val vinculo = AgendaRepo.sesionDeCita(cita.id)
+            ?: return (cita.numeroSesion ?: 0) to "no se encontró la sesión de esta cita"
+        val r = pe.saniape.app.data.staff.PacientesRepo.cobrarSesionDetalle(tratamientoId, vinculo.first, monto, metodo, null)
+        val numero = vinculo.second ?: cita.numeroSesion ?: 0
+        if (r.registrada) {
+            pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(cita.pacienteId, metodo)
+            if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Pago registrado ($metodo)")
+            return numero to null
+        }
+        return numero to (r.rechazo?.error ?: "no se pudo registrar")
+    }
+
+    /** Reintenta SOLO el cobro (la sesión ya quedó completada). */
+    fun reintentarCobro() {
+        val cf = cobroFallido ?: return
+        if (reintentandoCobro) return
+        viewModelScope.launch {
+            reintentandoCobro = true
+            val (_, motivo) = cobrarSesionDeCita(cf.cita, cf.tratamientoId, cf.monto, cf.metodo, encolada = false)
+            reintentandoCobro = false
+            cobroFallido = if (motivo == null) null else cf.copy(motivo = motivo)
+        }
+    }
+
+    /**
+     * "✗ No vino": registra la falta ("No asistió") en vez de cancelar. En una
+     * Sesión la sesión queda "No asistió" (no se borra). [onFin] = ¿quedó registrado?
+     */
+    fun noAsistio(cita: CitaStaff, motivo: String?, onFin: (Boolean) -> Unit) {
+        if (accionando) return
+        viewModelScope.launch {
+            accionando = true
+            val r = AgendaRepo.noAsistio(cita.id, motivo)
+            if (r.registrada) {
+                if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Falta registrada (No asistió)")
+            } else pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo registrar la falta")
+            recargarCitas()
+            recargarBanners()
+            accionando = false
+            onFin(r.registrada)
+        }
+    }
+
     /** Reintenta el completar con el profesional elegido en el selector. */
     fun completarConProfesional(terapeutaId: String) {
         val p = pedirProfesional ?: return
@@ -383,10 +474,13 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         eva: Pair<Int?, Int?>? = null,
         /** Fisioterapia (evaluación): lo llenado en "Evaluación estructurada" (null = nada). */
         evaluacionFisio: pe.saniape.app.data.staff.BorradorEvaluacionFisio? = null,
+        /** Sesión: (monto, método) si el paciente pagó en el mismo cierre (null = no se cobra). */
+        pago: Pair<Double, String>? = null,
     ) {
         if (accionando) return
         viewModelScope.launch {
             accionando = true; mensaje = null
+            var completadaEncolada = false
             val ok = when (accion) {
                 AccionCita.Confirmar -> AgendaRepo.confirmar(cita.id)
                 AccionCita.Completar -> {
@@ -396,6 +490,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                         terapeutaId = terapeutaId,
                         mejorias = mejorias, eva = eva,
                     )
+                    completadaEncolada = r.encolada
                     when {
                         r.registrada -> true
                         // Error de NEGOCIO, no de red: no se encola ni se reintenta solo.
@@ -454,6 +549,26 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                         cita.copy(terapeutaId = terapeutaId ?: cita.terapeutaId, estado = "Completada"),
                         diagnostico?.trim()?.ifBlank { null },
                     )
+                }
+                val tratSesion = cita.tratamientoId
+                if (accion == AccionCita.Completar && cita.tipo == "Sesión" && tratSesion != null) {
+                    // Cobro en el mismo cierre (solo con permiso de pagos; el endpoint
+                    // también lo valida). Si falla, se ofrece reintentar SOLO el cobro.
+                    if (pago != null && ctx.puede("pagos")) {
+                        val (numero, motivo) = cobrarSesionDeCita(cita, tratSesion, pago.first, pago.second, completadaEncolada)
+                        if (motivo != null) {
+                            cobroFallido = CobroFallidoAgenda(cita, tratSesion, numero, pago.first, pago.second, motivo)
+                        }
+                    }
+                    // "📅 Agendar siguiente": lee el tratamiento YA sincronizado. Sin
+                    // señal (encolada) no se ofrece: no se sabe si ya tiene la siguiente.
+                    if (!completadaEncolada && ctx.puede("sesiones") && cita.pacienteId != null) {
+                        val atendida = cita.copy(terapeutaId = terapeutaId ?: cita.terapeutaId)
+                        viewModelScope.launch {
+                            pe.saniape.app.data.staff.SiguienteSesionRepo.evaluar(tratSesion, hoy, excluirCitaId = cita.id)
+                                ?.let { ofrecerSiguiente = OfertaSiguiente(atendida, it) }
+                        }
+                    }
                 }
             } else pe.saniape.app.ui.Toaster.error("No se pudo, intenta de nuevo")
             recargarCitas()

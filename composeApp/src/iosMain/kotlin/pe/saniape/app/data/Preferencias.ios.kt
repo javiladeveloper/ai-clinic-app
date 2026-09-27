@@ -50,6 +50,13 @@ actual object Preferencias {
         else defaults.setObject(valor, "filtro_esp:$clave")
     }
 
+    actual fun texto(clave: String): String? = defaults.stringForKey("txt:$clave")
+
+    actual fun setTexto(clave: String, valor: String?) {
+        if (valor == null) defaults.removeObjectForKey("txt:$clave")
+        else defaults.setObject(valor, "txt:$clave")
+    }
+
     // iOS no expone la fecha de instalación vs actualización: si nunca se guardó
     // nada (ni modo, ni tema, ni clínica), es una instalación nueva.
     actual fun esInstalacionNueva(): Boolean =

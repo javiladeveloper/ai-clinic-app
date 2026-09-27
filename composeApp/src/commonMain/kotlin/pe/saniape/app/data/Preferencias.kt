@@ -45,4 +45,12 @@ expect object Preferencias {
      */
     fun filtroEspecialidadAgenda(clave: String): String?
     fun setFiltroEspecialidadAgenda(clave: String, valor: String?)
+
+    /**
+     * Texto libre por [clave] (preferencias de trabajo de ESTE teléfono, p. ej. el
+     * último método de pago usado). No es dato clínico ni contable. NO se limpia
+     * al cerrar sesión: quien la usa pone el usuario/clínica en la clave si importa.
+     */
+    fun texto(clave: String): String?
+    fun setTexto(clave: String, valor: String?)
 }

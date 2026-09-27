@@ -224,7 +224,8 @@ private fun ModalRegistrarMovimiento(
     var monto by remember { mutableStateOf("") }
     var descripcion by remember { mutableStateOf("") }
     var categoria by remember { mutableStateOf("") }
-    var metodo by remember { mutableStateOf("Efectivo") }
+    // El último método que usó quien cobra en este teléfono (si no, Efectivo).
+    var metodo by pe.saniape.app.ui.clinica.pacientes.rememberMetodoPagoInicial(null)
     var comprobante by remember { mutableStateOf("") }
 
     pe.saniape.app.ui.clinica.pacientes.DialogoForm(

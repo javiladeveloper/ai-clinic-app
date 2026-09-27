@@ -282,11 +282,15 @@ object AgendaRepo {
 
     // ── Datos para el formulario de crear cita (lectura directa, RLS de staff) ──
 
-    /** Pacientes activos (no Inactivo) para el selector. */
+    /**
+     * Pacientes activos (no Inactivo) para el selector: los primeros 500 por
+     * nombre, con respaldo local (se ve al instante y sin señal). Los que no
+     * entran en esos 500 los encuentra [buscarPacientes] en el servidor.
+     */
     suspend fun pacientesParaSelector(): List<RefNombre> {
         val filas = filasConRespaldo(CacheLectura.claveCatalogo("pacientes-selector")) {
             Supabase.client.postgrest["pacientes"]
-                .select(Columns.list("id, nombre, estado")) {
+                .select(Columns.list("id, nombre, dni, estado")) {
                     filter { neq("estado", "Inactivo") }
                     order("nombre", Order.ASCENDING)
                     limit(500)
@@ -295,9 +299,74 @@ object AgendaRepo {
         }
         return filas.mapNotNull {
             val id = it.str("id") ?: return@mapNotNull null
-            RefNombre(id, it.str("nombre") ?: "Paciente")
+            RefNombre(id, it.str("nombre") ?: "Paciente", it.str("dni"))
         }
     }
+
+    /**
+     * Búsqueda de pacientes EN EL SERVIDOR para el selector de la cita: cada
+     * palabra en cualquier parte del nombre (AND, como la web) tolerando tildes
+     * ([patronRegexSinTildes], operador imatch); una sola palabra también busca
+     * en el DNI. Hasta 60 filas livianas (id, nombre, dni): nunca la tabla
+     * entera. Quien llama vuelve a filtrar con `coincideBusqueda` (misma regla
+     * que la lista). Lanza si no hay red: el selector se queda con lo local.
+     */
+    suspend fun buscarPacientes(q: String): List<RefNombre> {
+        val palabras = palabrasBusqueda(q)
+        if (palabras.isEmpty()) return emptyList()
+        val filas = Supabase.client.postgrest["pacientes"]
+            .select(Columns.list("id, nombre, dni, estado")) {
+                filter {
+                    neq("estado", "Inactivo")
+                    if (palabras.size == 1) {
+                        val w = palabras.first()
+                        or {
+                            filter("nombre", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IMATCH, patronRegexSinTildes(w))
+                            ilike("dni", "%$w%")
+                        }
+                    } else {
+                        palabras.forEach {
+                            filter("nombre", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IMATCH, patronRegexSinTildes(it))
+                        }
+                    }
+                }
+                order("nombre", Order.ASCENDING)
+                limit(60)
+            }
+            .decodeList<JsonObject>()
+        return filas.mapNotNull {
+            val id = it.str("id") ?: return@mapNotNull null
+            RefNombre(id, it.str("nombre") ?: "Paciente", it.str("dni"))
+        }
+    }
+
+    /**
+     * "✗ No vino": registra la falta sin aviso (cita Cancelada + no_asistio; en una
+     * Sesión, su sesión pasa a "No asistió" por la canónica de la web) en vez de
+     * cancelar — que en una Sesión BORRABA la sesión. Endpoint aditivo
+     * `/api/staff/cita/no-asistio`; con la cola offline como las demás escrituras.
+     */
+    suspend fun noAsistio(citaId: String, motivo: String?): pe.saniape.app.data.offline.ResultadoEscritura {
+        val cuerpo = buildJsonObject {
+            put("citaId", citaId)
+            if (!motivo.isNullOrBlank()) put("motivo", motivo.trim())
+        }
+        return enviarOEncolarDetalle("cita:no-asistio", "/api/staff/cita/no-asistio", cuerpo)
+    }
+
+    /**
+     * La sesión vinculada a una cita (citas.sesion_id) y su número, para cobrarla
+     * tras completar (la sesión puede nacer al completar). null si no hay vínculo.
+     */
+    suspend fun sesionDeCita(citaId: String): Pair<String, Int?>? = runCatching {
+        val o = Supabase.client.postgrest["citas"]
+            .select(Columns.raw("sesion_id, sesion:sesiones!citas_sesion_id_fkey(numero)")) {
+                filter { eq("id", citaId) }; limit(1)
+            }
+            .decodeList<JsonObject>().firstOrNull() ?: return@runCatching null
+        val id = o.str("sesion_id") ?: return@runCatching null
+        id to o.nested("sesion")?.str("numero")?.toIntOrNull()
+    }.getOrNull()
 
     /** Terapeutas activos con sus especialidades (para filtrar por especialidad). */
     suspend fun terapeutasActivos(): List<TerapeutaRef> {
@@ -464,6 +533,45 @@ object AgendaRepo {
         )
     }
 
+    /**
+     * Como [crearCita], pero con el detalle del rechazo del servidor (cupo lleno,
+     * paciente de baja, sin permiso…) para mostrarlo en el formulario en vez de
+     * "No se pudo agendar". No muestra toast de error: lo decide la pantalla.
+     */
+    suspend fun crearCitaDetalle(
+        pacienteId: String, tipo: String, fecha: String, hora: String,
+        terapeutaId: String?, tratamientoId: String?, costo: Double, duracion: Int, notas: String?,
+        especialidadId: String? = null, diagnostico: String? = null,
+        campaniaId: String? = null,
+    ): pe.saniape.app.data.offline.ResultadoEscritura {
+        if (token() == null) return pe.saniape.app.data.offline.ResultadoEscritura(
+            registrada = false, rechazo = pe.saniape.app.data.offline.RechazoServidor("Tu sesión expiró. Vuelve a entrar."),
+        )
+        return enviarOEncolarDetalle("cita:crear", "/api/staff/cita/crear", cuerpoCrearCita(
+            pacienteId, tipo, fecha, hora, terapeutaId, tratamientoId, costo, duracion, notas,
+            especialidadId, diagnostico, campaniaId,
+        ))
+    }
+
+    private fun cuerpoCrearCita(
+        pacienteId: String, tipo: String, fecha: String, hora: String,
+        terapeutaId: String?, tratamientoId: String?, costo: Double, duracion: Int, notas: String?,
+        especialidadId: String?, diagnostico: String?, campaniaId: String?,
+    ): JsonObject = buildJsonObject {
+        put("pacienteId", pacienteId)
+        put("tipo", tipo)
+        put("fecha", fecha)
+        put("hora", hora)
+        if (terapeutaId != null) put("terapeutaId", terapeutaId)
+        if (tratamientoId != null) put("tratamientoId", tratamientoId)
+        if (especialidadId != null) put("especialidadId", especialidadId)
+        if (!diagnostico.isNullOrBlank()) put("diagnostico", diagnostico)
+        put("costo", costo)
+        put("duracion", duracion)
+        if (!notas.isNullOrBlank()) put("notas", notas)
+        if (!campaniaId.isNullOrBlank()) put("campaniaId", campaniaId)
+    }
+
     /** Crea una cita vía endpoint (maneja sesión vinculada + notificación). */
     suspend fun crearCita(
         pacienteId: String, tipo: String, fecha: String, hora: String,
@@ -497,7 +605,8 @@ data class EspecialidadRef(
     /** Color e ícono que eligió la clínica (chips del filtro de la agenda). */
     val color: String? = null, val icono: String? = null,
 )
-data class RefNombre(val id: String, val nombre: String)
+/** [dni] solo lo trae el selector de pacientes (buscar por documento). */
+data class RefNombre(val id: String, val nombre: String, val dni: String? = null)
 /** Terapeuta con sus especialidades (para filtrar por especialidad en el form). */
 data class TerapeutaRef(val id: String, val nombre: String, val especialidadIds: List<String>)
 data class TratamientoRef(

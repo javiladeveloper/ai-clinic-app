@@ -416,7 +416,7 @@ fun TarjetaTratamiento(
                 if (verPagos) {
                     Spacer(Modifier.height(Sania.dim.md))
                     SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() },
-                        soloLectura = soloLectura)
+                        soloLectura = soloLectura, pacienteId = pacienteId)
                 }
             } else if (cargaFallo) {
                 // La carga falló (timeout/red). NO decir "sin sesiones": ofrecer reintentar.
@@ -524,7 +524,7 @@ fun TarjetaTratamiento(
                     if (verPagos) {
                         Spacer(Modifier.height(Sania.dim.md))
                         SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() },
-                            soloLectura = soloLectura)
+                            soloLectura = soloLectura, pacienteId = pacienteId)
                     }
 
                     // Dar de alta (si el tratamiento sigue en curso y puede sesiones) — con confirmación.
@@ -667,12 +667,13 @@ fun TarjetaTratamiento(
         })
     }
     cobrarSesion?.let { ses ->
-        ModalCobrar(ses, onCancelar = { cobrarSesion = null }, onConfirmar = { monto, metodo, obs ->
+        ModalCobrar(ses, pacienteId = pacienteId, onCancelar = { cobrarSesion = null }, onConfirmar = { monto, metodo, obs ->
             cobrarSesion = null
             // La nota es SOLO la observación del cajero. El origen "Sesión #N" ya lo muestra
             // el chip (vía sesion_id), así que no se antepone para no duplicar.
             scope.launch {
                 val ok = PacientesRepo.cobrarSesion(t.id, ses.id, monto, metodo, obs?.trim()?.ifBlank { null })
+                if (ok) pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(pacienteId, metodo)
                 if (ok) pe.saniape.app.ui.Toaster.exito("Cobro registrado")
                 else pe.saniape.app.ui.Toaster.error("No se pudo cobrar. Verifica en caja antes de reintentar.")
                 recargarSesiones()
@@ -700,6 +701,7 @@ fun TarjetaTratamiento(
         ModalRegistrarServicio(
             t = t,
             puedePagos = verPagos,
+            pacienteId = pacienteId,
             onCancelar = { registrarServicioAbierto = false },
             onConfirmar = { nota, cobrar, monto, metodo ->
                 registrarServicioAbierto = false
@@ -714,6 +716,7 @@ fun TarjetaTratamiento(
                     var okCobro = true
                     if (cobrar && monto != null && monto > 0) {
                         okCobro = PacientesRepo.registrarPago(t.id, monto, metodo, notas = "Pago del servicio")
+                        if (okCobro) pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(pacienteId, metodo)
                     }
                     when {
                         !okServicio -> pe.saniape.app.ui.Toaster.error("No se pudo registrar la atención")
@@ -737,6 +740,7 @@ fun TarjetaTratamiento(
 private fun ModalRegistrarServicio(
     t: TratamientoPaciente,
     puedePagos: Boolean,
+    pacienteId: String? = null,
     onCancelar: () -> Unit,
     onConfirmar: (nota: String?, cobrar: Boolean, monto: Double?, metodo: String) -> Unit,
 ) {
@@ -744,7 +748,7 @@ private fun ModalRegistrarServicio(
     var nota by remember { mutableStateOf("") }
     var cobrar by remember { mutableStateOf(false) }
     var monto by remember { mutableStateOf((t.precioAcordado ?: t.precioBase)?.let { formato2(it) } ?: "") }
-    var metodo by remember { mutableStateOf("Efectivo") }
+    var metodo by rememberMetodoPagoInicial(pacienteId)
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onCancelar,
         title = { Text("✨ Registrar servicio", fontWeight = FontWeight.Bold) },
@@ -985,6 +989,8 @@ fun SeccionPagos(
     t: TratamientoPaciente, esAdmin: Boolean, recargaToken: Int, onCambio: () -> Unit,
     /** Ficha dada de baja: se ven los pagos, pero no se registran/editan/borran. */
     soloLectura: Boolean = false,
+    /** Para arrancar en el último método de pago de este paciente. */
+    pacienteId: String? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -992,7 +998,7 @@ fun SeccionPagos(
     var agregando by remember { mutableStateOf(false) }
     var guardando by remember { mutableStateOf(false) }
     var monto by remember { mutableStateOf("") }
-    var metodo by remember { mutableStateOf("Efectivo") }
+    var metodo by rememberMetodoPagoInicial(pacienteId)
     var notaPago by remember { mutableStateOf("") }
     var editando by remember { mutableStateOf<String?>(null) }   // id del pago en edición
     var editMonto by remember { mutableStateOf("") }
@@ -1158,6 +1164,7 @@ fun SeccionPagos(
                     val ok = PacientesRepo.registrarPago(t.id, m, metodo, notaPago.trim().ifBlank { null })
                     guardando = false
                     if (ok) {
+                        pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(pacienteId, metodo)
                         monto = ""; notaPago = ""; agregando = false
                         pe.saniape.app.ui.Toaster.exito("Pago registrado")
                         // NO recargamos pagos aquí: onCambio() → cambioToken++ ya re-dispara
@@ -1399,10 +1406,10 @@ private fun ModalReasignar(onCancelar: () -> Unit, onElegir: (String) -> Unit) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ModalCobrar(ses: SesionFicha, onCancelar: () -> Unit, onConfirmar: (Double, String, String?) -> Unit) {
+private fun ModalCobrar(ses: SesionFicha, pacienteId: String? = null, onCancelar: () -> Unit, onConfirmar: (Double, String, String?) -> Unit) {
     val c = Sania.colors
     var monto by remember { mutableStateOf(ses.costo?.let { formato2(it) } ?: "") }
-    var metodo by remember { mutableStateOf("Efectivo") }
+    var metodo by rememberMetodoPagoInicial(pacienteId)
     var obs by remember { mutableStateOf("") }
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onCancelar,

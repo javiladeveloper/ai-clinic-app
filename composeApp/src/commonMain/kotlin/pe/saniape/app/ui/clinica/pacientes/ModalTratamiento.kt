@@ -900,7 +900,9 @@ fun ModalEditarConsulta(
 
     if (mostrarFechaCita || mostrarProxControl) {
         val esCita = mostrarFechaCita
-        val estadoP = androidx.compose.material3.rememberDatePickerState()
+        // Abre en la fecha que ya tiene el campo (la de la cita o el próximo control).
+        val estadoP = androidx.compose.material3.rememberDatePickerState(
+            initialSelectedDateMillis = pe.saniape.app.data.staff.isoAMillisUtc(if (esCita) fecha else proximoControl))
         androidx.compose.material3.DatePickerDialog(
             onDismissRequest = { mostrarFechaCita = false; mostrarProxControl = false },
             confirmButton = {
