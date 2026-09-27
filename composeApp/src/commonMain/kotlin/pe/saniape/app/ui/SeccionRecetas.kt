@@ -126,33 +126,33 @@ fun TarjetaReceta(r: RecetaPortal, aviso: String) {
                 Spacer(Modifier.height(Sania.dim.sm))
 
                 // Establecimiento y prescriptor (lo que exige la receta, DS 014-2011-SA art. 56).
-                r.clinica?.let { Dato("Establecimiento", it) }
+                r.clinica?.let { DatoReceta("Establecimiento", it) }
                 // Dirección y ciudad juntas ("Av. Bolognesi 123, Tacna"), sin repetir la
                 // ciudad si la dirección ya la trae; sin ninguna de las dos, no hay fila.
                 val ciudad = r.clinicaCiudad?.takeIf { r.clinicaDireccion?.contains(it, ignoreCase = true) != true }
                 listOfNotNull(r.clinicaDireccion, ciudad).joinToString(", ")
-                    .takeIf { it.isNotBlank() }?.let { Dato("Dirección", it) }
-                r.clinicaTelefono?.let { Dato("Teléfono", it) }
+                    .takeIf { it.isNotBlank() }?.let { DatoReceta("Dirección", it) }
+                r.clinicaTelefono?.let { DatoReceta("Teléfono", it) }
                 r.prescriptor?.let { p ->
-                    Dato("Prescriptor", listOfNotNull(p.nombre, p.profesion, p.especialidad).joinToString(" · "))
-                    if (p.colegiatura.isNotBlank()) Dato("Colegiatura", p.colegiatura)
+                    DatoReceta("Prescriptor", listOfNotNull(p.nombre, p.profesion, p.especialidad).joinToString(" · "))
+                    if (p.colegiatura.isNotBlank()) DatoReceta("Colegiatura", p.colegiatura)
                 }
-                Dato("Fecha de emisión", fechaDMA(r.fecha))
-                if (r.validaHasta.isNotBlank()) Dato("Válida hasta", fechaDMA(r.validaHasta))
+                DatoReceta("Fecha de emisión", fechaDMA(r.fecha))
+                if (r.validaHasta.isNotBlank()) DatoReceta("Válida hasta", fechaDMA(r.validaHasta))
                 r.diagnostico?.let { d ->
-                    Dato("Diagnóstico", d + (r.cie10?.let { " ($it)" } ?: ""))
+                    DatoReceta("Diagnóstico", d + (r.cie10?.let { " ($it)" } ?: ""))
                 }
 
                 Spacer(Modifier.height(Sania.dim.sm))
                 Text("MEDICAMENTOS", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
                 r.items.forEachIndexed { i, it ->
                     Spacer(Modifier.height(6.dp))
-                    Medicamento(i + 1, it)
+                    FilaMedicamentoReceta(i + 1, it)
                 }
 
                 r.indicacionesGenerales?.let {
                     Spacer(Modifier.height(Sania.dim.sm))
-                    Dato("Indicaciones", it)
+                    DatoReceta("Indicaciones", it)
                 }
 
                 Spacer(Modifier.height(Sania.dim.md))
@@ -163,7 +163,7 @@ fun TarjetaReceta(r: RecetaPortal, aviso: String) {
 }
 
 @Composable
-private fun Medicamento(n: Int, m: MedicamentoReceta) {
+internal fun FilaMedicamentoReceta(n: Int, m: MedicamentoReceta) {
     val c = Sania.colors
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.fondo)
@@ -181,18 +181,18 @@ private fun Medicamento(n: Int, m: MedicamentoReceta) {
             Text(m.indicacionTexto, color = c.texto, fontSize = 13.sp)
         }
         Spacer(Modifier.height(4.dp))
-        if (m.dosis.isNotBlank()) Dato("Dosis", m.dosis)
-        if (m.frecuencia.isNotBlank()) Dato("Frecuencia", m.frecuencia)
-        if (m.duracion.isNotBlank()) Dato("Duración", m.duracion)
-        if (m.via.isNotBlank()) Dato("Vía", m.via)
-        if (m.cantidadTexto.isNotBlank()) Dato("Cantidad", m.cantidadTexto)
-        m.indicaciones?.let { Dato("Indicaciones", it) }
+        if (m.dosis.isNotBlank()) DatoReceta("Dosis", m.dosis)
+        if (m.frecuencia.isNotBlank()) DatoReceta("Frecuencia", m.frecuencia)
+        if (m.duracion.isNotBlank()) DatoReceta("Duración", m.duracion)
+        if (m.via.isNotBlank()) DatoReceta("Vía", m.via)
+        if (m.cantidadTexto.isNotBlank()) DatoReceta("Cantidad", m.cantidadTexto)
+        m.indicaciones?.let { DatoReceta("Indicaciones", it) }
     }
 }
 
 /** Fila "Etiqueta: valor" del detalle. */
 @Composable
-private fun Dato(etiqueta: String, valor: String) {
+internal fun DatoReceta(etiqueta: String, valor: String) {
     val c = Sania.colors
     Row(Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
         Text("$etiqueta: ", color = c.textoSuave, fontSize = 12.sp)
@@ -202,7 +202,7 @@ private fun Dato(etiqueta: String, valor: String) {
 }
 
 /** "2026-09-27" → "27/09/2026". Si no es fecha, tal cual. */
-private fun fechaDMA(iso: String): String {
+internal fun fechaDMA(iso: String): String {
     val p = iso.take(10).split("-")
     return if (p.size == 3 && p[0].length == 4) "${p[2]}/${p[1]}/${p[0]}" else iso
 }

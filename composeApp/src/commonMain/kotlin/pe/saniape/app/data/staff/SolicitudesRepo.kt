@@ -24,6 +24,17 @@ import kotlinx.serialization.json.put
 import pe.saniape.app.data.Supabase
 import pe.saniape.app.data.crearHttpClient
 
+/** "LIMITE_PLAN: Se lleno el espacio…" (error de la base) → solo el texto para la persona. */
+fun mensajeLimitePlan(error: String): String =
+    error.substringAfter("LIMITE_PLAN:").lineSequence().first().trim()
+        .ifBlank { "Se llenó el espacio de documentos de tu plan." }
+
+/** Resultado de subir un archivo: el path guardado, o el motivo (LIMITE_PLAN = sin espacio en el plan). */
+sealed class SubidaArchivo {
+    data class Ok(val path: String, val tipo: String) : SubidaArchivo()
+    data class Error(val mensaje: String, val limitePlan: Boolean = false) : SubidaArchivo()
+}
+
 /** Una solicitud clínica: Examen externo o Derivación a otra especialidad. */
 data class SolicitudFicha(
     val id: String,
@@ -170,9 +181,18 @@ object SolicitudesRepo {
      * Sube un archivo al bucket privado vía /api/staff/documento/subir (multipart, Bearer).
      * Devuelve el path guardado (o null si falló). [prefijo]: "doc" o "res".
      */
-    suspend fun subirArchivo(pacienteId: String, nombre: String, bytes: ByteArray, mime: String?, prefijo: String): Pair<String, String>? {
+    suspend fun subirArchivo(pacienteId: String, nombre: String, bytes: ByteArray, mime: String?, prefijo: String): Pair<String, String>? =
+        (subirArchivoDetalle(pacienteId, nombre, bytes, mime, prefijo) as? SubidaArchivo.Ok)?.let { it.path to it.tipo }
+
+    /**
+     * Como [subirArchivo], pero con el MOTIVO si no entra: adjuntar documentos es
+     * de todos los planes y el Básico tiene tope de espacio — el servidor responde
+     * 403 `codigo: LIMITE_PLAN` con un texto claro ("Se llenó el espacio…"), que
+     * hay que mostrar tal cual en vez de un "No se pudo" mudo.
+     */
+    suspend fun subirArchivoDetalle(pacienteId: String, nombre: String, bytes: ByteArray, mime: String?, prefijo: String): SubidaArchivo {
         return try {
-            val tk = token() ?: return null
+            val tk = token() ?: return SubidaArchivo.Error("Tu sesión expiró. Vuelve a entrar.")
             val resp = http.post("${Supabase.SITE_URL}/api/staff/documento/subir") {
                 header("Authorization", "Bearer $tk")
                 setBody(MultiPartFormDataContent(formData {
@@ -184,16 +204,46 @@ object SolicitudesRepo {
                     })
                 }))
             }
-            if (resp.status != HttpStatusCode.OK) return null
-            val obj = Json.parseToJsonElement(resp.bodyAsText()).jsonObject
-            val path = obj["path"]?.jsonPrimitive?.content ?: return null
+            val obj = runCatching { Json.parseToJsonElement(resp.bodyAsText()).jsonObject }.getOrNull()
+            if (resp.status != HttpStatusCode.OK) {
+                val error = (obj?.get("error") as? JsonPrimitive)?.content?.takeIf { it != "null" && it.isNotBlank() }
+                val codigo = (obj?.get("codigo") as? JsonPrimitive)?.content
+                return SubidaArchivo.Error(error ?: "No se pudo subir el archivo", limitePlan = codigo == "LIMITE_PLAN")
+            }
+            val path = obj?.get("path")?.jsonPrimitive?.content ?: return SubidaArchivo.Error("No se pudo subir el archivo")
             val tipo = obj["tipo"]?.jsonPrimitive?.content ?: ""
-            path to tipo
-        } catch (e: Exception) { null }
+            SubidaArchivo.Ok(path, tipo)
+        } catch (e: Exception) { SubidaArchivo.Error("No se pudo subir el archivo. Revisa tu conexión.") }
     }
 
+    /**
+     * Espacio de documentos que usa la clínica (bytes), por la misma RPC que la web
+     * (`documentos_espacio_usado`). Solo tiene sentido con tope (Básico). null = no
+     * se pudo medir (base sin la RPC o sin señal): no se muestra la barra.
+     */
+    suspend fun espacioUsadoBytes(): Long? = runCatching {
+        Supabase.client.postgrest.rpc("documentos_espacio_usado").data.trim().trim('"').toDoubleOrNull()?.toLong()
+    }.getOrNull()
+
     /** Crea el registro de un documento clínico (tras subir el archivo). */
-    suspend fun registrarDocumento(pacienteId: String, nombre: String, archivoPath: String, tipo: String): Boolean = try {
+    suspend fun registrarDocumento(pacienteId: String, nombre: String, archivoPath: String, tipo: String): Boolean =
+        registrarDocumentoDetalle(pacienteId, nombre, archivoPath, tipo) == null
+
+    /**
+     * Como [registrarDocumento], pero devuelve el MOTIVO si la base lo rechazó
+     * (null = quedó registrado). El trigger de espacio frena con "LIMITE_PLAN: …"
+     * aunque la subida haya pasado (dos teléfonos subiendo a la vez).
+     */
+    suspend fun registrarDocumentoDetalle(pacienteId: String, nombre: String, archivoPath: String, tipo: String): String? = try {
+        registrarDocumentoInsert(pacienteId, nombre, archivoPath, tipo)
+        null
+    } catch (e: Exception) {
+        val m = e.message.orEmpty()
+        if (m.contains("LIMITE_PLAN")) mensajeLimitePlan(m) else "No se pudo registrar el documento"
+    }
+
+
+    private suspend fun registrarDocumentoInsert(pacienteId: String, nombre: String, archivoPath: String, tipo: String) {
         Supabase.client.postgrest["documentos_paciente"].insert(buildJsonObject {
             put("paciente_id", pacienteId)
             put("nombre", nombre)
@@ -201,8 +251,7 @@ object SolicitudesRepo {
             put("archivo_url", archivoPath)
             put("tipo_archivo", tipo)
         })
-        true
-    } catch (e: Exception) { false }
+    }
 
     /**
      * Pide al backend una URL firmada temporal para abrir un documento privado.

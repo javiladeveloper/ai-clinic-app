@@ -175,6 +175,24 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         },
         especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
     )
+    // ── 💊 Recetas, por PACIENTE (gemelo de `pacienteRecibeRecetas`) ──
+    // Con el interruptor apagado (DALU, RENOVA) el mapa llega vacío: ni la
+    // pestaña ni una sola consulta. Solo en una clínica MIXTA se pregunta,
+    // liviano, si ya tiene recetas y de qué especialidades es quien mira.
+    val mapaReceta = ctx.modulosClinicos.mapaReceta
+    val mixtaReceta = mapaReceta.ids.isNotEmpty() && !mapaReceta.solo
+    var datosReceta by remember { mutableStateOf(false to emptyList<String>()) }
+    LaunchedEffect(paciente.id, mixtaReceta, recargarToken) {
+        if (mixtaReceta) datosReceta = pe.saniape.app.data.staff.RecetasStaffRepo.datosMixta(paciente.id, ctx.miTerapeutaId)
+    }
+    val esPacienteReceta = ctx.modulosClinicos.recetas && pe.saniape.app.data.staff.pacienteRecibeRecetas(
+        mapaReceta,
+        especialidadIds = paciente.tratamientos.map { t ->
+            t.especialidadId ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id
+        } + (hitos?.let { it.evaluaciones + it.consultas }.orEmpty()).map { it.especialidadId },
+        especialidadesDeQuienMira = datosReceta.second,
+        tieneRecetas = datosReceta.first,
+    )
     // "Nuevo paquete" (M3): abre el form de tratamiento prellenado con este.
     var renovarDesde by remember { mutableStateOf<TratamientoPaciente?>(null) }
     LaunchedEffect(pacienteInicial.id, recargarToken) {
@@ -239,20 +257,24 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         scope.launch {
             subiendo = true
             val prefijo = if (p.categoria == "Resultado") "res" else "doc"
-            val subido = pe.saniape.app.data.staff.SolicitudesRepo.subirArchivo(
+            // Documentos en TODOS los planes; el Básico tiene tope de espacio. Si no
+            // entra, el servidor (o el trigger de la base) dice por qué y se muestra
+            // tal cual ("Se llenó el espacio… borra o pasa a Premium/Plus").
+            when (val subido = pe.saniape.app.data.staff.SolicitudesRepo.subirArchivoDetalle(
                 paciente.id, archivo.nombre, archivo.bytes, archivo.mime, prefijo,
-            )
-            if (subido != null) {
-                val (path, tipo) = subido
-                if (p.solicitudId != null) {
-                    // Adjuntar como resultado del examen (conserva la nota existente vacía aquí).
-                    pe.saniape.app.data.staff.SolicitudesRepo.registrarResultado(p.solicitudId, null, path)
-                } else {
-                    pe.saniape.app.data.staff.SolicitudesRepo.registrarDocumento(paciente.id, archivo.nombre, path, tipo)
+            )) {
+                is pe.saniape.app.data.staff.SubidaArchivo.Ok -> {
+                    val error = if (p.solicitudId != null) {
+                        // Adjuntar como resultado del examen (conserva la nota existente vacía aquí).
+                        pe.saniape.app.data.staff.SolicitudesRepo.registrarResultado(p.solicitudId, null, subido.path)
+                        null
+                    } else {
+                        pe.saniape.app.data.staff.SolicitudesRepo.registrarDocumentoDetalle(paciente.id, archivo.nombre, subido.path, subido.tipo)
+                    }
+                    if (error == null) pe.saniape.app.ui.Toaster.exito("Documento subido")
+                    else pe.saniape.app.ui.Toaster.error(error)
                 }
-                pe.saniape.app.ui.Toaster.exito("Documento subido")
-            } else {
-                pe.saniape.app.ui.Toaster.error("No se pudo subir el archivo")
+                is pe.saniape.app.data.staff.SubidaArchivo.Error -> pe.saniape.app.ui.Toaster.error(subido.mensaje)
             }
             subiendo = false
             recargar()
@@ -490,6 +512,8 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     if (esOdontologia) add("odontograma" to "🦷 Odontograma")
                     // SOLO pacientes de fisioterapia (`esPacienteFisio`, arriba).
                     if (esPacienteFisio) add("evaluacion" to "📏 Evaluación")
+                    // SOLO pacientes de especialidades que recetan (`esPacienteReceta`).
+                    if (esPacienteReceta) add("recetas" to "💊 Recetas")
                     if (ctx.puede("pagos")) add("pagos" to "💰 Pagos")
                     add("resumen" to "📋 Resumen")
                 }
@@ -605,6 +629,12 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     "resumen" -> ContenidoResumen(
                         ctx = ctx, paciente = paciente, acciones = acciones,
                         onEditarClinico = { editarClinico = true },
+                    )
+                    // Doble candado, como la 🦷: sin recetas en el paciente no se monta.
+                    "recetas" -> if (esPacienteReceta) ContenidoRecetasFicha(
+                        ctx = ctx, pacienteId = paciente.id,
+                        fichaInactiva = pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
+                        acciones = acciones,
                     )
                     // Doble candado: aunque `tab` quedara en "odontograma" por
                     // un estado viejo, sin odontología no se monta.
@@ -2182,6 +2212,11 @@ private fun ContenidoResumen(
             FilaClinica("Medicación", paciente.medicacionActual)
             FilaClinica("Antecedentes", paciente.antecedentes)
         }
+
+        // 📈 Signos vitales del triaje (última toma + evolución + tomas). Solo con
+        // el triaje de la clínica encendido (`vitalesVisiblesEnFicha`) y si el
+        // paciente tiene tomas; en DALU/RENOVA (apagado) no consulta nada.
+        if (ctx.modulosClinicos.triaje) SignosVitalesFicha(pacienteId = paciente.id, edad = paciente.edad)
 
         // Síntomas / patologías (chips morados), con el tipo/rubro como subtítulo.
         Column(

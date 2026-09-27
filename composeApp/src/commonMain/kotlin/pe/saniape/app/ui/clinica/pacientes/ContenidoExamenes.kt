@@ -43,8 +43,9 @@ import pe.saniape.app.ui.theme.Sania
 
 /**
  * Pestaña Exámenes (espeja ExamenesDerivaciones de la web): exámenes externos,
- * derivaciones y documentos del paciente. Gateado por plan (examenes=Plus, derivaciones=Premium)
- * vía ctx.can(). Solo visible con permiso de sesiones (igual que la web).
+ * derivaciones y documentos del paciente. Solicitar exámenes es Plus (ctx.can("examenes"));
+ * ADJUNTAR DOCUMENTOS es de todos los planes (el Básico con tope de espacio, como la web
+ * desde 2026-09-27). Solo visible con permiso de sesiones (igual que la web).
  */
 @Composable
 fun ContenidoExamenes(
@@ -68,10 +69,15 @@ fun ContenidoExamenes(
     var nuevo by remember { mutableStateOf<String?>(null) }            // "Examen" | "Derivacion"
     var resultadoDe by remember { mutableStateOf<SolicitudFicha?>(null) }
 
+    // Tope de espacio del plan (Básico); null = sin límite y no se mide nada.
+    val limiteMb = ctx.planEstado.features.maxEspacioDocumentosMB
+    var espacioUsado by remember { mutableStateOf<Long?>(null) }
+
     fun recargar() {
         scope.launch {
             solicitudes = runCatching { SolicitudesRepo.solicitudesDe(pacienteId) }.getOrDefault(emptyList())
             documentos = runCatching { SolicitudesRepo.documentosDe(pacienteId) }.getOrDefault(emptyList())
+            if (limiteMb != null) espacioUsado = SolicitudesRepo.espacioUsadoBytes()
         }
     }
     LaunchedEffect(pacienteId, recargaToken) {
@@ -114,15 +120,25 @@ fun ContenidoExamenes(
             }
         }
 
-        // ── Documentos del paciente (Plus) ──
+        // ── Documentos del paciente (TODOS los planes; Básico con tope de espacio) ──
+        // Que el paciente los vea en su app sigue siendo Plus (lo filtra el servidor).
         SeccionExamenes(
             titulo = "📎 Documentos del paciente",
-            subtitulo = "Radiografías, tomografías, análisis. PDF o imagen.",
-            habilitado = puedeExamenes, botonTexto = "+ Subir",
+            subtitulo = "Resultados de laboratorio, informes, radiografías, recetas escaneadas. PDF o imagen.",
+            habilitado = true, botonTexto = "+ Subir",
             onNuevo = { onAbrirSubida("Documento", null) },
             cargando = documentos == null, vacio = (documentos ?: emptyList()).isEmpty(),
             textoVacio = "Sin documentos subidos.",
-            textoBloqueado = "Los documentos del paciente son del plan Plus.",
+            textoBloqueado = "",
+            cabecera = {
+                Text(
+                    if (puedeExamenes) "👁 El paciente también los ve en su app."
+                    else "🔒 Solo los ve tu equipo. Con el plan Plus, el paciente también los ve en su app.",
+                    color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(bottom = 6.dp),
+                )
+                val usado = espacioUsado
+                if (limiteMb != null && usado != null) BarraEspacioDocumentos(usado, limiteMb)
+            },
         ) {
             (documentos ?: emptyList()).forEach { d ->
                 Row(
@@ -190,6 +206,8 @@ fun ContenidoExamenes(
 private fun SeccionExamenes(
     titulo: String, subtitulo: String, habilitado: Boolean, botonTexto: String,
     onNuevo: () -> Unit, cargando: Boolean, vacio: Boolean, textoVacio: String, textoBloqueado: String,
+    /** Lo que va entre el título y la lista (aviso de visibilidad, barra de espacio). */
+    cabecera: @Composable () -> Unit = {},
     contenido: @Composable () -> Unit,
 ) {
     val c = Sania.colors
@@ -210,6 +228,7 @@ private fun SeccionExamenes(
             }
         }
         Spacer(Modifier.height(10.dp))
+        cabecera()
         when {
             !habilitado -> Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
                 .background(c.chipBg).padding(12.dp)) {
@@ -220,6 +239,36 @@ private fun SeccionExamenes(
             }
             vacio -> Text(textoVacio, color = c.textoSuave, fontSize = 12.sp)
             else -> contenido()
+        }
+    }
+}
+
+/**
+ * Uso del espacio de documentos de la clínica (solo en planes con tope: Básico).
+ * Igual que la web: navy normal, ámbar desde 85 %, rojo lleno, con la salida.
+ */
+@Composable
+private fun BarraEspacioDocumentos(usadoBytes: Long, limiteMb: Int) {
+    val c = Sania.colors
+    val limiteBytes = limiteMb.toLong() * 1024 * 1024
+    val pct = if (limiteBytes <= 0) 100 else minOf(100, kotlin.math.round(usadoBytes * 100.0 / limiteBytes).toInt())
+    val color = when { pct >= 100 -> c.error; pct >= 85 -> c.pend; else -> c.navy }
+    Column(Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
+        Row(Modifier.fillMaxWidth()) {
+            Text("Espacio de documentos de la clínica", color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.weight(1f))
+            Text("${pe.saniape.app.data.staff.formatearBytes(usadoBytes)} de ${pe.saniape.app.data.staff.formatearBytes(limiteBytes)}",
+                color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(4.dp))
+        Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.borde)) {
+            Box(Modifier.fillMaxWidth(pct / 100f).height(6.dp).clip(RoundedCornerShape(Sania.shape.pill.dp)).background(color))
+        }
+        if (pct >= 85) {
+            Text(
+                (if (pct >= 100) "Espacio lleno. " else "Te queda poco espacio. ") +
+                    "Borra documentos que ya no necesites o pasa a Premium o Plus para espacio sin límite.",
+                color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp),
+            )
         }
     }
 }
