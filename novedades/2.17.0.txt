@@ -1,0 +1,15 @@
+# Novedades de la 2.17.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Pacientes: sus recetas en Salud. Clínicas con triaje: sala de espera en la agenda de hoy (Llegó y triaje con IMC y alertas por color, también sin señal). En la ficha, signos vitales con gráficos y la pestaña Recetas. Documentos en todos los planes.
+---
+Pacientes:
+• "💊 Mis recetas" en la pestaña Salud: detalle de cada receta, vigencia y datos del establecimiento.
+Clínicas:
+• Sala de espera en la agenda de hoy: Por llegar, 🔔 Llegó (con los minutos de espera), 🩺 Triaje y En consulta.
+• Filtro "🪑 En sala de espera" por orden de llegada.
+• Triaje con solo lo que mide tu clínica: presión, pulso, temperatura, saturación, peso, talla (en cm o metros) e IMC en vivo, con alertas por color.
+• Llegó y el triaje se guardan aunque no haya señal y suben solos al volver.
+• "▶ Atender" abre la consulta guiada en la web.
+• Ficha: "📈 Signos vitales" con la última toma, gráficos de presión y peso/IMC y el historial de tomas.
+• Ficha: pestaña "💊 Recetas" con el detalle; imprimir y emitir se abren en la web.
+• Documentos del paciente en todos los planes (en el Básico, con barra de espacio usado).
