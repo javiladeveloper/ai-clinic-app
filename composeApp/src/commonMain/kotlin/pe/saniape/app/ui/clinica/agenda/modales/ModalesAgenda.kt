@@ -150,8 +150,11 @@ fun ModalCompletar(
             }
         },
         text = {
-            // Con EVA y mejorías (fisio) el contenido crece: se puede desplazar.
-            Column(if (fisioSesion || sesionDeTratamiento || cobro != null || (esEvaluacion && bloqueEvaluacionFisio != null)) Modifier.verticalScroll(rememberScrollState()) else Modifier) {
+            // Con el teclado abierto el diálogo se achica (si no, tapaba el
+            // resto del formulario y el botón de guardar), y por eso el cuerpo
+            // se puede desplazar siempre.
+            pe.saniape.app.ui.AjustarDialogoAlTeclado()
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 // Referencia: qué se hizo la sesión anterior (como la web).
                 cierre?.anterior?.let { ant ->
                     Column(

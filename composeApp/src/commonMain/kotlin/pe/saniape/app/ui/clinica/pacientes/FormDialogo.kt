@@ -52,6 +52,8 @@ fun DialogoForm(
 ) {
     val c = Sania.colors
     Dialog(onDismissRequest = onCancelar, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        // Se achica con el teclado: el footer (Cancelar/Guardar) queda a la vista.
+        pe.saniape.app.ui.AjustarDialogoAlTeclado()
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(max = 720.dp)
                 .clip(RoundedCornerShape(Sania.shape.lg.dp)).background(c.fondo),
