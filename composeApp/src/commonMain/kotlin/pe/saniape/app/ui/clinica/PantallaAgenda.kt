@@ -350,7 +350,11 @@ fun PantallaAgenda(
                                     when (accion) {
                                         AccionTarjeta.Confirmar -> vm.ejecutar(AccionCita.Confirmar, cita)
                                         AccionTarjeta.Completar ->
-                                            if (cita.tipo == "Evaluación" || cita.tipo == "Sesión") completar = cita
+                                            // La cita que EVALÚA pide el diagnóstico del profesional
+                                            // (también la Consulta de medicina general, que no tiene
+                                            // Evaluación aparte); antes solo "Evaluación" y la consulta
+                                            // médica se cerraba sin diagnóstico.
+                                            if (vm.flujoDe(cita).esCitaQueEvalua(cita.tipo) || cita.tipo == "Sesión") completar = cita
                                             else vm.ejecutar(AccionCita.Completar, cita)
                                         AccionTarjeta.Cancelar -> confirmar = cita to AccionCita.Cancelar
                                         AccionTarjeta.Revertir -> confirmar = cita to AccionCita.Revertir
@@ -373,9 +377,8 @@ fun PantallaAgenda(
                                 odontologia = vm.esDental(cita),
                                 // Crear el plan desde la cita que EVALÚA (esCitaQueEvalua de la
                                 // web), solo con permiso 'sesiones' — no 'agendar'.
-                                crearTratamiento = ctx.puede("sesiones") && vm.flujoDe(cita).let { f ->
-                                    cita.tipo == "Evaluación" || (cita.tipo == "Consulta" && f.usaConsulta && !f.usaEvaluacion)
-                                },
+                                crearTratamiento = ctx.puede("sesiones") && vm.flujoDe(cita).esCitaQueEvalua(cita.tipo),
+                                flujo = vm.flujoDe(cita),
                                 sala = vm.etapaDe(cita)?.let { etapa ->
                                     val a = vm.atencionDe(cita)
                                     pe.saniape.app.ui.clinica.agenda.componentes.SalaTarjeta(
@@ -429,7 +432,7 @@ fun PantallaAgenda(
     completar?.let { cita ->
         // Misma regla que ModalCompletar: la cita que evalúa pide diagnóstico.
         val flujoCita = vm.flujoDe(cita)
-        val evalua = cita.tipo == "Evaluación" || (cita.tipo == "Consulta" && !flujoCita.usaEvaluacion)
+        val evalua = flujoCita.esCitaQueEvalua(cita.tipo)
         val pac = cita.pacienteId
         // SOLO la cita dental que evalúa: primero el odontograma. Se decide por
         // CITA: en una clínica con fisio y odontología, la evaluación de fisio

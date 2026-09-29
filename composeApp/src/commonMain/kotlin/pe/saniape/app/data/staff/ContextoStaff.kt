@@ -36,6 +36,17 @@ data class FlujoClinica(
         else -> tipo ?: "Cita"
     }
 
+    /**
+     * ¿Esta cita EVALÚA (pide diagnóstico al completarla)? La Evaluación siempre;
+     * la Consulta cuando es la única cita de entrada (medicina general, estética).
+     * Gemelo de `esCitaQueEvalua()` en la web (lib/flujo.ts).
+     */
+    fun esCitaQueEvalua(tipo: String?): Boolean =
+        tipo == "Evaluación" || (tipo == "Consulta" && usaConsulta && !usaEvaluacion)
+
+    /** ¿Se puede pasar esta cita a la Evaluación? Solo si el flujo la tiene. */
+    fun pasaAEvaluacion(tipo: String?): Boolean = tipo == "Consulta" && usaEvaluacion
+
     /** ¿Esta clínica ofrece este tipo de cita al agendar? */
     fun usaTipo(tipo: String): Boolean = when (tipo) {
         "Consulta" -> usaConsulta

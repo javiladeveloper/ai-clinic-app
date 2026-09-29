@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.agenda.componentes
 
+import pe.saniape.app.data.staff.FlujoClinica
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.shadow
@@ -64,6 +65,13 @@ fun TarjetaCita(
      * la tarjeta de siempre: DALU y RENOVA no ven ningún cambio.
      */
     sala: SalaTarjeta? = null,
+    /**
+     * El flujo de la ESPECIALIDAD de la cita: cómo se llama cada tipo y si existe
+     * el paso "→ Evaluación". Sin él, la tarjeta decía "CONSULTA" y ofrecía
+     * "→ Evaluación" en una clínica que entra por Diagnóstico, o en medicina
+     * general, que no tiene Evaluación aparte.
+     */
+    flujo: FlujoClinica = FlujoClinica(),
 ) {
     val c = Sania.colors
     val acciones = recordarAcciones()
@@ -93,7 +101,7 @@ fun TarjetaCita(
         Column(Modifier.fillMaxWidth().padding(Sania.dim.tarjeta)) {
             // Línea 1: CHIP de tipo prominente ····· badge de estado
             Row(verticalAlignment = Alignment.CenterVertically) {
-                ChipTipo(cita.tipo, cita.numeroSesion, atenuado = cerrada)
+                ChipTipo(cita.tipo, flujo.nombreTipo(cita.tipo), cita.numeroSesion, atenuado = cerrada)
                 Spacer(Modifier.weight(1f))
                 BadgeEstadoCita(cita.estado, cita.confirmadaPorPaciente)
             }
@@ -129,7 +137,7 @@ fun TarjetaCita(
                         val n = tel.filter { ch -> ch.isDigit() }.let { if (it.length <= 9) "51$it" else it }
                         val nombre = nombreDeSaludo(cita.pacienteNombre) ?: ""
                         val msg = "Hola $nombre 👋 Te recordamos tu cita" +
-                            (cita.tipo?.let { " de ${it.lowercase()}" } ?: "") +
+                            (cita.tipo?.let { " de ${flujo.nombreTipo(it).lowercase()}" } ?: "") +
                             " el ${cita.fecha} a las ${hora12(cita.hora)}. ¿Nos confirmas tu asistencia? 🙌"
                         acciones.abrirUrl("https://wa.me/$n?text=${pe.saniape.app.ui.urlEncode(msg)}")
                     }
@@ -179,6 +187,7 @@ fun TarjetaCita(
 
             // Acciones según estado (separadas por un divisor sutil)
             val acc = accionesPara(cita.estado, cita.tipo, odontologia && cita.pacienteId != null,
+                pasarA = flujo.labelEvaluacion.takeIf { flujo.pasaAEvaluacion(cita.tipo) },
                 crearTratamiento = crearTratamiento && cita.pacienteId != null,
                 sala = sala?.takeIf { cita.pacienteId != null })
             if (acc.isNotEmpty()) {
@@ -251,6 +260,8 @@ private fun accionesPara(
     odontograma: Boolean = false,
     crearTratamiento: Boolean = false,
     sala: SalaTarjeta? = null,
+    /** Nombre del paso Evaluación en el flujo de la cita; null = no hay paso al que pasar. */
+    pasarA: String? = null,
 ): List<Triple<String, AccionTarjeta, Color>> {
     val c = Sania.colors
     val lista = mutableListOf<Triple<String, AccionTarjeta, Color>>()
@@ -279,7 +290,7 @@ private fun accionesPara(
         if (sala?.triajeOn == true && principal != AccionTarjeta.Triaje) lista.add(Triple(textoTriaje, AccionTarjeta.Triaje, c.info))
         if (principal != AccionTarjeta.Atender) lista.add(Triple(textoAtender, accionAtender, c.navy))
     } else if (estado == "Pendiente") lista.add(Triple("✓ Confirmar", AccionTarjeta.Confirmar, c.ok))
-    if (tipo == "Consulta" && activa) lista.add(Triple("→ Evaluación", AccionTarjeta.PasarEvaluacion, c.info))
+    if (pasarA != null && activa) lista.add(Triple("→ $pasarA", AccionTarjeta.PasarEvaluacion, c.info))
     if (activa && principal == null) lista.add(Triple("✓ Completar", AccionTarjeta.Completar, c.navy))
     if (estado == "Completada" || estado == "Cancelada") lista.add(Triple("↩ Revertir", AccionTarjeta.Revertir, c.pend))
     // Repetir: agendar la SIGUIENTE cita del mismo paciente en 1 toque (misma info,
@@ -329,12 +340,12 @@ private fun Chip(texto: String, fg: Color, bg: Color) {
 
 /** Chip prominente del TIPO de cita (icono + nombre en mayúsculas + color global). */
 @Composable
-private fun ChipTipo(tipo: String?, numeroSesion: Int?, atenuado: Boolean) {
+private fun ChipTipo(tipo: String?, nombre: String, numeroSesion: Int?, atenuado: Boolean) {
     val color = EstadosColor.tipo(tipo)
     val fg = if (atenuado) Sania.colors.textoSuave else color.fg
     val bg = if (atenuado) Sania.colors.chipBg else color.bg
     val etiqueta = buildString {
-        append((tipo ?: "Cita").uppercase())
+        append(nombre.uppercase())
         if (tipo == "Sesión" && numeroSesion != null) append(" #$numeroSesion")
     }
     Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(bg)
