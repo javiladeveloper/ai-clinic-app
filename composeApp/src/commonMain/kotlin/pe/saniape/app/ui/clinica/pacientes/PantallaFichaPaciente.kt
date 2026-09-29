@@ -691,8 +691,9 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         tecnicasSugeridas = nuevo.tecnicasSugeridas,
                         campaniaId = nuevo.campaniaId, motivoPrecio = nuevo.motivoPrecio,
                         fechaInicio = nuevo.fechaInicio,
+                        primeraFecha = nuevo.primeraFecha, primeraHora = nuevo.primeraHora,
                     )
-                    if (ok) pe.saniape.app.ui.Toaster.exito("Tratamiento creado") else pe.saniape.app.ui.Toaster.error("No se pudo crear el tratamiento")
+                    if (ok) pe.saniape.app.ui.Toaster.exito(if (nuevo.primeraFecha != null) "Tratamiento creado con su primera sesión" else "Tratamiento creado") else pe.saniape.app.ui.Toaster.error("No se pudo crear el tratamiento")
                     // Si se usó una plantilla, contar el uso (ordena "más usadas primero").
                     nuevo.plantillaId?.let { PacientesRepo.contarUsoPlantilla(it) }
                     recargar()

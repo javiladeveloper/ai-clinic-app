@@ -864,8 +864,13 @@ object PacientesRepo {
         // tratamiento. Los ata el SERVIDOR, así funciona también desde la cola
         // offline sin que la app necesite el id del tratamiento nuevo.
         hallazgoIds: List<String> = emptyList(),
+        // Primera sesión en el mismo paso (servidor: lib/primera-sesion.ts). null = no.
+        primeraFecha: String? = null, primeraHora: String? = null,
     ): Boolean = accionTratamiento(buildJsonObject {
         put("accion", "crear"); put("pacienteId", pacienteId); put("procedimientoId", procedimientoId)
+        if (!primeraFecha.isNullOrBlank()) put("primeraSesion", buildJsonObject {
+            put("fecha", primeraFecha); put("hora", primeraHora ?: "09:00")
+        })
         if (terapeutaId != null) put("terapeutaId", terapeutaId)
         put("modalidad", modalidad)
         if (totalSesiones != null) put("totalSesiones", totalSesiones)

@@ -72,6 +72,9 @@ data class TratamientoNuevo(
     val campaniaId: String? = null,
     val motivoPrecio: String? = null,
     val fechaInicio: String? = null,
+    // Primera sesión en el mismo paso (opcional, 28/09/2026). null = no se agenda.
+    val primeraFecha: String? = null,
+    val primeraHora: String? = null,
 )
 
 /**
@@ -134,6 +137,12 @@ fun ModalCrearTratamiento(
     // Cuándo empieza (pasada si ya venía atendiéndose, futura si está programado). Default hoy.
     var fechaInicio by remember { mutableStateOf(pe.saniape.app.ui.clinica.agenda.hoyIso()) }
     var mostrarFechaInicio by remember { mutableStateOf(false) }
+    // Primera sesión en el mismo paso: arranca apagada (no todos dejan fecha al salir).
+    var conPrimera by remember { mutableStateOf(false) }
+    var fechaPrimera by remember { mutableStateOf(pe.saniape.app.ui.clinica.agenda.hoyIso()) }
+    var horaPrimera by remember { mutableStateOf("09:00") }
+    var mostrarFechaPrimera by remember { mutableStateOf(false) }
+    var mostrarHoraPrimera by remember { mutableStateOf(false) }
 
     LaunchedEffect(pacienteId) {
         campanias = runCatching { pe.saniape.app.data.staff.CatalogosCobroRepo.campaniasVigentes() }.getOrDefault(emptyList())
@@ -253,8 +262,12 @@ fun ModalCrearTratamiento(
         ((cantidadUnidades.toIntOrNull() ?: 0) > 0 && (precioUnitario.toDoubleOrNull() ?: 0.0) > 0.0))
 
     if (mostrarFechaInicio) DialogoFecha(onElegir = { fechaInicio = it }, onCerrar = { mostrarFechaInicio = false })
+    if (mostrarFechaPrimera) DialogoFecha(onElegir = { fechaPrimera = it }, onCerrar = { mostrarFechaPrimera = false }, inicial = fechaPrimera)
+    if (mostrarHoraPrimera) DialogoHora(horaPrimera, onElegir = { horaPrimera = it }, onCerrar = { mostrarHoraPrimera = false })
 
     Dialog(onDismissRequest = onCancelar, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        // Se achica con el teclado: el botón Crear queda a la vista.
+        pe.saniape.app.ui.AjustarDialogoAlTeclado()
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(max = 720.dp)
                 .clip(RoundedCornerShape(Sania.shape.lg.dp)).background(c.fondo),
@@ -549,6 +562,30 @@ fun ModalCrearTratamiento(
                             color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
+
+                // PRIMERA SESIÓN en el mismo paso: sin esto había que crear el
+                // tratamiento y después buscarlo para agendar (28/09/2026).
+                if (usaSesiones) {
+                    Spacer(Modifier.height(12.dp))
+                    Tarjeta(titulo = "Primera sesión", icono = "📅") {
+                        Row(Modifier.fillMaxWidth().clickable { conPrimera = !conPrimera },
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text(if (conPrimera) "☑" else "☐", fontSize = 20.sp,
+                                color = if (conPrimera) c.navy else c.textoSuave)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Agendarla ahora", color = c.texto, fontWeight = FontWeight.SemiBold)
+                        }
+                        if (conPrimera) {
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Column(Modifier.weight(1f)) { Etq("Fecha"); CajaSelectorForm(fechaPrimera) { mostrarFechaPrimera = true } }
+                                Column(Modifier.weight(1f)) { Etq("Hora"); CajaSelectorForm(horaPrimera) { mostrarHoraPrimera = true } }
+                            }
+                            Text("Se crea la sesión #1 con su cita. Las siguientes se agendan como siempre.",
+                                color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                        }
+                    }
+                }
             }
 
             // ── Footer fijo: Cancelar + Crear a ancho completo ────────────
@@ -598,6 +635,8 @@ fun ModalCrearTratamiento(
                                     plantillaId = plantilla?.id,
                                     campaniaId = campaniaAplicada?.id,
                                     motivoPrecio = motivoPrecio.trim().ifBlank { null },
+                                    primeraFecha = if (usaSesiones && conPrimera) fechaPrimera else null,
+                                    primeraHora = if (usaSesiones && conPrimera) horaPrimera else null,
                                     fechaInicio = if (esUnidades) null else fechaInicio,
                                 )
                             )
@@ -628,6 +667,7 @@ suspend fun guardarTratamientoNuevo(pacienteId: String, nuevo: TratamientoNuevo)
         tecnicasSugeridas = nuevo.tecnicasSugeridas,
         campaniaId = nuevo.campaniaId, motivoPrecio = nuevo.motivoPrecio,
         fechaInicio = nuevo.fechaInicio,
+        primeraFecha = nuevo.primeraFecha, primeraHora = nuevo.primeraHora,
     )
     if (ok) nuevo.plantillaId?.let { runCatching { PacientesRepo.contarUsoPlantilla(it) } }
     return ok
