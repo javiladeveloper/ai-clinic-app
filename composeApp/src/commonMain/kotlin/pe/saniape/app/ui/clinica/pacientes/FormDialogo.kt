@@ -83,21 +83,25 @@ fun DialogoForm(
                     .padding(horizontal = 16.dp, vertical = 14.dp),
                 content = contenido,
             )
-            // Footer
-            Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
-            Row(
-                Modifier.fillMaxWidth().background(c.superficie).padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                TextButton(onClick = onCancelar) { Text(textoCancelar, color = c.textoSuave, fontWeight = FontWeight.Bold) }
-                Box(
-                    Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.md.dp))
-                        .background(if (accionHabilitada) c.navy else c.borde)
-                        .clickable(enabled = accionHabilitada) { onAccion() }.padding(vertical = 13.dp),
-                    contentAlignment = Alignment.Center,
+            // Footer. Con el teclado abierto la acción ya está en la cabecera:
+            // mostrar las dos la duplicaba (reporte 29/09/2026) y el pie solo
+            // le quita espacio al formulario.
+            if (!pe.saniape.app.ui.LocalTecladoEnDialogo.current) {
+                Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
+                Row(
+                    Modifier.fillMaxWidth().background(c.superficie).padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text(textoAccion, color = if (accionHabilitada) c.sobreNavy else c.textoSuave,
-                        fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    TextButton(onClick = onCancelar) { Text(textoCancelar, color = c.textoSuave, fontWeight = FontWeight.Bold) }
+                    Box(
+                        Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.md.dp))
+                            .background(if (accionHabilitada) c.navy else c.borde)
+                            .clickable(enabled = accionHabilitada) { onAccion() }.padding(vertical = 13.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(textoAccion, color = if (accionHabilitada) c.sobreNavy else c.textoSuave,
+                            fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    }
                 }
             }
         }

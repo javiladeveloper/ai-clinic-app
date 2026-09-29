@@ -5,6 +5,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -373,8 +377,84 @@ fun PantallaCrearCita(
         )
     }
 
+    // Guardar: la misma acción desde el botón del final y desde la cabecera
+    // (esta última solo con el teclado abierto, que tapa el final).
+    fun guardar() {
+        if (guardando) return
+        mensaje = null
+        val p = paciente ?: run { mensaje = "Elige un paciente"; return }
+        if (tipo == "Sesión" && tratamiento == null && tratamientos.isNotEmpty()) {
+            mensaje = "Elige el tratamiento"; return
+        }
+        // Clínica que mezcla odontología con otra especialidad: la
+        // cita tiene que decir de cuál es, porque de eso depende que
+        // al completarla se abra el odontograma (citaEsDental). Igual
+        // que la web. El profesional agenda lo suyo (su especialidad
+        // sale de él) y la sesión la toma de su tratamiento.
+        val mixtaDental = ctx.mapaDental.ids.isNotEmpty() && !ctx.mapaDental.solo
+        if (mixtaDental && multiEspecialidad && ctx.miTerapeutaId == null && tipo != "Sesión" &&
+            especialidad == null && terapeuta?.especialidadIds?.singleOrNull() == null
+        ) {
+            mensaje = "Elige la especialidad: la clínica atiende odontología y otras, y cada una se atiende distinto."
+            return
+        }
+        if (multiSede && sedeId == null) {
+            mensaje = "Elige la sede de la cita"; return
+        }
+        // Disponibilidad bloquea solo si NO es regularización (igual que la web).
+        val d = disponibilidad
+        if (d != null && !d.disponible && !esRegularizacion) {
+            mensaje = d.motivo ?: "El horario no está disponible"; return
+        }
+        guardando = true
+        scope.launch {
+            // Flujo → Evaluación: completar primero la consulta origen
+            // (igual que handleEvalSave de la web), luego crear la cita.
+            // Si completar falla, NO seguimos: dejaría la consulta origen a
+            // medias y la evaluación creada suelta. Avisamos y abortamos.
+            val origenId = prefill?.citaOrigenId
+            if (origenId != null) {
+                val okOrigen = runCatching { AgendaRepo.completar(origenId) }.getOrDefault(false)
+                if (!okOrigen) {
+                    guardando = false
+                    mensaje = "No se pudo cerrar la consulta previa. Intenta de nuevo."
+                    return@launch
+                }
+            }
+            val terId = if (ctx.miTerapeutaId != null) ctx.miTerapeutaId else terapeuta?.id
+            // Especialidad: la elegida, o la del profesional si solo tiene una.
+            val espId = especialidad?.id
+                ?: terapeuta?.especialidadIds?.singleOrNull()
+            val r = AgendaRepo.crearCitaDetalle(
+                pacienteId = p.id, tipo = tipo, fecha = fecha, hora = hora,
+                terapeutaId = terId, tratamientoId = tratamiento?.id,
+                costo = costo.toDoubleOrNull() ?: 0.0,
+                duracion = duracion,
+                notas = notas.ifBlank { null },
+                especialidadId = espId,
+                diagnostico = if (tipo == "Evaluación") diagnostico.ifBlank { null } else null,
+                campaniaId = if (tipo != "Sesión") promoAplicada?.id else null,
+                // Multisede: la sede viaja en el cuerpo (también en la cola offline).
+                sedeId = if (multiSede) sedeId else null,
+            )
+            guardando = false
+            if (r.registrada) {
+                if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Cita agendada")
+                onGuardada(fecha)
+                onListo()
+            } else {
+                // El motivo real del servidor (cupo lleno, paciente de baja,
+                // sin permiso...); el genérico solo si ni se pudo intentar.
+                mensaje = r.rechazo?.error ?: "No se pudo agendar. Intenta de nuevo."
+            }
+        }
+    }
+
+    // imePadding: la pantalla deja lugar al teclado (edge-to-edge no achica la
+    // ventana), así se puede desplazar hasta el final con el teclado abierto.
+    val tecladoAbierto = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().imePadding()) {
             // Sin flecha "←": en táctil el gesto/botón ATRÁS del sistema ya cancela
             // (ManejarAtras arriba). Dibujarla era redundante.
             Row(
@@ -385,7 +465,18 @@ fun PantallaCrearCita(
                 // Con prefill nombra lo que se agenda ("Agendar sesión"); antes decía
                 // siempre "Nueva evaluación", también al agendar una sesión o un control.
                 Text(pe.saniape.app.data.staff.tituloFormularioCita(prefill != null, flujoEfectivo.nombreTipo(tipo)),
-                    color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
+                    color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f))
+                // Con el teclado abierto "Guardar cita" queda debajo: el botón sube
+                // acá (mismo patrón que los diálogos, reporte 29/09/2026).
+                if (tecladoAbierto) {
+                    Box(
+                        Modifier.clip(RoundedCornerShape(Sania.shape.md.dp))
+                            .background(if (!guardando) c.sobreNavy else c.sobreNavy.copy(alpha = 0.35f))
+                            .clickable(enabled = !guardando) { guardar() }
+                            .padding(horizontal = 14.dp, vertical = 9.dp),
+                    ) { Text("Guardar", color = c.navyDark, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+                }
             }
 
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Sania.dim.xl)) {
@@ -592,76 +683,7 @@ fun PantallaCrearCita(
 
                 Spacer(Modifier.height(Sania.dim.lg))
                 Button(
-                    onClick = {
-                        if (guardando) return@Button
-                        mensaje = null
-                        val p = paciente ?: run { mensaje = "Elige un paciente"; return@Button }
-                        if (tipo == "Sesión" && tratamiento == null && tratamientos.isNotEmpty()) {
-                            mensaje = "Elige el tratamiento"; return@Button
-                        }
-                        // Clínica que mezcla odontología con otra especialidad: la
-                        // cita tiene que decir de cuál es, porque de eso depende que
-                        // al completarla se abra el odontograma (citaEsDental). Igual
-                        // que la web. El profesional agenda lo suyo (su especialidad
-                        // sale de él) y la sesión la toma de su tratamiento.
-                        val mixtaDental = ctx.mapaDental.ids.isNotEmpty() && !ctx.mapaDental.solo
-                        if (mixtaDental && multiEspecialidad && ctx.miTerapeutaId == null && tipo != "Sesión" &&
-                            especialidad == null && terapeuta?.especialidadIds?.singleOrNull() == null
-                        ) {
-                            mensaje = "Elige la especialidad: la clínica atiende odontología y otras, y cada una se atiende distinto."
-                            return@Button
-                        }
-                        if (multiSede && sedeId == null) {
-                            mensaje = "Elige la sede de la cita"; return@Button
-                        }
-                        // Disponibilidad bloquea solo si NO es regularización (igual que la web).
-                        val d = disponibilidad
-                        if (d != null && !d.disponible && !esRegularizacion) {
-                            mensaje = d.motivo ?: "El horario no está disponible"; return@Button
-                        }
-                        guardando = true
-                        scope.launch {
-                            // Flujo → Evaluación: completar primero la consulta origen
-                            // (igual que handleEvalSave de la web), luego crear la cita.
-                            // Si completar falla, NO seguimos: dejaría la consulta origen a
-                            // medias y la evaluación creada suelta. Avisamos y abortamos.
-                            val origenId = prefill?.citaOrigenId
-                            if (origenId != null) {
-                                val okOrigen = runCatching { AgendaRepo.completar(origenId) }.getOrDefault(false)
-                                if (!okOrigen) {
-                                    guardando = false
-                                    mensaje = "No se pudo cerrar la consulta previa. Intenta de nuevo."
-                                    return@launch
-                                }
-                            }
-                            val terId = if (ctx.miTerapeutaId != null) ctx.miTerapeutaId else terapeuta?.id
-                            // Especialidad: la elegida, o la del profesional si solo tiene una.
-                            val espId = especialidad?.id
-                                ?: terapeuta?.especialidadIds?.singleOrNull()
-                            val r = AgendaRepo.crearCitaDetalle(
-                                pacienteId = p.id, tipo = tipo, fecha = fecha, hora = hora,
-                                terapeutaId = terId, tratamientoId = tratamiento?.id,
-                                costo = costo.toDoubleOrNull() ?: 0.0,
-                                duracion = duracion,
-                                notas = notas.ifBlank { null },
-                                especialidadId = espId,
-                                diagnostico = if (tipo == "Evaluación") diagnostico.ifBlank { null } else null,
-                                campaniaId = if (tipo != "Sesión") promoAplicada?.id else null,
-                                // Multisede: la sede viaja en el cuerpo (también en la cola offline).
-                                sedeId = if (multiSede) sedeId else null,
-                            )
-                            guardando = false
-                            if (r.registrada) {
-                                if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Cita agendada")
-                                onGuardada(fecha)
-                                onListo()
-                            } else {
-                                // El motivo real del servidor (cupo lleno, paciente de baja,
-                                // sin permiso...); el genérico solo si ni se pudo intentar.
-                                mensaje = r.rechazo?.error ?: "No se pudo agendar. Intenta de nuevo."
-                            }
-                        }
-                    },
+                    onClick = { guardar() },
                     enabled = !guardando,
                     shape = RoundedCornerShape(Sania.shape.md.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = c.navy, contentColor = c.sobreNavy),

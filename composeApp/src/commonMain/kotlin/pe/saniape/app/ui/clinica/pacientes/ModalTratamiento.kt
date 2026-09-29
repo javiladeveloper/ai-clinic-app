@@ -644,22 +644,25 @@ fun ModalCrearTratamiento(
             }
 
             // ── Footer fijo: Cancelar + Crear a ancho completo ────────────
-            Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
-            Row(
-                Modifier.fillMaxWidth().background(c.superficie)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave, fontWeight = FontWeight.Bold) }
-                Box(
-                    Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.md.dp))
-                        .background(if (puedeCrear) c.navy else c.borde)
-                        .clickable(enabled = puedeCrear) { crear() }.padding(vertical = 13.dp),
-                    contentAlignment = Alignment.Center,
+            // Con el teclado abierto "Crear" ya está en la cabecera (no duplicar).
+            if (!pe.saniape.app.ui.LocalTecladoEnDialogo.current) {
+                Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
+                Row(
+                    Modifier.fillMaxWidth().background(c.superficie)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text(if (esConsulta) "Crear consulta" else "Crear tratamiento",
-                        color = if (puedeCrear) c.sobreNavy else c.textoSuave, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave, fontWeight = FontWeight.Bold) }
+                    Box(
+                        Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.md.dp))
+                            .background(if (puedeCrear) c.navy else c.borde)
+                            .clickable(enabled = puedeCrear) { crear() }.padding(vertical = 13.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(if (esConsulta) "Crear consulta" else "Crear tratamiento",
+                            color = if (puedeCrear) c.sobreNavy else c.textoSuave, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    }
                 }
             }
         }

@@ -29,6 +29,12 @@ data class DatosTriaje(
     val yaTenia: String?,
     val edad: Int?,
     val alergias: String?,
+    /**
+     * "09:12 por Lic. Ana" si los valores se COPIARON del triaje que el
+     * paciente ya pasó hoy en otra cita (consulta → sesión el mismo día).
+     * Se guardan en esta cita recién al confirmar.
+     */
+    val copiadoDe: String? = null,
 )
 
 /**
@@ -115,12 +121,44 @@ object AtencionMedicaRepo {
                     .decodeList<JsonObject>().firstOrNull()
             }.getOrNull()
         }
+        // Triaje que el paciente ya pasó HOY en otra cita (p. ej. la consulta
+        // de la mañana): si esta cita no tiene el suyo, se precarga de ahí para
+        // no volver a medir (reporte 29/09/2026).
+        val hoyD = async {
+            if (pacienteId == null) null else runCatching {
+                Supabase.client.postgrest["atenciones_clinicas"]
+                    .select(Columns.raw(
+                        "triaje_at, triaje_por_nombre, motivo_consulta, " + (CAMPOS_VITALES + "perimetro_abdominal").joinToString(", ")
+                    )) {
+                        filter {
+                            eq("paciente_id", pacienteId)
+                            eq("fecha", hoyIso)
+                            neq("cita_id", citaId)
+                        }
+                        // Más reciente primero; las atenciones sin triaje (solo llegada) al final.
+                        order("triaje_at", io.github.jan.supabase.postgrest.query.Order.DESCENDING, nullsFirst = false)
+                        limit(3)
+                    }
+                    .decodeList<JsonObject>().firstOrNull { it.txt("triaje_at") != null }
+            }.getOrNull()
+        }
         val a = aD.await()
         val p = pD.await()
-        val valores = buildMap {
+        val propio = buildMap {
             for (k in CAMPOS_VITALES + "perimetro_abdominal") {
                 a?.txt(k)?.toDoubleOrNull()?.let { put(k, decimalCampo(it)) }
             }
+        }
+        val otra = hoyD.await()
+        val copia = if (propio.isNotEmpty() || otra == null) emptyMap() else buildMap {
+            for (k in CAMPOS_VITALES + "perimetro_abdominal") {
+                otra.txt(k)?.toDoubleOrNull()?.let { put(k, decimalCampo(it)) }
+            }
+        }
+        val valores = propio.ifEmpty { copia }
+        val copiadoDe = if (copia.isEmpty()) null else otra?.txt("triaje_at")?.let { at ->
+            val hora = parsearInstante(at)?.let { horaClinica(it) }
+            listOfNotNull(hora, otra.txt("triaje_por_nombre")?.let { "por $it" }).joinToString(" ").ifBlank { "hoy" }
         }
         val yaTenia = a?.txt("triaje_at")?.let { at ->
             val hora = parsearInstante(at)?.let { horaClinica(it) }
@@ -128,8 +166,9 @@ object AtencionMedicaRepo {
         }
         DatosTriaje(
             valores = valores,
-            motivo = a?.txt("motivo_consulta"),
+            motivo = a?.txt("motivo_consulta") ?: if (copiadoDe != null) otra?.txt("motivo_consulta") else null,
             yaTenia = yaTenia,
+            copiadoDe = copiadoDe,
             edad = p?.let { edadDe(it.txt("fecha_nacimiento"), it.txt("edad")?.toIntOrNull(), hoyIso) },
             alergias = p?.txt("alergias"),
         )

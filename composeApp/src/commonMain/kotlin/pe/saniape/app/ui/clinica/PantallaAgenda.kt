@@ -433,6 +433,12 @@ fun PantallaAgenda(
                         }
                     }
                     else -> items(vm.citasVisibles, key = { it.id }) { cita ->
+                        // Separador: de acá para abajo, lo ya atendido del día.
+                        if (cita.id == vm.primeraAtendidaId) {
+                            val n = vm.citasVisibles.count { vm.citaYaAtendida(it) }
+                            Text("✓ Ya atendidas ($n)", color = Sania.colors.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(start = Sania.dim.lg + 4.dp, end = Sania.dim.lg, top = Sania.dim.lg, bottom = Sania.dim.xs))
+                        }
                         Box(Modifier.padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm / 2)) {
                             TarjetaCita(
                                 cita = cita,

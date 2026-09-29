@@ -123,6 +123,14 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         cita.terapeutaId?.let { espsPorTerapeuta[it] },
     )
 
+    /** Ya se resolvió: completada o no asistió (baja al final del día). */
+    fun citaYaAtendida(c: CitaStaff): Boolean = c.estado == "Completada" || c.estado == "No asistió"
+
+    /** Primera cita ya atendida de la lista del día (encima va el separador "Ya atendidas"). */
+    val primeraAtendidaId: String?
+        get() = if (modoLista) null else citasVisibles.firstOrNull { citaYaAtendida(it) }
+            ?.takeIf { citasVisibles.any { c -> !citaYaAtendida(c) && c.estado != "Cancelada" } }?.id
+
     /** Citas tras aplicar los filtros (lo que la pantalla pinta). */
     val citasFiltradas: List<CitaStaff>
         get() {
@@ -154,6 +162,14 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                 val aCanc = a.estado == "Cancelada"
                 val bCanc = b.estado == "Cancelada"
                 if (aCanc != bCanc) return@Comparator if (aCanc) 1 else -1
+                // En la agenda de UN día, las ya atendidas bajan (antes de las
+                // canceladas): arriba queda a quién falta atender (pedido
+                // 29/09/2026, "dando prioridad a los que aún están por atenderse").
+                if (!modoLista) {
+                    val aHecha = citaYaAtendida(a)
+                    val bHecha = citaYaAtendida(b)
+                    if (aHecha != bHecha) return@Comparator if (aHecha) 1 else -1
+                }
                 if (modoLista && a.fecha != b.fecha) {
                     return@Comparator if (verHistorial) b.fecha.compareTo(a.fecha)
                                       else a.fecha.compareTo(b.fecha)

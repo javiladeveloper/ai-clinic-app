@@ -114,10 +114,14 @@ fun AlertaConTeclado(
                         ProvideTextStyle(MaterialTheme.typography.bodyMedium) { it() }
                     }
                 }
-                Spacer(Modifier.height(24.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                    dismissButton?.let { it(); Spacer(Modifier.width(8.dp)) }
-                    confirmButton()
+                // Con el teclado abierto el botón ya está junto al título: el pie
+                // lo duplicaba (reporte 29/09/2026). Cancelar = gesto atrás.
+                if (!teclado) {
+                    Spacer(Modifier.height(24.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                        dismissButton?.let { it(); Spacer(Modifier.width(8.dp)) }
+                        confirmButton()
+                    }
                 }
             }
         }
