@@ -1,0 +1,9 @@
+# Novedades de la 2.17.3 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+La evaluación dental se completa en un solo paso desde el odontograma, y el teclado ya no deja sin botón de guardar en el triaje ni en los formularios.
+---
+Clínicas:
+• Odontograma de una evaluación dental: "✓ Completar evaluación" crea los tratamientos del presupuesto y completa la cita con el diagnóstico de los hallazgos, sin la ventana extra.
+• Quién atendió se completa solo (el profesional de la cita, tú, o el único odontólogo); solo se pregunta si no se puede saber.
+• Con el teclado abierto, el botón de guardar aparece también arriba, en la cabecera del formulario (triaje, nuevo tratamiento, completar y los formularios de la ficha).
+• "🔔 Llegó" y el triaje vuelven a encontrar la cita.
