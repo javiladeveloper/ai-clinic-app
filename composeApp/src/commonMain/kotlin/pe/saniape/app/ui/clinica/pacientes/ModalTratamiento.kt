@@ -265,15 +265,60 @@ fun ModalCrearTratamiento(
     if (mostrarFechaPrimera) DialogoFecha(onElegir = { fechaPrimera = it }, onCerrar = { mostrarFechaPrimera = false }, inicial = fechaPrimera)
     if (mostrarHoraPrimera) DialogoHora(horaPrimera, onElegir = { horaPrimera = it }, onCerrar = { mostrarHoraPrimera = false })
 
-    Dialog(onDismissRequest = onCancelar, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        // Se achica con el teclado: el botón Crear queda a la vista.
-        pe.saniape.app.ui.AjustarDialogoAlTeclado()
+    // Crear: la misma acción desde el pie y desde la cabecera (con teclado).
+    fun crear() {
+                            val p = proc ?: return
+                            // Unidades: si no se negoció un acordado, el total = cantidad × precio.
+                            val totalUnidades = (cantidadUnidades.toIntOrNull() ?: 0) * (precioUnitario.toDoubleOrNull() ?: 0.0)
+                            onGuardar(
+                                TratamientoNuevo(
+                                    procedimientoId = p.id,
+                                    terapeutaId = if (miTerapeutaId != null) miTerapeutaId else terapeuta?.id,
+                                    modalidad = when {
+                                        esUnidades -> "Unidades"
+                                        esServUnico || esConsulta -> "Consulta"
+                                        else -> modalidad
+                                    },
+                                    totalSesiones = if (usaSesiones && modalidad == "Paquete") totalSesiones.toIntOrNull() ?: 10
+                                        else if (usaSesiones) 1 else null,
+                                    precioPaquete = if (usaSesiones && modalidad == "Paquete") precioPaquete.toDoubleOrNull() else null,
+                                    precioPorSesion = if (usaSesiones && modalidad == "Sesión suelta") precioPorSesion.toDoubleOrNull() else null,
+                                    // Vacío = precio de lista (igual que la web): unidades → cantidad ×
+                                    // precio; servicio único → el precio base del servicio.
+                                    precioAcordado = precioAcordado.toDoubleOrNull()
+                                        ?: if (esUnidades && totalUnidades > 0) totalUnidades
+                                        else if (esServUnico) p.precio else null,
+                                    diagnostico = diagnostico.trim().ifBlank { null },
+                                    // La cita de la agenda cuenta aunque no esté en la lista
+                                    // (una Consulta que evalúa, en flujos sin Evaluación).
+                                    citaOrigenId = evaluacion?.id ?: citaOrigenId,
+                                    // Medicación y próximo control NO se piden al crear (se llenan al editar tras atender).
+                                    medicacion = null,
+                                    proximoControl = null,
+                                    cantidadUnidades = if (esUnidades) cantidadUnidades.toIntOrNull() else null,
+                                    precioUnitario = if (esUnidades) precioUnitario.toDoubleOrNull() else null,
+                                    tecnicasSugeridas = plantilla?.tecnicasSesion?.takeIf { it.isNotBlank() },
+                                    plantillaId = plantilla?.id,
+                                    campaniaId = campaniaAplicada?.id,
+                                    motivoPrecio = motivoPrecio.trim().ifBlank { null },
+                                    primeraFecha = if (usaSesiones && conPrimera) fechaPrimera else null,
+                                    primeraHora = if (usaSesiones && conPrimera) horaPrimera else null,
+                                    fechaInicio = if (esUnidades) null else fechaInicio,
+                                )
+                            )
+    }
+
+    // Con el teclado abierto el cuerpo se achica y el botón Crear queda a la
+    // vista: ver DialogoConTeclado (29/09/2026).
+    pe.saniape.app.ui.DialogoConTeclado(onCancelar) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(max = 720.dp)
                 .clip(RoundedCornerShape(Sania.shape.lg.dp)).background(c.fondo),
         ) {
             // ── Header navy (el "negro" de la marca) ──────────────────────
-            Column(Modifier.fillMaxWidth().background(c.navyDark).padding(horizontal = 18.dp, vertical = 16.dp)) {
+            Row(Modifier.fillMaxWidth().background(c.navyDark).padding(horizontal = 18.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
                 Text(if (renovacion != null) "📦 Nuevo paquete" else "Nuevo tratamiento", color = c.sobreNavy, fontSize = 19.sp, fontWeight = FontWeight.Bold)
                 Text(
                     when {
@@ -285,6 +330,16 @@ fun ModalCrearTratamiento(
                     },
                     color = c.sobreNavy.copy(alpha = 0.7f), fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp),
                 )
+            }
+            // Con el teclado abierto el pie puede quedar tapado: el botón sube acá.
+            if (pe.saniape.app.ui.LocalTecladoEnDialogo.current) {
+                Box(
+                    Modifier.clip(RoundedCornerShape(Sania.shape.md.dp))
+                        .background(if (puedeCrear) c.sobreNavy else c.sobreNavy.copy(alpha = 0.35f))
+                        .clickable(enabled = puedeCrear) { crear() }
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                ) { Text(if (esConsulta) "Crear consulta" else "Crear", color = c.navyDark, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+            }
             }
 
             // ── Cuerpo scroll ─────────────────────────────────────────────
@@ -600,47 +655,7 @@ fun ModalCrearTratamiento(
                 Box(
                     Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.md.dp))
                         .background(if (puedeCrear) c.navy else c.borde)
-                        .clickable(enabled = puedeCrear) {
-                            val p = proc ?: return@clickable
-                            // Unidades: si no se negoció un acordado, el total = cantidad × precio.
-                            val totalUnidades = (cantidadUnidades.toIntOrNull() ?: 0) * (precioUnitario.toDoubleOrNull() ?: 0.0)
-                            onGuardar(
-                                TratamientoNuevo(
-                                    procedimientoId = p.id,
-                                    terapeutaId = if (miTerapeutaId != null) miTerapeutaId else terapeuta?.id,
-                                    modalidad = when {
-                                        esUnidades -> "Unidades"
-                                        esServUnico || esConsulta -> "Consulta"
-                                        else -> modalidad
-                                    },
-                                    totalSesiones = if (usaSesiones && modalidad == "Paquete") totalSesiones.toIntOrNull() ?: 10
-                                        else if (usaSesiones) 1 else null,
-                                    precioPaquete = if (usaSesiones && modalidad == "Paquete") precioPaquete.toDoubleOrNull() else null,
-                                    precioPorSesion = if (usaSesiones && modalidad == "Sesión suelta") precioPorSesion.toDoubleOrNull() else null,
-                                    // Vacío = precio de lista (igual que la web): unidades → cantidad ×
-                                    // precio; servicio único → el precio base del servicio.
-                                    precioAcordado = precioAcordado.toDoubleOrNull()
-                                        ?: if (esUnidades && totalUnidades > 0) totalUnidades
-                                        else if (esServUnico) p.precio else null,
-                                    diagnostico = diagnostico.trim().ifBlank { null },
-                                    // La cita de la agenda cuenta aunque no esté en la lista
-                                    // (una Consulta que evalúa, en flujos sin Evaluación).
-                                    citaOrigenId = evaluacion?.id ?: citaOrigenId,
-                                    // Medicación y próximo control NO se piden al crear (se llenan al editar tras atender).
-                                    medicacion = null,
-                                    proximoControl = null,
-                                    cantidadUnidades = if (esUnidades) cantidadUnidades.toIntOrNull() else null,
-                                    precioUnitario = if (esUnidades) precioUnitario.toDoubleOrNull() else null,
-                                    tecnicasSugeridas = plantilla?.tecnicasSesion?.takeIf { it.isNotBlank() },
-                                    plantillaId = plantilla?.id,
-                                    campaniaId = campaniaAplicada?.id,
-                                    motivoPrecio = motivoPrecio.trim().ifBlank { null },
-                                    primeraFecha = if (usaSesiones && conPrimera) fechaPrimera else null,
-                                    primeraHora = if (usaSesiones && conPrimera) horaPrimera else null,
-                                    fechaInicio = if (esUnidades) null else fechaInicio,
-                                )
-                            )
-                        }.padding(vertical = 13.dp),
+                        .clickable(enabled = puedeCrear) { crear() }.padding(vertical = 13.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(if (esConsulta) "Crear consulta" else "Crear tratamiento",

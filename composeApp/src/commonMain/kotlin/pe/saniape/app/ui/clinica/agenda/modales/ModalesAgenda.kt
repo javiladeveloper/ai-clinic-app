@@ -137,7 +137,8 @@ fun ModalCompletar(
         else mejorias = pe.saniape.app.data.staff.unirDictado(mejorias, dicho)
     } else null
 
-    AlertDialog(
+    // Respeta el teclado (AlertDialog quedaba tapado en Android 16): ver AlertaConTeclado.
+    pe.saniape.app.ui.AlertaConTeclado(
         onDismissRequest = onCancelar,
         title = {
             Column {
@@ -150,10 +151,7 @@ fun ModalCompletar(
             }
         },
         text = {
-            // Con el teclado abierto el diálogo se achica (si no, tapaba el
-            // resto del formulario y el botón de guardar), y por eso el cuerpo
-            // se puede desplazar siempre.
-            pe.saniape.app.ui.AjustarDialogoAlTeclado()
+            // El cuerpo se desplaza siempre: con el teclado abierto se achica.
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 // Referencia: qué se hizo la sesión anterior (como la web).
                 cierre?.anterior?.let { ant ->

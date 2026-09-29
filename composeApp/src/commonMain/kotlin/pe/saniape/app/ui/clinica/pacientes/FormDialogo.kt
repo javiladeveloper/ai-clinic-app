@@ -51,18 +51,30 @@ fun DialogoForm(
     contenido: @Composable ColumnScope.() -> Unit,
 ) {
     val c = Sania.colors
-    Dialog(onDismissRequest = onCancelar, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        // Se achica con el teclado: el footer (Cancelar/Guardar) queda a la vista.
-        pe.saniape.app.ui.AjustarDialogoAlTeclado()
+    // Con el teclado abierto el cuerpo se achica y el pie (Cancelar/Guardar)
+    // queda a la vista: ver DialogoConTeclado (29/09/2026).
+    pe.saniape.app.ui.DialogoConTeclado(onCancelar) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(max = 720.dp)
                 .clip(RoundedCornerShape(Sania.shape.lg.dp)).background(c.fondo),
         ) {
-            // Header navy
-            Column(Modifier.fillMaxWidth().background(c.navyDark).padding(horizontal = 18.dp, vertical = 16.dp)) {
-                Text(titulo, color = c.sobreNavy, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                subtitulo?.let {
-                    Text(it, color = c.sobreNavy.copy(alpha = 0.7f), fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+            // Header navy. Con el teclado abierto lleva también el botón de la
+            // acción: el pie puede quedar tapado (ver LocalTecladoEnDialogo).
+            Row(Modifier.fillMaxWidth().background(c.navyDark).padding(horizontal = 18.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(titulo, color = c.sobreNavy, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                    subtitulo?.let {
+                        Text(it, color = c.sobreNavy.copy(alpha = 0.7f), fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+                    }
+                }
+                if (pe.saniape.app.ui.LocalTecladoEnDialogo.current) {
+                    Box(
+                        Modifier.clip(RoundedCornerShape(Sania.shape.md.dp))
+                            .background(if (accionHabilitada) c.sobreNavy else c.sobreNavy.copy(alpha = 0.35f))
+                            .clickable(enabled = accionHabilitada) { onAccion() }
+                            .padding(horizontal = 14.dp, vertical = 9.dp),
+                    ) { Text(textoAccion, color = c.navyDark, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
                 }
             }
             // Cuerpo
