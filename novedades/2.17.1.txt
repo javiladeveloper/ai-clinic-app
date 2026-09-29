@@ -1,0 +1,8 @@
+# Novedades de la 2.17.1 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Agenda: cada cita se llama como la llama tu clínica (Diagnóstico, Valoración…) y solo ofrece los pasos que tu flujo tiene. Al completar la consulta de medicina general se pide el diagnóstico.
+---
+Clínicas:
+• La tarjeta de la cita usa el nombre de tu flujo: si tu clínica entra por "Diagnóstico", ya no dice "Consulta".
+• "→ Evaluación" solo aparece cuando la especialidad de la cita tiene evaluación, y con el nombre que le das.
+• Completar la consulta de medicina general (o la única cita de entrada) pide el diagnóstico del profesional.
