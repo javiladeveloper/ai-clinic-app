@@ -1,0 +1,10 @@
+# Novedades de la 2.17.2 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Crea el tratamiento y agenda su primera sesión en un solo paso. Cada tratamiento se distingue por su diagnóstico y avance, un paquete ya no queda sin precio y el teclado no tapa los formularios.
+---
+Clínicas:
+• Nuevo tratamiento: "📅 Primera sesión → Agendarla ahora", con fecha y hora. Se crea la sesión #1 con su cita en el mismo paso.
+• Al agendar una sesión, cada tratamiento se muestra con su diagnóstico, avance y desde cuándo (por ejemplo, "Lesión deportiva · 1/4 · desde 28 set").
+• En la ficha, la tarjeta de cada tratamiento muestra su diagnóstico bajo el nombre.
+• Un paquete ya no se puede crear sin precio (quedaba en S/ 0); si es gratis, se escribe 0.
+• El teclado ya no tapa el formulario de completar ni los de la ficha: la ventana se achica y el botón de guardar queda a la vista.
