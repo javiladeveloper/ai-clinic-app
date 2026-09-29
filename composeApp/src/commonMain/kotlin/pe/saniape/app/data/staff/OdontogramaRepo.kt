@@ -149,6 +149,28 @@ object OdontogramaRepo {
     suspend fun hallazgos(pacienteId: String): List<DienteHallazgo> =
         hallazgosONull(pacienteId) ?: emptyList()
 
+    /**
+     * ¿Esta evaluación ya tiene su tratamiento? (`tratamientos.cita_origen_id` =
+     * la cita). Lo usa "✓ Completar evaluación" para NO duplicar: si lo creó el
+     * botón del presupuesto o un intento anterior que falló al completar, no se
+     * crea otro. Uno Eliminado/Cancelado no cuenta: revertir la evaluación
+     * cancela sus tratamientos y libera las piezas (29/09/2026, gemelo de
+     * `asegurarTratamientoDeEvaluacion` de la web).
+     * null = no se pudo revisar (sin red): quien llama no crea nada a ciegas.
+     */
+    suspend fun hayTratamientoDeEvaluacion(pacienteId: String, citaId: String): Boolean? = try {
+        Supabase.client.postgrest["tratamientos"]
+            .select(Columns.list("id, estado")) {
+                filter { eq("paciente_id", pacienteId); eq("cita_origen_id", citaId) }
+            }
+            .decodeList<JsonObject>()
+            .any { it.str("estado") !in setOf("Eliminado", "Cancelado") }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
+    }
+
     /** Igual que [hallazgos], pero null si falló la red (para no confundir "falló" con "no hay nada"). */
     suspend fun hallazgosONull(pacienteId: String): List<DienteHallazgo>? =
         coalescer("hallazgos:$pacienteId#$generacion") { hallazgosRed(pacienteId) }

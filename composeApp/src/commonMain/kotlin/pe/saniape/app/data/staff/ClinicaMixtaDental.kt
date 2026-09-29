@@ -75,3 +75,39 @@ fun pacienteEsDental(
     return especialidadIds.any { it != null && it in mapa.ids } ||
         especialidadesDeQuienMira.orEmpty().any { it in mapa.ids }
 }
+
+/**
+ * Los profesionales activos que hacen odontología. En una clínica solo dental,
+ * todos; en una mixta, los que tienen alguna especialidad dental (el fisio o el
+ * médico general no cuentan para "el único odontólogo"). [activos] ya viene
+ * filtrado por estado (AgendaRepo.terapeutasActivos).
+ * Gemelo de `odontologosActivos` (lib/evaluacion-dental.ts) — 29/09/2026.
+ */
+fun odontologosActivos(activos: List<TerapeutaRef>, mapa: MapaDental): List<TerapeutaRef> {
+    if (mapa.solo) return activos
+    if (mapa.ids.isEmpty()) return emptyList()
+    return activos.filter { t -> t.especialidadIds.any { it in mapa.ids } }
+}
+
+/**
+ * Quién atendió la evaluación dental, SIN preguntar si se puede saber
+ * (29/09/2026, el "un solo paso" de la web llega a la app):
+ *  1. el profesional de la cita;
+ *  2. si la cita no tiene, el profesional vinculado a quien está logueado
+ *     ("si acabo de atenderlo, ¿no debería saberse quién atendió?");
+ *  3. si quien completa es Admin/recepción sin profesional propio y la clínica
+ *     tiene UN solo odontólogo activo, ese.
+ * null = sigue ambiguo (varios odontólogos, o el equipo aún no cargó): la
+ * agenda vuelve a la ventana de completar, que pregunta.
+ * Gemelo de `profesionalDeEvaluacionDental` (lib/evaluacion-dental.ts).
+ */
+fun profesionalDeEvaluacionDental(
+    citaTerapeutaId: String?,
+    miTerapeutaId: String?,
+    activos: List<TerapeutaRef>,
+    mapa: MapaDental,
+): String? {
+    citaTerapeutaId?.takeIf { it.isNotBlank() }?.let { return it }
+    miTerapeutaId?.takeIf { it.isNotBlank() }?.let { return it }
+    return odontologosActivos(activos, mapa).singleOrNull()?.id
+}

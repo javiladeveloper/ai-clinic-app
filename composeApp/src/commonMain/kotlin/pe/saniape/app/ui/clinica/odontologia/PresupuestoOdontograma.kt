@@ -64,6 +64,12 @@ internal fun PresupuestoOdontograma(
     onCambio: () -> Unit,
     /** Qué especialidades son dentales (de /api/staff/contexto). */
     mapaDental: pe.saniape.app.data.staff.MapaDental = pe.saniape.app.data.staff.MapaDental(),
+    /**
+     * Dentro de la revisión de una evaluación dental: aquí se registra "crear lo
+     * marcado", que "✓ Completar evaluación" llama si el odontólogo no apretó
+     * "Crear N tratamiento(s)". null = fuera de la revisión (ficha, sesiones).
+     */
+    registro: RegistroPresupuesto? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -82,7 +88,10 @@ internal fun PresupuestoOdontograma(
     var precios by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var editandoPrecio by remember { mutableStateOf<Pair<String, String>?>(null) }  // id → nombre
 
-    LaunchedEffect(Unit) { todos = OdontogramaRepo.procedimientos() }
+    // Hasta que cargan los servicios las líneas no existen, y "Completar
+    // evaluación" creería que no hay nada que crear: no se registra antes.
+    var serviciosCargados by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { todos = OdontogramaRepo.procedimientos(); serviciosCargados = true }
 
     // Solo lo que todavía no tiene tratamiento: lo ya presupuestado no se
     // vuelve a ofrecer (crearía un segundo tratamiento por la misma caries).
@@ -108,6 +117,56 @@ internal fun PresupuestoOdontograma(
 
     val total = lineas.filter { it.procedimientoId in marcadas }.sumOf { it.subtotal } +
         extras.sumOf { precioExtra(it) }
+
+    // ── Completar evaluación en un paso (29/09/2026, gemelo de PresupuestoPanel web) ──
+    // Lo que se crea es lo que está A LA VISTA: líneas marcadas, precios
+    // ajustados y servicios añadidos. Se vuelve a registrar en cada composición
+    // (SideEffect), así siempre ve lo último que tocó el odontólogo.
+    if (registro != null) {
+        val crearMarcados: suspend () -> ResultadoTratamientoEvaluacion = crear@{
+            if (creando) throw ErrorEvaluacionDental("se está creando el tratamiento; espera un momento.")
+            val elegidas = lineas.filter { it.procedimientoId in marcadas }
+            val extrasAhora = extras.map { it.copy(precio = precioExtra(it)) }
+            if (elegidas.isEmpty() && extrasAhora.isEmpty()) {
+                return@crear when {
+                    lineas.isNotEmpty() -> ResultadoTratamientoEvaluacion.Desmarcado
+                    sinServicio.isNotEmpty() -> ResultadoTratamientoEvaluacion.SinServicio
+                    else -> ResultadoTratamientoEvaluacion.SinHallazgos
+                }
+            }
+            // Sin precio no se crea NADA: un tratamiento en S/ 0 queda "pago
+            // pendiente" para siempre y no se cobra nunca (regla de la web).
+            val sinPrecio = elegidas.filter { it.subtotal <= 0.0 }.map { it.nombre } +
+                extrasAhora.filter { it.precio <= 0.0 }.map { it.nombre }
+            if (sinPrecio.isNotEmpty()) {
+                throw ErrorEvaluacionDental("pon el precio de ${sinPrecio.joinToString(", ")} en el presupuesto (o desmárcalo).")
+            }
+            val planes = elegidas.map { planTratamiento(it, procPorId[it.procedimientoId]) }
+            val cuantos = planes.size + extrasAhora.size
+            creando = true
+            val fallidos = try {
+                crearTodo(pacienteId, citaId, planes, extrasAhora)
+            } finally {
+                creando = false
+            }
+            onCambio()
+            if (fallidos > 0) {
+                // Los que sí se crearon quedan (y atan sus piezas): al reintentar,
+                // la evaluación ya "tiene tratamiento" y no se duplica, así que lo
+                // que faltó se crea con el botón del presupuesto.
+                throw ErrorEvaluacionDental(
+                    if (fallidos == cuantos) "no se pudo crear el tratamiento."
+                    else "se crearon ${cuantos - fallidos} de $cuantos tratamientos. Crea lo que falta con \"Crear tratamiento(s)\" del presupuesto.",
+                )
+            }
+            extras = emptyList()
+            precios = emptyMap()
+            ResultadoTratamientoEvaluacion.Creado(cuantos)
+        }
+        val listo = serviciosCargados && !soloLectura
+        androidx.compose.runtime.SideEffect { registro.crear = if (listo) crearMarcados else null }
+        androidx.compose.runtime.DisposableEffect(registro) { onDispose { registro.crear = null } }
+    }
 
     Column(
         Modifier.fillMaxWidth().padding(top = 16.dp).clip(RoundedCornerShape(Sania.shape.md.dp))

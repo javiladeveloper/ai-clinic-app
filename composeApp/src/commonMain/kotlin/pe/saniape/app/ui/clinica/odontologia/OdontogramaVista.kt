@@ -106,6 +106,11 @@ fun OdontogramaVista(
      * lo mismo que esta vista acaba de traer.
      */
     onDatos: ((hallazgos: List<DienteHallazgo>, catalogo: List<HallazgoDental>) -> Unit)? = null,
+    /**
+     * La revisión de la evaluación dental: el presupuesto registra aquí "crear
+     * lo marcado" para "✓ Completar evaluación" (29/09/2026). null = fuera de ella.
+     */
+    registroPresupuesto: RegistroPresupuesto? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -307,6 +312,7 @@ fun OdontogramaVista(
         // ── Presupuesto ──────────────────────────────────────────────────
         if (mostrarPresupuesto) PresupuestoOdontograma(
             mapaDental = mapaDental,
+            registro = registroPresupuesto,
             pacienteId = pacienteId,
             citaId = citaId,
             hallazgos = hallazgos,

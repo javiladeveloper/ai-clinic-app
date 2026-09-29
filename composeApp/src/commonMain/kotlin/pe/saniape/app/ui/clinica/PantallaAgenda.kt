@@ -92,9 +92,12 @@ fun PantallaAgenda(
     var prefillEval by remember { mutableStateOf<PrefillCita?>(null) }
     // Modales (la cita objetivo, o null)
     var completar by remember { mutableStateOf<CitaStaff?>(null) }
-    // Odontología: la cita cuyo odontograma ya se revisó, con el diagnóstico
-    // que salió de ahí. Mientras no esté, se muestra primero la revisión.
-    var revisada by remember { mutableStateOf<Pair<String, String>?>(null) }
+    // Odontología: la cita cuyo odontograma ya se revisó pero que NO se pudo
+    // completar en un paso (varios odontólogos, o sin diagnóstico que redactar):
+    // sigue la ventana de completar de siempre, con lo que salió de la revisión.
+    var revisada by remember { mutableStateOf<RevisionHecha?>(null) }
+    // Evaluación dental completándose en un paso (crea tratamiento + completa).
+    var completandoEval by remember { mutableStateOf(false) }
     var odontogramaCita by remember { mutableStateOf<CitaStaff?>(null) }
     var confirmar by remember { mutableStateOf<Pair<CitaStaff, AccionCita>?>(null) }
     var editar by remember { mutableStateOf<CitaStaff?>(null) }
@@ -142,6 +145,95 @@ fun PantallaAgenda(
             if (pac?.tratamientos.orEmpty().none { it.estado == "Activo" }) tratForm = true
         }
     }
+    // ── Evaluación dental en UN paso (29/09/2026, gemelo de la web del 28/09) ──
+    // Quién atendió, sin preguntar si se puede saber: el de la cita → el del
+    // usuario → el único odontólogo activo. null = ambiguo (se preguntará).
+    fun profesionalEvaluacion(cita: CitaStaff): String? =
+        pe.saniape.app.data.staff.profesionalDeEvaluacionDental(
+            cita.terapeutaId, ctx.miTerapeutaId, vm.terapeutas, ctx.mapaDental,
+        )
+    fun nombreProfesional(cita: CitaStaff, id: String?): String? = when {
+        id == null -> null
+        id == cita.terapeutaId -> cita.terapeutaNombre ?: vm.terapeutas.find { it.id == id }?.nombre ?: "Profesional de la cita"
+        id == ctx.miTerapeutaId -> vm.terapeutas.find { it.id == id }?.nombre ?: ctx.nombre ?: "Tú"
+        else -> vm.terapeutas.find { it.id == id }?.nombre ?: "Profesional"
+    }
+    /**
+     * "✓ Completar evaluación" de la revisión dental (desde Completar o desde
+     * 🦷 Odontograma de la tarjeta):
+     *  1. el tratamiento, ANTES de completar: si no se puede crear, la cita
+     *     queda sin completar y la revisión abierta — nada a medias. Idempotente
+     *     por `cita_origen_id` (si ya existe, no crea otro);
+     *  2. la cita, con el MISMO camino que la ventana de completar
+     *     (vm.ejecutar → /api/staff/cita/completar), el diagnóstico redactado de
+     *     los hallazgos y quien atendió ya resuelto.
+     * Si falta quién atendió (varios odontólogos) o no hay diagnóstico que
+     * redactar, sigue la ventana de completar de siempre, que los pide.
+     */
+    fun completarEvaluacionDental(
+        cita: CitaStaff,
+        diagnostico: String,
+        registro: pe.saniape.app.ui.clinica.odontologia.RegistroPresupuesto,
+        cerrar: () -> Unit,
+    ) {
+        val pac = cita.pacienteId ?: return
+        if (completandoEval) return
+        completandoEval = true
+        scope.launch {
+            val res = try {
+                pe.saniape.app.ui.clinica.odontologia.asegurarTratamientoDeEvaluacion(pac, cita.id, registro)
+            } catch (e: pe.saniape.app.ui.clinica.odontologia.ErrorEvaluacionDental) {
+                pe.saniape.app.ui.Toaster.error("No se completó la evaluación: ${e.message}")
+                completandoEval = false
+                return@launch
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                completandoEval = false
+                throw e
+            } catch (e: Exception) {
+                // Lo inesperado tampoco deja la revisión colgada en "Guardando…".
+                pe.saniape.app.ui.Toaster.error("No se completó la evaluación: ${e.message ?: "error inesperado"}")
+                completandoEval = false
+                return@launch
+            }
+            val detalle = pe.saniape.app.ui.clinica.odontologia.textoTratamientoEvaluacion(res)
+            val creados = res is pe.saniape.app.ui.clinica.odontologia.ResultadoTratamientoEvaluacion.Creado
+            val terId = profesionalEvaluacion(cita)
+            val diag = diagnostico.trim()
+            if (terId == null || diag.isBlank()) {
+                // No se puede completar solo: la ventana de siempre, con el
+                // diagnóstico que haya. El tratamiento ya quedó resuelto (no
+                // se vuelve a ofrecer el form de crear otro).
+                completandoEval = false
+                cerrar()
+                revisada = RevisionHecha(cita.id, diag, tratamientoResuelto = true)
+                completar = cita
+                val falta = if (terId == null) "indica quién atendió" else "escribe el diagnóstico"
+                pe.saniape.app.ui.Toaster.info(
+                    if (creados) "$detalle. Para completar, $falta." else "Para completar la evaluación, $falta.",
+                )
+                return@launch
+            }
+            vm.ejecutar(
+                AccionCita.Completar, cita, diagnostico = diag,
+                // Foto fija del odontograma del día (la primera es la inicial).
+                congelarOdontograma = true,
+                // Solo si la cita no tiene: el servidor asigna quién atendió.
+                terapeutaId = terId.takeIf { cita.terapeutaId.isNullOrBlank() },
+                textoExito = listOf("Evaluación completada", detalle).filter { it.isNotBlank() }.joinToString(" · "),
+                ofrecerPlan = false,
+                alTerminar = { ok ->
+                    completandoEval = false
+                    if (ok) cerrar()
+                    // El error del servidor ya se mostró (vm.ejecutar); aquí,
+                    // que el tratamiento SÍ quedó y no se duplicará al reintentar.
+                    else if (creados) pe.saniape.app.ui.Toaster.info(
+                        "El tratamiento ya quedó creado: al volver a completar no se duplica.",
+                    )
+                },
+            )
+        }
+    }
+
     // Evaluación recién completada → se ofrece el plan (como la web).
     LaunchedEffect(vm.ofrecerTratamiento) {
         vm.ofrecerTratamiento?.let { o ->
@@ -437,15 +529,24 @@ fun PantallaAgenda(
         // SOLO la cita dental que evalúa: primero el odontograma. Se decide por
         // CITA: en una clínica con fisio y odontología, la evaluación de fisio
         // va directo al modal de siempre.
-        if (vm.esDental(cita) && evalua && pac != null && revisada?.first != cita.id) {
+        if (vm.esDental(cita) && evalua && pac != null && revisada?.citaId != cita.id) {
+            // Un solo paso: la revisión completa la evaluación (ver
+            // completarEvaluacionDental). La ventana de abajo solo si falta algo.
             pe.saniape.app.ui.clinica.odontologia.RevisionPrevia(
                 pacienteId = pac,
                 pacienteNombre = cita.pacienteNombre,
                 citaId = cita.id,
-                onContinuar = { diag -> revisada = cita.id to diag },
-                onCancelar = { completar = null; revisada = null },
+                mapaDental = ctx.mapaDental,
+                atendio = nombreProfesional(cita, profesionalEvaluacion(cita)),
+                guardando = completandoEval,
+                onCompletar = { diag, registro ->
+                    completarEvaluacionDental(cita, diag, registro) { completar = null; revisada = null }
+                },
+                onCancelar = { if (!completandoEval) { completar = null; revisada = null } },
             )
         } else {
+            // La revisión dental ya resolvió el tratamiento: no ofrecer otro plan.
+            val planResuelto = revisada?.takeIf { it.citaId == cita.id }?.tratamientoResuelto == true
             // Fisioterapia (M5): la evaluación estructurada de ESTA cita. Holder sin
             // estado: escribir en él no recompone la agenda. Nunca en una cita dental.
             val evalFisio = remember(cita.id) { pe.saniape.app.ui.clinica.fisio.RefBorradorFisio() }
@@ -477,7 +578,7 @@ fun PantallaAgenda(
                     vm.ejecutar(AccionCita.Completar, cita, obs, piezas = piezas, mejorias = mejorias, eva = eva,
                         pago = if (conCobro) cobro.pago() else null)
                 },
-                diagnosticoInicial = revisada?.takeIf { it.first == cita.id }?.second ?: "",
+                diagnosticoInicial = revisada?.takeIf { it.citaId == cita.id }?.diagnostico ?: "",
                 onCancelar = { completar = null; revisada = null },
                 onConfirmar = { obs, diag, espId, piezas ->
                     completar = null
@@ -488,6 +589,7 @@ fun PantallaAgenda(
                         congelarOdontograma = vm.esDental(cita) && evalua,
                         evaluacionFisio = if (conEvalFisio) evalFisio.valor else null,
                         pago = if (conCobro) cobro.pago() else null,
+                        ofrecerPlan = !planResuelto,
                     )
                 },
                 // Recepción completando una evaluación SIN profesional: se pide quién
@@ -502,6 +604,7 @@ fun PantallaAgenda(
                         congelarOdontograma = vm.esDental(cita) && evalua,
                         terapeutaId = terId,
                         evaluacionFisio = if (conEvalFisio) evalFisio.valor else null,
+                        ofrecerPlan = !planResuelto,
                     )
                 },
             )
@@ -511,7 +614,28 @@ fun PantallaAgenda(
     // queda atado a esa atención.
     odontogramaCita?.takeIf { vm.esDental(it) }?.let { cita ->
         val pac = cita.pacienteId ?: return@let
-        run {
+        // La cita que EVALÚA y sigue abierta: desde aquí mismo se completa la
+        // evaluación en un paso (29/09/2026, como la web). Solo a quien puede
+        // completar citas (el permiso del endpoint y de esta agenda).
+        val completable = vm.flujoDe(cita).esCitaQueEvalua(cita.tipo) &&
+            (cita.estado == "Pendiente" || cita.estado == "Confirmada") && ctx.puede("citas")
+        if (completable) {
+            pe.saniape.app.ui.clinica.odontologia.RevisionPrevia(
+                pacienteId = pac,
+                pacienteNombre = cita.pacienteNombre,
+                citaId = cita.id,
+                mapaDental = ctx.mapaDental,
+                atendio = nombreProfesional(cita, profesionalEvaluacion(cita)),
+                guardando = completandoEval,
+                onCompletar = { diag, registro ->
+                    completarEvaluacionDental(cita, diag, registro) { odontogramaCita = null }
+                },
+                // "Cerrar" solo cierra: lo marcado ya quedó guardado.
+                onCancelar = { if (!completandoEval) odontogramaCita = null },
+                titulo = "🦷 Odontograma",
+                textoCancelar = "Cerrar",
+            )
+        } else run {
             pe.saniape.app.ui.clinica.pacientes.DialogoForm(
                 titulo = "🦷 Odontograma",
                 subtitulo = cita.pacienteNombre,
@@ -822,3 +946,14 @@ private fun repetirDesde(cita: pe.saniape.app.data.staff.CitaStaff): pe.saniape.
         tratamientoId = cita.tratamientoId,
     )
 }
+
+/**
+ * Revisión dental que no pudo completar sola (29/09/2026): pasa a la ventana de
+ * completar con el diagnóstico redactado. [tratamientoResuelto] = la revisión
+ * ya creó (o encontró) el tratamiento: no se ofrece el form de crear otro.
+ */
+private data class RevisionHecha(
+    val citaId: String,
+    val diagnostico: String,
+    val tratamientoResuelto: Boolean,
+)

@@ -632,8 +632,32 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         evaluacionFisio: pe.saniape.app.data.staff.BorradorEvaluacionFisio? = null,
         /** Sesión: (monto, método) si el paciente pagó en el mismo cierre (null = no se cobra). */
         pago: Pair<Double, String>? = null,
+        /**
+         * Evaluación dental en UN paso (29/09/2026): el toast de éxito propio
+         * ("Evaluación completada · …") en vez del genérico "Cita completada".
+         */
+        textoExito: String? = null,
+        /**
+         * false = no ofrecer el form de crear tratamiento al terminar. La
+         * evaluación dental ya resolvió su tratamiento desde el presupuesto:
+         * ofrecerlo aquí sería un segundo plan por lo mismo (como la web).
+         */
+        ofrecerPlan: Boolean = true,
+        /**
+         * Resultado para quien necesita saberlo (la revisión dental: solo se
+         * cierra si quedó completada, y si no, avisa que el tratamiento ya se
+         * creó). Se llama tras recargar la agenda.
+         */
+        alTerminar: ((Boolean) -> Unit)? = null,
     ) {
-        if (accionando) return
+        if (accionando) {
+            // Callado dejaba la revisión dental en "Guardando…" para siempre.
+            if (alTerminar != null) {
+                pe.saniape.app.ui.Toaster.info("Espera a que termine la acción en curso")
+                alTerminar(false)
+            }
+            return
+        }
         viewModelScope.launch {
             accionando = true; mensaje = null
             var completadaEncolada = false
@@ -657,12 +681,17 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                                 evaluacionFisio,
                             )
                             accionando = false
+                            alTerminar?.invoke(false)
                             return@launch
                         }
                         else -> {
                             r.rechazo?.let { pe.saniape.app.ui.Toaster.error(it.error) }
                             // Sin rechazo = ni se pudo encolar: el toast genérico de abajo.
-                            if (r.rechazo != null) { recargarCitas(); accionando = false; return@launch }
+                            if (r.rechazo != null) {
+                                recargarCitas(); accionando = false
+                                alTerminar?.invoke(false)
+                                return@launch
+                            }
                             false
                         }
                     }
@@ -683,7 +712,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                     AccionCita.Revertir -> "Cita revertida"
                     AccionCita.Cancelar -> "Cita cancelada"
                 }
-                pe.saniape.app.ui.Toaster.exito(txt)
+                pe.saniape.app.ui.Toaster.exito(textoExito ?: txt)
                 // Fisioterapia: la evaluación estructurada (opcional). Aparte, para no
                 // demorar la recarga de la agenda; nunca bloquea: la cita ya quedó
                 // completada y, si falla, solo se avisa (gemelo de guardarEvaluacionDeCita).
@@ -699,7 +728,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                     }
                 }
                 // Evaluación completada → el siguiente paso natural es el plan (como la web).
-                if (accion == AccionCita.Completar && cita.tipo == "Evaluación" &&
+                if (accion == AccionCita.Completar && cita.tipo == "Evaluación" && ofrecerPlan &&
                     ctx.puede("sesiones") && cita.pacienteId != null) {
                     ofrecerTratamiento = OfertaTratamiento(
                         cita.copy(terapeutaId = terapeutaId ?: cita.terapeutaId, estado = "Completada"),
@@ -730,6 +759,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             recargarCitas()
             recargarBanners()
             accionando = false
+            alTerminar?.invoke(ok)
         }
     }
 
