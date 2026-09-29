@@ -242,7 +242,14 @@ fun ModalCrearTratamiento(
     val esConsulta = proc != null && !esUnidades && !esServUnico && proc?.usaSesiones == false
     val usaSesiones = proc != null && !esUnidades && !esServUnico && !esConsulta
     // Unidades: exige cantidad y precio por unidad (> 0) para poder crear.
-    val puedeCrear = proc != null && (!esUnidades ||
+    // Paquete SIN precio: nacía en S/ 0 y la ficha decía "nada que cobrar" (demo
+    // dental, 28/09/2026: el servicio no tenía precio de paquete y nadie lo
+    // escribió). Gratis se puede, escribiendo 0. Gemelo de TratamientoForm (web).
+    val faltaPrecioPaquete = usaSesiones && modalidad == "Paquete" &&
+        precioPaquete.isBlank() && precioAcordado.isBlank()
+    // Pista: N sesiones × precio por sesión (no se rellena solo: el paquete suele llevar descuento).
+    val referenciaPaquete = if (usaSesiones) (totalSesiones.toIntOrNull() ?: 10) * (proc?.precio ?: 0.0) else 0.0
+    val puedeCrear = proc != null && !faltaPrecioPaquete && (!esUnidades ||
         ((cantidadUnidades.toIntOrNull() ?: 0) > 0 && (precioUnitario.toDoubleOrNull() ?: 0.0) > 0.0))
 
     if (mostrarFechaInicio) DialogoFecha(onElegir = { fechaInicio = it }, onCerrar = { mostrarFechaInicio = false })
@@ -477,7 +484,15 @@ fun ModalCrearTratamiento(
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Column(Modifier.weight(1f)) { Etq("N° sesiones"); CampoNum(totalSesiones) { totalSesiones = it } }
-                                Column(Modifier.weight(1f)) { Etq("Precio paquete"); CampoNum(precioPaquete) { precioPaquete = it } }
+                                Column(Modifier.weight(1f)) {
+                                    Etq("Precio paquete")
+                                    CampoNum(precioPaquete, ayuda = if (referenciaPaquete > 0) "Ej. ${formatoNum(referenciaPaquete)}" else null) { precioPaquete = it }
+                                }
+                            }
+                            if (faltaPrecioPaquete) {
+                                Text("Pon el precio del paquete para poder crearlo. Si es gratis, escribe 0.",
+                                    color = c.error, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(top = 4.dp))
                             }
                             Text("Puedes ajustar sesiones y precio; el tarifario solo los pre-llena.",
                                 color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))

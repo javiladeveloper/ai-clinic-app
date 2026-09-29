@@ -400,7 +400,7 @@ object AgendaRepo {
     suspend fun tratamientosActivos(pacienteId: String): List<TratamientoRef> {
         val filas = Supabase.client.postgrest["tratamientos"]
             .select(
-                Columns.raw("id, modalidad, terapeuta_id, procedimiento:procedimientos(nombre, especialidad_id)")
+                Columns.raw("id, modalidad, terapeuta_id, diagnostico, fecha_inicio, total_sesiones, sesiones_completadas, procedimiento:procedimientos(nombre, especialidad_id)")
             ) {
                 filter { eq("paciente_id", pacienteId); eq("estado", "Activo") }
             }
@@ -413,6 +413,10 @@ object AgendaRepo {
                 modalidad = it.str("modalidad") ?: "",
                 terapeutaId = it.str("terapeuta_id"),
                 especialidadId = it.nested("procedimiento")?.str("especialidad_id"),
+                diagnostico = it.str("diagnostico"),
+                fechaInicio = it.str("fecha_inicio"),
+                totalSesiones = it.dbl("total_sesiones")?.toInt(),
+                sesionesCompletadas = it.dbl("sesiones_completadas")?.toInt(),
             )
         }
     }
@@ -624,7 +628,29 @@ data class TratamientoRef(
     val id: String, val procedimiento: String, val modalidad: String, val terapeutaId: String?,
     /** La especialidad del servicio del tratamiento (para validar la sugerencia de profesional). */
     val especialidadId: String? = null,
-)
+    val diagnostico: String? = null,
+    val fechaInicio: String? = null,
+    val totalSesiones: Int? = null,
+    val sesionesCompletadas: Int? = null,
+) {
+    /**
+     * Cómo se nombra en una lista para elegir. Con dos tratamientos del mismo
+     * servicio no se sabía cuál era cuál y la sesión terminaba en el equivocado
+     * (demo dental, 28/09/2026). Gemelo de `etiquetaTratamiento` (web).
+     */
+    fun etiqueta(): String {
+        val partes = mutableListOf(procedimiento.ifBlank { "Tratamiento" })
+        diagnostico?.trim()?.replace(Regex("\\s+"), " ")?.takeIf { it.isNotEmpty() }?.let {
+            partes += if (it.length > 32) it.take(31).trimEnd() + "…" else it
+        }
+        totalSesiones?.takeIf { it > 0 }?.let { partes += "${sesionesCompletadas ?: 0}/$it" }
+        fechaInicio?.let { Regex("^(\\d{4})-(\\d{2})-(\\d{2})").find(it) }?.let { m ->
+            val meses = listOf("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "set", "oct", "nov", "dic")
+            partes += "desde ${m.groupValues[3].toInt()} ${meses[m.groupValues[2].toInt() - 1]}"
+        }
+        return partes.joinToString(" · ")
+    }
+}
 
 /**
  * Una solicitud pendiente de agendar (un profesional derivó o pidió un examen interno;

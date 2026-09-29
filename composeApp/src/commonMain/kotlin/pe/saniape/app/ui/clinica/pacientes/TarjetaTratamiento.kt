@@ -203,6 +203,14 @@ fun TarjetaTratamiento(
                     }
                     val sub = listOfNotNull(t.especialidadNombre, t.terapeutaNombre?.let { "con $it" }).joinToString(" · ")
                     if (sub.isNotBlank()) Text(sub, color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 1.dp))
+                    // El diagnóstico bajo el nombre: con dos tratamientos del mismo
+                    // servicio es lo que dice cuál es cuál (28/09/2026). Las consultas
+                    // ya lo muestran abajo, con su medicación.
+                    if (!t.esConsulta && !t.esServicioUnico) t.diagnostico?.takeIf { it.isNotBlank() }?.let {
+                        Text("📋 $it", color = c.info, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                            maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 2.dp))
+                    }
                     // M4: por qué y cuándo se cerró por abandono (solo si se marcó así).
                     if (pe.saniape.app.data.staff.esNoVolvio(t.estado, t.noVolvio)) {
                         val cuando = t.cerradoAt?.take(10)?.split("-")?.takeIf { it.size == 3 }

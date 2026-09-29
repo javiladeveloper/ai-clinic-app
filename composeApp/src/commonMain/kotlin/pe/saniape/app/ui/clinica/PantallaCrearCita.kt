@@ -469,7 +469,9 @@ fun PantallaCrearCita(
                     Etiqueta("Tratamiento")
                     SelectorLista(
                         items = tratamientos, elegido = tratamiento,
-                        etiqueta = { "${it.procedimiento} — ${it.modalidad}" },
+                        // Servicio · diagnóstico · avance · desde cuándo: con dos del mismo
+                        // servicio, el nombre solo no alcanzaba para saber cuál es cuál.
+                        etiqueta = { it.etiqueta() },
                         // El profesional lo pone la sugerencia (tratamiento → diagnóstico),
                         // salvo que quien agenda ya haya elegido uno a mano.
                         onElegir = { tr -> tratamiento = tr },
