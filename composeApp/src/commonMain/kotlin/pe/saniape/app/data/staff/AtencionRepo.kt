@@ -281,6 +281,13 @@ object AtencionRepo {
                 ?.map { json.decodeFromJsonElement(DiagnosticoCie.serializer(), it) }
         }.getOrNull().orEmpty()
 
+    /** `cuerpo.examenes` de examen-resultado (la lista ya con el documento). null si no vino. */
+    internal fun examenesDeRespuesta(cuerpo: JsonObject?): List<ExamenSolicitado>? =
+        runCatching {
+            (cuerpo?.get("examenes") as? JsonArray)
+                ?.map { json.decodeFromJsonElement(ExamenSolicitado.serializer(), it) }
+        }.getOrNull()
+
     internal fun parsearSugerencias(cuerpo: String): List<SugerenciaMedicamento> =
         runCatching {
             json.parseToJsonElement(cuerpo).jsonObject["sugerencias"]?.jsonArray

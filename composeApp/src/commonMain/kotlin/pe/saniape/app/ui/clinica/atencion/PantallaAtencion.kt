@@ -84,7 +84,7 @@ private val NOMBRE_ESTADO_COLA = mapOf(
 
 /**
  * Pantalla de la atención de [citaId]. [onSalir] vuelve a la agenda (también al
- * terminar la atención). [ctx] queda para la hoja de filiación (permisos).
+ * terminar la atención). [ctx]: permisos (cobro del cierre, quién firma) y la hoja de filiación.
  */
 @Composable
 fun PantallaAtencion(
@@ -151,7 +151,7 @@ fun PantallaAtencion(
                         }
                     }
                 } else {
-                    ContenidoAtencion(vm, d, acciones, tecladoAbierto, ::intentarSalir, onVerFicha, onOdontograma)
+                    ContenidoAtencion(vm, d, ctx, acciones, tecladoAbierto, ::intentarSalir, onVerFicha, onOdontograma)
                 }
             }
         }
@@ -176,6 +176,7 @@ fun PantallaAtencion(
 private fun ColumnScope.ContenidoAtencion(
     vm: AtencionViewModel,
     d: DatosConsultaApp,
+    ctx: ContextoStaff,
     acciones: AccionesNativas,
     tecladoAbierto: Boolean,
     onAgenda: () -> Unit,
@@ -222,7 +223,14 @@ private fun ColumnScope.ContenidoAtencion(
                 "vitales" -> PasoVitales(vm, d, soloLectura)
                 "examen" -> PasoExamen(vm, d, soloLectura)
                 "procedimiento" -> PasoProcedimiento(vm, d, soloLectura, acciones)
-                // Diagnóstico, plan y cierre llegan en la siguiente entrega.
+                "diagnostico" -> PasoDiagnostico(vm, d, soloLectura)
+                // La receta (DialogoReceta) llega en la siguiente entrega.
+                "plan" -> PasoPlan(vm, d, soloLectura, acciones, onNuevaReceta = { Toaster.info("Receta: próximamente") })
+                "cierre" -> PasoCierre(
+                    vm, d, soloLectura, acciones, ctx,
+                    onVerFicha = { (d.cita.paciente?.id ?: d.cita.paciente_id)?.let(onVerFicha) },
+                )
+                // Una clave que esta versión no conoce (el servidor manda los pasos).
                 else -> PasoPendiente(vm.pasoActual?.titulo ?: "Paso")
             }
         }
@@ -453,14 +461,14 @@ private fun BotonPie(texto: String, primario: Boolean = false, habilitado: Boole
     }
 }
 
-/** Placeholder de los pasos que llegan en la siguiente entrega (diagnóstico, plan, cierre). */
+/** Placeholder de un paso que esta versión de la app todavía no conoce. */
 @Composable
 internal fun PasoPendiente(titulo: String) {
     val c = Sania.colors
     Column(Modifier.fillMaxWidth().padding(vertical = Sania.dim.lg), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(titulo, color = c.navy, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(6.dp))
-        Text("Próximamente en esta versión.", color = c.textoSuave, fontSize = 13.sp)
+        Text("Actualiza la app para ver este paso.", color = c.textoSuave, fontSize = 13.sp)
     }
 }
 

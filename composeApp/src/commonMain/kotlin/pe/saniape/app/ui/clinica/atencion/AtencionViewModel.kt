@@ -105,6 +105,15 @@ class AtencionViewModel(private val citaId: String) : ViewModel() {
     fun examenes(l: List<ExamenSolicitado>) = editar { it.copy(examenes = l) }
     fun terapeuta(id: String?) = editar { it.copy(terapeutaId = id) }
 
+    /**
+     * Los exámenes tal como quedaron en el servidor tras adjuntar un resultado
+     * (con su `documento_id`). NO marca sucio: el borrador ya estaba guardado y
+     * solo se pone al día; así el próximo `guardar` no pisa el resultado.
+     */
+    fun examenesDelServidor(l: List<ExamenSolicitado>) {
+        borrador = borrador.copy(examenes = l)
+    }
+
     // ── Guardado ─────────────────────────────────────────────────────────────
 
     /**
@@ -161,7 +170,30 @@ class AtencionViewModel(private val citaId: String) : ViewModel() {
     fun siguiente() { if (paso < pasos.lastIndex) irA(paso + 1) }
     fun atras() { if (paso > 0) irA(paso - 1) }
 
+    /**
+     * Refresca `datos` sin tocar el borrador (tras cobrar la cita, por ejemplo).
+     * Para "Reintentar" una carga fallida está [cargar].
+     */
+    fun recargar() {
+        viewModelScope.launch { recargarDatos() }
+    }
+
+    /**
+     * Corre [bloque] en el scope del VM: una escritura del plan o del cierre
+     * (agendar el control, subir un resultado, cobrar…) no se corta si el
+     * usuario cambia de paso a mitad del envío.
+     */
+    fun lanzar(bloque: suspend () -> Unit) {
+        viewModelScope.launch { bloque() }
+    }
+
     // ── Acciones del plan (control, procedimiento, examen, firma, receta…) ───
+
+    /**
+     * El `guardarAntes` de la web: guarda si hace falta, sin toast de éxito
+     * (el error sí se avisa). Para abrir la receta o imprimir las indicaciones.
+     */
+    suspend fun guardarAntes(): Boolean = guardarInterno(avisarExito = false, avisarError = true)
 
     /**
      * Guarda antes (el `guardarAntes` de la web), corre [bloque] y recarga los

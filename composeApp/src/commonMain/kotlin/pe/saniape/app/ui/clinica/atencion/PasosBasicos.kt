@@ -231,7 +231,7 @@ internal fun PasoProcedimiento(vm: AtencionViewModel, d: DatosConsultaApp, soloL
 }
 
 /** Nombre de cada estado del consentimiento (NOMBRE_ESTADO_CI de la web). */
-private val NOMBRE_ESTADO_CI = mapOf(
+internal val NOMBRE_ESTADO_CI = mapOf(
     "Pendiente" to "Pendiente de firma",
     "Firmado" to "Firmado (aceptó)",
     "Rechazado" to "Rechazado (no aceptó)",
@@ -449,14 +449,14 @@ private fun ChipFrase(texto: String, puesto: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun Insignia(texto: String, fg: Color, bg: Color, modifier: Modifier = Modifier) {
+internal fun Insignia(texto: String, fg: Color, bg: Color, modifier: Modifier = Modifier) {
     Box(modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(bg).padding(horizontal = 9.dp, vertical = 3.dp)) {
         Text(texto, color = fg, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
-private fun BotonChico(
+internal fun BotonChico(
     texto: String, fg: Color, bg: Color, borde: Color? = null, habilitado: Boolean = true, onClick: () -> Unit,
 ) {
     val forma = RoundedCornerShape(Sania.shape.sm.dp)

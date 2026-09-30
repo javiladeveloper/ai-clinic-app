@@ -141,6 +141,9 @@ data class ProcedimientoTratamientoApp(
 data class TratamientoConsultaApp(
     val id: String? = null,
     val diagnostico: String? = null,
+    /** Para el cobro del cierre de un procedimiento: "Se cobra en su tratamiento (…)". */
+    val estado_pago: String? = null,
+    val precio_acordado: Double? = null,
     val procedimiento: ProcedimientoTratamientoApp? = null,
 )
 
@@ -165,6 +168,23 @@ data class ConsentimientoApp(
     val firmado_at: String? = null,
 )
 
+/** Cita de un procedimiento indicado (`indicados[].citas`). */
+@Serializable
+data class CitaIndicadaApp(
+    val id: String,
+    val fecha: String = "",
+    val hora: String? = null,
+    val estado: String = "",
+)
+
+/** Consentimiento de un procedimiento indicado (`indicados[].consentimientos_informados`). */
+@Serializable
+data class ConsentimientoIndicadoApp(
+    val id: String,
+    val estado: String = "",
+    val procedimiento: String? = null,
+)
+
 @Serializable
 data class ProcedimientoIndicadoApp(
     val id: String,
@@ -173,6 +193,8 @@ data class ProcedimientoIndicadoApp(
     val estado_pago: String? = null,
     val precio_acordado: Double? = null,
     val procedimiento: NombreRef? = null,
+    val citas: List<CitaIndicadaApp> = emptyList(),
+    val consentimientos_informados: List<ConsentimientoIndicadoApp> = emptyList(),
 )
 
 @Serializable
