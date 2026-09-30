@@ -127,6 +127,17 @@ fun TarjetaTratamiento(
     var cambioEstado by remember { mutableStateOf<Pair<SesionFicha, String>?>(null) }
     // Confirmación de alta (antes era 1 toque directo, fácil de tocar por error).
     var confirmarAlta by remember { mutableStateOf(false) }
+    // Saldo al abrir la confirmación de alta (null = cargando o sin acceso a pagos)
+    // y la señal para abrir "Registrar pago" en la sección de pagos.
+    var saldoAlta by remember { mutableStateOf<Double?>(null) }
+    var abrirPagoToken by remember { mutableStateOf(0) }
+    LaunchedEffect(confirmarAlta) {
+        if (!confirmarAlta) return@LaunchedEffect
+        saldoAlta = null
+        saldoAlta = runCatching {
+            (t.montoAcordado - PacientesRepo.pagosDe(t.id).sumOf { it.monto }).coerceAtLeast(0.0)
+        }.getOrNull()
+    }
     // Fisio (M4): modal "No volvió" abierto (con cuántas citas/sesiones futuras tiene).
     var noVolvioFuturas by remember { mutableStateOf<Int?>(null) }
     var guardandoNoVolvio by remember { mutableStateOf(false) }
@@ -424,7 +435,7 @@ fun TarjetaTratamiento(
                 if (verPagos) {
                     Spacer(Modifier.height(Sania.dim.md))
                     SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() },
-                        soloLectura = soloLectura, pacienteId = pacienteId)
+                        soloLectura = soloLectura, pacienteId = pacienteId, abrirRegistro = abrirPagoToken)
                 }
             } else if (cargaFallo) {
                 // La carga falló (timeout/red). NO decir "sin sesiones": ofrecer reintentar.
@@ -532,7 +543,7 @@ fun TarjetaTratamiento(
                     if (verPagos) {
                         Spacer(Modifier.height(Sania.dim.md))
                         SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() },
-                            soloLectura = soloLectura, pacienteId = pacienteId)
+                            soloLectura = soloLectura, pacienteId = pacienteId, abrirRegistro = abrirPagoToken)
                     }
 
                     // Dar de alta (si el tratamiento sigue en curso y puede sesiones) — con confirmación.
@@ -579,6 +590,10 @@ fun TarjetaTratamiento(
         DialogoConfirmarAlta(
             // Si las sesiones no se cargaron (tarjeta sin expandir), mensaje genérico.
             sesionesPendientes = sesiones?.count { it.pendiente },
+            saldo = saldoAlta,
+            onRegistrarPago = if (verPagos && !soloLectura) {
+                { confirmarAlta = false; expandido = true; abrirPagoToken++ }
+            } else null,
             onCancelar = { confirmarAlta = false },
             onConfirmar = {
                 confirmarAlta = false
@@ -999,6 +1014,8 @@ fun SeccionPagos(
     soloLectura: Boolean = false,
     /** Para arrancar en el último método de pago de este paciente. */
     pacienteId: String? = null,
+    /** Cada vez que sube, abre "Registrar pago" con el saldo precargado (aviso del alta). */
+    abrirRegistro: Int = 0,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -1022,6 +1039,16 @@ fun SeccionPagos(
     val acordado = t.montoAcordado
     val pagado = pagos?.sumOf { it.monto } ?: 0.0
     val saldo = acordado - pagado
+    // Pedido de afuera (confirmación de alta con deuda): abrir el registro con el
+    // saldo, una vez por pedido y recién con los pagos cargados.
+    var registroAbiertoPara by remember { mutableStateOf(0) }
+    LaunchedEffect(abrirRegistro, pagos) {
+        if (abrirRegistro > 0 && pagos != null && registroAbiertoPara != abrirRegistro && !soloLectura) {
+            registroAbiertoPara = abrirRegistro
+            monto = if (saldo > 0.005) formato2(saldo) else ""
+            agregando = true
+        }
+    }
     val frac = if (acordado > 0) (pagado / acordado).coerceIn(0.0, 1.0).toFloat() else 0f
 
     Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))

@@ -1,0 +1,6 @@
+# Novedades de la 2.17.5 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Al dar de alta un tratamiento con saldo pendiente, la app te lo avisa y te deja registrar el pago en un toque.
+---
+Clínicas:
+• Dar de alta con saldo pendiente: aparece cuánto falta pagar. Puedes registrar el pago ahí mismo o dar de alta igual; la deuda queda por cobrar.

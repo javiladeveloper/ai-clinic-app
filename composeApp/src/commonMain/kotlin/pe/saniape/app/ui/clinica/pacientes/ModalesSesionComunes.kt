@@ -111,16 +111,42 @@ fun DialogoConfirmarAlta(
     sesionesPendientes: Int?,
     onCancelar: () -> Unit,
     onConfirmar: () -> Unit,
+    /**
+     * Saldo pendiente del tratamiento (null = no se sabe). El alta NO exige pago
+     * (cobrar ≠ atender), pero la deuda se avisa: antes se cerraba sin mencionarla
+     * (reporte 29/09/2026). Gemelo de la confirmación de la web.
+     */
+    saldo: Double? = null,
+    /** Con permiso de pagos: en vez de "Cancelar", ir a registrar el pago. */
+    onRegistrarPago: (() -> Unit)? = null,
 ) {
     val c = Sania.colors
+    val conDeuda = saldo != null && saldo > 0.005
     AlertDialog(
         onDismissRequest = onCancelar,
         title = { Text("¿Dar de alta este tratamiento?", fontWeight = FontWeight.Bold) },
-        text = { Text(textoConfirmarAlta(sesionesPendientes), color = c.texto, fontSize = Sania.txt.cuerpo) },
-        confirmButton = {
-            TextButton(onClick = onConfirmar) { Text("Dar de alta", color = c.ok, fontWeight = FontWeight.Bold) }
+        text = {
+            Column {
+                if (conDeuda) {
+                    Text("⚠ Tiene ${formatoSoles(saldo!!)} sin pagar. El alta no borra la deuda: queda por cobrar.",
+                        color = c.error, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                }
+                Text(textoConfirmarAlta(sesionesPendientes), color = c.texto, fontSize = Sania.txt.cuerpo)
+            }
         },
-        dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
+        confirmButton = {
+            TextButton(onClick = onConfirmar) {
+                Text(if (conDeuda) "Dar de alta igual" else "Dar de alta", color = c.ok, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            if (conDeuda && onRegistrarPago != null) {
+                TextButton(onClick = onRegistrarPago) { Text("💵 Registrar pago", color = c.navy, fontWeight = FontWeight.Bold) }
+            } else {
+                TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) }
+            }
+        },
         containerColor = c.superficie,
     )
 }
