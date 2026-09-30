@@ -226,7 +226,7 @@ enum class AccionTarjeta {
     Confirmar, Completar, Cancelar, Revertir, Editar, PasarEvaluacion, Repetir, Odontograma, CrearTratamiento,
     /** Sala de espera: "🔔 Llegó" y "🩺 Triaje". */
     Llego, Triaje,
-    /** "▶ Atender": la consulta guiada (se abre en la web). */
+    /** "▶ Atender": la consulta guiada (nativa, pantalla completa). */
     Atender,
     /** "💰 Cobrar": registrar el cobro de una Consulta/Evaluación (método + fecha del pago). */
     Cobrar,
@@ -294,7 +294,7 @@ private fun accionesPara(
     // SALA DE ESPERA (gemelo de `principalSala` de /citas): la acción del MOMENTO
     // reemplaza a Confirmar/Completar mientras el paciente recorre la sala:
     // por llegar → Llegó; llegó → Triaje (si la clínica lo toma); después →
-    // Atender (consulta guiada, en la web) o Completar. Lo demás queda detrás.
+    // Atender (consulta guiada, nativa) o Completar. Lo demás queda detrás.
     val principal: AccionTarjeta? = when {
         sala == null || !activa -> null
         sala.etapa == EtapaLlegada.POR_LLEGAR -> AccionTarjeta.Llego

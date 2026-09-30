@@ -90,6 +90,8 @@ fun PantallaAgenda(
 
     // Sub-pantalla: crear cita (con o sin pre-llenado de → Evaluación)
     var creandoCita by remember { mutableStateOf(false) }
+    // Sub-pantalla: la consulta guiada ("▶ Atender") de esta cita, nativa.
+    var atendiendo by remember { mutableStateOf<String?>(null) }
     var prefillEval by remember { mutableStateOf<PrefillCita?>(null) }
     // Modales (la cita objetivo, o null)
     var completar by remember { mutableStateOf<CitaStaff?>(null) }
@@ -467,12 +469,8 @@ fun PantallaAgenda(
                                         AccionTarjeta.Llego -> vm.marcarLlegada(cita)
                                         AccionTarjeta.Triaje -> triajeCita = cita
                                         AccionTarjeta.Cobrar -> cobrar = cita
-                                        // La consulta guiada aún no está nativa: se abre en la web,
-                                        // pero DENTRO de la app (Custom Tab), no en un navegador externo.
-                                        AccionTarjeta.Atender -> {
-                                            pe.saniape.app.ui.Toaster.info(AVISO_ABRIR_EN_WEB)
-                                            acciones.abrirWeb("${pe.saniape.app.data.Supabase.SITE_URL}/atencion/${cita.id}")
-                                        }
+                                        // La consulta guiada, nativa (antes se abría en la web).
+                                        AccionTarjeta.Atender -> atendiendo = cita.id
                                     }
                                 },
                                 onVerResumen = { resumenPacienteId = it },
@@ -514,6 +512,19 @@ fun PantallaAgenda(
                 }
             }
         }
+    }
+
+    // "▶ Atender": la consulta guiada a pantalla completa, ENCIMA de la agenda (no
+    // con return como crear cita): así el resumen/ficha del paciente y el
+    // odontograma que abre desde adentro se dibujan sobre ella con los mismos
+    // modales de la agenda.
+    atendiendo?.let { citaId ->
+        pe.saniape.app.ui.clinica.atencion.PantallaAtencion(
+            ctx = ctx, citaId = citaId, acciones = acciones,
+            onSalir = { atendiendo = null; vm.refrescar() },
+            onVerFicha = { resumenPacienteId = it },
+            onOdontograma = { id -> vm.citas.firstOrNull { it.id == id }?.let { odontogramaCita = it } },
+        )
     }
 
     // ── Modales ──
@@ -866,11 +877,6 @@ fun PantallaAgenda(
         }
     }
 }
-
-/** Lo que se abre usa la sesión WEB (el Bearer de la app no pasa). Se abre dentro de la
- *  app (Custom Tab / Safari), que comparte las cookies del navegador del sistema. */
-internal const val AVISO_ABRIR_EN_WEB =
-    "Se abrirá aquí dentro; si pide iniciar sesión, entra con tu misma cuenta."
 
 /**
  * "🪑 En sala de espera (N)" (gemelo del filtro de /citas): con el filtro,

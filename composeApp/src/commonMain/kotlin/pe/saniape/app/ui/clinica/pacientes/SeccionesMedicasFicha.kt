@@ -25,6 +25,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,6 +50,9 @@ import pe.saniape.app.data.staff.RecetaStaff
 import pe.saniape.app.data.staff.RecetasStaffRepo
 import pe.saniape.app.data.staff.TomaVital
 import pe.saniape.app.data.staff.AtencionMedicaRepo
+import pe.saniape.app.data.staff.AtencionRepo
+import pe.saniape.app.data.staff.ProfesionalPlan
+import kotlinx.coroutines.launch
 import pe.saniape.app.data.staff.alertaPresion
 import pe.saniape.app.data.staff.alertaVital
 import pe.saniape.app.data.staff.clasificarImc
@@ -64,7 +68,6 @@ import pe.saniape.app.data.staff.seriesVitales
 import pe.saniape.app.ui.AccionesNativas
 import pe.saniape.app.ui.DatoReceta
 import pe.saniape.app.ui.FilaMedicamentoReceta
-import pe.saniape.app.ui.clinica.AVISO_ABRIR_EN_WEB
 import pe.saniape.app.ui.clinica.agenda.modales.coloresAlerta
 import pe.saniape.app.ui.fechaDMA
 import pe.saniape.app.ui.hora12
@@ -320,27 +323,34 @@ private fun fechaCortaDM(iso: String): String {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 💊 Recetas (ficha). Gemelo de RecetasPaciente.tsx — en la app, solo LECTURA.
+// 💊 Recetas (ficha). Gemelo de RecetasPaciente.tsx — emitir e imprimir, nativos.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Lista de recetas del paciente (la más nueva arriba; las anuladas tachadas con
- * su motivo). Tocar una muestra el detalle. Imprimir, emitir y anular se hacen en
- * la web: se abren en el navegador (piden la sesión web).
+ * su motivo). Tocar una muestra el detalle. "📝 Nueva" emite con el mismo diálogo de
+ * la consulta (sin cita ni tratamiento); imprimir abre el HTML del servidor en el
+ * visor nativo. Anular sigue en la web.
  */
 @Composable
 fun ContenidoRecetasFicha(ctx: ContextoStaff, pacienteId: String, fichaInactiva: Boolean, acciones: AccionesNativas) {
     val c = Sania.colors
     var recetas by remember(pacienteId) { mutableStateOf<List<RecetaStaff>?>(null) }
     var fallo by remember(pacienteId) { mutableStateOf(false) }
-    LaunchedEffect(pacienteId) {
+    // Sube al emitir una receta: vuelve a cargar la lista.
+    var recarga by remember(pacienteId) { mutableStateOf(0) }
+    LaunchedEffect(pacienteId, recarga) {
         val r = RecetasStaffRepo.recetasDe(pacienteId)
         fallo = r == null
         recetas = r ?: emptyList()
     }
     val hoy = remember { hoyClinicaIso() }
-    val sitio = pe.saniape.app.data.Supabase.SITE_URL
+    val scope = rememberCoroutineScope()
     val puedeEmitir = ctx.puede("sesiones") && !fichaInactiva
+    // "📝 Nueva": el equipo (prescriptores) se carga al abrir; sin cita, no viene de la consulta.
+    var equipo by remember { mutableStateOf<List<ProfesionalPlan>?>(null) }
+    var emitiendo by remember(pacienteId) { mutableStateOf(false) }
+    var cargandoEquipo by remember { mutableStateOf(false) }
 
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
@@ -351,12 +361,18 @@ fun ContenidoRecetasFicha(ctx: ContextoStaff, pacienteId: String, fichaInactiva:
             if (puedeEmitir) {
                 Box(
                     Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.navy)
-                        .clickable {
-                            pe.saniape.app.ui.Toaster.info(AVISO_ABRIR_EN_WEB)
-                            acciones.abrirWeb("$sitio/pacientes/$pacienteId?tab=recetas")
+                        .clickable(enabled = !cargandoEquipo) {
+                            scope.launch {
+                                if (equipo.isNullOrEmpty()) {
+                                    cargandoEquipo = true
+                                    equipo = RecetasStaffRepo.equipoPrescriptores()
+                                    cargandoEquipo = false
+                                }
+                                emitiendo = true
+                            }
                         }
                         .padding(horizontal = 12.dp, vertical = 6.dp),
-                ) { Text("📝 Nueva (web)", color = c.sobreNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                ) { Text("📝 Nueva", color = c.sobreNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
             }
         }
         Spacer(Modifier.height(10.dp))
@@ -373,8 +389,10 @@ fun ContenidoRecetasFicha(ctx: ContextoStaff, pacienteId: String, fichaInactiva:
             )
             else -> lista.forEach { r ->
                 FilaRecetaStaff(r, recetaVigente(r.estado, r.validaHasta, hoy)) {
-                    pe.saniape.app.ui.Toaster.info(AVISO_ABRIR_EN_WEB)
-                    acciones.abrirWeb("$sitio/pacientes/$pacienteId/recetas/${r.id}")
+                    scope.launch {
+                        AtencionRepo.htmlImprimible("receta", r.id)?.let { acciones.abrirHtml(it, r.numeroTexto) }
+                            ?: pe.saniape.app.ui.Toaster.error("No se pudo abrir la receta")
+                    }
                 }
                 HorizontalDivider(color = c.borde)
             }
@@ -382,8 +400,23 @@ fun ContenidoRecetasFicha(ctx: ContextoStaff, pacienteId: String, fichaInactiva:
         Spacer(Modifier.height(10.dp))
         Text(
             "Las recetas no se editan ni se borran: si una salió mal, anúlala (queda en el historial con el motivo) y emite otra. " +
-                "Emitir, anular e imprimir se hacen en la web.",
+                "Anular se hace en la web.",
             color = c.textoSuave, fontSize = 10.sp,
+        )
+    }
+
+    if (emitiendo) {
+        pe.saniape.app.ui.clinica.atencion.DialogoReceta(
+            ctx = ctx,
+            pacienteId = pacienteId,
+            profesionales = equipo.orEmpty(),
+            diagnostico = null,
+            cie10 = null,
+            citaId = null,
+            tratamientoId = null,
+            recetasOptIn = ctx.modulosClinicos.recetasOptIn,
+            onCancelar = { emitiendo = false },
+            onEmitida = { emitiendo = false; recarga++ },
         )
     }
 }

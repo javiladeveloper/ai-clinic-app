@@ -96,8 +96,8 @@ fun aRecetaStaff(o: JsonObject): RecetaStaff? {
 }
 
 /**
- * Recetas del paciente para la ficha (solo LECTURA en la app: emitir y anular
- * se hacen en la web). Mismo orden que `listarRecetasPaciente`: la más nueva
+ * Recetas del paciente para la ficha (emitir e imprimir, nativos; anular se hace
+ * en la web). Mismo orden que `listarRecetasPaciente`: la más nueva
  * primero. Con respaldo local por paciente. null = no se pudo y no hay respaldo.
  */
 object RecetasStaffRepo {
@@ -120,6 +120,29 @@ object RecetasStaffRepo {
         }
         return filas.mapNotNull { aRecetaStaff(it) }
     }
+
+    /**
+     * El equipo como posibles prescriptores de una receta emitida desde la FICHA
+     * (sin cita, así que sin el `profesionales` de la consulta). Mismo select que
+     * /api/staff/atencion/consulta: colegiatura y rubros de sus especialidades;
+     * `prescriptoresReceta` filtra activos y con colegiatura. Vacío si falla.
+     */
+    suspend fun equipoPrescriptores(): List<ProfesionalPlan> = runCatching {
+        Supabase.client.postgrest["terapeutas"]
+            .select(Columns.raw(
+                "id, nombre, cmp, estado, " +
+                    "especialidades:terapeuta_especialidades(especialidad:especialidades(id, rubro))"
+            )) { order("nombre", Order.ASCENDING) }
+            .decodeList<JsonObject>()
+            .mapNotNull { o ->
+                val id = o.s("id") ?: return@mapNotNull null
+                val esps = (o["especialidades"] as? JsonArray ?: emptyList()).mapNotNull { rel ->
+                    val e = (rel as? JsonObject)?.get("especialidad") as? JsonObject ?: return@mapNotNull null
+                    EspecialidadProfesionalApp(e.s("id") ?: return@mapNotNull null, e.s("rubro"))
+                }
+                ProfesionalPlan(id = id, nombre = o.s("nombre").orEmpty(), cmp = o.s("cmp"), estado = o.s("estado").orEmpty(), especialidades = esps)
+            }
+    }.getOrDefault(emptyList())
 
     /**
      * Solo en una clínica MIXTA (fisio + medicina…): ¿el paciente ya tiene alguna
