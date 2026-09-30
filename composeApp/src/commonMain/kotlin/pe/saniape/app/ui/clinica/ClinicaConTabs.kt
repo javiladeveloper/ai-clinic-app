@@ -92,6 +92,9 @@ fun ClinicaConTabs(
     // Buscador global de paciente (desde el header) + ficha que abre.
     var verBuscador by remember { mutableStateOf(false) }
     var fichaBuscada by remember { mutableStateOf<pe.saniape.app.data.staff.PacienteStaff?>(null) }
+    // La agenda tiene un flujo a pantalla completa abierto (crear cita o "▶ Atender"):
+    // sin barra de tabs. Tocar un tab destruía el flujo sin su "¿salir sin guardar?".
+    var pantallaCompleta by remember { mutableStateOf(false) }
 
     LaunchedEffect(intento) {
         cargando = true; error = null
@@ -119,7 +122,9 @@ fun ClinicaConTabs(
     // logueado. No-op mientras FirebaseCfg esté vacío.
     pe.saniape.app.ui.EfectoPushNativo()
 
-    ManejarAtras(activo = verSesiones || verCaja || tab != TabClinica.Inicio) {
+    // Con un flujo a pantalla completa abierto, el "atrás" es de ese flujo (tiene
+    // su propio ManejarAtras, con la confirmación de salir sin guardar).
+    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || tab != TabClinica.Inicio)) {
         when {
             verSesiones -> verSesiones = false
             verCaja -> verCaja = false
@@ -177,7 +182,7 @@ fun ClinicaConTabs(
 
     Scaffold(
         bottomBar = {
-            NavigationBar(containerColor = c.superficie) {
+            if (!pantallaCompleta) NavigationBar(containerColor = c.superficie) {
                 tabs.forEach { t ->
                     NavigationBarItem(
                         // Un tab está "activo" solo si NO hay un overlay (Sesiones/Caja) encima.
@@ -221,6 +226,7 @@ fun ClinicaConTabs(
                         ctx = contexto,
                         fechaInicial = fechaDeAviso,
                         onFechaConsumida = { fechaDeAviso = null },
+                        onPantallaCompleta = { pantallaCompleta = it },
                     )
                     TabClinica.Pacientes -> PantallaPacientesStaff(contexto)
                     TabClinica.Mas -> PantallaMasClinica(

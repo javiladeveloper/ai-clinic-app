@@ -351,6 +351,8 @@ fun ContenidoRecetasFicha(ctx: ContextoStaff, pacienteId: String, fichaInactiva:
     var equipo by remember { mutableStateOf<List<ProfesionalPlan>?>(null) }
     var emitiendo by remember(pacienteId) { mutableStateOf(false) }
     var cargandoEquipo by remember { mutableStateOf(false) }
+    // "🖨 Imprimir" en curso: un doble toque no abre dos visores.
+    var abriendo by remember { mutableStateOf(false) }
 
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
@@ -365,8 +367,14 @@ fun ContenidoRecetasFicha(ctx: ContextoStaff, pacienteId: String, fichaInactiva:
                             scope.launch {
                                 if (equipo.isNullOrEmpty()) {
                                     cargandoEquipo = true
-                                    equipo = RecetasStaffRepo.equipoPrescriptores(ctx.modulosClinicos.recetasOptIn)
+                                    val cargado = RecetasStaffRepo.equipoPrescriptores(ctx.modulosClinicos.mapaReceta)
                                     cargandoEquipo = false
+                                    // Sin equipo no se abre: un fallo de red NO es "nadie puede recetar".
+                                    if (cargado == null) {
+                                        pe.saniape.app.ui.Toaster.error("No se pudo cargar el equipo")
+                                        return@launch
+                                    }
+                                    equipo = cargado
                                 }
                                 emitiendo = true
                             }
@@ -389,9 +397,15 @@ fun ContenidoRecetasFicha(ctx: ContextoStaff, pacienteId: String, fichaInactiva:
             )
             else -> lista.forEach { r ->
                 FilaRecetaStaff(r, recetaVigente(r.estado, r.validaHasta, hoy)) {
+                    if (abriendo) return@FilaRecetaStaff
+                    abriendo = true
                     scope.launch {
-                        AtencionRepo.htmlImprimible("receta", r.id)?.let { acciones.abrirHtml(it, r.numeroTexto) }
-                            ?: pe.saniape.app.ui.Toaster.error("No se pudo abrir la receta")
+                        try {
+                            AtencionRepo.htmlImprimible("receta", r.id)?.let { acciones.abrirHtml(it, r.numeroTexto) }
+                                ?: pe.saniape.app.ui.Toaster.error("No se pudo abrir la receta")
+                        } finally {
+                            abriendo = false
+                        }
                     }
                 }
                 HorizontalDivider(color = c.borde)

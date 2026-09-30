@@ -85,18 +85,21 @@ private val NOMBRE_ESTADO_COLA = mapOf(
 /**
  * Pantalla de la atención de [citaId]. [onSalir] vuelve a la agenda (también al
  * terminar la atención). [ctx]: permisos (cobro del cierre, quién firma) y la hoja de filiación.
+ * [apertura]: distinto en cada "▶ Atender" — va en la key del ViewModel, así cada
+ * apertura arranca con un VM nuevo (sin el borrador ni el `terminada` de la anterior).
  */
 @Composable
 fun PantallaAtencion(
     ctx: ContextoStaff,
     citaId: String,
+    apertura: Long,
     acciones: AccionesNativas,
     onSalir: () -> Unit,
     onVerFicha: (pacienteId: String) -> Unit,
     onOdontograma: (citaId: String) -> Unit,
 ) {
     val c = Sania.colors
-    val vm: AtencionViewModel = viewModel(key = citaId) { AtencionViewModel(citaId) }
+    val vm: AtencionViewModel = viewModel(key = "$citaId:$apertura") { AtencionViewModel(citaId) }
     val scope = rememberCoroutineScope()
     var confirmarSalir by remember { mutableStateOf(false) }
 
@@ -105,7 +108,8 @@ fun PantallaAtencion(
     }
     ManejarAtras(activo = true) { intentarSalir() }
 
-    // Terminada → de vuelta a la agenda.
+    // Terminada → de vuelta a la agenda. Correcto aunque `terminada` no se
+    // reinicie: el VM es nuevo en cada apertura (key con [apertura]).
     LaunchedEffect(vm.terminada) { if (vm.terminada) onSalir() }
 
     // Consentimiento emitido al abrir (el servidor lo deja PENDIENTE): se avisa una

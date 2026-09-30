@@ -24,6 +24,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +62,19 @@ import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.data.staff.FlujoClinica
 
 /**
+ * Una apertura de "▶ Atender". [apertura] hace única cada vez que se abre la
+ * misma cita: es parte de la key del AtencionViewModel, así reabrir trae un VM
+ * NUEVO (borrador, paso y datos frescos; y un `terminada` en false — con el VM
+ * viejo, `terminada == true` sacaba de la pantalla apenas entraba). Los VMs de
+ * aperturas anteriores quedan en el store de la Activity hasta que ésta muere:
+ * son chicos y pocos por jornada, aceptable.
+ */
+private data class Atendiendo(
+    val citaId: String,
+    val apertura: Long = kotlinx.datetime.Clock.System.now().toEpochMilliseconds(),
+)
+
+/**
  * Agenda del staff. Pantalla DELGADA: solo observa el [AgendaViewModel] y dispara
  * intents. La lógica vive en el ViewModel; los componentes (TarjetaCita, TiraDias,
  * banners, modales) están en archivos propios. Escalable y fácil de mantener.
@@ -75,6 +89,12 @@ fun PantallaAgenda(
     fechaInicial: String? = null,
     /** Se llama al posicionarse: así no vuelve a esa fecha en cada recomposición. */
     onFechaConsumida: () -> Unit = {},
+    /**
+     * Avisa si hay un flujo a pantalla completa abierto (crear cita, "▶ Atender"):
+     * el contenedor de tabs oculta la barra inferior mientras tanto. Si no, tocar
+     * un tab destruía el flujo a medias sin pasar por su "¿salir sin guardar?".
+     */
+    onPantallaCompleta: (Boolean) -> Unit = {},
 ) {
     val c = Sania.colors
     val vm: AgendaViewModel = viewModel(key = ctx.clinicaId) { AgendaViewModel(ctx) }
@@ -91,8 +111,15 @@ fun PantallaAgenda(
     // Sub-pantalla: crear cita (con o sin pre-llenado de → Evaluación)
     var creandoCita by remember { mutableStateOf(false) }
     // Sub-pantalla: la consulta guiada ("▶ Atender") de esta cita, nativa.
-    var atendiendo by remember { mutableStateOf<String?>(null) }
+    var atendiendo by remember { mutableStateOf<Atendiendo?>(null) }
     var prefillEval by remember { mutableStateOf<PrefillCita?>(null) }
+    // Crear cita y Atender tapan la agenda entera: sin barra de tabs encima. Al
+    // salir de la agenda por otro camino (onDispose) la barra vuelve sí o sí.
+    val pantallaCompleta = creandoCita || prefillEval != null || atendiendo != null
+    DisposableEffect(pantallaCompleta) {
+        onPantallaCompleta(pantallaCompleta)
+        onDispose { onPantallaCompleta(false) }
+    }
     // Modales (la cita objetivo, o null)
     var completar by remember { mutableStateOf<CitaStaff?>(null) }
     // Odontología: la cita cuyo odontograma ya se revisó pero que NO se pudo
@@ -470,7 +497,7 @@ fun PantallaAgenda(
                                         AccionTarjeta.Triaje -> triajeCita = cita
                                         AccionTarjeta.Cobrar -> cobrar = cita
                                         // La consulta guiada, nativa (antes se abría en la web).
-                                        AccionTarjeta.Atender -> atendiendo = cita.id
+                                        AccionTarjeta.Atender -> atendiendo = Atendiendo(cita.id)
                                     }
                                 },
                                 onVerResumen = { resumenPacienteId = it },
@@ -518,9 +545,9 @@ fun PantallaAgenda(
     // con return como crear cita): así el resumen/ficha del paciente y el
     // odontograma que abre desde adentro se dibujan sobre ella con los mismos
     // modales de la agenda.
-    atendiendo?.let { citaId ->
+    atendiendo?.let { a ->
         pe.saniape.app.ui.clinica.atencion.PantallaAtencion(
-            ctx = ctx, citaId = citaId, acciones = acciones,
+            ctx = ctx, citaId = a.citaId, apertura = a.apertura, acciones = acciones,
             onSalir = { atendiendo = null; vm.refrescar() },
             onVerFicha = { resumenPacienteId = it },
             onOdontograma = { id -> vm.citas.firstOrNull { it.id == id }?.let { odontogramaCita = it } },

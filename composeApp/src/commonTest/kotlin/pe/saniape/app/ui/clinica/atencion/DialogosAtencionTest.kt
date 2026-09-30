@@ -15,7 +15,8 @@ import pe.saniape.app.data.staff.DiagnosticoCie
 import pe.saniape.app.data.staff.EspecialidadProfesionalApp
 import pe.saniape.app.data.staff.ProfesionalPlan
 import pe.saniape.app.data.staff.SugerenciaMedicamento
-import pe.saniape.app.data.staff.puedePrescribirAprox
+import pe.saniape.app.data.staff.MapaClinico
+import pe.saniape.app.data.staff.puedePrescribirConMapa
 
 /** Piezas puras de DialogoReceta y DialogoFiliacion (gemelas de lib/recetas.ts y lib/historia-clinica.ts). */
 class DialogosAtencionTest {
@@ -108,9 +109,16 @@ class DialogosAtencionTest {
             especialidades = listOf(EspecialidadProfesionalApp("e2", "fisioterapia")))
         val sinCmp = ProfesionalPlan("x", "Dr. C", cmp = null, estado = "Activo")
         val inactivo = medico.copy(id = "i", estado = "Inactivo")
-        // La aproximación de la ficha (el servidor no lo manda ahí todavía).
-        assertEquals(listOf("m"), listOf(medico, fisio, sinCmp, inactivo).filter { puedePrescribirAprox(it, recetasOptIn = false) }.map { it.id })
-        assertEquals(listOf("m", "f"), listOf(medico, fisio, sinCmp).filter { puedePrescribirAprox(it, recetasOptIn = true) }.map { it.id })
+        // La regla de la ficha = puedePrescribir de la web con el mapaReceta de la clínica.
+        val soloClinica = MapaClinico(solo = true)
+        val mixta = MapaClinico(ids = listOf("e1"))
+        assertTrue(puedePrescribirConMapa(fisio, soloClinica))          // toda la clínica receta + colegiatura
+        assertFalse(puedePrescribirConMapa(sinCmp, soloClinica))        // sin colegiatura, nunca
+        assertFalse(puedePrescribirConMapa(medico.copy(cmp = " 12 "), soloClinica)) // < 3 caracteres
+        assertTrue(puedePrescribirConMapa(medico, mixta))               // su especialidad está en el mapa
+        assertFalse(puedePrescribirConMapa(fisio, mixta))               // la suya no
+        assertFalse(puedePrescribirConMapa(inactivo, soloClinica))      // inactivo, nunca
+        assertEquals(listOf("m"), listOf(medico, fisio, sinCmp, inactivo).filter { puedePrescribirConMapa(it, mixta) }.map { it.id })
         assertFalse(prescriptorNoMedico(medico))
         assertTrue(prescriptorNoMedico(fisio))
         assertEquals("CMP 45678", colegiaturaImpresa(medico))

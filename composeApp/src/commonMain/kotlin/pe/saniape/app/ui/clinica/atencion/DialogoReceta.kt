@@ -160,8 +160,8 @@ internal fun esPrescriptorLegal(rubros: List<String?>): Boolean = rubros.any { i
 
 /**
  * Quién puede figurar como prescriptor: los que el servidor marcó con
- * `puedePrescribir` (la regla de la web; en la ficha, la aproximación de
- * RecetasStaffRepo) más el ya elegido. UNA sola regla, sin recalcular.
+ * `puedePrescribir` (la regla de la web; en la ficha, la misma regla con el
+ * mapa de recetas, en RecetasStaffRepo) más el ya elegido. UNA sola regla, sin recalcular.
  */
 internal fun prescriptoresReceta(profesionales: List<ProfesionalPlan>, elegidoId: String? = null): List<ProfesionalPlan> =
     profesionales.filter { it.puedePrescribir || (elegidoId != null && it.id == elegidoId) }

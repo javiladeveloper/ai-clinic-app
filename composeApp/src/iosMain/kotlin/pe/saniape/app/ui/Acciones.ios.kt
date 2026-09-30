@@ -32,13 +32,6 @@ private class AccionesIos : AccionesNativas {
         UIApplication.sharedApplication.openURL(nsUrl, options = emptyMap<Any?, Any?>(), completionHandler = null)
     }
 
-    override fun abrirWeb(url: String) {
-        // TODO(iOS Fase 2): navegador in-app con SFSafariViewController (equivalente a los
-        // Custom Tabs de Android). Provisional: abre en Safari, que comparte las cookies
-        // del sistema (si ya hay sesión en la web, no re-loguea).
-        abrirUrl(url)
-    }
-
     override fun abrirHtml(html: String, titulo: String) {
         // TODO(iOS Fase 2): visor nativo con WKWebView + impresión (equivalente a VisorHtmlActivity).
         // Provisional: abre el HTML como data URL en Safari.
