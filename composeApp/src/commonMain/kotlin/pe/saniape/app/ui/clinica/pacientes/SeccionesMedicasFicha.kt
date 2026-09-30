@@ -353,7 +353,7 @@ fun ContenidoRecetasFicha(ctx: ContextoStaff, pacienteId: String, fichaInactiva:
                     Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.navy)
                         .clickable {
                             pe.saniape.app.ui.Toaster.info(AVISO_ABRIR_EN_WEB)
-                            acciones.abrirUrl("$sitio/pacientes/$pacienteId?tab=recetas")
+                            acciones.abrirWeb("$sitio/pacientes/$pacienteId?tab=recetas")
                         }
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                 ) { Text("📝 Nueva (web)", color = c.sobreNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
@@ -374,7 +374,7 @@ fun ContenidoRecetasFicha(ctx: ContextoStaff, pacienteId: String, fichaInactiva:
             else -> lista.forEach { r ->
                 FilaRecetaStaff(r, recetaVigente(r.estado, r.validaHasta, hoy)) {
                     pe.saniape.app.ui.Toaster.info(AVISO_ABRIR_EN_WEB)
-                    acciones.abrirUrl("$sitio/pacientes/$pacienteId/recetas/${r.id}")
+                    acciones.abrirWeb("$sitio/pacientes/$pacienteId/recetas/${r.id}")
                 }
                 HorizontalDivider(color = c.borde)
             }
