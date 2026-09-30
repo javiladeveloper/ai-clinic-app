@@ -365,7 +365,7 @@ fun ContenidoRecetasFicha(ctx: ContextoStaff, pacienteId: String, fichaInactiva:
                             scope.launch {
                                 if (equipo.isNullOrEmpty()) {
                                     cargandoEquipo = true
-                                    equipo = RecetasStaffRepo.equipoPrescriptores()
+                                    equipo = RecetasStaffRepo.equipoPrescriptores(ctx.modulosClinicos.recetasOptIn)
                                     cargandoEquipo = false
                                 }
                                 emitiendo = true

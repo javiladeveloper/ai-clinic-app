@@ -43,6 +43,21 @@ const val SELECT_RECETAS_STAFF =
     "id, numero, fecha, valida_hasta, estado, motivo_anulacion, diagnostico, cie10, " +
         "indicaciones_generales, items, prescriptor, establecimiento"
 
+/** Rubros cuyas especialidades recetan (RUBROS_QUE_RECETAN de lib/recetas.ts). */
+internal val RUBROS_QUE_RECETAN = setOf("medicina_general", "odontologia", "ginecologia")
+
+/**
+ * APROXIMACIÓN de la app a `puedePrescribir` de la web, solo para la lista del
+ * equipo que arma la FICHA (la consulta ya trae `puedePrescribir` del servidor).
+ * La app no tiene el mapa de recetas de la clínica: activo, con colegiatura
+ * (≥ 3 caracteres) y, fuera del modo "indicaciones" ([recetasOptIn], clínica no
+ * médica), con alguna especialidad que receta o sin rubro cargado.
+ */
+internal fun puedePrescribirAprox(p: ProfesionalPlan, recetasOptIn: Boolean): Boolean =
+    p.estado != "Inactivo" &&
+        (p.cmp?.trim()?.length ?: 0) >= 3 &&
+        (recetasOptIn || p.especialidades.isEmpty() || p.especialidades.any { it.rubro == null || it.rubro in RUBROS_QUE_RECETAN })
+
 private fun JsonObject.s(k: String): String? =
     (this[k] as? JsonPrimitive)?.content?.takeIf { it != "null" && it.isNotBlank() }
 
@@ -124,10 +139,14 @@ object RecetasStaffRepo {
     /**
      * El equipo como posibles prescriptores de una receta emitida desde la FICHA
      * (sin cita, así que sin el `profesionales` de la consulta). Mismo select que
-     * /api/staff/atencion/consulta: colegiatura y rubros de sus especialidades;
-     * `prescriptoresReceta` filtra activos y con colegiatura. Vacío si falla.
+     * /api/staff/atencion/consulta: colegiatura y rubros de sus especialidades.
+     * Vacío si falla.
+     *
+     * `puedePrescribir` sale de [puedePrescribirAprox]: es la APROXIMACIÓN de la
+     * app hasta que el servidor lo exponga también para la ficha (en la consulta
+     * ya viene calculado por el servidor). Así DialogoReceta aplica UNA sola regla.
      */
-    suspend fun equipoPrescriptores(): List<ProfesionalPlan> = runCatching {
+    suspend fun equipoPrescriptores(recetasOptIn: Boolean): List<ProfesionalPlan> = runCatching {
         Supabase.client.postgrest["terapeutas"]
             .select(Columns.raw(
                 "id, nombre, cmp, estado, " +
@@ -140,7 +159,8 @@ object RecetasStaffRepo {
                     val e = (rel as? JsonObject)?.get("especialidad") as? JsonObject ?: return@mapNotNull null
                     EspecialidadProfesionalApp(e.s("id") ?: return@mapNotNull null, e.s("rubro"))
                 }
-                ProfesionalPlan(id = id, nombre = o.s("nombre").orEmpty(), cmp = o.s("cmp"), estado = o.s("estado").orEmpty(), especialidades = esps)
+                val p = ProfesionalPlan(id = id, nombre = o.s("nombre").orEmpty(), cmp = o.s("cmp"), estado = o.s("estado").orEmpty(), especialidades = esps)
+                p.copy(puedePrescribir = puedePrescribirAprox(p, recetasOptIn))
             }
     }.getOrDefault(emptyList())
 

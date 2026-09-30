@@ -222,6 +222,12 @@ data class ProfesionalPlan(
     val nombre: String = "",
     val cmp: String? = null,
     val estado: String = "",
+    /**
+     * Puede figurar como prescriptor de una receta: lo calcula el SERVIDOR con la
+     * regla de la web (activo + colegiatura + especialidad que receta según el
+     * mapa de la clínica). La app no lo recalcula.
+     */
+    val puedePrescribir: Boolean = false,
     val especialidades: List<EspecialidadProfesionalApp> = emptyList(),
 )
 

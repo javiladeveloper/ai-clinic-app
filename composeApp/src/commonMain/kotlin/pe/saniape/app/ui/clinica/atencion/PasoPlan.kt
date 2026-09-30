@@ -82,7 +82,9 @@ import pe.saniape.app.ui.theme.Sania
 // programa el control. Todo queda ligado a esta cita/atención.
 //
 // Las acciones que crean filas (control, procedimiento, resultado) guardan antes
-// (vm.accionPlan) y corren en el scope del VM: cambiar de paso no las corta.
+// (vm.accionPlan) y corren en el scope del VM: cambiar de paso no las corta. Su
+// "ocupado" también vive en el VM (vm.accionando): una a la vez, y salir del
+// paso y volver no rehabilita el botón de una que sigue enviando.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Tope de exámenes por atención (MAX_EXAMENES de lib/atencion-medica.ts). */
@@ -154,7 +156,6 @@ private fun BloqueReceta(
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     var abriendo by remember { mutableStateOf<String?>(null) }
-    var preparando by remember { mutableStateOf(false) }
 
     fun imprimir(r: RecetaBreve) {
         if (abriendo != null) return
@@ -171,13 +172,13 @@ private fun BloqueReceta(
         Row(verticalAlignment = Alignment.CenterVertically) {
             TituloBloque("💊 Receta", Modifier.weight(1f))
             if (!soloLectura) {
-                BotonChico(if (preparando) "Guardando…" else "📝 Emitir receta", c.sobreNavy, c.navy, habilitado = !preparando) {
+                BotonChico(
+                    if (vm.accionando == "receta") "Guardando…" else "📝 Emitir receta", c.sobreNavy, c.navy,
+                    habilitado = vm.accionando == null,
+                ) {
                     // Guarda antes: la receta se prellena con el diagnóstico y las indicaciones.
-                    preparando = true
-                    vm.lanzar {
-                        val ok = vm.guardarAntes()
-                        preparando = false
-                        if (ok) onNuevaReceta()
+                    vm.lanzar("receta") {
+                        if (vm.guardarAntes()) onNuevaReceta()
                     }
                 }
             }
@@ -212,7 +213,6 @@ private fun BloqueExamenes(vm: AtencionViewModel, d: DatosConsultaApp, soloLectu
     val c = Sania.colors
     val examenes = vm.borrador.examenes
     var nuevo by remember { mutableStateOf("") }
-    var subiendo by remember { mutableStateOf<Int?>(null) }
     // A qué examen va el archivo que se está eligiendo (el selector devuelve solo el archivo).
     var indicePendiente by remember { mutableStateOf<Int?>(null) }
     val frecuentes = if (d.flags.dental) EXAMENES_FRECUENTES_ODONTOLOGIA else EXAMENES_FRECUENTES_MEDICINA
@@ -228,13 +228,11 @@ private fun BloqueExamenes(vm: AtencionViewModel, d: DatosConsultaApp, soloLectu
         val mime = mimeResultado(a)
         if (mime == null) { Toaster.error("Solo se adjunta una foto o un PDF."); return }
         if (a.bytes.size > MAX_BYTES_RESULTADO) { Toaster.error("El archivo supera 15 MB."); return }
-        subiendo = i
-        vm.lanzar {
+        vm.lanzar("subir:$i") {
             var cuerpo: JsonObject? = null
             val ok = vm.accionPlan {
                 AtencionRepo.adjuntarResultado(d.cita.id, i, a.bytes, a.nombre, mime, null).also { cuerpo = it.cuerpo }
             }
-            subiendo = null
             if (ok) {
                 // La lista con el documento ligado: sin esto el próximo guardar lo pisaría.
                 (AtencionRepo.examenesDeRespuesta(cuerpo) ?: vm.datos?.atencion?.examenes)?.let { vm.examenesDelServidor(it) }
@@ -307,8 +305,8 @@ private fun BloqueExamenes(vm: AtencionViewModel, d: DatosConsultaApp, soloLectu
                             color = c.ok, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                         )
                         !soloLectura -> BotonChico(
-                            if (subiendo == i) "Subiendo…" else "📎 Adjuntar resultado", c.navy, c.superficie, borde = c.borde,
-                            habilitado = subiendo == null,
+                            if (vm.accionando == "subir:$i") "Subiendo…" else "📎 Adjuntar resultado", c.navy, c.superficie, borde = c.borde,
+                            habilitado = vm.accionando == null,
                         ) {
                             indicePendiente = i
                             elegirArchivo()
@@ -380,8 +378,7 @@ private fun BloqueProcedimiento(vm: AtencionViewModel, d: DatosConsultaApp, solo
     var menu by remember { mutableStateOf(false) }
     var cuando by remember { mutableStateOf("hoy") }
     var fecha by remember { mutableStateOf(sumarDiasIso(hoy, 1)) }
-    var hora by remember { mutableStateOf((d.cita.hora ?: "09:00").take(5)) }
-    var indicando by remember { mutableStateOf(false) }
+    var hora by remember { mutableStateOf(horaPorDefecto(d)) }
     val elegido = procedimientos.firstOrNull { it.id == procId }
     val requiereCi = elegido?.plantillas?.any { it.activo } == true
     // Como la web: el texto de todos los diagnósticos, separados por "; ".
@@ -389,10 +386,8 @@ private fun BloqueProcedimiento(vm: AtencionViewModel, d: DatosConsultaApp, solo
 
     fun indicar() {
         val s = elegido ?: run { Toaster.error("Elige el procedimiento"); return }
-        if (indicando) return
-        indicando = true
         val programar = cuando == "programar"
-        vm.lanzar {
+        vm.lanzar("indicar") {
             var cuerpo: JsonObject? = null
             val ok = vm.accionPlan {
                 AtencionRepo.indicarProcedimiento(
@@ -400,7 +395,6 @@ private fun BloqueProcedimiento(vm: AtencionViewModel, d: DatosConsultaApp, solo
                     if (programar) fecha else null, if (programar) hora else null, dxTexto,
                 ).also { cuerpo = it.cuerpo }
             }
-            indicando = false
             if (ok) {
                 val cis = (cuerpo?.get("consentimientos") as? JsonPrimitive)?.intOrNull ?: 0
                 Toaster.exito(if (cis > 0) "${s.nombre} indicado · consentimiento listo para imprimir y firmar" else "${s.nombre} indicado")
@@ -471,8 +465,8 @@ private fun BloqueProcedimiento(vm: AtencionViewModel, d: DatosConsultaApp, solo
                 SelectorFechaHora(fecha = fecha, hora = hora, minimo = hoy, onFecha = { fecha = it }, onHora = { hora = it })
             }
             Spacer(Modifier.height(10.dp))
-            BotonChico(if (indicando) "Indicando…" else "Indicar procedimiento", c.sobreNavy, c.navy,
-                habilitado = !indicando && elegido != null) { indicar() }
+            BotonChico(if (vm.accionando == "indicar") "Indicando…" else "Indicar procedimiento", c.sobreNavy, c.navy,
+                habilitado = vm.accionando == null && elegido != null) { indicar() }
             if (requiereCi) {
                 Spacer(Modifier.height(6.dp))
                 Text("Se generará el consentimiento informado pendiente de firma.", color = c.pend, fontSize = 12.sp)
@@ -493,21 +487,17 @@ private fun BloqueControl(vm: AtencionViewModel, d: DatosConsultaApp, soloLectur
     val c = Sania.colors
     val hoy = remember { hoyClinicaIso() }
     var fecha by remember { mutableStateOf(sumarDiasIso(hoy, 7)) }
-    var hora by remember { mutableStateOf((d.cita.hora ?: "09:00").take(5)) }
+    var hora by remember { mutableStateOf(horaPorDefecto(d)) }
     var motivo by remember { mutableStateOf("") }
-    var programando by remember { mutableStateOf(false) }
     val control = d.atencion?.control
     val servicioControl = remember(d.servicios, d.cita) { servicioControlDe(d) }
 
     fun programar() {
-        if (programando) return
-        programando = true
         val f = fecha
         val h = hora
         val m = motivo
-        vm.lanzar {
+        vm.lanzar("control") {
             val ok = vm.accionPlan { AtencionRepo.control(d.cita.id, f, h, m) }
-            programando = false
             if (ok) Toaster.exito("Control agendado para el ${fechaLegibleCorta(f)} a las ${hora12(h)}")
         }
     }
@@ -546,11 +536,18 @@ private fun BloqueControl(vm: AtencionViewModel, d: DatosConsultaApp, soloLectur
                     Text("Servicio: ${conPrecio(it)}", color = c.textoSuave, fontSize = 12.sp)
                 }
                 Spacer(Modifier.height(10.dp))
-                BotonChico(if (programando) "Agendando…" else "Agendar control", c.sobreNavy, c.navy, habilitado = !programando) { programar() }
+                BotonChico(
+                    if (vm.accionando == "control") "Agendando…" else "Agendar control", c.sobreNavy, c.navy,
+                    habilitado = vm.accionando == null,
+                ) { programar() }
             }
         }
     }
 }
+
+/** Hora con que arrancan el control y el procedimiento: la de la cita (vacía = sin hora) o 09:00. */
+internal fun horaPorDefecto(d: DatosConsultaApp): String =
+    (d.cita.hora?.takeIf { it.isNotBlank() } ?: "09:00").take(5)
 
 // ── Piezas ───────────────────────────────────────────────────────────────────
 

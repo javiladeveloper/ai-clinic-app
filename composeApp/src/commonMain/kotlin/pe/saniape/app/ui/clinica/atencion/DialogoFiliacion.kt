@@ -122,11 +122,19 @@ internal fun textoNumeroHc(numero: String?, origen: String?): String =
 
 /**
  * Hoja de filiación del paciente [pacienteId]. [faltantes] = `flags.faltantesFiliacion`
- * de la consulta. Prellena con la HC si ya existe (lectura directa, RLS de la
- * clínica); si no se pudo leer, arranca vacía y el envío parcial no borra nada.
+ * de la consulta. [menorDeEdad] sale de la edad (esMenorDeEdad de la web) y marca
+ * el responsable como obligatorio. Prellena con la HC si ya existe (lectura
+ * directa, RLS de la clínica); si no se pudo leer, arranca vacía y el envío
+ * parcial no borra nada. El toast de éxito lo muestra el diálogo, como la web.
  */
 @Composable
-fun DialogoFiliacion(pacienteId: String, faltantes: List<String>, onCancelar: () -> Unit, onGuardada: () -> Unit) {
+fun DialogoFiliacion(
+    pacienteId: String,
+    faltantes: List<String>,
+    menorDeEdad: Boolean,
+    onCancelar: () -> Unit,
+    onGuardada: () -> Unit,
+) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     val valores = remember { mutableStateMapOf<String, String>() }
@@ -172,6 +180,13 @@ fun DialogoFiliacion(pacienteId: String, faltantes: List<String>, onCancelar: ()
             val r = AtencionRepo.guardarFiliacion(pacienteId, cuerpo)
             guardando = false
             if (r.registrada) {
+                // Como FiliacionModal: con HC, "actualizada"; sin HC, se acaba de abrir (con su número).
+                val hc = r.cuerpo?.get("hc") as? JsonObject
+                fun s(k: String) = (hc?.get(k) as? JsonPrimitive)?.contentOrNull
+                Toaster.exito(
+                    if (numeroHc == "") "Historia clínica abierta: ${textoNumeroHc(s("numero"), s("origen_numero"))}"
+                    else "Filiación actualizada",
+                )
                 onGuardada()
             } else {
                 val msg = r.rechazo?.error ?: "No se pudo guardar la filiación."
@@ -182,7 +197,7 @@ fun DialogoFiliacion(pacienteId: String, faltantes: List<String>, onCancelar: ()
     }
 
     val pendientes = faltantesVigentes(faltantes, valores)
-    val menor = FALTA_RESPONSABLE in faltantes
+    val menor = menorDeEdad
     val sinHc = numeroHc == ""
 
     DialogoForm(
@@ -203,7 +218,7 @@ fun DialogoFiliacion(pacienteId: String, faltantes: List<String>, onCancelar: ()
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (pendientes.isNotEmpty()) {
-                CajaAviso("Faltan para la HC: ${pendientes.joinToString(" · ")}.", c.texto, c.pendBg)
+                CajaAviso("Para la hoja de filiación falta: ${pendientes.joinToString(" · ")}.", c.texto, c.pendBg)
             }
             error?.let { CajaAviso(it, c.error, c.errorBg) }
             Text(

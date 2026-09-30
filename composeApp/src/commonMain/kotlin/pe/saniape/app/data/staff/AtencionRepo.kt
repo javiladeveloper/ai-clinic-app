@@ -110,6 +110,8 @@ object AtencionRepo {
                 val r = resultadoDeRespuesta(resp.status.value, texto).rechazo!!
                 Carga.Error(r.error, r.codigo, sinRed = false, status = r.status)
             }
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Carga.Error(MSJ_SIN_RED, SIN_RED, sinRed = true)
         }
@@ -125,6 +127,9 @@ object AtencionRepo {
                 if (dental) parameter("dental", "1")
             }
             if (resp.status.value !in 200..299) emptyList() else parsearCie10(resp.bodyAsText())
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            // Una búsqueda cancelada (llegó otra letra) no devuelve vacío: si no, pisaría la más nueva.
+            throw e
         } catch (e: Exception) {
             emptyList()
         }
@@ -138,6 +143,8 @@ object AtencionRepo {
                 header("Authorization", "Bearer $tk")
             }
             if (resp.status.value !in 200..299) emptyList() else parsearSugerencias(resp.bodyAsText())
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
         } catch (e: Exception) {
             emptyList()
         }
@@ -154,6 +161,8 @@ object AtencionRepo {
                 header("Authorization", "Bearer $tk")
             }
             if (resp.status.value in 200..299) resp.bodyAsText() else null
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
         } catch (e: Exception) {
             null
         }

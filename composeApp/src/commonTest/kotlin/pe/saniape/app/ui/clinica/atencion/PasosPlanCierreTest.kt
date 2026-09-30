@@ -65,6 +65,13 @@ class PasosPlanCierreTest {
     }
 
     @Test
+    fun horaPorDefectoIgnoraLaHoraVacia() {
+        assertEquals("10:30", horaPorDefecto(consulta("[]", """"id": "c1", "tipo": "Consulta", "hora": "10:30:00"""")))
+        assertEquals("09:00", horaPorDefecto(consulta("[]", """"id": "c1", "tipo": "Consulta", "hora": """"")))
+        assertEquals("09:00", horaPorDefecto(consulta("[]", """"id": "c1", "tipo": "Consulta"""")))
+    }
+
+    @Test
     fun examenesDeLaRespuestaDelAdjunto() {
         val cuerpo = Json.parseToJsonElement(
             """{"ok":true,"examenes":[{"nombre":"Hemograma completo","documento_id":"doc1","fecha_resultado":"2026-09-30"}]}""",

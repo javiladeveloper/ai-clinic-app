@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -40,6 +42,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
@@ -47,6 +50,7 @@ import kotlinx.serialization.json.put
 import pe.saniape.app.data.staff.AtencionRepo
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.ProfesionalPlan
+import pe.saniape.app.data.staff.RUBROS_QUE_RECETAN
 import pe.saniape.app.data.staff.SugerenciaMedicamento
 import pe.saniape.app.data.staff.formatearNumeroReceta
 import pe.saniape.app.data.staff.hoyClinicaIso
@@ -88,9 +92,6 @@ private val FRECUENCIAS = listOf(
     "una vez al día", "dos veces al día", "tres veces al día", "antes de dormir", "condicional a dolor",
 )
 private val DURACIONES = listOf("1 día", "3 días", "5 días", "7 días", "10 días", "14 días", "21 días", "30 días", "uso continuo")
-
-/** Rubros cuyas especialidades recetan (RUBROS_QUE_RECETAN). */
-internal val RUBROS_QUE_RECETAN = setOf("medicina_general", "odontologia", "ginecologia")
 
 internal const val AVISO_PRESCRIPTOR_NO_MEDICO =
     "Legalmente solo los médicos, cirujano-dentistas y obstetras prescriben medicamentos (Ley 26842, art. 26). " +
@@ -158,17 +159,27 @@ internal fun filtrarSugerencias(lista: List<SugerenciaMedicamento>, texto: Strin
 internal fun esPrescriptorLegal(rubros: List<String?>): Boolean = rubros.any { it != null && it in RUBROS_QUE_RECETAN }
 
 /**
- * Quién puede figurar como prescriptor (aprox. de `puedePrescribir` con el mapa de
- * la clínica, que la app no tiene): activo (o el ya elegido) y con colegiatura
- * (≥ 3 caracteres). En modo "indicaciones" ([recetasOptIn], clínica no médica)
- * todos; si no, los que tienen alguna especialidad que receta o sin rubro cargado.
+ * Quién puede figurar como prescriptor: los que el servidor marcó con
+ * `puedePrescribir` (la regla de la web; en la ficha, la aproximación de
+ * RecetasStaffRepo) más el ya elegido. UNA sola regla, sin recalcular.
  */
-internal fun prescriptoresReceta(
-    profesionales: List<ProfesionalPlan>, recetasOptIn: Boolean, elegidoId: String? = null,
-): List<ProfesionalPlan> = profesionales.filter { p ->
-    (p.estado != "Inactivo" || p.id == elegidoId) &&
-        (p.cmp?.trim()?.length ?: 0) >= 3 &&
-        (recetasOptIn || p.especialidades.isEmpty() || p.especialidades.any { it.rubro == null || it.rubro in RUBROS_QUE_RECETAN })
+internal fun prescriptoresReceta(profesionales: List<ProfesionalPlan>, elegidoId: String? = null): List<ProfesionalPlan> =
+    profesionales.filter { it.puedePrescribir || (elegidoId != null && it.id == elegidoId) }
+
+/**
+ * El prescriptor que viene elegido al abrir, en este orden: el propio profesional
+ * cuando está obligado a firmar a su nombre ([propioBloqueado]) → el [sugerido]
+ * (el que atiende la consulta) si puede prescribir → [miTerapeutaId] si puede →
+ * el único que puede → ninguno ("").
+ */
+internal fun prescriptorInicial(
+    elegibles: List<ProfesionalPlan>, propioBloqueado: String?, sugerido: String?, miTerapeutaId: String?,
+): String = when {
+    propioBloqueado != null -> propioBloqueado
+    sugerido != null && elegibles.any { it.id == sugerido } -> sugerido
+    miTerapeutaId != null && elegibles.any { it.id == miTerapeutaId } -> miTerapeutaId
+    elegibles.size == 1 -> elegibles[0].id
+    else -> ""
 }
 
 /** El prescriptor no es de un rubro que receta: su hoja sale como INDICACIONES. */
@@ -201,6 +212,8 @@ internal data class ItemRecetaForm(
     val cantidad: String = "",
     val unidad: String = "",
     val indicaciones: String = "",
+    /** Identidad estable de la fila en la UI (key): quitar una no le pasa su estado a la siguiente. */
+    val uid: Long = Random.nextLong(),
 ) {
     /** Sin nada escrito no cuenta (esFilaVacia: forma/vía/unidad solas no la llenan). */
     val vacio: Boolean
@@ -265,6 +278,8 @@ internal fun cuerpoEmitirReceta(
         }))
         put("citaId", t(citaId))
         put("tratamientoId", t(tratamientoId))
+        // Paridad con el contrato: la app no emite recetas desde una sesión.
+        put("sesionId", JsonNull)
         put("claveCliente", claveCliente)
     }
 }
@@ -279,9 +294,11 @@ private fun fechaCorta(iso: String): String {
 
 /**
  * Receta del paciente [pacienteId] desde la consulta. [profesionales] = el equipo
- * de la consulta (se ofrecen los que pueden prescribir). [diagnostico]/[cie10] y
- * los vínculos ([citaId], [tratamientoId]) la prellenan. [recetasOptIn]: clínica
- * no médica con recetas encendidas (modo "indicaciones").
+ * de la consulta (se ofrecen los que tienen `puedePrescribir`). Como el `prefill`
+ * de la web: [diagnostico]/[cie10], [indicaciones] (las del paciente) y los
+ * vínculos ([citaId], [tratamientoId]) la prellenan; [terapeutaSugerido] (el que
+ * atiende) viene elegido si puede prescribir. [recetasOptIn]: clínica no médica
+ * con recetas encendidas (modo "indicaciones").
  * [onEmitida] recibe el id de la receta (el toast con el número ya lo muestra el diálogo).
  */
 @Composable
@@ -296,6 +313,8 @@ fun DialogoReceta(
     recetasOptIn: Boolean,
     onCancelar: () -> Unit,
     onEmitida: (recetaId: String) -> Unit,
+    terapeutaSugerido: String? = null,
+    indicaciones: String? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -303,22 +322,23 @@ fun DialogoReceta(
     // El profesional vinculado firma a su nombre (el servidor también lo exige:
     // PRESCRIPTOR_AJENO); recepción / Admin / quien gestiona pacientes elige.
     val bloqueadoASiMismo = ctx.miTerapeutaId != null && !ctx.esAdmin && !ctx.puede("pacientes")
-    val prescriptores = remember(profesionales, recetasOptIn) { prescriptoresReceta(profesionales, recetasOptIn) }
-
     var terapeutaId by remember {
         mutableStateOf(
-            when {
-                bloqueadoASiMismo -> ctx.miTerapeutaId.orEmpty()
-                prescriptores.any { it.id == ctx.miTerapeutaId } -> ctx.miTerapeutaId.orEmpty()
-                prescriptores.size == 1 -> prescriptores[0].id
-                else -> ""
-            },
+            prescriptorInicial(
+                elegibles = prescriptoresReceta(profesionales),
+                propioBloqueado = if (bloqueadoASiMismo) ctx.miTerapeutaId else null,
+                sugerido = terapeutaSugerido,
+                miTerapeutaId = ctx.miTerapeutaId,
+            ),
         )
     }
+    val prescriptores = prescriptoresReceta(profesionales, terapeutaId.ifEmpty { null })
+    // Nadie del equipo puede prescribir: el aviso de la colegiatura.
+    val nadiePrescribe = profesionales.none { it.puedePrescribir }
     var vigencia by remember { mutableStateOf(VIGENCIA_POR_DEFECTO.toString()) }
     var dx by remember { mutableStateOf(diagnostico.orEmpty()) }
     var cie by remember { mutableStateOf(cie10.orEmpty().uppercase().take(7)) }
-    var indicaciones by remember { mutableStateOf("") }
+    var indicacionesGen by remember { mutableStateOf(indicaciones.orEmpty()) }
     var infoQf by remember { mutableStateOf("") }
     var verInfoQf by remember { mutableStateOf(false) }
     val items = remember { mutableStateListOf(ItemRecetaForm()) }
@@ -343,7 +363,7 @@ fun DialogoReceta(
         errores = emptyList()
         val cuerpo = cuerpoEmitirReceta(
             pacienteId = pacienteId, terapeutaId = terapeutaId, fecha = hoy, vigenciaDias = dias,
-            diagnostico = dx, cie10 = cie, indicacionesGenerales = indicaciones,
+            diagnostico = dx, cie10 = cie, indicacionesGenerales = indicacionesGen,
             infoFarmaceutico = if (verInfoQf) infoQf else null, items = items.toList(),
             citaId = citaId, tratamientoId = tratamientoId, claveCliente = clave,
         )
@@ -355,7 +375,12 @@ fun DialogoReceta(
                 val id = (receta?.get("id") as? JsonPrimitive)?.contentOrNull.orEmpty()
                 val numero = (receta?.get("numero") as? JsonPrimitive)?.intOrNull
                 val tipo = if (noMedico) "Indicaciones" else "Receta"
-                Toaster.exito("$tipo ${formatearNumeroReceta(numero)} emitida" + if (noMedico) "s" else "")
+                // Misma clave ya emitida (reintento tras un corte): no es una receta nueva.
+                val repetida = (r.cuerpo?.get("repetida") as? JsonPrimitive)?.booleanOrNull == true
+                Toaster.exito(
+                    if (repetida) "Ya se había emitido: $tipo ${formatearNumeroReceta(numero)}"
+                    else "$tipo ${formatearNumeroReceta(numero)} emitida" + if (noMedico) "s" else "",
+                )
                 onEmitida(id)
             } else {
                 val lista = r.rechazo?.error?.split("\n")?.map { it.trim() }?.filter { it.isNotEmpty() }
@@ -374,7 +399,7 @@ fun DialogoReceta(
             noMedico -> "Emitir indicaciones"
             else -> "Emitir receta"
         },
-        accionHabilitada = !emitiendo && prescriptores.isNotEmpty(),
+        accionHabilitada = !emitiendo && !nadiePrescribe,
         onCancelar = { if (!emitiendo) onCancelar() },
         onAccion = ::emitir,
     ) {
@@ -383,7 +408,7 @@ fun DialogoReceta(
             if (errores.isNotEmpty()) {
                 CajaAviso(errores.joinToString("\n") { "• $it" }, c.error, c.errorBg)
             }
-            if (prescriptores.isEmpty()) {
+            if (nadiePrescribe) {
                 CajaAviso(
                     "Ningún profesional que receta tiene su N° de colegiatura cargado. Complétalo en " +
                         "Equipo → profesional (CMP para médicos, COP para odontólogos): la receta lo exige impreso.",
@@ -396,7 +421,7 @@ fun DialogoReceta(
                 EtqForm("Prescriptor")
                 val opciones = prescriptores.map { it.id to "${it.nombre} · ${colegiaturaImpresa(it)}" }
                 if (bloqueadoASiMismo) {
-                    val p = prescriptores.firstOrNull { it.id == terapeutaId }
+                    val p = profesionales.firstOrNull { it.id == terapeutaId && it.puedePrescribir }
                     Box(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.fondo)
                             .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
@@ -451,12 +476,15 @@ fun DialogoReceta(
                 }
                 Spacer(Modifier.height(8.dp))
                 items.forEachIndexed { i, fila ->
-                    FilaMedicamento(
-                        n = i + 1, item = fila, sugerencias = sugerencias,
-                        onCambio = { nuevo -> items[i] = nuevo },
-                        onQuitar = if (items.size > 1) ({ items.removeAt(i) }) else null,
-                    )
-                    Spacer(Modifier.height(10.dp))
+                    // key: el estado de cada fila (sugerencias abiertas) viaja con su medicamento al quitar otra.
+                    key(fila.uid) {
+                        FilaMedicamento(
+                            n = i + 1, item = fila, sugerencias = sugerencias,
+                            onCambio = { nuevo -> items[i] = nuevo },
+                            onQuitar = if (items.size > 1) ({ items.removeAt(i) }) else null,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                    }
                 }
                 if (items.size < MAX_ITEMS_RECETA) {
                     Text(
@@ -468,7 +496,7 @@ fun DialogoReceta(
                 }
             }
 
-            CampoDialogo("Indicaciones generales (opcional)", indicaciones, { indicaciones = it },
+            CampoDialogo("Indicaciones generales (opcional)", indicacionesGen, { indicacionesGen = it },
                 "Ej. Abundantes líquidos, reposo 48 h, control en 7 días.", unaLinea = false, minLineas = 2)
             if (verInfoQf) {
                 CampoDialogo("Información para el químico farmacéutico", infoQf, { infoQf = it },
@@ -525,7 +553,11 @@ private fun FilaMedicamento(
                     modifier = Modifier.clickable(onClick = onQuitar).padding(horizontal = 6.dp, vertical = 4.dp))
             }
         }
-        CampoDialogo("Medicamento (DCI)", item.dci, { onCambio(item.copy(dci = it)); abierto = true }, "Ej. Amoxicilina")
+        // Las sugerencias se cierran al elegir una o al salir del campo.
+        CampoDialogo(
+            "Medicamento (DCI)", item.dci, { onCambio(item.copy(dci = it)); abierto = true }, "Ej. Amoxicilina",
+            modifier = Modifier.onFocusChanged { if (!it.hasFocus) abierto = false },
+        )
         if (opciones.isNotEmpty()) {
             Column(
                 Modifier.fillMaxWidth().clip(forma).border(1.dp, c.borde, forma).background(c.superficie),

@@ -46,6 +46,12 @@ class AtencionViewModel(private val citaId: String) : ViewModel() {
     var terminando by mutableStateOf(false); private set
     /** true → la pantalla vuelve a la agenda. */
     var terminada by mutableStateOf(false); private set
+    /**
+     * Clave de la acción del plan / cierre que está corriendo ("indicar",
+     * "control", "subir:2", "receta", "preparar-cierre", "cobrar"…) o null. Vive
+     * en el VM: salir del paso y volver no rehabilita una acción a mitad de envío.
+     */
+    var accionando by mutableStateOf<String?>(null); private set
 
     val pasos: List<PasoAtencion> get() = datos?.flags?.pasos ?: emptyList()
     val pasoActual: PasoAtencion? get() = pasos.getOrNull(paso)
@@ -182,9 +188,22 @@ class AtencionViewModel(private val citaId: String) : ViewModel() {
      * Corre [bloque] en el scope del VM: una escritura del plan o del cierre
      * (agendar el control, subir un resultado, cobrar…) no se corta si el
      * usuario cambia de paso a mitad del envío.
+     *
+     * Con [clave], es una acción con "ocupado": si ya corre otra, no hace nada;
+     * si no, [accionando] = [clave] mientras corre (se suelta siempre, finally).
      */
-    fun lanzar(bloque: suspend () -> Unit) {
-        viewModelScope.launch { bloque() }
+    fun lanzar(clave: String? = null, bloque: suspend () -> Unit) {
+        if (clave != null) {
+            if (accionando != null) return
+            accionando = clave
+        }
+        viewModelScope.launch {
+            try {
+                bloque()
+            } finally {
+                if (clave != null) accionando = null
+            }
+        }
     }
 
     // ── Acciones del plan (control, procedimiento, examen, firma, receta…) ───

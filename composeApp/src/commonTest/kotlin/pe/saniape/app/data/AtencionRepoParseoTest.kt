@@ -66,7 +66,7 @@ class AtencionRepoParseoTest {
       "tipo_cita": null, "categoria": null, "plantillas": [] }
   ],
   "profesionales": [
-    { "id": "t1", "nombre": "Dr. Salazar", "cmp": "45678", "estado": "Activo",
+    { "id": "t1", "nombre": "Dr. Salazar", "cmp": "45678", "estado": "Activo", "puedePrescribir": true,
       "especialidades": [{ "id": "esp-medicina", "rubro": "medicina_general" }] }
   ],
   "frases": [{ "campo": "motivo", "texto": "Cefalea", "usos": 3 }],
@@ -114,6 +114,7 @@ class AtencionRepoParseoTest {
         assertEquals("a1", d.atencion?.id)
         assertEquals(1, d.servicios.size)
         assertEquals("45678", d.profesionales[0].cmp)
+        assertTrue(d.profesionales[0].puedePrescribir)
         assertEquals(emptyList(), d.diagnosticosSugeridos)
         assertEquals("dolor de cabeza", d.motivoSugerido)
         assertEquals(listOf("presion", "peso"), d.modulos.camposTriaje)

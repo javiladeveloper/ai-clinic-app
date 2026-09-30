@@ -11,9 +11,11 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
+import pe.saniape.app.data.staff.DiagnosticoCie
 import pe.saniape.app.data.staff.EspecialidadProfesionalApp
 import pe.saniape.app.data.staff.ProfesionalPlan
 import pe.saniape.app.data.staff.SugerenciaMedicamento
+import pe.saniape.app.data.staff.puedePrescribirAprox
 
 /** Piezas puras de DialogoReceta y DialogoFiliacion (gemelas de lib/recetas.ts y lib/historia-clinica.ts). */
 class DialogosAtencionTest {
@@ -68,10 +70,11 @@ class DialogosAtencionTest {
         assertEquals(
             setOf(
                 "pacienteId", "terapeutaId", "fecha", "vigenciaDias", "diagnostico", "cie10",
-                "indicacionesGenerales", "infoFarmaceutico", "items", "citaId", "tratamientoId", "claveCliente",
+                "indicacionesGenerales", "infoFarmaceutico", "items", "citaId", "tratamientoId", "sesionId", "claveCliente",
             ),
             cuerpo.keys,
         )
+        assertEquals(JsonNull, cuerpo["sesionId"])
         assertEquals("Faringitis aguda", cuerpo["diagnostico"]!!.jsonPrimitive.content)
         assertEquals("J02.9", cuerpo["cie10"]!!.jsonPrimitive.content)
         assertEquals(30, cuerpo["vigenciaDias"]!!.jsonPrimitive.int)
@@ -105,12 +108,66 @@ class DialogosAtencionTest {
             especialidades = listOf(EspecialidadProfesionalApp("e2", "fisioterapia")))
         val sinCmp = ProfesionalPlan("x", "Dr. C", cmp = null, estado = "Activo")
         val inactivo = medico.copy(id = "i", estado = "Inactivo")
-        assertEquals(listOf("m"), prescriptoresReceta(listOf(medico, fisio, sinCmp, inactivo), recetasOptIn = false).map { it.id })
-        assertEquals(listOf("m", "f"), prescriptoresReceta(listOf(medico, fisio, sinCmp), recetasOptIn = true).map { it.id })
+        // La aproximación de la ficha (el servidor no lo manda ahí todavía).
+        assertEquals(listOf("m"), listOf(medico, fisio, sinCmp, inactivo).filter { puedePrescribirAprox(it, recetasOptIn = false) }.map { it.id })
+        assertEquals(listOf("m", "f"), listOf(medico, fisio, sinCmp).filter { puedePrescribirAprox(it, recetasOptIn = true) }.map { it.id })
         assertFalse(prescriptorNoMedico(medico))
         assertTrue(prescriptorNoMedico(fisio))
         assertEquals("CMP 45678", colegiaturaImpresa(medico))
         assertEquals("CTMP 1234", colegiaturaImpresa(fisio))
+    }
+
+    @Test
+    fun elDialogoUsaPuedePrescribirDelServidor() {
+        // El servidor manda `puedePrescribir`: el diálogo no recalcula (aunque no tenga CMP o rubro).
+        val a = ProfesionalPlan("a", "Dr. A", estado = "Activo", puedePrescribir = true)
+        val b = ProfesionalPlan("b", "Dr. B", cmp = "45678", estado = "Activo", puedePrescribir = false,
+            especialidades = listOf(EspecialidadProfesionalApp("e1", "medicina_general")))
+        val c = ProfesionalPlan("c", "Dra. C", cmp = "11111", estado = "Activo", puedePrescribir = true)
+        assertEquals(listOf("a", "c"), prescriptoresReceta(listOf(a, b, c)).map { it.id })
+        // El ya elegido se ofrece aunque no pueda (p. ej. el propio profesional bloqueado).
+        assertEquals(listOf("a", "b", "c"), prescriptoresReceta(listOf(a, b, c), elegidoId = "b").map { it.id })
+    }
+
+    @Test
+    fun prescriptorInicialEnOrden() {
+        val a = ProfesionalPlan("a", puedePrescribir = true)
+        val c = ProfesionalPlan("c", puedePrescribir = true)
+        val dos = listOf(a, c)
+        // 1) propio bloqueado, aunque no sea elegible
+        assertEquals("z", prescriptorInicial(dos, propioBloqueado = "z", sugerido = "a", miTerapeutaId = "c"))
+        // 2) el sugerido (el que atiende) si es elegible
+        assertEquals("a", prescriptorInicial(dos, propioBloqueado = null, sugerido = "a", miTerapeutaId = "c"))
+        // 3) el sugerido no es elegible → mi terapeuta si lo es
+        assertEquals("c", prescriptorInicial(dos, propioBloqueado = null, sugerido = "x", miTerapeutaId = "c"))
+        // 4) el único elegible
+        assertEquals("a", prescriptorInicial(listOf(a), propioBloqueado = null, sugerido = "x", miTerapeutaId = "y"))
+        // 5) ninguno
+        assertEquals("", prescriptorInicial(dos, propioBloqueado = null, sugerido = null, miTerapeutaId = null))
+    }
+
+    @Test
+    fun diagnosticoDeLaRecetaComoLaWeb() {
+        val (texto, codigo) = diagnosticoParaReceta(
+            listOf(
+                DiagnosticoCie(null, "Cefalea tensional", "P"),
+                DiagnosticoCie("j02.9", "Faringitis  aguda", "P"),
+                DiagnosticoCie("M54.5", "Lumbalgia", "D"),
+                DiagnosticoCie(null, "  ", "P"), // vacío: no cuenta
+                DiagnosticoCie("J02.9", "Faringitis aguda", "P"), // repetido: no cuenta
+            ),
+        )
+        assertEquals("Cefalea tensional; Faringitis aguda; Lumbalgia", texto)
+        assertEquals("J02.9", codigo) // el PRIMERO con código
+        assertEquals(null to null, diagnosticoParaReceta(emptyList()))
+    }
+
+    @Test
+    fun filasDeLaRecetaTienenIdentidadPropia() {
+        val a = ItemRecetaForm()
+        val b = ItemRecetaForm()
+        assertTrue(a.uid != b.uid)
+        assertEquals(a.uid, a.copy(dci = "Paracetamol").uid)
     }
 
     // ── Filiación ──

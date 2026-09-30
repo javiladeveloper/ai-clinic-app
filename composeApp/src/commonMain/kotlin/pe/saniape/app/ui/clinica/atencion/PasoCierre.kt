@@ -22,7 +22,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,7 +31,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
 import pe.saniape.app.data.staff.AgendaRepo
 import pe.saniape.app.data.staff.AtencionRepo
 import pe.saniape.app.data.staff.CitaStaff
@@ -72,14 +70,14 @@ internal fun PasoCierre(
     onVerFicha: () -> Unit = {},
 ) {
     val c = Sania.colors
-    val scope = rememberCoroutineScope()
     val f = d.flags
     val esProc = f.esProcedimiento
     val completada = f.completada
     val t = vm.borrador.textos
     var imprimiendo by remember { mutableStateOf<String?>(null) }
-    var preparando by remember { mutableStateOf(false) }
     var faltanConfirmar by remember { mutableStateOf<List<String>?>(null) }
+    // El "Guardando…" previo a terminar vive en el VM: volver al paso no lo rehabilita.
+    val preparando = vm.accionando == "preparar-cierre"
 
     val nota: String? = if (esProc) t["nota_procedimiento"] else null
 
@@ -92,12 +90,10 @@ internal fun PasoCierre(
     }
 
     fun intentarTerminar() {
-        if (vm.terminando || preparando) return
-        preparando = true
-        vm.lanzar {
+        if (vm.terminando) return
+        vm.lanzar("preparar-cierre") {
             // Se guarda primero: así los faltantes que llegan son los de lo escrito.
             val ok = vm.guardarAntes()
-            preparando = false
             if (!ok) return@lanzar
             val faltan = vm.datos?.flags?.faltantesAtencion.orEmpty()
             if (faltan.isNotEmpty()) faltanConfirmar = faltan else vm.terminar(nota)
@@ -186,11 +182,11 @@ internal fun PasoCierre(
                     BotonAncho(
                         if (vm.guardando) "Guardando…" else "Guardar cambios",
                         primario = true, habilitado = !vm.guardando && vm.sucio,
-                    ) { scope.launch { vm.guardar() } }
+                    ) { vm.lanzar { vm.guardar() } }
                 } else {
                     BotonAncho(
                         when { vm.terminando -> "Terminando…"; preparando -> "Guardando…"; else -> "✓ Terminar atención" },
-                        primario = true, habilitado = !vm.terminando && !preparando && !vm.guardando,
+                        primario = true, habilitado = !vm.terminando && vm.accionando == null && !vm.guardando,
                     ) { intentarTerminar() }
                 }
             }
@@ -323,8 +319,10 @@ private fun BloqueCobro(vm: AtencionViewModel, d: DatosConsultaApp, ctx: Context
     val cita = d.cita
     val monto = textoSoles(cita.costo)
     var abierto by remember { mutableStateOf(false) }
-    var cobrando by remember { mutableStateOf(false) }
-    val nombreTipo = cita.tipo.ifBlank { "Consulta" }
+    // En el VM: salir del cierre y volver no rehabilita un cobro a mitad de envío.
+    val cobrando = vm.accionando == "cobrar"
+    // Con la terminología de la clínica (flujo de ctx; el de la especialidad lo resuelve la agenda).
+    val nombreTipo = ctx.flujo.nombreTipo(cita.tipo.ifBlank { "Consulta" })
 
     Bloque {
         Text("💰 Cobro", color = c.navy, fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -348,7 +346,7 @@ private fun BloqueCobro(vm: AtencionViewModel, d: DatosConsultaApp, ctx: Context
             ctx.puede("pagos") -> Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Por cobrar ", color = c.texto, fontSize = 13.sp)
                 Text(monto, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                BotonChico(if (cobrando) "Cobrando…" else "Cobrar", c.sobreNavy, c.ok, habilitado = !cobrando) { abierto = true }
+                BotonChico(if (cobrando) "Cobrando…" else "Cobrar", c.sobreNavy, c.ok, habilitado = vm.accionando == null) { abierto = true }
             }
             else -> Text("Por cobrar $monto — lo cobra recepción.", color = c.pend, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         }
@@ -360,10 +358,8 @@ private fun BloqueCobro(vm: AtencionViewModel, d: DatosConsultaApp, ctx: Context
             onCancelar = { if (!cobrando) abierto = false },
             onConfirmar = { metodo, modo, fecha ->
                 if (!cobrando) {
-                    cobrando = true
-                    vm.lanzar {
+                    vm.lanzar("cobrar") {
                         val r = AgendaRepo.cobrarCita(cita.id, metodo, modo, fecha)
-                        cobrando = false
                         if (r.registrada) {
                             abierto = false
                             // Encolada: enviarOEncolar ya avisó "se registrará al volver la señal".

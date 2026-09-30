@@ -246,27 +246,54 @@ private fun ColumnScope.ContenidoAtencion(
         DialogoFiliacion(
             pacienteId = pacienteId,
             faltantes = d.flags.faltantesFiliacion,
+            // Como la web (esMenorDeEdad): por la edad, no por los faltantes.
+            menorDeEdad = d.flags.edad?.let { it < 18 } == true,
             onCancelar = { verFiliacion = false },
-            onGuardada = { verFiliacion = false; vm.recargar(); Toaster.exito("Filiación guardada") },
+            // El toast ("Filiación actualizada" / "Historia clínica abierta…") lo muestra el diálogo.
+            onGuardada = { verFiliacion = false; vm.recargar() },
         )
     }
     if (verReceta && pacienteId != null) {
-        // El borrador ya se guardó (BloqueReceta guarda antes de abrir): el primer diagnóstico prellena.
-        val dx = vm.borrador.diagnosticos.firstOrNull()
+        // El borrador ya se guardó (BloqueReceta guarda antes de abrir). Prellenado
+        // como el `prefill` de la web: todos los diagnósticos, el primer código
+        // CIE-10, las indicaciones y el profesional que atiende.
+        val (dxTexto, dxCodigo) = diagnosticoParaReceta(vm.borrador.diagnosticos)
         DialogoReceta(
             ctx = ctx,
             pacienteId = pacienteId,
             profesionales = d.profesionales,
-            diagnostico = dx?.descripcion?.ifBlank { null },
-            cie10 = dx?.codigo,
+            diagnostico = dxTexto,
+            cie10 = dxCodigo,
             citaId = d.cita.id,
             tratamientoId = d.cita.tratamiento_id,
             recetasOptIn = d.modulos.recetasOptIn,
             onCancelar = { verReceta = false },
             // El toast con el número lo muestra el diálogo.
             onEmitida = { verReceta = false; vm.recargar() },
+            terapeutaSugerido = vm.borrador.terapeutaId ?: d.cita.terapeuta_id,
+            indicaciones = vm.borrador.textos["tratamiento"],
         )
     }
+}
+
+/**
+ * Diagnóstico y CIE-10 con que se prellena la receta (dxTexto / dxCodigo de
+ * ConsultaGuiada.tsx): las descripciones unidas por "; " (null si no hay) y el
+ * código del PRIMER diagnóstico que lo tenga.
+ */
+internal fun diagnosticoParaReceta(dx: List<pe.saniape.app.data.staff.DiagnosticoCie>): Pair<String?, String?> {
+    // normalizarDiagnosticos de la web: sin vacíos ni repetidos; sin descripción, el código.
+    val vistos = mutableSetOf<String>()
+    val normalizados = dx.mapNotNull { d ->
+        val descripcion = d.descripcion.replace(Regex("\\s+"), " ").trim()
+        val codigo = d.codigo?.trim()?.uppercase()?.ifEmpty { null }
+        if (descripcion.isEmpty() && codigo == null) return@mapNotNull null
+        val clave = codigo?.let { "c:$it" } ?: "t:${descripcion.lowercase()}"
+        if (!vistos.add(clave)) return@mapNotNull null
+        descripcion.ifEmpty { codigo.orEmpty() } to codigo
+    }
+    val texto = normalizados.joinToString("; ") { it.first }.ifBlank { null }
+    return texto to normalizados.firstNotNullOfOrNull { it.second }
 }
 
 /** Aviso de solo lectura, con el motivo (como la web). */
