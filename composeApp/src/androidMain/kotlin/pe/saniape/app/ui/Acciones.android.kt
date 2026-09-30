@@ -3,6 +3,7 @@ package pe.saniape.app.ui
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
@@ -31,6 +32,20 @@ private class AccionesAndroid(private val context: Context) : AccionesNativas {
                 Intent(Intent.ACTION_VIEW, Uri.parse(u)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
         } catch (_: Exception) { /* sin app que abra el enlace */ }
+    }
+
+    override fun abrirWeb(url: String) {
+        val u = if (url.startsWith("http")) url else "https://$url"
+        try {
+            // Custom Tab: se abre DENTRO de la app (el atrás vuelve al APK) y comparte las
+            // cookies de Chrome, así que si ya hay sesión en la web no re-loguea.
+            val ct = CustomTabsIntent.Builder().setShowTitle(true).build()
+            ct.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ct.launchUrl(context, Uri.parse(u))
+        } catch (_: Exception) {
+            // Sin navegador compatible con Custom Tabs: cae al navegador externo.
+            abrirUrl(u)
+        }
     }
 
     override fun abrirHtml(html: String, titulo: String) {

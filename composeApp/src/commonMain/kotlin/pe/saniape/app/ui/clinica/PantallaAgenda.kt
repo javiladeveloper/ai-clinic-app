@@ -463,10 +463,11 @@ fun PantallaAgenda(
                                         AccionTarjeta.CrearTratamiento -> abrirTratamientoDeCita(cita, null)
                                         AccionTarjeta.Llego -> vm.marcarLlegada(cita)
                                         AccionTarjeta.Triaje -> triajeCita = cita
-                                        // La consulta guiada aún no está en la app: se abre en la web.
+                                        // La consulta guiada aún no está nativa: se abre en la web,
+                                        // pero DENTRO de la app (Custom Tab), no en un navegador externo.
                                         AccionTarjeta.Atender -> {
                                             pe.saniape.app.ui.Toaster.info(AVISO_ABRIR_EN_WEB)
-                                            acciones.abrirUrl("${pe.saniape.app.data.Supabase.SITE_URL}/atencion/${cita.id}")
+                                            acciones.abrirWeb("${pe.saniape.app.data.Supabase.SITE_URL}/atencion/${cita.id}")
                                         }
                                     }
                                 },
@@ -850,9 +851,10 @@ fun PantallaAgenda(
     }
 }
 
-/** Lo que se abre en el navegador pide la sesión WEB (el Bearer de la app no pasa). */
+/** Lo que se abre usa la sesión WEB (el Bearer de la app no pasa). Se abre dentro de la
+ *  app (Custom Tab / Safari), que comparte las cookies del navegador del sistema. */
 internal const val AVISO_ABRIR_EN_WEB =
-    "Se abrirá en el navegador; si pide iniciar sesión, entra con tu misma cuenta."
+    "Se abrirá aquí dentro; si pide iniciar sesión, entra con tu misma cuenta."
 
 /**
  * "🪑 En sala de espera (N)" (gemelo del filtro de /citas): con el filtro,
