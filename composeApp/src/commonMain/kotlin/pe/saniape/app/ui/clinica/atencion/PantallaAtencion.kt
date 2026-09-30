@@ -186,6 +186,9 @@ private fun ColumnScope.ContenidoAtencion(
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     val soloLectura = vm.soloLectura
+    val pacienteId = d.cita.paciente_id ?: d.cita.paciente?.id
+    var verFiliacion by remember { mutableStateOf(false) }
+    var verReceta by remember { mutableStateOf(false) }
     Cabecera(
         d = d,
         accionTeclado = if (tecladoAbierto && vm.sucio && !soloLectura) {
@@ -194,7 +197,7 @@ private fun ColumnScope.ContenidoAtencion(
         guardando = vm.guardando,
         onAgenda = onAgenda,
         onFicha = { onVerFicha(d.cita.paciente?.id ?: d.cita.paciente_id ?: return@Cabecera) },
-        onFiliacion = { Toaster.info("Filiación: próximamente") },
+        onFiliacion = { if (pacienteId != null) verFiliacion = true },
         onOdontograma = { onOdontograma(d.cita.id) },
     )
 
@@ -224,8 +227,7 @@ private fun ColumnScope.ContenidoAtencion(
                 "examen" -> PasoExamen(vm, d, soloLectura)
                 "procedimiento" -> PasoProcedimiento(vm, d, soloLectura, acciones)
                 "diagnostico" -> PasoDiagnostico(vm, d, soloLectura)
-                // La receta (DialogoReceta) llega en la siguiente entrega.
-                "plan" -> PasoPlan(vm, d, soloLectura, acciones, onNuevaReceta = { Toaster.info("Receta: próximamente") })
+                "plan" -> PasoPlan(vm, d, soloLectura, acciones, onNuevaReceta = { if (pacienteId != null) verReceta = true })
                 "cierre" -> PasoCierre(
                     vm, d, soloLectura, acciones, ctx,
                     onVerFicha = { (d.cita.paciente?.id ?: d.cita.paciente_id)?.let(onVerFicha) },
@@ -239,6 +241,32 @@ private fun ColumnScope.ContenidoAtencion(
 
     // En el último paso (cierre) el pie lo pinta el propio paso.
     if (!vm.esUltimoPaso && !tecladoAbierto) PieNavegacion(vm, soloLectura)
+
+    if (verFiliacion && pacienteId != null) {
+        DialogoFiliacion(
+            pacienteId = pacienteId,
+            faltantes = d.flags.faltantesFiliacion,
+            onCancelar = { verFiliacion = false },
+            onGuardada = { verFiliacion = false; vm.recargar(); Toaster.exito("Filiación guardada") },
+        )
+    }
+    if (verReceta && pacienteId != null) {
+        // El borrador ya se guardó (BloqueReceta guarda antes de abrir): el primer diagnóstico prellena.
+        val dx = vm.borrador.diagnosticos.firstOrNull()
+        DialogoReceta(
+            ctx = ctx,
+            pacienteId = pacienteId,
+            profesionales = d.profesionales,
+            diagnostico = dx?.descripcion?.ifBlank { null },
+            cie10 = dx?.codigo,
+            citaId = d.cita.id,
+            tratamientoId = d.cita.tratamiento_id,
+            recetasOptIn = d.modulos.recetasOptIn,
+            onCancelar = { verReceta = false },
+            // El toast con el número lo muestra el diálogo.
+            onEmitida = { verReceta = false; vm.recargar() },
+        )
+    }
 }
 
 /** Aviso de solo lectura, con el motivo (como la web). */
