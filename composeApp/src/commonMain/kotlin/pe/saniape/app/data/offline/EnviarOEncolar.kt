@@ -47,6 +47,12 @@ data class ResultadoEscritura(
     val registrada: Boolean,
     val encolada: Boolean = false,
     val rechazo: RechazoServidor? = null,
+    /**
+     * El JSON que respondió el servidor (si lo hubo), para quien necesita leer
+     * lo que devuelve el endpoint (p. ej. la receta emitida o el id de la cita
+     * de control). La cola offline no lo usa: siempre queda en null.
+     */
+    val cuerpo: JsonObject? = null,
 ) {
     val codigo: String? get() = rechazo?.codigo
 }
