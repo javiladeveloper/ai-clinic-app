@@ -24,13 +24,16 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,6 +52,7 @@ import pe.saniape.app.data.staff.DatosConsultaApp
 import pe.saniape.app.data.staff.FraseFrecuenteApp
 import pe.saniape.app.data.staff.MEDICIONES_TRIAJE
 import pe.saniape.app.data.staff.leerCamposTriaje
+import pe.saniape.app.data.staff.requiereConsentimiento
 import pe.saniape.app.ui.AccionesNativas
 import pe.saniape.app.ui.Toaster
 import pe.saniape.app.ui.clinica.agenda.modales.VitalesCampos
@@ -157,9 +161,9 @@ internal fun PasoProcedimiento(vm: AtencionViewModel, d: DatosConsultaApp, soloL
     var firmando by remember { mutableStateOf<String?>(null) }
     var imprimiendo by remember { mutableStateOf<String?>(null) }
     val cis = d.consentimientos.filter { it.estado != "Anulado" }
-    // Sin plantilla el servidor no emite nada ni avisa; con plantilla y sin
-    // consentimiento vivo, el aviso del cierre lo menciona.
-    val requiere = cis.isNotEmpty() || d.flags.avisosCierre.any { it.contains("consentimiento", ignoreCase = true) }
+    // Regla de la web: lo pide el servicio si tiene alguna plantilla ACTIVA
+    // (sin plantilla el servidor no emite nada ni avisa).
+    val requiere = requiereConsentimiento(d.cita)
 
     fun imprimir(ci: ConsentimientoApp) {
         if (imprimiendo != null) return
@@ -277,6 +281,13 @@ private fun FilaConsentimiento(
 
 // ── Campo de texto clínico con frases rápidas y dictado ──────────────────────
 
+/**
+ * Dueño del dictado de la pantalla: el campo que tiene el micrófono (su token),
+ * o null. Uno a la vez: dos reconocedores continuos se pelean el micrófono. Lo
+ * provee [PantallaAtencion]; sin proveedor cada campo dicta por su cuenta.
+ */
+internal val LocalDictadoActivo = staticCompositionLocalOf<MutableState<Any?>?> { null }
+
 /** Chips visibles antes de "+N más" (en móvil una lista larga empuja el formulario). */
 private const val CHIPS_VISIBLES = 10
 
@@ -310,6 +321,10 @@ internal fun CampoTextoClinico(
     var escuchando by remember { mutableStateOf(false) }
     var parcial by remember { mutableStateOf("") }
     var todos by remember { mutableStateOf(false) }
+    // Un solo dictado por pantalla: este campo es dueño si su token es el activo.
+    val dueno = LocalDictadoActivo.current
+    val yo = remember { Any() }
+    val esActivo = dueno == null || dueno.value === yo
 
     val dictado = recordarReconocedorVoz(
         onTexto = { t, final ->
@@ -318,11 +333,28 @@ internal fun CampoTextoClinico(
                 if (t.isNotBlank()) onChangeActual(agregarDictado(valorActual, t))
             } else parcial = t
         },
-        onEscuchando = { escuchando = it; if (!it) parcial = "" },
+        onEscuchando = {
+            escuchando = it
+            if (!it) {
+                parcial = ""
+                // Terminó (■, error o fin): suelta el micrófono si todavía era suyo.
+                if (dueno != null && dueno.value === yo) dueno.value = null
+            }
+        },
         onError = { Toaster.error(it) },
     )
-    // Si el campo pasa a solo lectura (o sale de pantalla, ver el actual) se deja de escuchar.
+    // Si el campo pasa a solo lectura se deja de escuchar.
     LaunchedEffect(soloLectura) { if (soloLectura && escuchando) dictado.detener() }
+    // Otro campo tomó el micrófono (o la pantalla lo soltó): este se detiene.
+    LaunchedEffect(esActivo) { if (!esActivo && escuchando) dictado.detener() }
+    // Al salir de la composición (cambio de paso, salir de la atención) se corta
+    // y se libera el turno.
+    DisposableEffect(Unit) {
+        onDispose {
+            if (escuchando) dictado.detener()
+            if (dueno != null && dueno.value === yo) dueno.value = null
+        }
+    }
 
     Column(Modifier.fillMaxWidth()) {
         EtqForm(label)
@@ -340,7 +372,13 @@ internal fun CampoTextoClinico(
                     Box(
                         Modifier.size(36.dp).clip(CircleShape)
                             .background(if (escuchando) c.error else c.chipBg)
-                            .clickable { if (escuchando) dictado.detener() else dictado.iniciarContinuo() }
+                            .clickable {
+                                if (escuchando) dictado.detener()
+                                else {
+                                    dueno?.value = yo
+                                    dictado.iniciarContinuo()
+                                }
+                            }
                             .semantics { contentDescription = if (escuchando) "Detener dictado" else "Dictar $label" },
                         contentAlignment = Alignment.Center,
                     ) { Text(if (escuchando) "■" else "🎤", fontSize = 15.sp, color = if (escuchando) c.sobreNavy else c.navy) }

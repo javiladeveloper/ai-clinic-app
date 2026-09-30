@@ -120,7 +120,33 @@ data class CitaConsultaApp(
     val paciente: PacienteConsultaApp? = null,
     val terapeuta: NombreRef? = null,
     val procedimiento: NombreRef? = null,
+    val tratamiento: TratamientoConsultaApp? = null,
 )
+
+/**
+ * El servicio del tratamiento de la cita, con sus plantillas de consentimiento
+ * (`tratamiento.procedimiento` del contrato §2). Una plantilla activa = el
+ * procedimiento REQUIERE consentimiento (misma regla que el endpoint).
+ */
+@Serializable
+data class ProcedimientoTratamientoApp(
+    val id: String? = null,
+    val nombre: String = "",
+    val especialidad_id: String? = null,
+    val plantillas: List<PlantillaServicioApp> = emptyList(),
+)
+
+/** `cita.tratamiento`: solo lo que la pantalla usa. */
+@Serializable
+data class TratamientoConsultaApp(
+    val id: String? = null,
+    val diagnostico: String? = null,
+    val procedimiento: ProcedimientoTratamientoApp? = null,
+)
+
+/** ¿El servicio de la cita pide consentimiento? (plantillas activas, como la web). */
+fun requiereConsentimiento(cita: CitaConsultaApp): Boolean =
+    cita.tratamiento?.procedimiento?.plantillas?.any { it.activo } == true
 
 @Serializable
 data class RecetaBreve(

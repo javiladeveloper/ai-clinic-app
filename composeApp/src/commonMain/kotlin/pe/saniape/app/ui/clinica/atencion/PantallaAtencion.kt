@@ -34,11 +34,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -105,8 +108,9 @@ fun PantallaAtencion(
     // Terminada → de vuelta a la agenda.
     LaunchedEffect(vm.terminada) { if (vm.terminada) onSalir() }
 
-    // Consentimiento emitido al abrir (el servidor lo deja PENDIENTE): se avisa una vez.
-    var avisoCi by remember { mutableStateOf(false) }
+    // Consentimiento emitido al abrir (el servidor lo deja PENDIENTE): se avisa una
+    // vez (saveable: al rotar no se repite el aviso).
+    var avisoCi by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(vm.datos?.flags?.consentimientosEmitidos) {
         if (!avisoCi && (vm.datos?.flags?.consentimientosEmitidos ?: 0) > 0) {
             avisoCi = true
@@ -119,28 +123,36 @@ fun PantallaAtencion(
     val tecladoAbierto = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val d = vm.datos
 
-    Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().imePadding()) {
-            if (d == null) {
-                CabeceraSimple(onAgenda = ::intentarSalir)
-                Box(Modifier.fillMaxSize().padding(Sania.dim.xl), contentAlignment = Alignment.Center) {
-                    val err = vm.error
-                    if (err != null && !vm.cargando) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(err, color = c.error, fontSize = Sania.txt.cuerpo, textAlign = TextAlign.Center)
-                            Spacer(Modifier.height(Sania.dim.md))
-                            BotonPie("Reintentar", primario = true, onClick = { vm.cargar() })
-                        }
-                    } else {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(color = c.navy)
-                            Spacer(Modifier.height(Sania.dim.md))
-                            Text("Cargando la atención…", color = c.textoSuave, fontSize = Sania.txt.pequeno)
+    // Un solo dictado a la vez en toda la pantalla (ver CampoTextoClinico). Al
+    // cambiar de paso o salir de la atención se suelta: el campo que escuchaba
+    // se detiene.
+    val dictadoActivo = remember { mutableStateOf<Any?>(null) }
+    DisposableEffect(vm.paso) { onDispose { dictadoActivo.value = null } }
+
+    CompositionLocalProvider(LocalDictadoActivo provides dictadoActivo) {
+        Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().imePadding()) {
+                if (d == null) {
+                    CabeceraSimple(onAgenda = ::intentarSalir)
+                    Box(Modifier.fillMaxSize().padding(Sania.dim.xl), contentAlignment = Alignment.Center) {
+                        val err = vm.error
+                        if (err != null && !vm.cargando) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(err, color = c.error, fontSize = Sania.txt.cuerpo, textAlign = TextAlign.Center)
+                                Spacer(Modifier.height(Sania.dim.md))
+                                BotonPie("Reintentar", primario = true, onClick = { vm.cargar() })
+                            }
+                        } else {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(color = c.navy)
+                                Spacer(Modifier.height(Sania.dim.md))
+                                Text("Cargando la atención…", color = c.textoSuave, fontSize = Sania.txt.pequeno)
+                            }
                         }
                     }
+                } else {
+                    ContenidoAtencion(vm, d, acciones, tecladoAbierto, ::intentarSalir, onVerFicha, onOdontograma)
                 }
-            } else {
-                ContenidoAtencion(vm, d, acciones, tecladoAbierto, ::intentarSalir, onVerFicha, onOdontograma)
             }
         }
     }

@@ -284,7 +284,8 @@ private fun CampoNumero(
     OutlinedTextField(
         value = valor, onValueChange = onCambio,
         singleLine = true, isError = fuera, enabled = habilitado,
-        colors = coloresCampoForm(),
+        // En solo lectura el valor se lee entero (no el gris de "inactivo").
+        colors = coloresCampoForm(legibleDeshabilitado = !habilitado),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
         suffix = unidad?.let { u -> { Text(u, color = c.textoSuave, fontSize = 12.sp) } },
         // Accesibilidad: el lector de pantalla anuncia qué medida es (la presión no lleva etiqueta propia).

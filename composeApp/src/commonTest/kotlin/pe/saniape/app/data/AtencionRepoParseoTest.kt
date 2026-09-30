@@ -14,6 +14,7 @@ import pe.saniape.app.data.staff.AtencionRepo
 import pe.saniape.app.data.staff.BorradorAtencion
 import pe.saniape.app.data.staff.DiagnosticoCie
 import pe.saniape.app.data.staff.ExamenSolicitado
+import pe.saniape.app.data.staff.requiereConsentimiento
 
 /**
  * Parseo de `GET /api/staff/atencion/consulta` y armado del cuerpo de `guardar`.
@@ -119,11 +120,20 @@ class AtencionRepoParseoTest {
         assertTrue(d.flags.puedeAtender)
         assertFalse(d.flags.soloLectura)
         assertEquals(36, d.flags.edad)
+        assertNull(d.cita.tratamiento)
+        assertFalse(requiereConsentimiento(d.cita))
     }
 
     @Test fun atencionNulaQuedaNula() {
         val sinAtencion = """
-            { "ok": true, "cita": { "id": "c2", "tipo": "Sesión", "costo": 0 },
+            { "ok": true, "cita": { "id": "c2", "tipo": "Sesión", "costo": 0,
+                "tratamiento": { "id": "tr1", "diagnostico": "Gonartrosis", "cita_origen_id": "c1",
+                  "estado_pago": "Pendiente", "precio_acordado": 300,
+                  "procedimiento": { "id": "pr1", "nombre": "Infiltración de rodilla", "especialidad_id": "esp-trauma",
+                    "plantillas": [
+                      { "id": "pl-vieja", "procedimiento": "Infiltración", "activo": false },
+                      { "id": "pl1", "procedimiento": "Infiltración de rodilla", "activo": true }
+                    ] } } },
               "atencion": null, "motivoSugerido": "rodilla",
               "diagnosticosSugeridos": [{ "codigo": null, "descripcion": "Gonartrosis", "tipo": "P" }],
               "flags": { "esProcedimiento": true, "puedeAtender": false, "soloLectura": true } }
@@ -134,6 +144,17 @@ class AtencionRepoParseoTest {
         assertEquals("rodilla", d.motivoSugerido)
         assertEquals(DiagnosticoCie(null, "Gonartrosis", "P"), d.diagnosticosSugeridos.single())
         assertTrue(d.flags.soloLectura)
+        // tratamiento.procedimiento.plantillas: una activa = requiere consentimiento.
+        val proc = d.cita.tratamiento?.procedimiento
+        assertEquals("pr1", proc?.id)
+        assertEquals("Infiltración de rodilla", proc?.nombre)
+        assertEquals(listOf("pl-vieja", "pl1"), proc?.plantillas?.map { it.id })
+        assertEquals(listOf(false, true), proc?.plantillas?.map { it.activo })
+        assertTrue(requiereConsentimiento(d.cita))
+        // Solo plantillas inactivas = no lo requiere.
+        val soloInactivas = d.cita.copy(tratamiento = d.cita.tratamiento?.copy(
+            procedimiento = proc?.copy(plantillas = proc.plantillas.filter { !it.activo })))
+        assertFalse(requiereConsentimiento(soloInactivas))
     }
 
     @Test fun cuerpoDeGuardarLlevaTodoYLosDefaults() {

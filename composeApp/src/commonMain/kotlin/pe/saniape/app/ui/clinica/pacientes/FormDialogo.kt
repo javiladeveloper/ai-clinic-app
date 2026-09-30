@@ -132,9 +132,21 @@ fun TarjetaForm(titulo: String, icono: String, contenido: @Composable ColumnScop
  * sobre todo en tema oscuro (reporte DALU 2026-07-23, campo DNI del alta).
  */
 @Composable
-fun coloresCampoForm(): TextFieldColors {
+fun coloresCampoForm(
+    /**
+     * true = deshabilitado se LEE entero (texto en color normal, no el gris
+     * apagado de Material): campos en solo lectura de una HC, como los vitales
+     * de la consulta guiada. Por defecto, el look de siempre.
+     */
+    legibleDeshabilitado: Boolean = false,
+): TextFieldColors {
     val c = Sania.colors
-    return OutlinedTextFieldDefaults.colors(
+    return if (legibleDeshabilitado) OutlinedTextFieldDefaults.colors(
+        focusedTextColor = c.texto, unfocusedTextColor = c.texto, disabledTextColor = c.texto,
+        cursorColor = c.navy,
+        focusedBorderColor = c.navy, unfocusedBorderColor = c.borde, disabledBorderColor = c.borde,
+        focusedContainerColor = c.superficie, unfocusedContainerColor = c.superficie,
+    ) else OutlinedTextFieldDefaults.colors(
         focusedTextColor = c.texto, unfocusedTextColor = c.texto,
         cursorColor = c.navy,
         focusedBorderColor = c.navy, unfocusedBorderColor = c.borde,
