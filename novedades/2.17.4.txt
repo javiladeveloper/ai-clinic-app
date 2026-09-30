@@ -1,0 +1,9 @@
+# Novedades de la 2.17.4 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+La agenda muestra primero a quién falta atender, el triaje del día ya no se repite y el teclado deja siempre a mano el botón de guardar.
+---
+Clínicas:
+• Agenda del día: las citas ya atendidas bajan al final, bajo "✓ Ya atendidas"; arriba queda a quién falta atender.
+• Triaje: si el paciente ya pasó triaje hoy en otra cita, sus signos vitales vienen cargados; solo revisas y guardas.
+• Agendar cita: con el teclado abierto aparece "Guardar" arriba y se puede bajar hasta el final del formulario.
+• Formularios: con el teclado abierto el botón de guardar queda solo arriba (ya no sale dos veces).
