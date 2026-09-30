@@ -91,6 +91,52 @@ class BorradorDesdeTest {
     }
 
     @Test
+    fun profesional_atencionLuegoCitaLuegoYo() {
+        // Sin atención y la cita sin profesional: el vinculado (como la web).
+        val sinProfesional = AtencionRepo.parsearConsulta(
+            """{ "ok": true, "cita": { "id": "c1", "tratamiento_id": "tr1" }, "atencion": null }"""
+        )
+        assertEquals("t5", borradorDesde(sinProfesional, miTerapeutaId = "t5").terapeutaId)
+        assertNull(borradorDesde(sinProfesional).terapeutaId)
+        // El de la cita (y el de la atención) mandan sobre el vinculado.
+        assertEquals("t-cita", borradorDesde(consulta("null"), miTerapeutaId = "t5").terapeutaId)
+        assertEquals("t-at", borradorDesde(consulta("""{ "terapeuta_id": "t-at" }"""), miTerapeutaId = "t5").terapeutaId)
+    }
+
+    @Test
+    fun prefill_dxSugeridoSinGuardados_quedaPorGuardar() {
+        // Diagnósticos sugeridos y ninguno guardado: se precargan y quedan por guardar.
+        assertTrue(prefillPorGuardar(consulta("{}", """, "diagnosticosSugeridos": [{ "codigo": "M54.5", "descripcion": "Lumbago" }]""")))
+        assertTrue(prefillPorGuardar(consulta("null", """, "diagnosticosSugeridos": [{ "codigo": "M54.5", "descripcion": "Lumbago" }]""")))
+        // Ya hay diagnósticos guardados: el sugerido no se usa.
+        assertFalse(
+            prefillPorGuardar(
+                consulta(
+                    """{ "diagnosticos": [{ "codigo": "R51", "descripcion": "Cefalea" }] }""",
+                    """, "diagnosticosSugeridos": [{ "codigo": "Z00", "descripcion": "Otro" }]""",
+                )
+            )
+        )
+        // Solo el motivo sugerido también cuenta; sin nada sugerido, no.
+        assertTrue(prefillPorGuardar(consulta("{}", """, "motivoSugerido": "Dolor de rodilla"""")))
+        assertFalse(prefillPorGuardar(consulta("null")))
+    }
+
+    @Test
+    fun avisoGuardadoAutomatico_textoDelServidorEnUnaLinea() {
+        assertEquals("No se pudo guardar: Presión incompleta", avisoGuardadoAutomatico("Presión incompleta"))
+        assertEquals("No se pudo guardar: Presión incompleta…", avisoGuardadoAutomatico("Presión incompleta\nTalla fuera de rango"))
+        assertEquals(
+            "No se pudo guardar. Tus cambios siguen aquí; toca Guardar para reintentar.",
+            avisoGuardadoAutomatico(null),
+        )
+        assertEquals(
+            "No se pudo guardar. Tus cambios siguen aquí; toca Guardar para reintentar.",
+            avisoGuardadoAutomatico("  "),
+        )
+    }
+
+    @Test
     fun camposFrases_procedimientoSoloIndicaciones() {
         assertEquals(setOf("motivo_consulta", "examen_fisico", "tratamiento"), camposFrases(false))
         assertEquals(setOf("tratamiento"), camposFrases(true))

@@ -33,6 +33,7 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -276,40 +277,43 @@ private fun BloqueExamenes(vm: AtencionViewModel, d: DatosConsultaApp, soloLectu
             Texto("Ninguno pedido.")
         } else {
             examenes.forEachIndexed { i, e ->
-                if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
-                Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(e.nombre, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        if (!soloLectura && e.documento_id == null) {
-                            TextButton(onClick = { vm.examenes(examenes.filterIndexed { j, _ -> j != i }) }) {
-                                Text("Quitar", color = c.error, fontSize = 12.sp)
+                // Clave por fila (índice + nombre): el estado de una fila no se cruza con el de otro examen.
+                key(i, e.nombre) {
+                    if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
+                    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(e.nombre, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            if (!soloLectura && e.documento_id == null) {
+                                TextButton(onClick = { vm.examenes(examenes.filterIndexed { j, _ -> j != i }) }) {
+                                    Text("Quitar", color = c.error, fontSize = 12.sp)
+                                }
                             }
                         }
-                    }
-                    if (!soloLectura) {
-                        OutlinedTextField(
-                            value = e.indicacion.orEmpty(),
-                            onValueChange = { v -> vm.examenes(examenes.mapIndexed { j, x -> if (j == i) x.copy(indicacion = v.take(200)) else x }) },
-                            modifier = Modifier.fillMaxWidth(), singleLine = true,
-                            placeholder = { Text("Indicación (ayuno 8 h…)", fontSize = 13.sp) },
-                            colors = coloresCampoForm(), shape = RoundedCornerShape(Sania.shape.sm.dp),
-                        )
-                    } else if (!e.indicacion.isNullOrBlank()) {
-                        Text("(${e.indicacion})", color = c.textoSuave, fontSize = 12.sp)
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    when {
-                        e.documento_id != null -> Text(
-                            "📎 Resultado adjunto" + (e.fecha_resultado?.let { " · ${fechaLegibleCorta(it)}" } ?: "") +
-                                (e.resultado?.takeIf { it.isNotBlank() }?.let { " — $it" } ?: ""),
-                            color = c.ok, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                        )
-                        !soloLectura -> BotonChico(
-                            if (vm.accionando == "subir:$i") "Subiendo…" else "📎 Adjuntar resultado", c.navy, c.superficie, borde = c.borde,
-                            habilitado = vm.accionando == null,
-                        ) {
-                            indicePendiente = i
-                            elegirArchivo()
+                        if (!soloLectura) {
+                            OutlinedTextField(
+                                value = e.indicacion.orEmpty(),
+                                onValueChange = { v -> vm.examenes(examenes.mapIndexed { j, x -> if (j == i) x.copy(indicacion = v.take(200)) else x }) },
+                                modifier = Modifier.fillMaxWidth(), singleLine = true,
+                                placeholder = { Text("Indicación (ayuno 8 h…)", fontSize = 13.sp) },
+                                colors = coloresCampoForm(), shape = RoundedCornerShape(Sania.shape.sm.dp),
+                            )
+                        } else if (!e.indicacion.isNullOrBlank()) {
+                            Text("(${e.indicacion})", color = c.textoSuave, fontSize = 12.sp)
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        when {
+                            e.documento_id != null -> Text(
+                                "📎 Resultado adjunto" + (e.fecha_resultado?.let { " · ${fechaLegibleCorta(it)}" } ?: "") +
+                                    (e.resultado?.takeIf { it.isNotBlank() }?.let { " — $it" } ?: ""),
+                                color = c.ok, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                            )
+                            !soloLectura -> BotonChico(
+                                if (vm.accionando == "subir:$i") "Subiendo…" else "📎 Adjuntar resultado", c.navy, c.superficie, borde = c.borde,
+                                habilitado = vm.accionando == null,
+                            ) {
+                                indicePendiente = i
+                                elegirArchivo()
+                            }
                         }
                     }
                 }

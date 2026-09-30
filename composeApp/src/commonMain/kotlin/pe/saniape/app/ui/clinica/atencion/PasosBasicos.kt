@@ -158,7 +158,6 @@ internal fun PasoExamen(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura:
 internal fun PasoProcedimiento(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura: Boolean, acciones: AccionesNativas) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
-    var firmando by remember { mutableStateOf<String?>(null) }
     var imprimiendo by remember { mutableStateOf<String?>(null) }
     val cis = d.consentimientos.filter { it.estado != "Anulado" }
     // Regla de la web: lo pide el servicio si tiene alguna plantilla ACTIVA
@@ -176,12 +175,11 @@ internal fun PasoProcedimiento(vm: AtencionViewModel, d: DatosConsultaApp, soloL
         }
     }
 
+    // En el scope del VM (vm.accionando = "firma:<id>"): cambiar de paso a mitad
+    // del envío no lo corta ni rehabilita los botones.
     fun marcar(ci: ConsentimientoApp, resultado: String) {
-        if (firmando != null) return
-        firmando = ci.id
-        scope.launch {
+        vm.lanzar("firma:${ci.id}") {
             val ok = vm.accionPlan { AtencionRepo.firmaConsentimiento(d.cita.id, ci.id, resultado) }
-            firmando = null
             if (ok) Toaster.exito(if (resultado == "Firmado") "Consentimiento firmado registrado" else "Negativa registrada")
         }
     }
@@ -204,7 +202,7 @@ internal fun PasoProcedimiento(vm: AtencionViewModel, d: DatosConsultaApp, soloL
                     FilaConsentimiento(
                         ci = ci,
                         puedeFirmar = ci.estado == "Pendiente" && !soloLectura,
-                        ocupado = firmando == ci.id,
+                        ocupado = vm.accionando != null,
                         imprimiendo = imprimiendo == ci.id,
                         onImprimir = { imprimir(ci) },
                         onFirmo = { marcar(ci, "Firmado") },

@@ -99,7 +99,7 @@ fun PantallaAtencion(
     onOdontograma: (citaId: String) -> Unit,
 ) {
     val c = Sania.colors
-    val vm: AtencionViewModel = viewModel(key = "$citaId:$apertura") { AtencionViewModel(citaId) }
+    val vm: AtencionViewModel = viewModel(key = "$citaId:$apertura") { AtencionViewModel(citaId, ctx.miTerapeutaId) }
     val scope = rememberCoroutineScope()
     var confirmarSalir by remember { mutableStateOf(false) }
 
@@ -188,7 +188,6 @@ private fun ColumnScope.ContenidoAtencion(
     onOdontograma: (citaId: String) -> Unit,
 ) {
     val c = Sania.colors
-    val scope = rememberCoroutineScope()
     val soloLectura = vm.soloLectura
     val pacienteId = d.cita.paciente_id ?: d.cita.paciente?.id
     var verFiliacion by remember { mutableStateOf(false) }
@@ -196,7 +195,7 @@ private fun ColumnScope.ContenidoAtencion(
     Cabecera(
         d = d,
         accionTeclado = if (tecladoAbierto && vm.sucio && !soloLectura) {
-            { scope.launch { vm.guardar() } }
+            { vm.lanzar("guardar") { vm.guardar() } }
         } else null,
         guardando = vm.guardando,
         onAgenda = onAgenda,
@@ -488,7 +487,6 @@ private fun BarraPasos(vm: AtencionViewModel) {
 @Composable
 internal fun PieNavegacion(vm: AtencionViewModel, soloLectura: Boolean) {
     val c = Sania.colors
-    val scope = rememberCoroutineScope()
     Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
     Row(
         Modifier.fillMaxWidth().background(c.superficie).padding(horizontal = Sania.dim.lg, vertical = 10.dp),
@@ -498,7 +496,7 @@ internal fun PieNavegacion(vm: AtencionViewModel, soloLectura: Boolean) {
         Spacer(Modifier.weight(1f))
         if (!soloLectura && vm.sucio) {
             BotonPie(if (vm.guardando) "Guardando…" else "Guardar", habilitado = !vm.guardando,
-                onClick = { scope.launch { vm.guardar() } })
+                onClick = { vm.lanzar("guardar") { vm.guardar() } })
         }
         if (!vm.esUltimoPaso) BotonPie("Siguiente →", primario = true, onClick = { vm.siguiente() })
     }

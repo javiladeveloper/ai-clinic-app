@@ -61,7 +61,6 @@ kotlin {
             implementation(libs.androidx.core.ktx)
             // Driver de la BD local (cola offline)
             implementation(libs.sqldelight.android)
-            implementation(libs.androidx.browser)
             implementation(libs.kotlinx.coroutines.android)
             implementation(libs.ktor.client.okhttp)
             // Engine Ktor de Android (Supabase lo usa en Android). Es platform-specific:

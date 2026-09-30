@@ -30,16 +30,28 @@ import pe.saniape.app.ui.Toaster
  * SIEMPRE todas las claves (textos y vitales) y se manda entero.
  *
  * Carga sola al crearse; [cargar] sirve también de "Reintentar".
+ *
+ * [miTerapeutaId]: el profesional vinculado a quien usa la app; como la web, es
+ * el último respaldo del "profesional que atiende" (atención → cita → yo).
  */
-class AtencionViewModel(private val citaId: String) : ViewModel() {
+class AtencionViewModel(
+    private val citaId: String,
+    private val miTerapeutaId: String? = null,
+) : ViewModel() {
 
     var datos by mutableStateOf<DatosConsultaApp?>(null); private set
     /** Carga fallida (la pantalla ofrece reintentar). */
     var error by mutableStateOf<String?>(null); private set
     var cargando by mutableStateOf(true); private set
     var borrador by mutableStateOf(BorradorAtencion()); private set
-    /** Hay cambios sin guardar. */
+    /** Hay cambios del usuario sin guardar (lo que pregunta "¿Salir sin guardar?"). */
     var sucio by mutableStateOf(false); private set
+    /**
+     * Lo precargado al abrir (motivo o diagnóstico sugeridos) todavía no está en
+     * la historia: se manda en el próximo guardado, pero por sí solo NO cuenta
+     * como "cambios sin guardar" (salir no pregunta por algo que no escribió).
+     */
+    var sucioPorPrefill by mutableStateOf(false); private set
     /** Índice en [pasos]. */
     var paso by mutableStateOf(0); private set
     var guardando by mutableStateOf(false); private set
@@ -75,9 +87,10 @@ class AtencionViewModel(private val citaId: String) : ViewModel() {
                 is AtencionRepo.Carga.Ok -> {
                     val d = r.datos
                     datos = d
-                    borrador = borradorDesde(d)
-                    // El motivo sugerido (de la cita/reserva) queda como cambio por guardar.
-                    sucio = motivoSugeridoAplica(d) && !d.flags.soloLectura
+                    borrador = borradorDesde(d, miTerapeutaId)
+                    sucio = false
+                    // Motivo / diagnóstico sugeridos (de la cita o el tratamiento) quedan por guardar.
+                    sucioPorPrefill = prefillPorGuardar(d) && !d.flags.soloLectura
                     paso = 0
                 }
                 is AtencionRepo.Carga.Error -> {
@@ -137,37 +150,44 @@ class AtencionViewModel(private val citaId: String) : ViewModel() {
     private suspend fun guardarInterno(avisarExito: Boolean, avisarError: Boolean): Boolean {
         if (soloLectura) return true
         return candado.withLock {
-            if (!sucio && datos?.atencion != null) return@withLock true
+            if (!sucio && !sucioPorPrefill && datos?.atencion != null) return@withLock true
             guardando = true
-            val enviado = borrador
-            val r = AtencionRepo.guardar(citaId, enviado)
-            if (r.registrada) {
-                // Si el usuario siguió escribiendo mientras se guardaba, sigue sucio.
-                if (borrador == enviado) sucio = false
-                if (avisarExito) Toaster.exito("Guardado en la historia clínica")
-                recargarDatos()
-            } else if (avisarError) {
-                Toaster.error(r.rechazo?.error ?: "No se pudo guardar la atención.")
+            try {
+                val enviado = borrador
+                val r = AtencionRepo.guardar(citaId, enviado)
+                ultimoRechazo = r.rechazo?.error
+                if (r.registrada) {
+                    // Lo precargado ya viajó; si el usuario siguió escribiendo mientras se guardaba, sigue sucio.
+                    sucioPorPrefill = false
+                    if (borrador == enviado) sucio = false
+                    if (avisarExito) Toaster.exito("Guardado en la historia clínica")
+                    recargarDatos()
+                } else if (avisarError) {
+                    Toaster.error(r.rechazo?.error ?: "No se pudo guardar la atención.")
+                }
+                r.registrada
+            } finally {
+                guardando = false
             }
-            guardando = false
-            r.registrada
         }
     }
+
+    /** El texto del servidor del último guardado rechazado (lo usa el aviso del guardado automático). */
+    private var ultimoRechazo: String? = null
 
     // ── Navegación entre pasos ───────────────────────────────────────────────
 
     /**
-     * Cambia de paso; si hay cambios los guarda en segundo plano. El paso cambia
-     * aunque el guardado falle (lo escrito sigue en el borrador y sigue sucio).
+     * Cambia de paso; si hay algo por guardar lo guarda en segundo plano. El paso
+     * cambia aunque el guardado falle (lo escrito sigue en el borrador y sigue
+     * sucio); el aviso lleva el texto del servidor ("Presión incompleta"…).
      */
     fun irA(i: Int) {
         if (pasos.isEmpty()) return
         val destino = i.coerceIn(0, pasos.lastIndex)
-        if (sucio && !soloLectura) {
+        if ((sucio || sucioPorPrefill) && !soloLectura) {
             viewModelScope.launch {
-                if (!guardar(silencioso = true)) {
-                    Toaster.error("No se pudo guardar. Tus cambios siguen aquí; toca Guardar para reintentar.")
-                }
+                if (!guardar(silencioso = true)) Toaster.error(avisoGuardadoAutomatico(ultimoRechazo))
             }
         }
         paso = destino
@@ -270,15 +290,35 @@ internal fun vitalATexto(v: Double?): String {
     return if (v % 1.0 == 0.0 && abs(v) < 1e15) v.toLong().toString() else v.toString()
 }
 
+/**
+ * Aviso del guardado automático fallido, en UNA línea: con el texto del servidor
+ * si vino (primera línea + "…" si traía más), si no el genérico.
+ */
+internal fun avisoGuardadoAutomatico(errorServidor: String?): String {
+    val lineas = errorServidor?.trim()?.lines()?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
+    if (lineas.isEmpty()) return "No se pudo guardar. Tus cambios siguen aquí; toca Guardar para reintentar."
+    return "No se pudo guardar: " + lineas.first() + (if (lineas.size > 1) "…" else "")
+}
+
+/**
+ * Lo que se precarga al abrir y todavía no está en la historia: el motivo
+ * sugerido o los diagnósticos sugeridos (sin diagnósticos guardados). Se manda
+ * en el próximo guardado (`sucioPorPrefill`), sin contar como cambio del usuario.
+ */
+internal fun prefillPorGuardar(d: DatosConsultaApp): Boolean =
+    motivoSugeridoAplica(d) ||
+        (d.atencion?.diagnosticos.isNullOrEmpty() && d.diagnosticosSugeridos.isNotEmpty())
+
 /** true si el motivo está vacío y la cita trae uno sugerido (se precarga y queda por guardar). */
 internal fun motivoSugeridoAplica(d: DatosConsultaApp): Boolean =
     d.atencion?.motivo_consulta.isNullOrBlank() && d.motivoSugerido.isNotBlank()
 
 /**
  * Borrador inicial desde `GET consulta`. Lleva TODAS las claves (9 textos y 9
- * vitales) porque `guardar` reemplaza la atención completa.
+ * vitales) porque `guardar` reemplaza la atención completa. El profesional que
+ * atiende, como la web: el de la atención → el de la cita → [miTerapeutaId].
  */
-internal fun borradorDesde(d: DatosConsultaApp): BorradorAtencion {
+internal fun borradorDesde(d: DatosConsultaApp, miTerapeutaId: String? = null): BorradorAtencion {
     val a = d.atencion
     val textos = mapOf(
         "motivo_consulta" to (a?.motivo_consulta ?: ""),
@@ -303,7 +343,7 @@ internal fun borradorDesde(d: DatosConsultaApp): BorradorAtencion {
         "perimetro_abdominal" to vitalATexto(a?.perimetro_abdominal),
     )
     return BorradorAtencion(
-        terapeutaId = a?.terapeuta_id ?: d.cita.terapeuta_id,
+        terapeutaId = a?.terapeuta_id ?: d.cita.terapeuta_id ?: miTerapeutaId,
         tratamientoId = d.cita.tratamiento_id,
         textos = textos,
         vitales = vitales,

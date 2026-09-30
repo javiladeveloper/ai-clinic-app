@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.CitaStaff
+import pe.saniape.app.ui.clinica.agenda.modales.textoSoles
 import pe.saniape.app.data.staff.EtapaLlegada
 import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.recordarAcciones
@@ -177,7 +178,7 @@ fun TarjetaCita(
                 // Sin permiso de cobrar, la deuda tiene que verse igual: el profesional
                 // necesita saber que el paciente no pagó aunque no sea él quien cobra.
                 if (cobrable && !puedeCobrar && !pagada && cita.estado == "Completada") {
-                    add(Triple("⚠ Debe S/ ${(cita.costo ?: 0.0).toLong()}", c.error, c.errorBg))
+                    add(Triple("⚠ Debe ${textoSoles(cita.costo ?: 0.0)}", c.error, c.errorBg))
                 }
                 if (cita.origen == "online") add(Triple("🌐 Web", c.purple, c.purpleBg))
                 if (cita.terapeutaId == null && cita.origen == "online") add(Triple("⚠ Asignar", c.pend, c.pendBg))

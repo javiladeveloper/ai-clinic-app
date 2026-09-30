@@ -140,7 +140,7 @@ internal fun PasoCierre(
         }
 
         // ── Profesional que atendió ──
-        SelectorAtendio(vm, d, ctx, bloqueado = soloLectura || completada)
+        SelectorAtendio(vm, d, bloqueado = soloLectura || completada)
 
         // ── 💰 Cobro ──
         BloqueCobro(vm, d, ctx, onVerFicha)
@@ -243,15 +243,14 @@ private fun FilaResumen(etiqueta: String, valor: String?) {
 
 /**
  * "Profesional que atendió (firma y sella)". Se ofrecen los activos + el ya
- * elegido. Bloqueado en solo lectura, con la atención terminada, o si quien usa
- * la app es un profesional vinculado que no es Admin (firma él mismo).
+ * elegido. Como la web, solo se bloquea en solo lectura o con la atención terminada.
  */
 @Composable
-private fun SelectorAtendio(vm: AtencionViewModel, d: DatosConsultaApp, ctx: ContextoStaff, bloqueado: Boolean) {
+private fun SelectorAtendio(vm: AtencionViewModel, d: DatosConsultaApp, bloqueado: Boolean) {
     val c = Sania.colors
     val elegidoId = vm.borrador.terapeutaId
     val profesionales = d.profesionales.filter { it.estado != "Inactivo" || it.id == elegidoId }
-    val fijo = bloqueado || (ctx.miTerapeutaId != null && !ctx.esAdmin)
+    val fijo = bloqueado
     var menu by remember { mutableStateOf(false) }
     fun etiqueta(id: String?): String {
         val p = d.profesionales.firstOrNull { it.id == id } ?: return "— Elegir —"

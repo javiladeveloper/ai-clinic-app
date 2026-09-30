@@ -234,6 +234,8 @@ object AtencionRepo {
                 }))
             }
             aResultado(resp)
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
         } catch (e: Exception) {
             sinRed
         }
@@ -270,6 +272,8 @@ object AtencionRepo {
                 setBody(cuerpo.toString())
             }
             aResultado(resp)
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
         } catch (e: Exception) {
             sinRed
         }
