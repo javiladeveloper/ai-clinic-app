@@ -1,0 +1,6 @@
+# Novedades de la 2.17.6 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+"Atender" y las recetas ya se abren dentro de la app, sin saltar a un navegador aparte.
+---
+Clínicas:
+• ▶ Atender (consulta guiada) y las recetas de la ficha se abren dentro de la app; el botón atrás vuelve a la agenda. Si ya tienes sesión en la web, no te pide entrar de nuevo.
