@@ -46,6 +46,7 @@ import pe.saniape.app.ui.clinica.agenda.componentes.FiltrosAgenda
 import pe.saniape.app.ui.clinica.agenda.componentes.TarjetaCita
 import pe.saniape.app.ui.clinica.agenda.componentes.TiraDias
 import pe.saniape.app.ui.clinica.agenda.modales.ConfirmacionAccion
+import pe.saniape.app.ui.clinica.agenda.modales.ModalCobrarCita
 import pe.saniape.app.ui.clinica.agenda.modales.ModalCompletar
 import pe.saniape.app.ui.clinica.agenda.modales.ModalEditarCita
 import pe.saniape.app.ui.clinica.agenda.modales.ModalPasarEvaluacion
@@ -102,6 +103,8 @@ fun PantallaAgenda(
     var confirmar by remember { mutableStateOf<Pair<CitaStaff, AccionCita>?>(null) }
     var editar by remember { mutableStateOf<CitaStaff?>(null) }
     var pasarEval by remember { mutableStateOf<CitaStaff?>(null) }
+    // "💰 Cobrar" de una Consulta/Evaluación (método + fecha del pago).
+    var cobrar by remember { mutableStateOf<CitaStaff?>(null) }
     // "✗ No vino" de una vencida: confirmación con motivo + "📅 Reponer".
     var noVino by remember { mutableStateOf<CitaStaff?>(null) }
     // Derivación cuya evaluación se está agendando: se marca procesada SOLO si la
@@ -463,6 +466,7 @@ fun PantallaAgenda(
                                         AccionTarjeta.CrearTratamiento -> abrirTratamientoDeCita(cita, null)
                                         AccionTarjeta.Llego -> vm.marcarLlegada(cita)
                                         AccionTarjeta.Triaje -> triajeCita = cita
+                                        AccionTarjeta.Cobrar -> cobrar = cita
                                         // La consulta guiada aún no está nativa: se abre en la web,
                                         // pero DENTRO de la app (Custom Tab), no en un navegador externo.
                                         AccionTarjeta.Atender -> {
@@ -478,6 +482,7 @@ fun PantallaAgenda(
                                 // web), solo con permiso 'sesiones' — no 'agendar'.
                                 crearTratamiento = ctx.puede("sesiones") && vm.flujoDe(cita).esCitaQueEvalua(cita.tipo),
                                 flujo = vm.flujoDe(cita),
+                                puedeCobrar = ctx.puede("pagos"),
                                 sala = vm.etapaDe(cita)?.let { etapa ->
                                     val a = vm.atencionDe(cita)
                                     pe.saniape.app.ui.clinica.agenda.componentes.SalaTarjeta(
@@ -734,6 +739,17 @@ fun PantallaAgenda(
             profesionales = vm.terapeutas,
             onCancelar = { vm.cerrarPedidoProfesional() },
             onElegir = { vm.completarConProfesional(it) },
+        )
+    }
+    cobrar?.let { cita ->
+        ModalCobrarCita(
+            cita = cita,
+            onCancelar = { cobrar = null },
+            onConfirmar = { metodo, modo, fecha ->
+                vm.cobrar(cita, metodo, modo, fecha) { ok -> if (ok) cobrar = null }
+            },
+            guardando = vm.accionando,
+            nombreTipo = vm.flujoDe(cita).nombreTipo(cita.tipo),
         )
     }
     pasarEval?.let { cita ->

@@ -49,6 +49,11 @@ data class CitaStaff(
     /** La del servicio del tratamiento: respaldo cuando la cita no trae la suya (`citaEsDental`). */
     val especialidadServicioId: String? = null,
     val notaRecepcion: String?,   // recordatorio del tratamiento vinculado (📌)
+    /**
+     * Cuándo se cobró la cita (Consulta/Evaluación con costo). null = sin cobrar.
+     * El método no vive en la cita (está en el movimiento de caja que generó el cobro).
+     */
+    val pagadaAt: String? = null,
 )
 
 /**
@@ -126,7 +131,7 @@ object AgendaRepo {
 
     /** Columnas comunes de una cita (con joins). Una sola fuente. */
     const val SELECT_CITA =
-        "id, fecha, hora, estado, tipo, costo, duracion, origen, confirmada_por_paciente, " +
+        "id, fecha, hora, estado, tipo, costo, pagada_at, duracion, origen, confirmada_por_paciente, " +
             "terapeuta_id, paciente_id, tratamiento_id, especialidad_id, " +
             "paciente:pacientes(nombre, telefono), terapeuta:terapeutas(nombre), " +
             "tratamiento:tratamientos!citas_tratamiento_id_fkey(nota_recepcion, procedimiento:procedimientos(nombre, especialidad_id)), " +
@@ -159,6 +164,7 @@ object AgendaRepo {
                     ?.get("especialidad_id")?.let { (it as? JsonPrimitive)?.content?.takeIf { v -> v != "null" } },
                 notaRecepcion = (obj("tratamiento")?.get("nota_recepcion") as? JsonPrimitive)
                     ?.content?.takeIf { it != "null" && it.isNotBlank() },
+                pagadaAt = s("pagada_at"),
             )
     }
 
@@ -227,6 +233,27 @@ object AgendaRepo {
     ): pe.saniape.app.data.offline.ResultadoEscritura = enviarOEncolarDetalle(
         "cita:completar", "/api/staff/cita/completar",
         cuerpoCompletar(citaId, observaciones, diagnostico, derivarEspecialidadId, piezas, congelarOdontograma, terapeutaId, mejorias, eva),
+    )
+
+    /**
+     * Cobrar una Consulta/Evaluación (gemelo del "💰" de /citas web), vía
+     * `/api/staff/cita/cobrar`. [modo]: "cobrar" (ingreso en caja como cita),
+     * "abonar" (entra como pago del tratamiento del paciente) o "gratis" (la cita
+     * queda en S/ 0 y saldada). [fecha] (yyyy-MM-dd) = día en que el paciente pagó
+     * de verdad (p. ej. hoy, por la evaluación de mañana); null = la de la cita.
+     * El endpoint es idempotente por cita (ya cobrada → ok sin duplicar), así que
+     * encolarlo sin señal es seguro.
+     */
+    suspend fun cobrarCita(
+        citaId: String, metodo: String, modo: String, fecha: String?,
+    ): pe.saniape.app.data.offline.ResultadoEscritura = enviarOEncolarDetalle(
+        "cita:cobrar", "/api/staff/cita/cobrar",
+        buildJsonObject {
+            put("citaId", citaId)
+            put("metodo", metodo)
+            put("modo", modo)
+            if (!fecha.isNullOrBlank()) put("fecha", fecha)
+        },
     )
 
     private fun cuerpoCompletar(

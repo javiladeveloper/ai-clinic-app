@@ -72,6 +72,12 @@ fun TarjetaCita(
      * general, que no tiene Evaluación aparte.
      */
     flujo: FlujoClinica = FlujoClinica(),
+    /**
+     * Permiso 'pagos': ofrece "💰 Cobrar" en la Consulta/Evaluación con costo aún
+     * sin cobrar (gemelo de la moneda de /citas web). Sin él, la deuda de una cita
+     * ya atendida se ve igual ("⚠ Debe S/ N"), pero no hay nada que tocar.
+     */
+    puedeCobrar: Boolean = false,
 ) {
     val c = Sania.colors
     val acciones = recordarAcciones()
@@ -154,6 +160,11 @@ fun TarjetaCita(
             // Sala de espera: ○ Por llegar · 🔔 Llegó · 12 min · 🩺 Triaje ✓ PA 120/80 · ▶ En consulta.
             sala?.let { IndicadorLlegada(it) }
 
+            // Dinero de la cita (como la web): solo Consulta/Evaluación con costo; la
+            // sesión se cobra desde su tratamiento, nunca como cita.
+            val cobrable = cita.tipo != "Sesión" && (cita.costo ?: 0.0) > 0 && cita.estado != "Cancelada"
+            val pagada = cita.pagadaAt != null
+
             // Chips: costo, Web, Asignar (discretos, en una línea)
             val chips = buildList {
                 if (puedeVerCosto) {
@@ -161,6 +172,12 @@ fun TarjetaCita(
                         (cita.costo ?: 0.0) > 0 -> add(Triple("S/ ${formato2(cita.costo!!)}", c.teal, c.tealBg))
                         cita.tipo == "Consulta" -> add(Triple("Gratis", c.teal, c.tealBg))
                     }
+                }
+                if (cobrable && puedeCobrar && pagada) add(Triple("💰 Pagado", c.ok, c.okBg))
+                // Sin permiso de cobrar, la deuda tiene que verse igual: el profesional
+                // necesita saber que el paciente no pagó aunque no sea él quien cobra.
+                if (cobrable && !puedeCobrar && !pagada && cita.estado == "Completada") {
+                    add(Triple("⚠ Debe S/ ${(cita.costo ?: 0.0).toLong()}", c.error, c.errorBg))
                 }
                 if (cita.origen == "online") add(Triple("🌐 Web", c.purple, c.purpleBg))
                 if (cita.terapeutaId == null && cita.origen == "online") add(Triple("⚠ Asignar", c.pend, c.pendBg))
@@ -189,7 +206,8 @@ fun TarjetaCita(
             val acc = accionesPara(cita.estado, cita.tipo, odontologia && cita.pacienteId != null,
                 pasarA = flujo.labelEvaluacion.takeIf { flujo.pasaAEvaluacion(cita.tipo) },
                 crearTratamiento = crearTratamiento && cita.pacienteId != null,
-                sala = sala?.takeIf { cita.pacienteId != null })
+                sala = sala?.takeIf { cita.pacienteId != null },
+                cobrar = cobrable && puedeCobrar && !pagada)
             if (acc.isNotEmpty()) {
                 Spacer(Modifier.height(Sania.dim.md))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
@@ -210,6 +228,8 @@ enum class AccionTarjeta {
     Llego, Triaje,
     /** "▶ Atender": la consulta guiada (se abre en la web). */
     Atender,
+    /** "💰 Cobrar": registrar el cobro de una Consulta/Evaluación (método + fecha del pago). */
+    Cobrar,
 }
 
 /**
@@ -262,9 +282,14 @@ private fun accionesPara(
     sala: SalaTarjeta? = null,
     /** Nombre del paso Evaluación en el flujo de la cita; null = no hay paso al que pasar. */
     pasarA: String? = null,
+    /** Consulta/Evaluación con costo, sin cobrar, y quien mira tiene permiso 'pagos'. */
+    cobrar: Boolean = false,
 ): List<Triple<String, AccionTarjeta, Color>> {
     val c = Sania.colors
     val lista = mutableListOf<Triple<String, AccionTarjeta, Color>>()
+    // El dinero va primero, como la moneda de la web: el paciente llega al
+    // mostrador y paga antes de pasar (o paga hoy la evaluación de mañana).
+    if (cobrar) lista.add(Triple("💰 Cobrar", AccionTarjeta.Cobrar, c.ok))
     val activa = estado == "Pendiente" || estado == "Confirmada"
     // SALA DE ESPERA (gemelo de `principalSala` de /citas): la acción del MOMENTO
     // reemplaza a Confirmar/Completar mientras el paciente recorre la sala:
