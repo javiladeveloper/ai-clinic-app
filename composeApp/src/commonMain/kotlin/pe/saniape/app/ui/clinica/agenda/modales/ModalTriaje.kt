@@ -164,6 +164,8 @@ fun VitalesCampos(
     onChange: (Map<String, String>) -> Unit,
     edad: Int?,
     campos: List<String>,
+    /** false = solo lectura (la consulta guiada de quien no puede atender). */
+    habilitado: Boolean = true,
 ) {
     val c = Sania.colors
     fun ver(m: String) = m in campos
@@ -182,11 +184,11 @@ fun VitalesCampos(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CampoNumero(valores["presion_sistolica"].orEmpty(), { set("presion_sistolica", it) },
                         fuera = valorFueraDeRango("presion_sistolica", valores["presion_sistolica"]), unidad = null,
-                        descripcion = "Sistólica", modifier = Modifier.weight(1f))
+                        descripcion = "Sistólica", modifier = Modifier.weight(1f), habilitado = habilitado)
                     Text(" / ", color = c.textoSuave, fontSize = 18.sp)
                     CampoNumero(valores["presion_diastolica"].orEmpty(), { set("presion_diastolica", it) },
                         fuera = valorFueraDeRango("presion_diastolica", valores["presion_diastolica"]), unidad = null,
-                        descripcion = "Diastólica", modifier = Modifier.weight(1f))
+                        descripcion = "Diastólica", modifier = Modifier.weight(1f), habilitado = habilitado)
                     Spacer(Modifier.width(6.dp))
                     Text("mmHg", color = c.textoSuave, fontSize = 11.sp)
                 }
@@ -198,12 +200,12 @@ fun VitalesCampos(
                         ?: PieAyuda("Normal menor a 120/80")
                 }
             }
-            signos.forEach { k -> CampoVital(k, valores, ::set, edad) }
+            signos.forEach { k -> CampoVital(k, valores, ::set, edad, habilitado) }
         }
         if (medidas.isNotEmpty()) {
             GrupoVitales("Medidas")
-            if (ver("peso")) CampoVital("peso", valores, ::set, edad)
-            if (ver("talla")) CampoVital("talla", valores, ::set, edad)
+            if (ver("peso")) CampoVital("peso", valores, ::set, edad, habilitado)
+            if (ver("talla")) CampoVital("talla", valores, ::set, edad, habilitado)
             // El IMC necesita las dos: una clínica que solo pesa no lo ve.
             if (ver("peso") && ver("talla")) {
                 val imc = calcularImc(num("peso")?.takeUnless { it.isNaN() }, num("talla")?.takeUnless { it.isNaN() })
@@ -232,7 +234,7 @@ fun VitalesCampos(
                     }
                 }
             }
-            if (ver("perimetro_abdominal")) CampoVital("perimetro_abdominal", valores, ::set, edad)
+            if (ver("perimetro_abdominal")) CampoVital("perimetro_abdominal", valores, ::set, edad, habilitado)
         }
         Text(
             "Los colores usan umbrales de adulto y son solo una ayuda: la lectura clínica es del profesional.",
@@ -253,7 +255,7 @@ private val ETIQUETAS: Map<String, Pair<String, String?>> = mapOf(
 )
 
 @Composable
-private fun CampoVital(k: String, valores: Map<String, String>, set: (String, String) -> Unit, edad: Int?) {
+private fun CampoVital(k: String, valores: Map<String, String>, set: (String, String) -> Unit, edad: Int?, habilitado: Boolean = true) {
     val (etiqueta, ayuda) = ETIQUETAS[k] ?: (k to null)
     val texto = valores[k].orEmpty()
     val bruto = aNumero(texto)
@@ -264,7 +266,7 @@ private fun CampoVital(k: String, valores: Map<String, String>, set: (String, St
     val alerta = if (k == "perimetro_abdominal") null else alertaVital(k, n, edad)
     EtqForm(etiqueta)
     CampoNumero(texto, { set(k, it) }, fuera = fuera, unidad = if (tallaEnMetros) "m" else rangoDe(k)?.unidad,
-        descripcion = rangoDe(k)?.nombre ?: etiqueta, modifier = Modifier.fillMaxWidth())
+        descripcion = rangoDe(k)?.nombre ?: etiqueta, modifier = Modifier.fillMaxWidth(), habilitado = habilitado)
     when {
         fuera -> PieRojo("Revisa el valor")
         tallaEnMetros -> PieAyuda("= ${n?.let { decimal(it) }} cm")
@@ -276,11 +278,12 @@ private fun CampoVital(k: String, valores: Map<String, String>, set: (String, St
 @Composable
 private fun CampoNumero(
     valor: String, onCambio: (String) -> Unit, fuera: Boolean, unidad: String?, descripcion: String, modifier: Modifier,
+    habilitado: Boolean = true,
 ) {
     val c = Sania.colors
     OutlinedTextField(
         value = valor, onValueChange = onCambio,
-        singleLine = true, isError = fuera,
+        singleLine = true, isError = fuera, enabled = habilitado,
         colors = coloresCampoForm(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
         suffix = unidad?.let { u -> { Text(u, color = c.textoSuave, fontSize = 12.sp) } },
