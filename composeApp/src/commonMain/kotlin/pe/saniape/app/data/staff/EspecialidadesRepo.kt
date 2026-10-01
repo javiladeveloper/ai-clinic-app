@@ -133,21 +133,30 @@ object EspecialidadesRepo {
             Result.failure(e)
         }
 
-    /** null si no hay sesión, falla la red o el servidor rechaza. */
-    suspend fun sugerencias(id: String): SugerenciasEspecialidad? {
-        val tk = token() ?: return null
+    /** Sugerencias o el motivo del fallo (mensaje del servidor si lo dio: 403/404...). */
+    suspend fun sugerencias(id: String): Pair<SugerenciasEspecialidad?, String?> {
+        val tk = token() ?: return null to "Tu sesión expiró. Vuelve a entrar."
         return try {
             val resp = http.get("${Supabase.SITE_URL}/api/staff/especialidad/sugerencias") {
                 header("Authorization", "Bearer $tk")
                 parameter("id", id)
             }
-            if (resp.status.value !in 200..299) null else parsearSugerencias(resp.bodyAsText())
+            val texto = resp.bodyAsText()
+            if (resp.status.value in 200..299) {
+                val s = parsearSugerencias(texto)
+                if (s != null) s to null else null to "Respuesta inesperada del servidor."
+            } else {
+                null to (mensajeDeError(texto) ?: "No se pudieron traer las sugerencias.")
+            }
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (e: Exception) {
-            null
+            null to "Sin conexión. Revisa tu internet."
         }
     }
+
+    internal fun mensajeDeError(cuerpo: String): String? =
+        runCatching { (json.parseToJsonElement(cuerpo) as? JsonObject)?.str("error") }.getOrNull()?.takeIf { it.isNotBlank() }
 
     /** Carga lo elegido. `cuerpo` = respuesta del servidor (conteos, ver [resumenSembrado]). */
     suspend fun sembrar(
@@ -182,7 +191,7 @@ object EspecialidadesRepo {
 
     /**
      * "Listo: 8 servicios, 4 tipos de imagen y 3 procedimientos con consentimiento".
-     * Omite los ceros; todo en cero = "Nada que cargar". `tipicos` puede venir null
+     * Omite los ceros; todo en cero = "ya tenías todo". `tipicos` puede venir null
      * (no se pidió) o un objeto con `creados`.
      */
     internal fun resumenSembrado(cuerpo: JsonObject?): String {
@@ -195,7 +204,7 @@ object EspecialidadesRepo {
             if (tipicos > 0) add(if (tipicos == 1) "1 procedimiento con consentimiento" else "$tipicos procedimientos con consentimiento")
         }
         return when (partes.size) {
-            0 -> "Nada que cargar"
+            0 -> "Listo: ya tenías todo lo sugerido, no se agregó nada nuevo"
             1 -> "Listo: ${partes[0]}"
             else -> "Listo: ${partes.dropLast(1).joinToString(", ")} y ${partes.last()}"
         }

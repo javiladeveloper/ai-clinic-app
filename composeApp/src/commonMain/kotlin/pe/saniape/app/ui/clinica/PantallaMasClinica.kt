@@ -152,7 +152,7 @@ fun PantallaMasClinica(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text("🩺  Especialidades", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
+                            Text("🏥  Especialidades", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
                             Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
                         }
                     }
@@ -313,7 +313,6 @@ internal fun modulosAdministracion(ctx: ContextoStaff): List<Pair<String, String
     if (ctx.puede("equipo")) add("👥  Equipo y accesos" to "/equipo")
     if (ctx.puede("servicios")) {
         add("💊  Servicios" to "/procedimientos")
-        add("🏥  Especialidades" to "/especialidades")
         add("🎉  Campañas" to "/campanias")
     }
     if (ctx.puede("ajustes")) {

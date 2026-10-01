@@ -62,6 +62,32 @@ internal val NOMBRE_RUBRO: Map<String, String> = mapOf(
     "otro" to "Otro",
 )
 
+/** Gemelo de `PALABRAS_RUBRO` en lib/flujo.ts (el orden importa: gana el primero). */
+private val PALABRAS_RUBRO: List<Pair<String, List<String>>> = listOf(
+    "odontologia" to listOf("odonto", "dental", "endodon", "ortodon", "periodon", "estomatolog"),
+    "fisioterapia" to listOf("fisio", "rehabilit", "terapia f", "kinesi", "masoterap", "quiropra", "osteopat"),
+    "ginecologia" to listOf("gineco", "obstet", "fertilidad"),
+    "capilar" to listOf("capilar", "tricolog", "injerto"),
+    "estetica" to listOf("estetic", "dermat", "cosmet"),
+    "nutricion" to listOf("nutri"),
+    "psicologia" to listOf("psico", "terapia p"),
+    "medicina_general" to listOf("medicina general", "medicina fam", "medicina interna", "medico general", "pediatr"),
+    "veterinaria" to listOf("veterin"),
+)
+
+private fun sinTildes(s: String): String = buildString {
+    for (ch in s.lowercase()) append(
+        when (ch) { 'á' -> 'a'; 'é' -> 'e'; 'í' -> 'i'; 'ó' -> 'o'; 'ú', 'ü' -> 'u'; else -> ch }
+    )
+}
+
+/** Gemelo de `rubroPorNombre` en lib/flujo.ts: el rubro que sugiere el nombre, o null. */
+internal fun rubroPorNombre(nombre: String?): String? {
+    val n = sinTildes(nombre.orEmpty())
+    if (n.isBlank()) return null
+    return PALABRAS_RUBRO.firstOrNull { (_, ps) -> ps.any { n.contains(it) } }?.first
+}
+
 /**
  * Alta de una especialidad (gemelo del modal "Nueva especialidad" de
  * app/(app)/especialidades/page.tsx): nombre, tipo (rubro) y etiquetas de patología.
@@ -128,7 +154,7 @@ fun DialogoNuevaEspecialidad(
         subtitulo = "Luego te sugerimos sus servicios para cargarlos de una vez",
         textoAccion = if (guardando) "Creando…" else "Crear",
         accionHabilitada = !guardando && nombre.isNotBlank(),
-        onCancelar = onCancelar,
+        onCancelar = { if (!guardando) onCancelar() },
         onAccion = { crear() },
     ) {
         EtqForm("Nombre de la especialidad *")
@@ -152,7 +178,10 @@ fun DialogoNuevaEspecialidad(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            ChipRubro("Automático (según el nombre)", sel = rubro == null) { rubro = null }
+            ChipRubro(
+                rubroPorNombre(nombre)?.let { "Automático — ${NOMBRE_RUBRO[it] ?: it}" } ?: "Automático (según el nombre)",
+                sel = rubro == null,
+            ) { rubro = null }
             RUBROS.forEach { r ->
                 ChipRubro(NOMBRE_RUBRO[r] ?: r, sel = rubro == r) { rubro = r }
             }
@@ -180,7 +209,7 @@ fun DialogoNuevaEspecialidad(
             }
         }
         Text(
-            "Aparecen como botones rápidos en la ficha del paciente. " +
+            "Aparecen como botones rápidos al registrar un paciente. " +
                 if (chipsTocados) "Personalizadas por tu clínica." else "Sugeridas por el sistema.",
             color = c.textoSuave, fontSize = Sania.txt.mini,
             modifier = Modifier.padding(bottom = 6.dp),
@@ -208,7 +237,7 @@ fun DialogoNuevaEspecialidad(
         }
         if (chips.isEmpty()) {
             Text(
-                "Sin etiquetas — los pacientes solo verán el campo de texto libre",
+                "Sin etiquetas propias: se usan las sugeridas por el nombre",
                 color = c.textoSuave, fontSize = Sania.txt.mini, fontStyle = FontStyle.Italic,
             )
         }

@@ -1,0 +1,7 @@
+# Novedades de la 2.18.1 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Especialidades dentro de la app: crea una especialidad y carga sus servicios sin salir de Sania.
+---
+Clínicas:
+• Especialidades: crea una especialidad y carga sus servicios, tipos de imagen y procedimientos típicos desde la app.
+• Nada de la administración de especialidades se abre ya en la web.

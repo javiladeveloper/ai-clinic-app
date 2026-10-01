@@ -94,6 +94,8 @@ fun AsistenteEspecialidad(
 
     var cargando by remember(especialidad.id) { mutableStateOf(true) }
     var fallo by remember(especialidad.id) { mutableStateOf(false) }
+    var errorMsg by remember(especialidad.id) { mutableStateOf<String?>(null) }
+    var reintento by remember(especialidad.id) { mutableIntStateOf(0) }
     var sugerencias by remember(especialidad.id) { mutableStateOf(SugerenciasEspecialidad()) }
     val filas = remember(especialidad.id) { mutableStateListOf<FilaServicio>() }
     var siguienteClave by remember(especialidad.id) { mutableIntStateOf(0) }
@@ -104,9 +106,11 @@ fun AsistenteEspecialidad(
     var propioNombre by remember { mutableStateOf("") }
     var propioPrecio by remember { mutableStateOf("") }
 
-    LaunchedEffect(especialidad.id) {
-        val r = EspecialidadesRepo.sugerencias(especialidad.id)
+    LaunchedEffect(especialidad.id, reintento) {
+        cargando = true
+        val (r, msg) = EspecialidadesRepo.sugerencias(especialidad.id)
         fallo = r == null
+        errorMsg = msg
         val s = r ?: SugerenciasEspecialidad()
         sugerencias = s
         filas.clear()
@@ -187,7 +191,7 @@ fun AsistenteEspecialidad(
         subtitulo = "Servicios con precio, tipos de imagen y procedimientos típicos",
         textoAccion = textoAccion,
         accionHabilitada = !cargando && !ocupado && hayAlgo,
-        onCancelar = onCerrar,
+        onCancelar = { if (!ocupado) onCerrar() },
         onAccion = { cargar() },
         textoCancelar = "Ahora no",
     ) {
@@ -201,15 +205,24 @@ fun AsistenteEspecialidad(
 
         if (filas.isEmpty() && nImagenes == 0 && nTipicos == 0) {
             Text(
-                if (fallo) "No pudimos traer las sugerencias. Revisa tu conexión, o agrega tus servicios aquí o en la web."
-                else "No tenemos sugerencias para esta especialidad. Agrega tus servicios aquí o en la web.",
+                if (fallo) "${errorMsg ?: "No pudimos traer las sugerencias."} Puedes reintentar o agregar tus servicios aquí."
+                else "No tenemos sugerencias para esta especialidad. Agrega tus servicios aquí.",
                 color = c.textoSuave, fontSize = Sania.txt.cuerpo,
                 modifier = Modifier.padding(bottom = Sania.dim.md),
             )
+            if (fallo) {
+                Text(
+                    "Reintentar", color = c.navy, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = Sania.dim.md)
+                        .clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .clickable { reintento++ }
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                )
+            }
         }
 
         if (filas.isNotEmpty()) {
-            EtqForm("Servicios")
+            EtqForm("¿Qué servicios ofreces?")
             Column(verticalArrangement = Arrangement.spacedBy(Sania.dim.sm)) {
                 filas.forEach { fila ->
                     key(fila.clave) {
@@ -225,7 +238,7 @@ fun AsistenteEspecialidad(
         }
 
         // Servicio propio: nombre + precio → se suma marcado al final de la lista.
-        EtqForm("Agregar servicio propio")
+        EtqForm("¿Falta alguno? Agrégalo")
         OutlinedTextField(
             value = propioNombre,
             onValueChange = { propioNombre = it },
@@ -263,7 +276,7 @@ fun AsistenteEspecialidad(
 
         if (nImagenes > 0 || nTipicos > 0) {
             Spacer(Modifier.height(Sania.dim.lg))
-            EtqForm("También")
+            EtqForm("También te preparamos")
         }
         if (nImagenes > 0) {
             CasillaExtra(
@@ -278,7 +291,7 @@ fun AsistenteEspecialidad(
                 marcado = conTipicos,
                 onMarcar = { conTipicos = it },
                 titulo = "Procedimientos típicos con consentimiento ($nTipicos)",
-                detalle = null,
+                detalle = "Se crean como servicios con su plantilla de consentimiento informado. Los que ya tengas no se duplican.",
             )
         }
     }

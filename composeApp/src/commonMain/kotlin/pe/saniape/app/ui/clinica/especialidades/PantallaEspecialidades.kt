@@ -40,7 +40,6 @@ import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.EspecialidadApp
 import pe.saniape.app.data.staff.EspecialidadesRepo
-import pe.saniape.app.ui.ManejarAtras
 import pe.saniape.app.ui.theme.Sania
 
 /** "#2c3e7a" → Color; cualquier otra cosa → null (se usa el navy de la marca). */
@@ -67,10 +66,6 @@ fun PantallaEspecialidades(ctx: ContextoStaff, onSalir: () -> Unit) {
     var creando by remember { mutableStateOf(false) }
     var asistente by remember { mutableStateOf<EspecialidadApp?>(null) }
 
-    // Esta pantalla se pinta DESPUÉS del ManejarAtras del shell: su atrás tiene
-    // prioridad (los diálogos abiertos encima manejan el suyo).
-    ManejarAtras(activo = true) { onSalir() }
-
     LaunchedEffect(ctx.clinicaId, recarga) {
         // Recarga silenciosa si ya había lista (sin parpadeo del spinner).
         try {
@@ -87,6 +82,7 @@ fun PantallaEspecialidades(ctx: ContextoStaff, onSalir: () -> Unit) {
         DialogoNuevaEspecialidad(
             onCancelar = { creando = false },
             onCreada = { nueva ->
+                // TODO: refrescar el contexto del staff (usaSesiones) cuando exista un callback; hoy no hay.
                 creando = false
                 lista = (lista.orEmpty() + nueva).sortedBy { it.nombre.lowercase() }
                 recarga++

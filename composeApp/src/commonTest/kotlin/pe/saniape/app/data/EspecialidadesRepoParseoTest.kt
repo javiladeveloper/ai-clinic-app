@@ -16,7 +16,7 @@ class EspecialidadesRepoParseoTest {
   "especialidad": {"id": "e1", "nombre": "Fisioterapia", "rubro": "fisioterapia"},
   "servicios": [
     {"nombre": "Terapia manual", "categoria": "Fisioterapia", "descripcion": "Sesión", "precio": 60,
-     "modo_cobro": "por_unidad", "unidad_label": "zona", "precio_unitario_sugerido": 20.5, "especialidad": "Fisioterapia"},
+     "modo_cobro": "unidades", "unidad_label": "zona", "precio_unitario_sugerido": 20.5, "especialidad": "Fisioterapia"},
     {"nombre": "Consulta"}
   ],
   "tiposImagen": [{"nombre": "Rx columna", "contexto": "general", "orden": 1}],
@@ -65,10 +65,10 @@ class EspecialidadesRepoParseoTest {
     @Test
     fun resumenNada() {
         assertEquals(
-            "Nada que cargar",
+            "Listo: ya tenías todo lo sugerido, no se agregó nada nuevo",
             EspecialidadesRepo.resumenSembrado(cuerpo("""{"ok":true,"servicios":0,"tiposImagen":0,"tipicos":{"creados":0}}""")),
         )
-        assertEquals("Nada que cargar", EspecialidadesRepo.resumenSembrado(null))
+        assertEquals("Listo: ya tenías todo lo sugerido, no se agregó nada nuevo", EspecialidadesRepo.resumenSembrado(null))
     }
 
     @Test
