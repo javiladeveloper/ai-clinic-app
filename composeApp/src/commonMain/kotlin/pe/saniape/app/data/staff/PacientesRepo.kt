@@ -545,6 +545,9 @@ object PacientesRepo {
             textoOpc("alergias", alergias)
             textoOpc("medicacion_actual", medicacionActual)
             textoOpc("tipo_patologia", tipoPatologia)
+            // Pacientes por sede: el paciente nace en la sede activa (la web hace lo mismo).
+            val sedeNueva = SedeActiva.estado.value.let { sedeParaPacienteNuevo(it.pacientesPorSede, it.filtro?.sedeId) }
+            if (sedeNueva != null) put("sede_id", sedeNueva)
             if (patologias.isNotEmpty()) {
                 put("patologias", kotlinx.serialization.json.JsonArray(
                     patologias.mapNotNull { it.trim().takeIf { p -> p.isNotBlank() } }.map { JsonPrimitive(it) }))

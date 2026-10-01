@@ -211,6 +211,7 @@ object StaffContextoRepo {
             },
             sedePrincipalId = o.str("sedePrincipalId"),
             sedeActualId = o.str("sedeActualId"),
+            pacientesPorSede = o.bool("pacientesPorSede"),
             sedesPermitidas = (o["sedesPermitidas"] as? kotlinx.serialization.json.JsonArray)
                 ?.mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } }
                 ?.takeIf { it.isNotEmpty() },

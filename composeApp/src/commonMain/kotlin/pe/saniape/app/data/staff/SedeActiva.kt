@@ -93,6 +93,13 @@ fun resolverSedeInicial(
     return ResolucionSede(null, false)
 }
 
+/**
+ * Sede que lleva un paciente NUEVO: solo si la clínica asigna pacientes por sede y hay
+ * una sede puntual activa (en "Todas las sedes" no se manda y el servidor decide).
+ */
+fun sedeParaPacienteNuevo(pacientesPorSede: Boolean, sedeId: String?): String? =
+    if (pacientesPorSede) sedeId?.takeIf { it.isNotBlank() } else null
+
 /** Estado de la sede activa (lo que observan las pantallas). */
 data class EstadoSede(
     val multiSede: Boolean = false,
@@ -107,6 +114,8 @@ data class EstadoSede(
     val cambiando: Boolean = false,
     /** Limitado a sedes que hoy están todas desactivadas. */
     val sinSedes: Boolean = false,
+    /** Los pacientes de esta clínica pertenecen a una sede (ver ContextoStaff). */
+    val pacientesPorSede: Boolean = false,
 ) {
     val sedeActiva: SedeRef? get() = sedes.find { it.id == sedeId }
     /** Filtro para las lecturas. null = no filtrar. */
@@ -168,6 +177,7 @@ object SedeActiva {
             puedeConsolidado = puedeConsolidado,
             obligatorio = !sigue && r.sedeId == null && !r.sinSedes,
             sinSedes = r.sinSedes,
+            pacientesPorSede = ctx.pacientesPorSede,
         )
         // La base tiene que saber la sede: su trigger la usa para completar la de
         // las citas y cobros que se crean sin sede (bot, cobros, app vieja…).

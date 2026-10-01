@@ -137,6 +137,11 @@ data class ContextoStaff(
     /** perfiles.sedes_permitidas. null = todas. */
     val sedesPermitidas: List<String>? = null,
     /**
+     * Opción por clínica: los pacientes pertenecen a una sede. Solo tiene sentido con
+     * multiSede. Un backend viejo no manda el campo → false (el paciente no lleva sede).
+     */
+    val pacientesPorSede: Boolean = false,
+    /**
      * Módulos clínicos de la clínica (triaje, flujo médico, recetas). Los
      * resuelve la web con `resolverModulosClinicos` (interruptor o default del
      * rubro). Un backend sin el campo → todo apagado: la app se ve como siempre.
