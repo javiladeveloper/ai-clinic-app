@@ -1,0 +1,8 @@
+# Novedades de la 2.18.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Consulta guiada dentro de la app: atiende, diagnostica con CIE-10, emite recetas e imprime indicaciones sin salir de Sania. Cobra consultas y evaluaciones con la fecha real del pago.
+---
+Clínicas:
+• ▶ Atender ahora es nativo: motivo con frases y dictado, signos vitales, examen, diagnóstico CIE-10, plan (recetas, exámenes con resultado adjunto, procedimientos, próximo control) y cierre con cobro e impresión. Nada se abre en la web.
+• 💰 Cobrar consultas y evaluaciones desde la tarjeta de la cita: método de pago, destino (caja, abono al tratamiento o sin costo) y fecha del pago, para cuando el paciente pagó otro día.
+• Recetas e indicaciones se emiten e imprimen desde la app, con la filiación del paciente a un toque.
