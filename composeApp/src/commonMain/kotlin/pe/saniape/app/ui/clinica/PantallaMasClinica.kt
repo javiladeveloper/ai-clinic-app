@@ -55,6 +55,8 @@ fun PantallaMasClinica(
     onCambioClinica: () -> Unit = {},
     onAbrirSesiones: (() -> Unit)? = null,
     onAbrirCaja: (() -> Unit)? = null,
+    // 🩺 Especialidades nativa (solo con permiso "equipo"; null = no se muestra).
+    onAbrirEspecialidades: (() -> Unit)? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -135,11 +137,29 @@ fun PantallaMasClinica(
                 // veía NINGUNA opción de administración en la app; ahora las ve con los
                 // MISMOS permisos que el menú de la web y se abren en la web.
                 val modulosAdmin = modulosAdministracion(ctx)
-                if (modulosAdmin.isNotEmpty()) {
+                if (modulosAdmin.isNotEmpty() || onAbrirEspecialidades != null) {
                     val acciones = pe.saniape.app.ui.recordarAcciones()
                     Text("ADMINISTRACIÓN", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
-                    Text("Se abren en la web (inicia sesión con tu misma cuenta).", color = c.textoSuave, fontSize = 11.sp)
                     Spacer(Modifier.height(Sania.dim.sm))
+                    // Nativo: se abre en la app (crear especialidad + cargar sus servicios).
+                    if (onAbrirEspecialidades != null) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(bottom = Sania.dim.sm)
+                                .clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { onAbrirEspecialidades() }
+                                .padding(Sania.dim.lg),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("🩺  Especialidades", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
+                            Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                        }
+                    }
+                    if (modulosAdmin.isNotEmpty()) {
+                        Text("Se abren en la web (inicia sesión con tu misma cuenta).", color = c.textoSuave, fontSize = 11.sp)
+                        Spacer(Modifier.height(Sania.dim.sm))
+                    }
                     modulosAdmin.forEach { (etq, ruta) ->
                         Row(
                             Modifier.fillMaxWidth().padding(bottom = Sania.dim.sm)
