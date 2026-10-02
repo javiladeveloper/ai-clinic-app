@@ -59,6 +59,8 @@ fun PantallaMasClinica(
     onAbrirEspecialidades: (() -> Unit)? = null,
     // 📊 Pacientes del período nativo (solo con permiso "reportes"; null = no se muestra).
     onAbrirPacientesPeriodo: (() -> Unit)? = null,
+    // 🌱 Pacientes nuevos nativo (solo con permiso "pacientes"; null = no se muestra).
+    onAbrirPacientesNuevos: (() -> Unit)? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -102,7 +104,7 @@ fun PantallaMasClinica(
                 Spacer(Modifier.height(Sania.dim.lg))
 
                 // Módulos clínicos sin tab propio (Sesiones, Caja…)
-                if (onAbrirSesiones != null || onAbrirCaja != null || onAbrirPacientesPeriodo != null) {
+                if (onAbrirSesiones != null || onAbrirCaja != null || onAbrirPacientesPeriodo != null || onAbrirPacientesNuevos != null) {
                     Text("MÓDULOS", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(Sania.dim.sm))
                     if (onAbrirSesiones != null) {
@@ -143,6 +145,21 @@ fun PantallaMasClinica(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text("📊  Pacientes del período", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
+                            Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                        }
+                        Spacer(Modifier.height(Sania.dim.sm))
+                    }
+                    // 🌱 Pacientes nuevos (con permiso de pacientes): quién se registró en el
+                    // mes, quién vino a evaluación, quién empezó tratamiento y quién pagó.
+                    if (onAbrirPacientesNuevos != null) {
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { onAbrirPacientesNuevos() }.padding(Sania.dim.lg),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("🌱  Pacientes nuevos", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
                             Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
                         }
                     }
