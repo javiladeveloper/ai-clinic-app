@@ -100,6 +100,22 @@ fun resolverSedeInicial(
 fun sedeParaPacienteNuevo(pacientesPorSede: Boolean, sedeId: String?): String? =
     if (pacientesPorSede) sedeId?.takeIf { it.isNotBlank() } else null
 
+/**
+ * Sede por la que se filtra la LISTA de pacientes (y su búsqueda). Gemelo de
+ * app/(app)/pacientes/page.tsx: con "pacientes por sede", el Admin / usuario sin
+ * límite de sedes que eligió una sede puntual ve SOLO los pacientes de esa sede
+ * (`sede_id = X`, sin sumar los "sin sede": esos se reparten desde el consolidado).
+ * En "Todas las sedes" (consolidado) ve a todos. Al limitado ya lo acota la RLS:
+ * no se filtra nada más. Sin la opción, nada cambia (null = no filtrar).
+ */
+fun sedeListaPacientes(
+    multiSede: Boolean,
+    pacientesPorSede: Boolean,
+    sinLimite: Boolean,
+    sedeId: String?,
+): String? =
+    if (multiSede && pacientesPorSede && sinLimite) sedeId?.takeIf { it.isNotBlank() } else null
+
 /** Estado de la sede activa (lo que observan las pantallas). */
 data class EstadoSede(
     val multiSede: Boolean = false,
@@ -116,8 +132,12 @@ data class EstadoSede(
     val sinSedes: Boolean = false,
     /** Los pacientes de esta clínica pertenecen a una sede (ver ContextoStaff). */
     val pacientesPorSede: Boolean = false,
+    /** Admin o sin sedes_permitidas: ve a todos los pacientes y filtra por la sede elegida. */
+    val sinLimiteSedes: Boolean = false,
 ) {
     val sedeActiva: SedeRef? get() = sedes.find { it.id == sedeId }
+    /** Sede por la que se filtra la lista de pacientes (null = no filtrar). Ver [sedeListaPacientes]. */
+    val sedePacientes: String? get() = sedeListaPacientes(multiSede, pacientesPorSede, sinLimiteSedes, sedeId)
     /** Filtro para las lecturas. null = no filtrar. */
     val filtro: FiltroSede? get() = if (multiSede && sedeId.isNotEmpty()) FiltroSede(sedeId, principalId) else null
     /** ¿Tiene más de una opción? (si no, el chip no abre nada). */
@@ -178,6 +198,8 @@ object SedeActiva {
             obligatorio = !sigue && r.sedeId == null && !r.sinSedes,
             sinSedes = r.sinSedes,
             pacientesPorSede = ctx.pacientesPorSede,
+            // Mismo criterio que usePacientesPorSedeUI (web): Admin o sin límite de sedes.
+            sinLimiteSedes = ctx.esAdmin || ctx.sedesPermitidas.isNullOrEmpty(),
         )
         // La base tiene que saber la sede: su trigger la usa para completar la de
         // las citas y cobros que se crean sin sede (bot, cobros, app vieja…).

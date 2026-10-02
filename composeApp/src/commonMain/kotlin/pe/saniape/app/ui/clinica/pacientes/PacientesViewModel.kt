@@ -5,10 +5,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.PacienteStaff
 import pe.saniape.app.data.staff.PacientesRepo
+import pe.saniape.app.data.staff.SedeActiva
 
 /**
  * ViewModel de la lista de Pacientes (staff). Carga, búsqueda y filtro de estado.
@@ -29,13 +35,36 @@ class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
     /** Admin/recepción ve contacto (DNI/teléfono); en modoClinico se oculta. */
     val verContacto: Boolean get() = ctx.esGestor && !ctx.modoClinico
 
-    init { cargar() }
+    /**
+     * Pacientes por sede: sede por la que se filtra la lista (null = todos). La
+     * pantalla la usa para decir "Mostrando pacientes de <Sede>".
+     */
+    var sedeFiltrada by mutableStateOf(SedeActiva.estado.value.sedePacientes); private set
+
+    private var trabajo: Job? = null
+
+    init {
+        cargar()
+        // Al cambiar la sede activa (o la regla), la lista es OTRA: se vacía y se
+        // recarga (sin pintar un instante la lista de la sede anterior).
+        viewModelScope.launch {
+            SedeActiva.estado.map { it.sedePacientes }.distinctUntilChanged().drop(1).collect { nueva ->
+                sedeFiltrada = nueva
+                pacientes = emptyList()
+                cargar()
+            }
+        }
+    }
 
     fun cambiarBusqueda(v: String) { busqueda = v }
     fun cambiarFiltroEstado(v: String?) { filtroEstado = v }
 
     fun cargar() {
-        viewModelScope.launch {
+        // Una carga a la vez: si cambió la sede a mitad de camino, la vieja no pisa a la nueva.
+        trabajo?.cancel()
+        trabajo = viewModelScope.launch {
+            val sede = SedeActiva.estado.value.sedePacientes
+            sedeFiltrada = sede
             // Spinner completo solo la 1ª vez; si ya hay lista (volver de ficha / refresh),
             // se mantiene visible con aviso sutil "Actualizando…" (no parpadea a vacío).
             // MOSTRAR Y REFRESCAR: si no hay nada en pantalla, se pinta al
@@ -43,16 +72,20 @@ class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
             // detrás. Sin esto la pantalla arranca en blanco y el fisio espera
             // a la red, que en una clínica es lo peor que se siente.
             if (pacientes.isEmpty()) {
-                val deCache = PacientesRepo.listarDeCache(ctx.scopePacientes)
+                val deCache = PacientesRepo.listarDeCache(ctx.scopePacientes, sede)
                 if (deCache.isNotEmpty()) { pacientes = deCache; recargando = true }
                 else cargando = true
             } else recargando = true
             cargaFallo = false
             // Scope: gestor (permiso pacientes) ve toda la clínica; en modo clínico,
             // solo los suyos. Ver ContextoStaff.scopePacientes.
-            runCatching { PacientesRepo.listar(ctx.scopePacientes) }
-                .onSuccess { pacientes = it }
-                .onFailure { cargaFallo = true }
+            try {
+                pacientes = PacientesRepo.listar(ctx.scopePacientes, sede)
+            } catch (e: CancellationException) {
+                throw e   // la reemplazó otra carga: no tocar el estado
+            } catch (_: Exception) {
+                cargaFallo = true
+            }
             cargando = false; recargando = false
         }
     }

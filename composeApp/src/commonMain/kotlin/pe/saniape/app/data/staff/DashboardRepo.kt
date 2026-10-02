@@ -1,6 +1,8 @@
 package pe.saniape.app.data.staff
 
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.query.Count
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
@@ -101,11 +103,33 @@ object DashboardRepo {
             header("Authorization", "Bearer $tk")
         }
         if (resp.status != HttpStatusCode.OK) return null
-        val crudo = resp.bodyAsText()
-        clave?.let { CacheLectura.guardar(it, crudo) }
-        return parsear(json.parseToJsonElement(crudo).jsonObject)
+        var obj = json.parseToJsonElement(resp.bodyAsText()).jsonObject
+        // Pacientes por sede: "Total pacientes" cuenta los de la sede elegida (como
+        // el badge de la web, hooks/useBadgesMenu.ts). El endpoint todavía devuelve
+        // el total de la clínica aunque reciba ?sede=, así que se cuenta aquí.
+        // Solo para el gestor (el profesional ve "Mis pacientes", que es otra cosa).
+        val sedePac = SedeActiva.estado.value.sedePacientes
+        if (sedePac != null && !obj.bool("esProfesional")) {
+            contarPacientesDeSede(sedePac)?.let { n ->
+                obj = JsonObject(obj + ("totalPacientes" to JsonPrimitive(n)))
+            }
+        }
+        // Se guarda ya corregido: desde el disco también sale el de la sede.
+        clave?.let { CacheLectura.guardar(it, obj.toString()) }
+        return parsear(obj)
             .also { cache = it; cacheSede = sede }   // guarda el último resultado para mostrarlo al instante al volver
     }
+
+    /** Pacientes de una sede (count en el servidor, sin bajar filas). null si falla. */
+    private suspend fun contarPacientesDeSede(sedeId: String): Int? = runCatching {
+        Supabase.client.postgrest["pacientes"]
+            .select(io.github.jan.supabase.postgrest.query.Columns.list("id")) {
+                head = true
+                count(Count.EXACT)
+                filter { eq("sede_id", sedeId) }
+            }
+            .countOrNull()?.toInt()
+    }.getOrNull()
 
     private fun parsear(o: JsonObject): StatsDashboard {
         val agenda = (o["agendaHoy"] as? JsonArray ?: JsonArray(emptyList())).mapNotNull {

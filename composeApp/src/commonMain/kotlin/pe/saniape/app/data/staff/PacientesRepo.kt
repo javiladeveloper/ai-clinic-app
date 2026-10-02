@@ -423,18 +423,26 @@ object PacientesRepo {
      * null, devuelve los pacientes que ATIENDE — responsable del tratamiento o con
      * sesiones/citas suyas. El filtrado por scope se hace en memoria (igual que la web).
      */
-    suspend fun listar(soloTerapeutaId: String? = null): List<PacienteStaff> {
+    suspend fun listar(
+        soloTerapeutaId: String? = null,
+        /**
+         * Pacientes por sede: solo los de esta sede (Admin/sin límite con una sede
+         * elegida). Por defecto, la regla vigente de [SedeActiva]; null = todos.
+         */
+        sedeId: String? = SedeActiva.estado.value.sedePacientes,
+    ): List<PacienteStaff> {
         val filas = Supabase.client.postgrest["pacientes"]
             .select(Columns.raw(SELECT_LISTA)) {
+                // En el SERVIDOR (no en memoria): la lista y la búsqueda solo ven esa sede.
+                if (sedeId != null) filter { eq("sede_id", sedeId) }
                 order("created_at", Order.DESCENDING)
             }
             .decodeList<JsonObject>()
         // Se guarda para pintar al instante la próxima vez (ver `listarDeCache`).
+        // Cada sede en su propia clave: nunca se pinta la lista de otra sede.
+        val clave = claveLista(soloTerapeutaId, sedeId)
         runCatching {
-            CacheLectura.guardar(
-                CacheLectura.claveListaPacientes(soloTerapeutaId),
-                Json.encodeToString(JsonArray.serializer(), JsonArray(filas)),
-            )
+            CacheLectura.guardar(clave, Json.encodeToString(JsonArray.serializer(), JsonArray(filas)))
         }
         val pacientes = filas.map { mapear(it) }
         if (soloTerapeutaId == null) return pacientes
@@ -443,7 +451,7 @@ object PacientesRepo {
         // necesita para filtrar igual cuando pinta sin red.
         runCatching {
             CacheLectura.guardar(
-                CacheLectura.claveListaPacientes(soloTerapeutaId) + ":atiende",
+                "$clave:atiende",
                 Json.encodeToString(JsonArray.serializer(), JsonArray(atiende.map { JsonPrimitive(it) })),
             )
         }
@@ -457,14 +465,18 @@ object PacientesRepo {
      * mientras `listar()` trae lo actual por detrás: así nunca arranca en blanco.
      * Devuelve lista vacía si no hay nada guardado o si el formato cambió.
      */
-    fun listarDeCache(soloTerapeutaId: String? = null): List<PacienteStaff> = runCatching {
-        val crudo = CacheLectura.leer(CacheLectura.claveListaPacientes(soloTerapeutaId)) ?: return emptyList()
+    fun listarDeCache(
+        soloTerapeutaId: String? = null,
+        sedeId: String? = SedeActiva.estado.value.sedePacientes,
+    ): List<PacienteStaff> = runCatching {
+        val clave = claveLista(soloTerapeutaId, sedeId)
+        val crudo = CacheLectura.leer(clave) ?: return emptyList()
         val filas = Json.parseToJsonElement(crudo).jsonArray.map { it.jsonObject }
         val pacientes = filas.map { mapear(it) }
         if (soloTerapeutaId == null) return@runCatching pacientes
         // Mismo criterio que `listar`: los que atiende + los que tiene a su nombre.
         val atiende = runCatching {
-            val c = CacheLectura.leer(CacheLectura.claveListaPacientes(soloTerapeutaId) + ":atiende")
+            val c = CacheLectura.leer("$clave:atiende")
                 ?: return@runCatching emptySet<String>()
             Json.parseToJsonElement(c).jsonArray.mapNotNull { (it as? JsonPrimitive)?.content }.toSet()
         }.getOrDefault(emptySet())
@@ -472,6 +484,10 @@ object PacientesRepo {
             p.id in atiende || p.tratamientos.any { it.terapeutaId == soloTerapeutaId }
         }
     }.getOrDefault(emptyList())
+
+    /** Clave de la lista en caché. Sin filtro de sede, la de siempre (no invalida lo guardado). */
+    private fun claveLista(soloTerapeutaId: String?, sedeId: String?): String =
+        CacheLectura.claveListaPacientes(soloTerapeutaId) + (sedeId?.let { ":sede=$it" } ?: "")
 
     /** Un paciente por id (para la ficha). */
     suspend fun porId(id: String): PacienteStaff? {

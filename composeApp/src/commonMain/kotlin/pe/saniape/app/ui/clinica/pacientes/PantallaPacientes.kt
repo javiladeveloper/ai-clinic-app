@@ -119,6 +119,17 @@ fun PantallaPacientes(
                         }
                     }
                 }
+                // Pacientes por sede: con una sede elegida la lista es la de ESA sede
+                // y se dice cuál (como la web). En "Todas las sedes" no aparece.
+                vm.sedeFiltrada?.let { sedeId ->
+                    val sedeEstado by pe.saniape.app.data.staff.SedeActiva.estado.collectAsState()
+                    val nombre = sedeEstado.sedes.find { it.id == sedeId }?.nombre ?: "esta sede"
+                    Spacer(Modifier.height(Sania.dim.sm))
+                    Text(
+                        "🏢 Mostrando pacientes de $nombre",
+                        color = c.textoSuave, fontSize = Sania.txt.mini,
+                    )
+                }
             }
 
             // Pull-to-refresh: deslizar hacia abajo recarga la lista.
@@ -174,7 +185,16 @@ fun PantallaPacientes(
                     }
                     vm.filtrados.isEmpty() -> item {
                         Box(Modifier.fillMaxWidth().padding(Sania.dim.lg)) {
-                            if (vm.pacientes.isEmpty()) {
+                            if (vm.pacientes.isEmpty() && vm.sedeFiltrada != null) {
+                                // Con una sede elegida, vacío = esta sede aún no tiene pacientes.
+                                pe.saniape.app.ui.clinica.EstadoVacio(
+                                    emoji = "🏢",
+                                    titulo = "Esta sede aún no tiene pacientes",
+                                    subtitulo = "Para ver los de todas las sedes, elige \"Todas las sedes\".",
+                                    textoAccion = if (ctx.puede("pacientes")) "+ Registrar paciente" else null,
+                                    onAccion = { nuevoAbierto = true },
+                                )
+                            } else if (vm.pacientes.isEmpty()) {
                                 pe.saniape.app.ui.clinica.EstadoVacio(
                                     emoji = "👥",
                                     titulo = "Aún no hay pacientes",

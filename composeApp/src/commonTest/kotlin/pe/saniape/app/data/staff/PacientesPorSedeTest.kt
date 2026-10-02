@@ -26,5 +26,36 @@ class PacientesPorSedeTest {
     @Test
     fun elContextoPorDefectoEsFalse() {
         assertEquals(false, EstadoSede().pacientesPorSede)
+        assertNull(EstadoSede().sedePacientes)
+    }
+
+    // ── Lista de pacientes por sede (gemelo de app/(app)/pacientes/page.tsx) ──
+
+    @Test
+    fun listaAdminConSedeElegidaFiltraPorEsaSede() {
+        assertEquals("s1", sedeListaPacientes(multiSede = true, pacientesPorSede = true, sinLimite = true, sedeId = "s1"))
+    }
+
+    @Test
+    fun listaEnConsolidadoNoFiltra() {
+        assertNull(sedeListaPacientes(multiSede = true, pacientesPorSede = true, sinLimite = true, sedeId = ""))
+    }
+
+    @Test
+    fun listaSinLaOpcionOSinMultisedeNoFiltra() {
+        assertNull(sedeListaPacientes(multiSede = true, pacientesPorSede = false, sinLimite = true, sedeId = "s1"))
+        assertNull(sedeListaPacientes(multiSede = false, pacientesPorSede = true, sinLimite = true, sedeId = "s1"))
+    }
+
+    @Test
+    fun listaDelLimitadoLaAcotaLaRls() {
+        assertNull(sedeListaPacientes(multiSede = true, pacientesPorSede = true, sinLimite = false, sedeId = "s1"))
+    }
+
+    @Test
+    fun estadoSedeExponeLaSedeDeLaLista() {
+        val e = EstadoSede(multiSede = true, sedeId = "s2", pacientesPorSede = true, sinLimiteSedes = true)
+        assertEquals("s2", e.sedePacientes)
+        assertNull(e.copy(sedeId = "").sedePacientes)
     }
 }
