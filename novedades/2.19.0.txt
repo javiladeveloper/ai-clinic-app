@@ -1,0 +1,11 @@
+# Novedades de la 2.19.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Pacientes por sede, apoderado para menores y saber si el paciente ya pagó.
+---
+Clínicas:
+• Pacientes por sede: con una sede elegida, la lista y la búsqueda muestran solo los pacientes de esa sede.
+• Las citas se agendan en la sede del paciente.
+• Nuevo en Más: "Pacientes del período" — atendidos, evaluados y cuántos compraron paquete.
+• Al atender, el profesional ve si el paciente ya pagó o cuánto debe.
+• Menores de edad: apoderado (nombre, DNI, parentesco y teléfono) en la ficha del paciente.
+• Completar una sesión es más rápido.
