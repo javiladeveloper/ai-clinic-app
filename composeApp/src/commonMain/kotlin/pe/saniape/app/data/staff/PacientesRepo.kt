@@ -281,7 +281,35 @@ data class PacienteStaff(
     val resumenIaEstado: String? = null,          // generando | listo | error | null
     // Campos personalizados de la clínica: { campo_id -> valor en texto } (pacientes.campos_custom).
     val camposCustom: Map<String, String> = emptyMap(),
+    // Apoderado (menores o adultos con representante). Reglas en [Apoderado].
+    val fechaNacimiento: String? = null,
+    val requiereApoderado: Boolean = false,
+    val apoderadoNombre: String? = null,
+    val apoderadoDni: String? = null,
+    val apoderadoParentesco: String? = null,
+    val apoderadoTelefono: String? = null,
+    val apoderadoRecibeAvisos: Boolean = false,
 ) {
+    /** Menor de edad (fecha de nacimiento o, si no hay, la edad guardada). */
+    val esMenor: Boolean
+        get() = Apoderado.esMenor(fechaNacimiento, edad)
+
+    /** "Menor" / "Con apoderado" / null. */
+    val badgeApoderado: String?
+        get() = Apoderado.badge(esMenor, requiereApoderado)
+
+    /** Lo necesita y le falta nombre o DNI del apoderado. */
+    val faltaApoderado: Boolean
+        get() = Apoderado.falta(Apoderado.necesita(esMenor, requiereApoderado), apoderadoNombre, apoderadoDni)
+
+    /** Los datos del apoderado como los edita el formulario. */
+    val datosApoderado: DatosApoderado
+        get() = DatosApoderado(
+            nombre = apoderadoNombre.orEmpty(), dni = apoderadoDni.orEmpty(),
+            parentesco = apoderadoParentesco.orEmpty(), telefono = apoderadoTelefono.orEmpty(),
+            requiere = requiereApoderado, recibeAvisos = apoderadoRecibeAvisos,
+        )
+
     /** Tratamientos en curso (Activo). */
     val tratamientosActivos: List<TratamientoPaciente>
         get() = tratamientos.filter { it.estado == "Activo" }
@@ -363,7 +391,7 @@ object PacientesRepo {
      * (2026-07-31). La ficha sigue usando el completo, que ahí sí hace falta.
      */
     private const val SELECT_LISTA = """
-        id, nombre, dni, edad, telefono, email, diagnostico, estado, flag,
+        id, nombre, dni, edad, fecha_nacimiento, requiere_apoderado, telefono, email, diagnostico, estado, flag,
         tratamientos:tratamientos(
             id, estado, terapeuta_id,
             procedimiento:procedimientos(nombre)
@@ -374,6 +402,8 @@ object PacientesRepo {
         id, nombre, dni, edad, telefono, email, ocupacion, diagnostico, estado, flag,
         talla, peso, fecha_ingreso, alergias, medicacion_actual, antecedentes, observaciones, patologias, tipo_patologia,
         resumen_ia, resumen_ia_fecha, resumen_ia_estado, campos_custom,
+        fecha_nacimiento, requiere_apoderado, apoderado_nombre, apoderado_dni, apoderado_parentesco,
+        apoderado_telefono, apoderado_recibe_avisos,
         tratamientos:tratamientos(
             id, modalidad, estado, estado_pago, total_sesiones, sesiones_completadas,
             precio_paquete, precio_por_sesion, precio_acordado, terapeuta_id,
@@ -539,6 +569,8 @@ object PacientesRepo {
         antecedentes: String? = null, alergias: String? = null,
         medicacionActual: String? = null, patologias: List<String> = emptyList(),
         tipoPatologia: String? = null,
+        /** Apoderado (menores / adultos con representante). Vacío = no se envía. */
+        apoderado: DatosApoderado = DatosApoderado(),
     ): PacienteStaff? {
         // Se ENCOLA contra /api/staff/paciente/crear (que hace dedup por DNI e
         // idempotencia) en vez de insertar directo: así no se pierde sin señal ni
@@ -570,6 +602,8 @@ object PacientesRepo {
                 put("patologias", kotlinx.serialization.json.JsonArray(
                     patologias.mapNotNull { it.trim().takeIf { p -> p.isNotBlank() } }.map { JsonPrimitive(it) }))
             }
+            // Apoderado: viaja en el alta (también sin señal, en la cola).
+            if (apoderado.tieneAlgo) Apoderado.payload(apoderado).forEach { (k, v) -> put(k, v) }
         }
 
         // Con señal: se crea de verdad y devolvemos el paciente con su id REAL, así
@@ -581,6 +615,9 @@ object PacientesRepo {
             runCatching { crearPacienteEnServidor(cuerpo, idemKey) }.getOrNull()
         }
         if (idReal != null) {
+            // El endpoint de alta puede no conocer aún las columnas del apoderado
+            // (lista blanca): se escriben aparte, directo con la RLS del staff.
+            if (apoderado.tieneAlgo) guardarApoderado(idReal, apoderado)
             // runCatching: el paciente YA se creó en el servidor. Si la relectura
             // falla (red intermitente), NO propagar el error — devolvemos el objeto
             // mínimo. Propagar haría que el usuario reintente y duplique.
@@ -624,6 +661,8 @@ object PacientesRepo {
         patologias: List<String>? = null, tipoPatologia: String? = null,
         talla: Int? = null, peso: Double? = null, observaciones: String? = null,
         tocarExtra: Boolean = false,
+        /** null = no se toca el apoderado. */
+        apoderado: DatosApoderado? = null,
     ): Boolean = try {
         Supabase.client.postgrest["pacientes"].update({
             set("nombre", nombre)
@@ -641,7 +680,24 @@ object PacientesRepo {
                 set("peso", peso)
                 set("observaciones", observaciones?.trim()?.ifBlank { null })
             }
+            if (apoderado != null) setApoderado(apoderado)
         }) { filter { eq("id", id) } }
+        true
+    } catch (_: Exception) { false }
+
+    private fun io.github.jan.supabase.postgrest.query.PostgrestUpdate.setApoderado(d: DatosApoderado) {
+        fun txt(k: String, v: String) = set(k, v.trim().ifBlank { null })
+        txt("apoderado_nombre", d.nombre)
+        txt("apoderado_dni", d.dni)
+        txt("apoderado_parentesco", d.parentesco)
+        txt("apoderado_telefono", d.telefono)
+        set("requiere_apoderado", d.requiere)
+        set("apoderado_recibe_avisos", d.recibeAvisos)
+    }
+
+    /** Escribe solo las columnas del apoderado (alta / reactivación). Nunca clinica_id. */
+    suspend fun guardarApoderado(id: String, d: DatosApoderado): Boolean = try {
+        Supabase.client.postgrest["pacientes"].update({ setApoderado(d) }) { filter { eq("id", id) } }
         true
     } catch (_: Exception) { false }
 
@@ -1417,6 +1473,13 @@ object PacientesRepo {
             camposCustom = (o["campos_custom"] as? JsonObject)
                 ?.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.content?.let { k to it } }
                 ?.toMap() ?: emptyMap(),
+            fechaNacimiento = o.str("fecha_nacimiento"),
+            requiereApoderado = o.bool("requiere_apoderado") == true,
+            apoderadoNombre = o.str("apoderado_nombre"),
+            apoderadoDni = o.str("apoderado_dni"),
+            apoderadoParentesco = o.str("apoderado_parentesco"),
+            apoderadoTelefono = o.str("apoderado_telefono"),
+            apoderadoRecibeAvisos = o.bool("apoderado_recibe_avisos") == true,
         )
     }
 
