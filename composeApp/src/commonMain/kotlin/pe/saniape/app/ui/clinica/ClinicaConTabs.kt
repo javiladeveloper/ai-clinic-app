@@ -90,6 +90,7 @@ fun ClinicaConTabs(
     var verSesiones by remember { mutableStateOf(false) }
     var verCaja by remember { mutableStateOf(false) }
     var verEspecialidades by remember { mutableStateOf(false) }
+    var verPacientesPeriodo by remember { mutableStateOf(false) }
     // Buscador global de paciente (desde el header) + ficha que abre.
     var verBuscador by remember { mutableStateOf(false) }
     var fichaBuscada by remember { mutableStateOf<pe.saniape.app.data.staff.PacienteStaff?>(null) }
@@ -125,11 +126,12 @@ fun ClinicaConTabs(
 
     // Con un flujo a pantalla completa abierto, el "atrás" es de ese flujo (tiene
     // su propio ManejarAtras, con la confirmación de salir sin guardar).
-    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verEspecialidades || tab != TabClinica.Inicio)) {
+    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || tab != TabClinica.Inicio)) {
         when {
             verSesiones -> verSesiones = false
             verCaja -> verCaja = false
             verEspecialidades -> verEspecialidades = false
+            verPacientesPeriodo -> verPacientesPeriodo = false
             else -> tab = TabClinica.Inicio
         }
     }
@@ -188,10 +190,10 @@ fun ClinicaConTabs(
                 tabs.forEach { t ->
                     NavigationBarItem(
                         // Un tab está "activo" solo si NO hay un overlay (Sesiones/Caja) encima.
-                        selected = tab == t && !verSesiones && !verCaja && !verEspecialidades,
+                        selected = tab == t && !verSesiones && !verCaja && !verEspecialidades && !verPacientesPeriodo,
                         // Al tocar un tab hay que CERRAR los overlays sin tab propio; si no,
                         // Caja/Sesiones quedaba tapando el contenido y no redirigía (bug conocido).
-                        onClick = { verSesiones = false; verCaja = false; verEspecialidades = false; tab = t },
+                        onClick = { verSesiones = false; verCaja = false; verEspecialidades = false; verPacientesPeriodo = false; tab = t },
                         icon = { Icon(t.icono, contentDescription = t.titulo) },
                         label = { Text(t.titulo, fontSize = 11.sp) },
                         colors = NavigationBarItemDefaults.colors(
@@ -243,6 +245,8 @@ fun ClinicaConTabs(
                         onAbrirCaja = if (contexto.puede("pagos")) ({ verCaja = true }) else null,
                         // Nativo (crear + asistente). Mismo permiso que /api/staff/especialidad/*.
                         onAbrirEspecialidades = if (contexto.puede("equipo")) ({ verEspecialidades = true }) else null,
+                        // Nativo. Mismo permiso que /api/reportes/rendimiento (el plan lo valida el servidor).
+                        onAbrirPacientesPeriodo = if (contexto.puede("reportes")) ({ verPacientesPeriodo = true }) else null,
                     )
                 }
             }
@@ -275,6 +279,17 @@ fun ClinicaConTabs(
                     pe.saniape.app.ui.clinica.especialidades.PantallaEspecialidades(
                         ctx = contexto,
                         onSalir = { verEspecialidades = false },
+                    )
+                }
+            }
+            AnimatedVisibility(
+                visible = verPacientesPeriodo && contexto.puede("reportes"),
+                enter = entrarDetalle(), exit = salirDetalle(),
+            ) {
+                Box(Modifier.fillMaxSize().background(c.fondo)) {
+                    PantallaPacientesPeriodo(
+                        ctx = contexto,
+                        onSalir = { verPacientesPeriodo = false },
                     )
                 }
             }

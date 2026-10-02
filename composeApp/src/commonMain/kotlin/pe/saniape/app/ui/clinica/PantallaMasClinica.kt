@@ -57,6 +57,8 @@ fun PantallaMasClinica(
     onAbrirCaja: (() -> Unit)? = null,
     // 🩺 Especialidades nativa (solo con permiso "equipo"; null = no se muestra).
     onAbrirEspecialidades: (() -> Unit)? = null,
+    // 📊 Pacientes del período nativo (solo con permiso "reportes"; null = no se muestra).
+    onAbrirPacientesPeriodo: (() -> Unit)? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -100,7 +102,7 @@ fun PantallaMasClinica(
                 Spacer(Modifier.height(Sania.dim.lg))
 
                 // Módulos clínicos sin tab propio (Sesiones, Caja…)
-                if (onAbrirSesiones != null || onAbrirCaja != null) {
+                if (onAbrirSesiones != null || onAbrirCaja != null || onAbrirPacientesPeriodo != null) {
                     Text("MÓDULOS", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(Sania.dim.sm))
                     if (onAbrirSesiones != null) {
@@ -126,6 +128,21 @@ fun PantallaMasClinica(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text("💰  Caja de hoy", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
+                            Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                        }
+                        Spacer(Modifier.height(Sania.dim.sm))
+                    }
+                    // 📊 Pacientes del período (con permiso de reportes): atendidos,
+                    // evaluados y cuántos compraron paquete. El plan lo valida el servidor.
+                    if (onAbrirPacientesPeriodo != null) {
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { onAbrirPacientesPeriodo() }.padding(Sania.dim.lg),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("📊  Pacientes del período", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
                             Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
                         }
                     }
