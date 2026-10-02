@@ -1,0 +1,8 @@
+# Novedades de la 2.20.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Pacientes nuevos: quién se registró, quién vino a evaluación, quién empezó tratamiento y quién pagó.
+---
+Clínicas:
+• Nuevo en Reportes: "Pacientes nuevos" — quién se registró, quién vino a evaluación, quién empezó tratamiento y quién pagó, con sus sesiones.
+• Dar de alta a la vista en consultas, tratamientos por unidades y servicios realizados.
+• El profesional puede pasar su propia consulta a evaluación.

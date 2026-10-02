@@ -1,8 +1,0 @@
-# BORRADOR de las novedades de la próxima versión (aún sin número).
-# Al publicar, copiar a novedades/<versionName>.txt con el formato de siempre
-# (ver docs/ci-cd-despliegue.md → "Novedades de cada versión").
-Pacientes nuevos: quién se registró, quién vino a evaluación, quién empezó tratamiento y quién pagó.
----
-Clínicas:
-• Nuevo: "Pacientes nuevos" — quién se registró, quién vino a evaluación, quién empezó tratamiento y quién pagó, con sus sesiones.
-• Dar de alta a la vista en consultas, tratamientos por unidades y servicios realizados.
