@@ -74,7 +74,20 @@ class AtencionViewModel(
     /** Un guardado a la vez (el automático de [irA] puede cruzarse con uno a mano). */
     private val candado = Mutex()
 
-    init { cargar() }
+    /**
+     * "¿Ya pagó?" de esta cita (lo arma el servidor: estado y deuda, nunca lo
+     * pagado). null = no llegó o no aplica: la cabecera no muestra nada. Nunca
+     * bloquea atender.
+     */
+    var estadoPago by mutableStateOf<pe.saniape.app.data.staff.EstadoPagoCita?>(null); private set
+
+    private fun cargarEstadoPago() {
+        viewModelScope.launch {
+            estadoPago = pe.saniape.app.data.staff.CobroRepo.estadoPago(citaId)
+        }
+    }
+
+    init { cargar(); cargarEstadoPago() }
 
     // ── Carga ────────────────────────────────────────────────────────────────
 
@@ -202,6 +215,8 @@ class AtencionViewModel(
      */
     fun recargar() {
         viewModelScope.launch { recargarDatos() }
+        // Tras cobrar (o cualquier cambio), el badge de pago también se refresca.
+        cargarEstadoPago()
     }
 
     /**

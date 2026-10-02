@@ -508,6 +508,7 @@ fun PantallaAgenda(
                                 crearTratamiento = ctx.puede("sesiones") && vm.flujoDe(cita).esCitaQueEvalua(cita.tipo),
                                 flujo = vm.flujoDe(cita),
                                 puedeCobrar = ctx.puede("pagos"),
+                                estadoPago = vm.estadosPago[cita.id],
                                 sala = vm.etapaDe(cita)?.let { etapa ->
                                     val a = vm.atencionDe(cita)
                                     pe.saniape.app.ui.clinica.agenda.componentes.SalaTarjeta(
@@ -622,6 +623,7 @@ fun PantallaAgenda(
                     )
                 } else null,
                 cobro = if (conCobro) cobro else null,
+                estadoPago = vm.estadosPago[cita.id],
                 onConfirmarFisio = { obs, piezas, mejorias, eva ->
                     completar = null
                     revisada = null

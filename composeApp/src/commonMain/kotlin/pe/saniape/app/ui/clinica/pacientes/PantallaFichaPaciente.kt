@@ -925,6 +925,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             tratamientoId = req.trat.id,
             esDental = tratEsDental(req.trat),
             esFisio = tratEsFisio(req.trat),
+            citaId = hitos?.citaPorSesion?.get(ses.id),
             onCancelar = { completarSesion = null },
             onConfirmar = { tecnicas, mejorias, dejoRx, pago, piezas, eva ->
                 completarSesion = null
@@ -1101,6 +1102,11 @@ internal fun ModalCompletarSesion(
      * de fisio y dictado 🎤. En false el modal queda exactamente como antes.
      */
     esFisio: Boolean = false,
+    /**
+     * Cita de esta sesión, si se conoce: muestra "¿ya pagó?" (estado y deuda, nunca
+     * lo pagado; lo arma el servidor). null = no se muestra nada.
+     */
+    citaId: String? = null,
     onCancelar: () -> Unit,
     // pago = (monto, método) si activó "¿pagó esta sesión?" — el cobro sale en el
     // MISMO paso que el completar, como la web (antes eran 2 viajes: ✓ y luego 💳).
@@ -1149,6 +1155,12 @@ internal fun ModalCompletarSesion(
     val notasPrev = anterior?.notas?.takeIf { it.isNotBlank() }
     val mejoriasPrev = anterior?.mejorias?.takeIf { it.isNotBlank() }
 
+    // ¿Ya pagó? Una lectura al abrir; si falla, simplemente no aparece.
+    var estadoPago by remember(citaId) { mutableStateOf<pe.saniape.app.data.staff.EstadoPagoCita?>(null) }
+    androidx.compose.runtime.LaunchedEffect(citaId) {
+        estadoPago = pe.saniape.app.data.staff.CobroRepo.estadoPago(citaId)
+    }
+
     DialogoForm(
         titulo = "Completar sesión #${ses.numero}",
         subtitulo = "Registra lo realizado en la sesión",
@@ -1164,6 +1176,11 @@ internal fun ModalCompletarSesion(
                 if (esFisio) dolorInicio to dolorFin else null)
         },
     ) {
+        // Informativo: nunca bloquea completar.
+        if (estadoPago?.mostrable == true) {
+            pe.saniape.app.ui.clinica.agenda.componentes.BadgeEstadoPago(estadoPago)
+            Spacer(Modifier.height(12.dp))
+        }
         // Aviso: el paciente dejó RX pendiente en la sesión anterior (se recuerda aquí).
         if (anterior != null && AvisoRx.dejoRx(anterior)) {
             Row(

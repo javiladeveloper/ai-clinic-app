@@ -95,6 +95,11 @@ fun ModalCompletar(
      * [CobroCierreAgenda.pago] al confirmar.
      */
     cobro: CobroCierreAgenda? = null,
+    /**
+     * "¿Ya pagó?" de esta cita (servidor: estado y deuda, nunca lo pagado). La
+     * agenda ya lo tiene cargado: no se pide de nuevo. null = no se muestra.
+     */
+    estadoPago: pe.saniape.app.data.staff.EstadoPagoCita? = null,
 ) {
     val c = Sania.colors
     var terapeutaElegido by remember { mutableStateOf<String?>(null) }
@@ -147,6 +152,11 @@ fun ModalCompletar(
                 cita.pacienteNombre?.let {
                     Text(it, color = c.textoSuave, fontSize = Sania.txt.pequeno,
                         modifier = Modifier.padding(top = 2.dp))
+                }
+                // Informativo: nunca bloquea completar.
+                if (estadoPago?.mostrable == true) {
+                    pe.saniape.app.ui.clinica.agenda.componentes.BadgeEstadoPago(
+                        estadoPago, cita.estado, Modifier.padding(top = 6.dp))
                 }
             }
         },

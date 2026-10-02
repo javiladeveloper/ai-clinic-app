@@ -79,6 +79,12 @@ fun TarjetaCita(
      * ya atendida se ve igual ("⚠ Debe S/ N"), pero no hay nada que tocar.
      */
     puedeCobrar: Boolean = false,
+    /**
+     * Estado de pago que arma el servidor (estado-pago): "¿ya pagó?" para quien
+     * atiende. null = no llegó (sin red, endpoint aún no desplegado…): se usa lo
+     * de siempre (💰 Pagado / ⚠ Debe de la Consulta/Evaluación).
+     */
+    estadoPago: pe.saniape.app.data.staff.EstadoPagoCita? = null,
 ) {
     val c = Sania.colors
     val acciones = recordarAcciones()
@@ -165,6 +171,8 @@ fun TarjetaCita(
             // sesión se cobra desde su tratamiento, nunca como cita.
             val cobrable = cita.tipo != "Sesión" && (cita.costo ?: 0.0) > 0 && cita.estado != "Cancelada"
             val pagada = cita.pagadaAt != null
+            // El badge del servidor manda: con él, no se repiten los chips locales de pago.
+            val conBadgePago = estadoPago?.mostrable == true && cita.estado != "Cancelada"
 
             // Chips: costo, Web, Asignar (discretos, en una línea)
             val chips = buildList {
@@ -174,10 +182,10 @@ fun TarjetaCita(
                         cita.tipo == "Consulta" -> add(Triple("Gratis", c.teal, c.tealBg))
                     }
                 }
-                if (cobrable && puedeCobrar && pagada) add(Triple("💰 Pagado", c.ok, c.okBg))
+                if (!conBadgePago && cobrable && puedeCobrar && pagada) add(Triple("💰 Pagado", c.ok, c.okBg))
                 // Sin permiso de cobrar, la deuda tiene que verse igual: el profesional
                 // necesita saber que el paciente no pagó aunque no sea él quien cobra.
-                if (cobrable && !puedeCobrar && !pagada && cita.estado == "Completada") {
+                if (!conBadgePago && cobrable && !puedeCobrar && !pagada && cita.estado == "Completada") {
                     add(Triple("⚠ Debe ${textoSoles(cita.costo ?: 0.0)}", c.error, c.errorBg))
                 }
                 if (cita.origen == "online") add(Triple("🌐 Web", c.purple, c.purpleBg))
@@ -188,8 +196,9 @@ fun TarjetaCita(
                     add(Triple("$icono $conteoFranja en esta hora", solape.fg, solape.bg))
                 }
             }
-            if (chips.isNotEmpty()) {
+            if (chips.isNotEmpty() || conBadgePago) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 8.dp)) {
+                    if (conBadgePago) BadgeEstadoPago(estadoPago, cita.estado)
                     chips.forEach { (t, fg, bg) -> Chip(t, fg, bg) }
                 }
             }

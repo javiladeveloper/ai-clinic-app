@@ -461,7 +461,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             coroutineScope {
                 // Las llegadas de hoy van EN PARALELO con la agenda (sin cascada).
                 val lleg = async { recargarLlegadas() }
-                citas = runCatching { AgendaRepo.citasDelDia(fecha, ctx.miTerapeutaId) }.getOrDefault(emptyList())
+                ponerCitas(runCatching { AgendaRepo.citasDelDia(fecha, ctx.miTerapeutaId) }.getOrDefault(emptyList()))
                 lleg.await()
             }
             cargando = false; recargando = false
@@ -474,7 +474,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             val r = runCatching {
                 AgendaRepo.citasPaginadas(verHistorial, pagina, ctx.miTerapeutaId, hoy)
             }.getOrDefault(emptyList())
-            citas = r
+            ponerCitas(r)
             hayMasPaginas = r.size >= AgendaRepo.PAGE_SIZE
             cargando = false; recargando = false
         }
@@ -513,10 +513,37 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     /** Recarga las citas según el modo actual (lista paginada vs día). */
     private suspend fun recargarCitas() {
         recargarLlegadas()
-        citas = runCatching {
+        ponerCitas(runCatching {
             if (verHistorial) AgendaRepo.citasPaginadas(verHistorial, pagina, ctx.miTerapeutaId, hoy)
             else AgendaRepo.citasDelDia(fechaSel, ctx.miTerapeutaId)
-        }.getOrDefault(citas)
+        }.getOrDefault(citas))
+    }
+
+    /**
+     * "¿Ya pagó?" por cita (badge de la tarjeta), lo arma el servidor. UNA
+     * petición por lista cargada (no por tarjeta). Vacío = no se muestra nada.
+     */
+    var estadosPago by mutableStateOf<Map<String, pe.saniape.app.data.staff.EstadoPagoCita>>(emptyMap()); private set
+    private var estadosPagoJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * ÚNICO lugar donde cambia la lista de citas: la pone y pide, en segundo
+     * plano, el estado de pago de las visibles (sin canceladas). Se repite en cada
+     * recarga (cambio de día, realtime, tras cobrar/completar). Mientras llega se
+     * conserva lo ya sabido de esas mismas citas (sin parpadeo); un fallo deja el
+     * mapa vacío (sin badge, la tarjeta de siempre): nunca bloquea la agenda.
+     */
+    private fun ponerCitas(nuevas: List<CitaStaff>) {
+        citas = nuevas
+        val ids = nuevas.filter { it.estado != "Cancelada" }.map { it.id }
+        estadosPagoJob?.cancel()
+        if (ids.isEmpty()) { estadosPago = emptyMap(); return }
+        // Las de otro día no aplican: se descartan ya, sin esperar la respuesta.
+        estadosPago = estadosPago.filterKeys { it in ids }
+        estadosPagoJob = viewModelScope.launch {
+            val r = pe.saniape.app.data.staff.CobroRepo.estadosPago(ids)
+            estadosPago = r
+        }
     }
 
     /**
@@ -600,6 +627,8 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             val (_, motivo) = cobrarSesionDeCita(cf.cita, cf.tratamientoId, cf.monto, cf.metodo, encolada = false)
             reintentandoCobro = false
             cobroFallido = if (motivo == null) null else cf.copy(motivo = motivo)
+            // Entró el pago: el badge "¿ya pagó?" de esa cita cambia.
+            if (motivo == null) ponerCitas(citas)
         }
     }
 

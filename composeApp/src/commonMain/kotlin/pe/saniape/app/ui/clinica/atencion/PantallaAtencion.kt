@@ -198,6 +198,7 @@ private fun ColumnScope.ContenidoAtencion(
             { vm.lanzar("guardar") { vm.guardar() } }
         } else null,
         guardando = vm.guardando,
+        estadoPago = vm.estadoPago,
         onAgenda = onAgenda,
         onFicha = { onVerFicha(d.cita.paciente?.id ?: d.cita.paciente_id ?: return@Cabecera) },
         onFiliacion = { if (pacienteId != null) verFiliacion = true },
@@ -331,6 +332,8 @@ private fun Cabecera(
     d: DatosConsultaApp,
     accionTeclado: (() -> Unit)?,
     guardando: Boolean,
+    /** "¿Ya pagó?" de la cita (servidor). null = no se muestra. */
+    estadoPago: pe.saniape.app.data.staff.EstadoPagoCita?,
     onAgenda: () -> Unit,
     onFicha: () -> Unit,
     onFiliacion: () -> Unit,
@@ -371,6 +374,11 @@ private fun Cabecera(
         Text(linea1, color = c.sobreNavy.copy(alpha = 0.8f), fontSize = 13.sp)
         Text(listOf(queEs, cuando).filter { it.isNotBlank() }.joinToString(" · "),
             color = c.sobreNavy.copy(alpha = 0.8f), fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        // ¿Ya pagó? Solo estado y deuda; informativo, nunca bloquea atender.
+        if (estadoPago?.mostrable == true && cita.estado != "Cancelada") {
+            Spacer(Modifier.height(6.dp))
+            pe.saniape.app.ui.clinica.agenda.componentes.BadgeEstadoPago(estadoPago, cita.estado)
+        }
         Spacer(Modifier.height(Sania.dim.sm))
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             BotonCabecera("Ficha", onClick = onFicha)

@@ -242,6 +242,8 @@ data class HitosPaciente(
     val faltasSinAviso: Int = 0,
     /** Citas futuras Pendiente/Confirmada: (tratamientoId, sesionId) — para "No volvió". */
     val citasFuturasPendientes: List<Pair<String, String?>> = emptyList(),
+    /** sesionId → citaId (no canceladas): el "¿ya pagó?" al completar una sesión desde la ficha. */
+    val citaPorSesion: Map<String, String> = emptyMap(),
 )
 
 /** Una evaluación completada del paciente (origen de un tratamiento). */
@@ -1300,6 +1302,10 @@ object PacientesRepo {
             citasFuturasPendientes = filas
                 .filter { (it.str("fecha") ?: "") >= hoy && it.str("estado") in listOf("Pendiente", "Confirmada") }
                 .mapNotNull { f -> f.str("tratamiento_id")?.let { it to f.str("sesion_id") } },
+            citaPorSesion = filas
+                .filter { it.str("estado") != "Cancelada" }
+                .mapNotNull { f -> val s = f.str("sesion_id"); val c = f.str("id"); if (s != null && c != null) s to c else null }
+                .toMap(),
         )
     }
 
