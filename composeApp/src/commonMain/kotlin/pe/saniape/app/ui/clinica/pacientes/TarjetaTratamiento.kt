@@ -412,11 +412,11 @@ fun TarjetaTratamiento(
             Spacer(Modifier.height(Sania.dim.md))
 
             // Las Consultas (especialidad sin sesiones) y el SERVICIO ÚNICO no listan sesiones;
-            // solo pagos + fotos. El servicio único NO tiene "alta": realizado + pagado es el fin.
+            // solo pagos + fotos + alta (el servicio único, una vez realizado).
             if (t.esConsulta || t.esServicioUnico) {
                 Text(
                     if (t.esServicioUnico) "Servicio único — se registra desde el paso “Por hacer” del recorrido."
-                    else "Atención sin sesiones — el alta se declara desde el paso “Control”.",
+                    else "Atención sin sesiones.",
                     color = c.textoSuave, fontSize = 12.sp,
                 )
                 // Odontología (servicio único dental: profilaxis…): sus piezas también.
@@ -436,6 +436,13 @@ fun TarjetaTratamiento(
                     Spacer(Modifier.height(Sania.dim.md))
                     SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() },
                         soloLectura = soloLectura, pacienteId = pacienteId, abrirRegistro = abrirPagoToken)
+                }
+                // Alta a la vista también sin sesiones (2026-10-02: "en algunos
+                // procedimientos no encontré dar de alta" — estaba solo dentro del
+                // paso "Control"). El servicio único se cierra una vez realizado.
+                if (!terminado && puedeSesionesEf && (!t.esServicioUnico || t.estado == "Completado")) {
+                    Spacer(Modifier.height(Sania.dim.sm))
+                    BtnDarAlta(habilitado = !accionando) { confirmarAlta = true }
                 }
             } else if (cargaFallo) {
                 // La carga falló (timeout/red). NO decir "sin sesiones": ofrecer reintentar.
