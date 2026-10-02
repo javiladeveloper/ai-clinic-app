@@ -200,13 +200,31 @@ fun PantallaCrearCita(
     // Sin multisede: nada de esto se pinta ni se consulta, y no se manda sede.
     val sedeEstado by pe.saniape.app.data.staff.SedeActiva.estado.collectAsState()
     val multiSede = sedeEstado.multiSede
-    var sedeId by remember {
-        mutableStateOf(
-            if (!sedeEstado.multiSede) null
-            else sedeEstado.sedeId.ifEmpty { null }
-                ?: sedeEstado.principalId?.takeIf { p -> sedeEstado.sedes.any { it.id == p } }
-                ?: sedeEstado.sedes.firstOrNull()?.id
-        )
+    // La sede "normal" de la cita: la activa; en "todas", la principal (o la primera).
+    fun sedePorDefecto(): String? =
+        if (!sedeEstado.multiSede) null
+        else sedeEstado.sedeId.ifEmpty { null }
+            ?: sedeEstado.principalId?.takeIf { p -> sedeEstado.sedes.any { it.id == p } }
+            ?: sedeEstado.sedes.firstOrNull()?.id
+    var sedeId by remember { mutableStateOf(sedePorDefecto()) }
+    // Pacientes por sede: la cita ES del paciente, así que va en SU sede. Si se
+    // agendara en otra, el personal de la sede del paciente no la vería y el de la
+    // otra tampoco (no ve al paciente). Se fuerza y se dice; el selector queda
+    // bloqueado. Gemelo de `sedeForzada` en CitaForm.tsx (web).
+    val sedeForzada = pe.saniape.app.data.staff.sedeForzadaCita(
+        multiSede = multiSede,
+        pacientesPorSede = sedeEstado.pacientesPorSede,
+        sedePaciente = paciente?.sedeId,
+        sedesElegibles = sedeEstado.sedes.map { it.id },
+    )
+    var habiaForzada by remember { mutableStateOf(false) }
+    LaunchedEffect(sedeForzada) {
+        if (sedeForzada != null) {
+            sedeId = sedeForzada; habiaForzada = true
+        } else if (habiaForzada) {
+            // Cambió a un paciente sin sede: vuelve a la sede de siempre.
+            sedeId = sedePorDefecto(); habiaForzada = false
+        }
     }
     var datosSede by remember { mutableStateOf<pe.saniape.app.data.staff.SedesAgendaRepo.DatosSede?>(null) }
     LaunchedEffect(multiSede) {
@@ -268,7 +286,9 @@ fun PantallaCrearCita(
             // Resolver referencias del pre-llenado (→ Evaluación).
             prefill?.let { pf ->
                 paciente = pf.pacienteId?.let { id ->
-                    pacientes.find { it.id == id } ?: pf.pacienteNombre?.let { RefNombre(id, it) }
+                    // Fuera de la lista precargada: su sede se pide aparte (pacientes por sede).
+                    pacientes.find { it.id == id }
+                        ?: pf.pacienteNombre?.let { RefNombre(id, it, sedeId = AgendaRepo.sedeDePaciente(id)) }
                 }
                 val ter = pf.terapeutaId?.let { id -> terapeutas.find { it.id == id } }
                 terapeuta = ter
@@ -505,8 +525,15 @@ fun PantallaCrearCita(
                 if (multiSede && sedeEstado.sedes.isNotEmpty()) {
                     Spacer(Modifier.height(Sania.dim.md))
                     Etiqueta("Sede")
-                    if (sedeEstado.sedeId.isNotEmpty() || sedeEstado.sedes.size == 1) {
+                    if (sedeForzada != null || sedeEstado.sedeId.isNotEmpty() || sedeEstado.sedes.size == 1) {
                         SelectorBoton("🏢 " + (sedeEstado.sedes.find { it.id == sedeId }?.nombre ?: "Sede"), bloqueado = true) {}
+                        if (sedeForzada != null) {
+                            Text(
+                                "Es la sede del paciente: sus citas se agendan ahí. Para atenderlo en otra, cambia su sede desde la ficha.",
+                                color = c.textoSuave, fontSize = 11.sp,
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                        }
                     } else {
                         SelectorLista(
                             items = sedeEstado.sedes, elegido = sedeEstado.sedes.find { it.id == sedeId },

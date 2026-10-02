@@ -320,19 +320,42 @@ object AgendaRepo {
      * entran en esos 500 los encuentra [buscarPacientes] en el servidor.
      */
     suspend fun pacientesParaSelector(): List<RefNombre> {
+        val conSede = SedeActiva.estado.value.pacientesPorSede
         val filas = filasConRespaldo(CacheLectura.claveCatalogo("pacientes-selector")) {
             Supabase.client.postgrest["pacientes"]
-                .select(Columns.list("id, nombre, dni, estado")) {
+                .select(Columns.list(columnasSelector(conSede))) {
                     filter { neq("estado", "Inactivo") }
                     order("nombre", Order.ASCENDING)
                     limit(500)
                 }
                 .decodeList<JsonObject>()
         }
-        return filas.mapNotNull {
-            val id = it.str("id") ?: return@mapNotNull null
-            RefNombre(id, it.str("nombre") ?: "Paciente", it.str("dni"))
-        }
+        return filas.mapNotNull { refPaciente(it) }
+    }
+
+    /**
+     * Columnas del selector de pacientes. `sede_id` solo con "pacientes por sede"
+     * (la cita se agenda en la sede del paciente); sin la opción, la consulta de siempre.
+     */
+    private fun columnasSelector(conSede: Boolean): String =
+        "id, nombre, dni, estado" + if (conSede) ", sede_id" else ""
+
+    private fun refPaciente(o: JsonObject): RefNombre? {
+        val id = o.str("id") ?: return null
+        return RefNombre(id, o.str("nombre") ?: "Paciente", o.str("dni"), sedeId = o.str("sede_id"))
+    }
+
+    /**
+     * Sede de UN paciente (para una cita pre-llenada cuyo paciente no está en la
+     * lista del selector). null si no tiene, si la opción está apagada o sin red.
+     */
+    suspend fun sedeDePaciente(pacienteId: String): String? {
+        if (!SedeActiva.estado.value.pacientesPorSede) return null
+        return runCatching {
+            Supabase.client.postgrest["pacientes"]
+                .select(Columns.list("sede_id")) { filter { eq("id", pacienteId) } }
+                .decodeList<JsonObject>().firstOrNull()?.str("sede_id")
+        }.getOrNull()
     }
 
     /**
@@ -347,7 +370,7 @@ object AgendaRepo {
         val palabras = palabrasBusqueda(q)
         if (palabras.isEmpty()) return emptyList()
         val filas = Supabase.client.postgrest["pacientes"]
-            .select(Columns.list("id, nombre, dni, estado")) {
+            .select(Columns.list(columnasSelector(SedeActiva.estado.value.pacientesPorSede))) {
                 filter {
                     neq("estado", "Inactivo")
                     if (palabras.size == 1) {
@@ -366,10 +389,7 @@ object AgendaRepo {
                 limit(60)
             }
             .decodeList<JsonObject>()
-        return filas.mapNotNull {
-            val id = it.str("id") ?: return@mapNotNull null
-            RefNombre(id, it.str("nombre") ?: "Paciente", it.str("dni"))
-        }
+        return filas.mapNotNull { refPaciente(it) }
     }
 
     /**
@@ -647,8 +667,11 @@ data class EspecialidadRef(
     /** Color e ícono que eligió la clínica (chips del filtro de la agenda). */
     val color: String? = null, val icono: String? = null,
 )
-/** [dni] solo lo trae el selector de pacientes (buscar por documento). */
-data class RefNombre(val id: String, val nombre: String, val dni: String? = null)
+/**
+ * [dni] solo lo trae el selector de pacientes (buscar por documento). [sedeId]:
+ * la sede del paciente, solo con "pacientes por sede" (fuerza la sede de la cita).
+ */
+data class RefNombre(val id: String, val nombre: String, val dni: String? = null, val sedeId: String? = null)
 /** Terapeuta con sus especialidades (para filtrar por especialidad en el form). */
 data class TerapeutaRef(val id: String, val nombre: String, val especialidadIds: List<String>)
 data class TratamientoRef(

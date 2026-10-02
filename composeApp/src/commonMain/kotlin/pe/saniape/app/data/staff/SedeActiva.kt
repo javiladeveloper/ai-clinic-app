@@ -116,6 +116,19 @@ fun sedeListaPacientes(
 ): String? =
     if (multiSede && pacientesPorSede && sinLimite) sedeId?.takeIf { it.isNotBlank() } else null
 
+/**
+ * Sede a la que se FUERZA una cita nueva: la del paciente, si la clínica asigna
+ * pacientes por sede y esa sede es una de las que el usuario puede elegir. Gemelo
+ * de `sedeForzada` en components/citas/CitaForm.tsx. null = comportamiento normal.
+ */
+fun sedeForzadaCita(
+    multiSede: Boolean,
+    pacientesPorSede: Boolean,
+    sedePaciente: String?,
+    sedesElegibles: List<String>,
+): String? =
+    if (multiSede && pacientesPorSede && sedePaciente != null && sedePaciente in sedesElegibles) sedePaciente else null
+
 /** Estado de la sede activa (lo que observan las pantallas). */
 data class EstadoSede(
     val multiSede: Boolean = false,

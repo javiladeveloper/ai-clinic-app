@@ -58,4 +58,19 @@ class PacientesPorSedeTest {
         assertEquals("s2", e.sedePacientes)
         assertNull(e.copy(sedeId = "").sedePacientes)
     }
+
+    // ── Cita en la sede del paciente (gemelo de sedeForzada en CitaForm.tsx) ──
+
+    @Test
+    fun citaSeFuerzaALaSedeDelPaciente() {
+        assertEquals("s2", sedeForzadaCita(true, true, "s2", listOf("s1", "s2")))
+    }
+
+    @Test
+    fun citaNoSeFuerzaSinSedeSinOpcionOFueraDeLasElegibles() {
+        assertNull(sedeForzadaCita(true, true, null, listOf("s1", "s2")))
+        assertNull(sedeForzadaCita(true, false, "s2", listOf("s1", "s2")))
+        assertNull(sedeForzadaCita(false, true, "s2", listOf("s1", "s2")))
+        assertNull(sedeForzadaCita(true, true, "s3", listOf("s1", "s2")))
+    }
 }
