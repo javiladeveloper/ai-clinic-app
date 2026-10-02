@@ -39,6 +39,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import pe.saniape.app.data.staff.Apoderado
+import pe.saniape.app.data.staff.DatosApoderado
 import pe.saniape.app.data.staff.FichaDeBaja
 import pe.saniape.app.data.staff.ReactivarRepo
 import pe.saniape.app.data.staff.documentoCompleto
@@ -82,6 +84,8 @@ fun ModalNuevoPaciente(
     var sintomas by remember { mutableStateOf("") }
     var alergias by remember { mutableStateOf("") }
     var medicacion by remember { mutableStateOf("") }
+    // Apoderado: aparece solo con edad < 18 (o la casilla del adulto representado).
+    var apoderado by remember { mutableStateOf(DatosApoderado()) }
 
     var buscandoDni by remember { mutableStateOf(false) }
     var avisoDni by remember { mutableStateOf<String?>(null) }
@@ -127,6 +131,7 @@ fun ModalNuevoPaciente(
         dni = ""; nombre = ""; telefono = ""; edad = ""; email = ""; ocupacion = ""
         talla = ""; peso = ""; motivo = ""; observaciones = ""; flag = "verde"
         tipoPatologia = ""; antecedentes = ""; sintomas = ""; alergias = ""; medicacion = ""
+        apoderado = DatosApoderado()
     }
 
     // Detección al escribir (con pausa): una consulta chica a la base propia, no
@@ -201,6 +206,7 @@ fun ModalNuevoPaciente(
                     val r = ReactivarRepo.reactivar(fb.id, cambios)
                     guardando = false
                     if (!r.ok || r.id == null) { error = r.error ?: "No se pudo reactivar"; return@launch }
+                    if (apoderado.tieneAlgo) PacientesRepo.guardarApoderado(r.id, apoderado)
                     pe.saniape.app.ui.Toaster.exito("Ficha reactivada · ${r.estado ?: ""}".trimEnd(' ', '·'))
                     val p = runCatching { PacientesRepo.porId(r.id) }.getOrNull()
                     if (p != null) onCreado(p) else onCancelar()
@@ -230,6 +236,7 @@ fun ModalNuevoPaciente(
                     medicacionActual = medicacion.trim().ifBlank { null },
                     patologias = sintomas.split(",").map { it.trim() }.filter { it.isNotBlank() },
                     tipoPatologia = tipoPatologia.trim().ifBlank { null },
+                    apoderado = apoderado,
                 )
                 guardando = false
                 if (creado != null) { pe.saniape.app.ui.Toaster.exito("Paciente registrado"); onCreado(creado) }
@@ -411,6 +418,14 @@ fun ModalNuevoPaciente(
                 placeholder = { Text("Lo que quieras recordar: \"trajo radiografía\", \"la hija paga por ella\"…", color = c.textoSuave) },
                 minLines = 2, modifier = Modifier.fillMaxWidth())
         }
+
+        // Apoderado (menores / adultos con representante) — gemelo de la web.
+        Spacer(Modifier.height(4.dp))
+        SeccionApoderado(
+            esMenor = Apoderado.esMenor(null, edad.toIntOrNull()),
+            datos = apoderado,
+            onChange = { apoderado = it },
+        )
 
         Spacer(Modifier.height(12.dp))
         TarjetaForm(titulo = "Comportamiento", icono = "🚦") {

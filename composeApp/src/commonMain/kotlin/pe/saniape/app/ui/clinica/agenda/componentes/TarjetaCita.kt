@@ -137,9 +137,14 @@ fun TarjetaCita(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(cita.pacienteNombre ?: "Paciente", color = c.texto,
-                        fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
+                        fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f, fill = false))
                     Text(" ›", color = c.textoSuave, fontSize = Sania.txt.cuerpo,
                         fontWeight = FontWeight.Bold)
+                    cita.pacienteBadgeApoderado?.let {
+                        Spacer(Modifier.width(6.dp))
+                        pe.saniape.app.ui.clinica.pacientes.BadgeApoderado(it)
+                    }
                 }
                 cita.pacienteTelefono?.takeIf { it.isNotBlank() }?.let { tel ->
                     IconoContacto("📞", c.navy) { acciones.abrirUrl("tel:${tel.filter { ch -> ch.isDigit() }}") }

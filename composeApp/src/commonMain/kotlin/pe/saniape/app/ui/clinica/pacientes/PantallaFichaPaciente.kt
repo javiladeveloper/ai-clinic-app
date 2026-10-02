@@ -380,8 +380,16 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(12.dp).clip(CircleShape).background(flagColor))
                     Spacer(Modifier.width(Sania.dim.sm))
-                    Text(paciente.nombre, color = c.texto, fontSize = Sania.txt.titulo, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f))
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Text(paciente.nombre, color = c.texto, fontSize = Sania.txt.titulo, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f, fill = false))
+                        // "Menor" / "Con apoderado" junto al nombre.
+                        paciente.badgeApoderado?.let {
+                            Spacer(Modifier.width(6.dp))
+                            BadgeApoderado(it)
+                        }
+                    }
+                    Spacer(Modifier.width(6.dp))
                     Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(estado.bg)
                         .padding(horizontal = 10.dp, vertical = 4.dp)) {
                         Text(paciente.estado ?: "—", color = estado.fg, fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -410,6 +418,12 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                 if (datos.isNotBlank()) {
                     Text(datos, color = c.textoSuave, fontSize = Sania.txt.cuerpo,
                         modifier = Modifier.padding(top = 4.dp))
+                }
+
+                // Apoderado (menor / adulto con representante) + aviso si falta.
+                if (paciente.badgeApoderado != null || !paciente.apoderadoNombre.isNullOrBlank()) {
+                    Spacer(Modifier.height(Sania.dim.sm))
+                    TarjetaApoderadoFicha(paciente, verContacto)
                 }
 
                 // Contacto (gestor): teléfono con 📞/💬
@@ -903,7 +917,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         paciente.id, e.nombre, e.telefono, e.ocupacion, e.edad, e.flag, e.diagnostico,
                         dni = e.dni, email = e.email, patologias = e.patologias, tipoPatologia = e.tipoPatologia,
                         talla = e.talla, peso = e.peso, observaciones = e.observaciones,
-                        tocarExtra = true)
+                        tocarExtra = true, apoderado = e.apoderado)
                     if (ok) pe.saniape.app.ui.Toaster.exito("Paciente actualizado") else pe.saniape.app.ui.Toaster.error("No se pudo guardar")
                     recargar()
                 }
@@ -1703,6 +1717,7 @@ private fun ModalEditarPaciente(
     var patologias by remember { mutableStateOf(paciente.patologias.joinToString(", ")) }
     var tipoPatologia by remember { mutableStateOf(paciente.tipoPatologia ?: "") }
     var flag by remember { mutableStateOf(paciente.flag ?: "verde") }
+    var apoderado by remember { mutableStateOf(paciente.datosApoderado) }
 
     DialogoForm(
         titulo = "Editar paciente",
@@ -1721,6 +1736,7 @@ private fun ModalEditarPaciente(
                 patologias = pats, tipoPatologia = tipoPatologia.trim().ifBlank { null },
                 talla = talla.toIntOrNull(), peso = peso.toDoubleOrNull(),
                 observaciones = observaciones.trim().ifBlank { null },
+                apoderado = apoderado,
             ))
         },
     ) {
@@ -1763,6 +1779,13 @@ private fun ModalEditarPaciente(
                 }
             }
         }
+        // Apoderado: con la fecha de nacimiento manda ella; si no, la edad escrita.
+        Spacer(Modifier.height(4.dp))
+        SeccionApoderado(
+            esMenor = pe.saniape.app.data.staff.Apoderado.esMenor(paciente.fechaNacimiento, edad.toIntOrNull()),
+            datos = apoderado,
+            onChange = { apoderado = it },
+        )
         Spacer(Modifier.height(12.dp))
         TarjetaForm(titulo = "Síntomas / patologías", icono = "🩹") {
             CampoFicha("Síntomas (separa con comas)", patologias, multilinea = true) { patologias = it }
@@ -1780,6 +1803,7 @@ private data class EdicionPaciente(
     val dni: String?, val email: String?,
     val patologias: List<String>, val tipoPatologia: String?,
     val talla: Int?, val peso: Double?, val observaciones: String?,
+    val apoderado: pe.saniape.app.data.staff.DatosApoderado,
 )
 
 @Composable
@@ -2197,6 +2221,11 @@ private fun ContenidoResumen(
                 paciente.peso?.let { "Peso" to "${formatoMonto(it)} kg" },
                 imcTxt?.let { "IMC" to it },
                 paciente.fechaIngreso?.let { "Ingreso" to it },
+                paciente.apoderadoNombre?.takeIf { it.isNotBlank() }?.let { n ->
+                    "Apoderado" to (n + (paciente.apoderadoParentesco?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: ""))
+                },
+                paciente.apoderadoDni?.takeIf { it.isNotBlank() }?.let { "DNI apod." to it },
+                paciente.apoderadoTelefono?.takeIf { it.isNotBlank() }?.let { "Tel. apod." to it },
             )
             if (datos.isEmpty()) Text("Sin datos adicionales.", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
             datos.forEach { (k, v) ->

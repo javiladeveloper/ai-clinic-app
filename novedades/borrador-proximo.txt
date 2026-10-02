@@ -10,3 +10,4 @@ Clínicas:
 • El total de pacientes del Inicio cuenta los de la sede elegida.
 • Nuevo en Más: "📊 Pacientes del período" — atendidos, evaluados, cuántos compraron paquete y el % de cierre, por mes o por los últimos 3 y 6 meses.
 • El profesional ve si el paciente ya pagó o cuánto debe al atender.
+• Menores de edad: apoderado (nombre, DNI, parentesco y teléfono) en la ficha del paciente

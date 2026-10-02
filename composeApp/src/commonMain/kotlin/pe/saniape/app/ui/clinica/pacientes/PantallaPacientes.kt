@@ -265,7 +265,14 @@ private fun TarjetaPaciente(p: PacienteStaff, verContacto: Boolean, onClick: () 
         Spacer(Modifier.width(Sania.dim.md))
 
         Column(Modifier.weight(1f)) {
-            Text(p.nombre, color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(p.nombre, color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f, fill = false))
+                p.badgeApoderado?.let {
+                    Spacer(Modifier.width(6.dp))
+                    BadgeApoderado(it)
+                }
+            }
             // Línea: motivo / procedimiento del tratamiento activo
             val sub = p.diagnostico ?: activo?.procedimiento
             if (!sub.isNullOrBlank()) {
