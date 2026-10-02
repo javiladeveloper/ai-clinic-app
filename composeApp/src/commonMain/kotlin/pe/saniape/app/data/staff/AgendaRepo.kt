@@ -592,6 +592,7 @@ object AgendaRepo {
             tipo = "Evaluación", fecha = fecha, hora = hora,
             terapeutaId = citaOrigen.terapeutaId, tratamientoId = null,
             costo = costo, duracion = 60, notas = notas,
+            citaOrigenId = citaOrigen.id,
         )
     }
 
@@ -609,13 +610,17 @@ object AgendaRepo {
         // lleva aunque al sincronizar el usuario ya esté en otra sede. null = la
         // base decide (clínica de un solo local: el cuerpo queda igual que antes).
         sedeId: String? = null,
+        // "→ Evaluación": la consulta de la que viene. Con ella el servidor deja
+        // al profesional que la atiende crear la evaluación aunque no tenga
+        // permiso de agendar (es parte de atender).
+        citaOrigenId: String? = null,
     ): pe.saniape.app.data.offline.ResultadoEscritura {
         if (token() == null) return pe.saniape.app.data.offline.ResultadoEscritura(
             registrada = false, rechazo = pe.saniape.app.data.offline.RechazoServidor("Tu sesión expiró. Vuelve a entrar."),
         )
         return enviarOEncolarDetalle("cita:crear", "/api/staff/cita/crear", cuerpoCrearCita(
             pacienteId, tipo, fecha, hora, terapeutaId, tratamientoId, costo, duracion, notas,
-            especialidadId, diagnostico, campaniaId, sedeId,
+            especialidadId, diagnostico, campaniaId, sedeId, citaOrigenId,
         ))
     }
 
@@ -623,7 +628,7 @@ object AgendaRepo {
         pacienteId: String, tipo: String, fecha: String, hora: String,
         terapeutaId: String?, tratamientoId: String?, costo: Double, duracion: Int, notas: String?,
         especialidadId: String?, diagnostico: String?, campaniaId: String?,
-        sedeId: String? = null,
+        sedeId: String? = null, citaOrigenId: String? = null,
     ): JsonObject = buildJsonObject {
         put("pacienteId", pacienteId)
         put("tipo", tipo)
@@ -638,6 +643,7 @@ object AgendaRepo {
         if (!notas.isNullOrBlank()) put("notas", notas)
         if (!campaniaId.isNullOrBlank()) put("campaniaId", campaniaId)
         if (!sedeId.isNullOrBlank()) put("sedeId", sedeId)
+        if (!citaOrigenId.isNullOrBlank()) put("citaOrigenId", citaOrigenId)
     }
 
     /** Crea una cita vía endpoint (maneja sesión vinculada + notificación). */
@@ -647,6 +653,7 @@ object AgendaRepo {
         especialidadId: String? = null, diagnostico: String? = null,
         // Campaña que descontó el costo (traza la promo en la cita, como la web).
         campaniaId: String? = null,
+        citaOrigenId: String? = null,
     ): Boolean {
         val tk = token() ?: return false
         val cuerpo = buildJsonObject {
@@ -662,6 +669,7 @@ object AgendaRepo {
             put("duracion", duracion)
             if (!notas.isNullOrBlank()) put("notas", notas)
             if (!campaniaId.isNullOrBlank()) put("campaniaId", campaniaId)
+            if (!citaOrigenId.isNullOrBlank()) put("citaOrigenId", citaOrigenId)
         }
         return encolarCita("crear", cuerpo)
     }

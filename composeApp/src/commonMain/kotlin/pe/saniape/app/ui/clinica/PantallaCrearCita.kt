@@ -456,6 +456,7 @@ fun PantallaCrearCita(
                 campaniaId = if (tipo != "Sesión") promoAplicada?.id else null,
                 // Multisede: la sede viaja en el cuerpo (también en la cola offline).
                 sedeId = if (multiSede) sedeId else null,
+                citaOrigenId = if (tipo == "Evaluación") origenId else null,
             )
             guardando = false
             if (r.registrada) {
