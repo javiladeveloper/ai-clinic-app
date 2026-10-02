@@ -250,7 +250,7 @@ fun ClinicaConTabs(
                         // Nativo. Mismo permiso que /api/reportes/rendimiento (el plan lo valida el servidor).
                         onAbrirPacientesPeriodo = if (contexto.puede("reportes")) ({ verPacientesPeriodo = true }) else null,
                         // Nativo. Mismo permiso que /api/staff/pacientes-nuevos (el plan lo valida el servidor).
-                        onAbrirPacientesNuevos = if (contexto.puede("pacientes")) ({ verPacientesNuevos = true }) else null,
+                        onAbrirPacientesNuevos = if (contexto.puede("reportes")) ({ verPacientesNuevos = true }) else null,
                     )
                 }
             }
@@ -298,7 +298,7 @@ fun ClinicaConTabs(
                 }
             }
             AnimatedVisibility(
-                visible = verPacientesNuevos && contexto.puede("pacientes"),
+                visible = verPacientesNuevos && contexto.puede("reportes"),
                 enter = entrarDetalle(), exit = salirDetalle(),
             ) {
                 Box(Modifier.fillMaxSize().background(c.fondo)) {

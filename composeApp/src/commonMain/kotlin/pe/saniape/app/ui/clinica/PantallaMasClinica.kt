@@ -59,7 +59,7 @@ fun PantallaMasClinica(
     onAbrirEspecialidades: (() -> Unit)? = null,
     // 📊 Pacientes del período nativo (solo con permiso "reportes"; null = no se muestra).
     onAbrirPacientesPeriodo: (() -> Unit)? = null,
-    // 🌱 Pacientes nuevos nativo (solo con permiso "pacientes"; null = no se muestra).
+    // 🌱 Pacientes nuevos nativo (solo con permiso "reportes"; null = no se muestra).
     onAbrirPacientesNuevos: (() -> Unit)? = null,
 ) {
     val c = Sania.colors
@@ -104,7 +104,7 @@ fun PantallaMasClinica(
                 Spacer(Modifier.height(Sania.dim.lg))
 
                 // Módulos clínicos sin tab propio (Sesiones, Caja…)
-                if (onAbrirSesiones != null || onAbrirCaja != null || onAbrirPacientesPeriodo != null || onAbrirPacientesNuevos != null) {
+                if (onAbrirSesiones != null || onAbrirCaja != null) {
                     Text("MÓDULOS", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(Sania.dim.sm))
                     if (onAbrirSesiones != null) {
@@ -134,6 +134,13 @@ fun PantallaMasClinica(
                         }
                         Spacer(Modifier.height(Sania.dim.sm))
                     }
+                    Spacer(Modifier.height(Sania.dim.md))
+                }
+
+                // Reportes (con permiso "reportes"; el plan lo valida el servidor).
+                if (onAbrirPacientesPeriodo != null || onAbrirPacientesNuevos != null) {
+                    Text("REPORTES", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(Sania.dim.sm))
                     // 📊 Pacientes del período (con permiso de reportes): atendidos,
                     // evaluados y cuántos compraron paquete. El plan lo valida el servidor.
                     if (onAbrirPacientesPeriodo != null) {
@@ -149,7 +156,7 @@ fun PantallaMasClinica(
                         }
                         Spacer(Modifier.height(Sania.dim.sm))
                     }
-                    // 🌱 Pacientes nuevos (con permiso de pacientes): quién se registró en el
+                    // 🌱 Pacientes nuevos (con permiso de reportes): quién se registró en el
                     // mes, quién vino a evaluación, quién empezó tratamiento y quién pagó.
                     if (onAbrirPacientesNuevos != null) {
                         Row(

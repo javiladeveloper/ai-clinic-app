@@ -105,7 +105,7 @@ internal fun mensajeSeguimientoNuevo(f: FilaPacienteNuevo, clinica: String): Str
  * hasta dónde llegaron — evaluación → tratamiento → pago — con sus sesiones,
  * paciente por paciente. Gemelo de /api/staff/pacientes-nuevos (la web arma el
  * embudo y las filas; aquí solo se pintan y filtran). Solo con permiso
- * `pacientes` (lo decide el padre); el plan lo valida el servidor.
+ * `reportes` (lo decide el padre); el plan lo valida el servidor.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
