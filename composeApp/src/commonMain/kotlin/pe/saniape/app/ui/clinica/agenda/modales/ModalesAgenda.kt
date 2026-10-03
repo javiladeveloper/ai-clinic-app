@@ -100,6 +100,12 @@ fun ModalCompletar(
      * agenda ya lo tiene cargado: no se pide de nuevo. null = no se muestra.
      */
     estadoPago: pe.saniape.app.data.staff.EstadoPagoCita? = null,
+    /**
+     * 📷 Fotos de la sesión (como la web y la ficha). Solo en una Sesión de un
+     * tratamiento, con el plan y la clínica con fotos; null = no aparece. Quien
+     * llama las sube tras completar (subirFotosSesion).
+     */
+    fotosSesion: pe.saniape.app.ui.clinica.pacientes.FotosSesionPendientes? = null,
 ) {
     val c = Sania.colors
     var terapeutaElegido by remember { mutableStateOf<String?>(null) }
@@ -284,6 +290,10 @@ fun ModalCompletar(
                         Text("⚠ Sin diagnóstico, la ficha queda sin motivo clínico. Escríbelo, o toca de nuevo para completar sin él.",
                             color = c.pend, fontSize = 11.sp)
                     }
+                }
+                if (fotosSesion != null && !esEvaluacion && cita.tipo == "Sesión") {
+                    Spacer(Modifier.height(Sania.dim.lg))
+                    pe.saniape.app.ui.clinica.pacientes.BloqueFotosSesion(fotosSesion)
                 }
                 if (cobro != null && !esEvaluacion && cita.tipo == "Sesión") {
                     Spacer(Modifier.height(Sania.dim.lg))

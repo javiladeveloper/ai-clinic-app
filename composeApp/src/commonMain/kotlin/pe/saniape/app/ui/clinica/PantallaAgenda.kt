@@ -611,7 +611,25 @@ fun PantallaAgenda(
                 )
             }
             val conCobro = !evalua && cita.tipo == "Sesión" && cita.tratamientoId != null && ctx.puede("pagos")
+            // 📷 Fotos de la sesión: Sesión de un tratamiento + plan con fotos + clínica sin apagarlas.
+            val fotosSesion = remember(cita.id) { pe.saniape.app.ui.clinica.pacientes.FotosSesionPendientes() }
+            val conFotos = !evalua && cita.tipo == "Sesión" && cita.tratamientoId != null && cita.pacienteId != null &&
+                pe.saniape.app.ui.clinica.pacientes.recordarFotosActivas(ctx.can("fotosEvolutivas")) == true
+            // Tras completar: subir las fotos ligadas a la sesión que quedó vinculada a la cita.
+            fun alCompletarConFotos(): ((Boolean) -> Unit)? {
+                val fotos = if (conFotos) fotosSesion.copia() else emptyList()
+                val pacId = cita.pacienteId
+                val tratId = cita.tratamientoId
+                if (fotos.isEmpty() || pacId == null || tratId == null) return null
+                val visibles = fotosSesion.visiblePaciente
+                return { ok ->
+                    if (ok) pe.saniape.app.ui.clinica.pacientes.subirFotosSesion(pacId, tratId, fotos, visibles) {
+                        pe.saniape.app.data.staff.AgendaRepo.sesionDeCita(cita.id)?.first
+                    }
+                }
+            }
             ModalCompletar(
+                fotosSesion = if (conFotos) fotosSesion else null,
                 cita = cita, especialidades = vm.especialidades, flujo = flujoCita,
                 esDental = vm.esDental(cita),
                 esFisio = vm.esFisio(cita),
@@ -628,7 +646,8 @@ fun PantallaAgenda(
                     completar = null
                     revisada = null
                     vm.ejecutar(AccionCita.Completar, cita, obs, piezas = piezas, mejorias = mejorias, eva = eva,
-                        pago = if (conCobro) cobro.pago() else null)
+                        pago = if (conCobro) cobro.pago() else null,
+                        alTerminar = alCompletarConFotos())
                 },
                 diagnosticoInicial = revisada?.takeIf { it.citaId == cita.id }?.diagnostico ?: "",
                 onCancelar = { completar = null; revisada = null },
@@ -642,6 +661,7 @@ fun PantallaAgenda(
                         evaluacionFisio = if (conEvalFisio) evalFisio.valor else null,
                         pago = if (conCobro) cobro.pago() else null,
                         ofrecerPlan = !planResuelto,
+                        alTerminar = alCompletarConFotos(),
                     )
                 },
                 // Recepción completando una evaluación SIN profesional: se pide quién

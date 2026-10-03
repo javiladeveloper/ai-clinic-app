@@ -286,7 +286,12 @@ fun PantallaSesiones(
         // esServicioDental da true cuando la clínica NO tiene odontología (DALU): sin
         // este chequeo, completar desde Sesiones mostraba "¿Qué se le hizo hoy?" en fisio.
         val esDental = ctx.haceOdontologia && pe.saniape.app.data.staff.esServicioDental(cc.especialidadId, ctx.mapaDental)
+        // 📷 Fotos de la sesión (mismo bloque que la ficha), si el tratamiento se conoce.
+        val fotosSesion = remember(sg.id) { pe.saniape.app.ui.clinica.pacientes.FotosSesionPendientes() }
+        val conFotos = sg.tratamientoId != null && !sg.pacienteId.isNullOrBlank() &&
+            pe.saniape.app.ui.clinica.pacientes.recordarFotosActivas(ctx.can("fotosEvolutivas")) == true
         pe.saniape.app.ui.clinica.pacientes.ModalCompletarSesion(
+            fotosSesion = if (conFotos) fotosSesion else null,
             ses = cc.ses,
             anterior = cc.anterior,
             tecnicasSugeridas = cc.tecnicasSugeridas,
@@ -301,6 +306,8 @@ fun PantallaSesiones(
                 completar = null
                 if (accionando) return@ModalCompletarSesion
                 accionando = true
+                val fotosElegidas = if (conFotos) fotosSesion.copia() else emptyList()
+                val fotosVisibles = fotosSesion.visiblePaciente
                 scope.launch {
                     val r = PacientesRepo.cambiarEstadoSesionDetalle(
                         sg.id, "Completada",
@@ -314,6 +321,10 @@ fun PantallaSesiones(
                         if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Sesión #${cc.ses.numero} completada")
                         tecnicas?.let { runCatching { pe.saniape.app.data.staff.TecnicasRepo.registrar(it) } }
                         val tratId = sg.tratamientoId
+                        if (fotosElegidas.isNotEmpty() && tratId != null) {
+                            pe.saniape.app.ui.clinica.pacientes.subirFotosSesion(
+                                sg.pacienteId.orEmpty(), tratId, fotosElegidas, fotosVisibles) { sg.id }
+                        }
                         if (pago != null && tratId != null) {
                             val rp = PacientesRepo.cobrarSesionDetalle(tratId, sg.id, pago.first, pago.second, null)
                             if (rp.registrada) pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(sg.pacienteId, pago.second)

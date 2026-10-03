@@ -65,7 +65,7 @@ import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.data.staff.FlujoClinica
 
 /** Petición de subir un archivo: documento suelto o resultado de una solicitud. */
-data class SubidaDoc(val categoria: String, val solicitudId: String?)
+data class SubidaDoc(val categoria: String, val solicitudId: String?, val tratamientoId: String? = null)
 
 /** Datos para el modal de completar sesión: la sesión, la anterior (evolución), las técnicas del plan y el tratamiento (para ofrecer agendar la próxima). */
 data class CompletarSesionReq(val ses: SesionFicha, val anterior: SesionFicha?, val tecnicasSugeridas: String?, val trat: TratamientoPaciente)
@@ -108,6 +108,8 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     var tab by remember { mutableStateOf("atenciones") }
     var hitos by remember { mutableStateOf<pe.saniape.app.data.staff.HitosPaciente?>(null) }
     var saldoPendiente by remember { mutableStateOf<Double?>(null) }
+    // Lo pagado de más (Σ por tratamiento). Solo informativo: no toca la deuda.
+    var saldoAFavor by remember { mutableStateOf(0.0) }
     var editarCitaHito by remember { mutableStateOf<pe.saniape.app.data.staff.CitaHito?>(null) }
     // Subida de documento/resultado: categoria "Documento" (suelto) o "Resultado" (de una solicitud).
     var subirDoc by remember { mutableStateOf<SubidaDoc?>(null) }
@@ -215,7 +217,9 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             hitos = hitosD.await()
         }
         // Saldo general (todos los tratamientos del paciente): acordado − pagado.
-        saldoPendiente = runCatching { PacientesRepo.saldoPendienteDe(paciente.tratamientos) }.getOrNull()
+        val resumenPagos = runCatching { PacientesRepo.resumenPagosDe(paciente.tratamientos) }.getOrNull()
+        saldoPendiente = resumenPagos?.saldo
+        saldoAFavor = resumenPagos?.aFavor ?: 0.0
         cargando = false
         actualizando = false
         } finally {
@@ -262,6 +266,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             // tal cual ("Se llenó el espacio… borra o pasa a Premium/Plus").
             when (val subido = pe.saniape.app.data.staff.SolicitudesRepo.subirArchivoDetalle(
                 paciente.id, archivo.nombre, archivo.bytes, archivo.mime, prefijo,
+                tratamientoId = p.tratamientoId,
             )) {
                 is pe.saniape.app.data.staff.SubidaArchivo.Ok -> {
                     val error = if (p.solicitudId != null) {
@@ -269,7 +274,8 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         pe.saniape.app.data.staff.SolicitudesRepo.registrarResultado(p.solicitudId, null, subido.path)
                         null
                     } else {
-                        pe.saniape.app.data.staff.SolicitudesRepo.registrarDocumentoDetalle(paciente.id, archivo.nombre, subido.path, subido.tipo)
+                        pe.saniape.app.data.staff.SolicitudesRepo.registrarDocumentoDetalle(
+                            paciente.id, archivo.nombre, subido.path, subido.tipo, tratamientoId = p.tratamientoId)
                     }
                     if (error == null) pe.saniape.app.ui.Toaster.exito("Documento subido")
                     else pe.saniape.app.ui.Toaster.error(error)
@@ -474,6 +480,12 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         Spacer(Modifier.weight(1f))
                     }
                 }
+                // Pagó de más en algún tratamiento: se ve, sin mezclarlo con la deuda.
+                if (ctx.puede("pagos") && saldoAFavor > 0.005) {
+                    Spacer(Modifier.height(6.dp))
+                    Text("💚 A favor S/ ${formatoMonto(saldoAFavor)}", color = c.ok, fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                }
                 if (ctx.puede("citas")) {
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -632,7 +644,7 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                         }
                         ContenidoExamenes(
                             ctx = ctx, paciente = paciente, acciones = acciones,
-                            onAbrirSubida = { categoria, solId -> subirDoc = SubidaDoc(categoria, solId) },
+                            onAbrirSubida = { categoria, solId, tratId -> subirDoc = SubidaDoc(categoria, solId, tratId) },
                             recargaToken = recargarToken,
                         )
                     }
@@ -929,9 +941,13 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     completarSesion?.let { req ->
         val ses = req.ses
         val anterior = req.anterior
+        // 📷 Fotos de la sesión (como la web): plan con fotos + la clínica no las apagó.
+        val fotosSesion = remember(ses.id) { FotosSesionPendientes() }
+        val conFotos = recordarFotosActivas(ctx.can("fotosEvolutivas")) == true
         ModalCompletarSesion(
             ses = ses,
             anterior = anterior,
+            fotosSesion = if (conFotos) fotosSesion else null,
             tecnicasSugeridas = req.tecnicasSugeridas,
             puedePagos = ctx.puede("pagos"),
             // Odontología: "¿Qué se le hizo hoy?" solo en tratamientos dentales.
@@ -943,6 +959,8 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             onCancelar = { completarSesion = null },
             onConfirmar = { tecnicas, mejorias, dejoRx, pago, piezas, eva ->
                 completarSesion = null
+                val fotosElegidas = if (conFotos) fotosSesion.copia() else emptyList()
+                val fotosVisibles = fotosSesion.visiblePaciente
                 scope.launch {
                     // Evolución: solo desde la sesión #2 ("" limpia, null = no tocar),
                     // igual que la web. El aviso de RX viaja aparte, en su propia columna.
@@ -957,6 +975,10 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     val ok = r.registrada
                     if (ok) pe.saniape.app.ui.Toaster.exito("Sesión #${ses.numero} completada")
                     else pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo completar la sesión")
+                    // Fotos de la sesión: en segundo plano, ligadas a esta sesión y su tratamiento.
+                    if (ok && fotosElegidas.isNotEmpty()) {
+                        subirFotosSesion(paciente.id, req.trat.id, fotosElegidas, fotosVisibles) { ses.id }
+                    }
                     // Cobro en el mismo paso (si lo activó): vinculado a la sesión. No hay un
                     // endpoint que haga las dos cosas juntas, así que si el cobro falla se
                     // dice claro y se ofrece reintentar SOLO el cobro (no volver a completar).
@@ -1121,6 +1143,8 @@ internal fun ModalCompletarSesion(
      * lo pagado; lo arma el servidor). null = no se muestra nada.
      */
     citaId: String? = null,
+    /** Fotos de la sesión (📷). null = sin fotos (plan sin la función o la clínica las apagó). */
+    fotosSesion: FotosSesionPendientes? = null,
     onCancelar: () -> Unit,
     // pago = (monto, método) si activó "¿pagó esta sesión?" — el cobro sale en el
     // MISMO paso que el completar, como la web (antes eran 2 viajes: ✓ y luego 💳).
@@ -1344,6 +1368,12 @@ internal fun ModalCompletarSesion(
                     modifier = Modifier.padding(top = 1.dp))
             }
             Text("⚕️", fontSize = 16.sp)
+        }
+
+        // 📷 Fotos de la sesión (como la web): se suben al completar.
+        if (fotosSesion != null) {
+            Spacer(Modifier.height(12.dp))
+            BloqueFotosSesion(fotosSesion)
         }
 
         // Cobro en el mismo paso (paridad con la web): toggle "¿pagó esta sesión?".
@@ -2100,6 +2130,11 @@ private fun ContenidoPagos(
                 CifraPago("Saldo", r?.let { "S/ ${formatoMonto(it.saldo)}" } ?: "…",
                     if (r != null && r.saldo > 0.005) c.error else c.ok, Modifier.weight(1f))
             }
+            if (r != null && r.aFavor > 0.005) {
+                Spacer(Modifier.height(8.dp))
+                Text("💚 A favor S/ ${formatoMonto(r.aFavor)} (pagó más de lo acordado)", color = c.ok,
+                    fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
         }
 
         if (facturables.isEmpty()) {
@@ -2149,7 +2184,11 @@ private fun FilaPagoResumen(t: TratamientoPaciente, pagado: Double, onVer: () ->
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Acordado S/ ${formatoMonto(acordado)}", color = c.textoSuave, fontSize = 11.sp)
             Text("Pagado S/ ${formatoMonto(pagado)}", color = c.ok, fontSize = 11.sp)
-            Text("Saldo S/ ${formatoMonto(saldo)}", color = if (saldo > 0.005) c.error else c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            if (pagado - acordado > 0.005) {
+                Text("A favor S/ ${formatoMonto(pagado - acordado)}", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            } else {
+                Text("Saldo S/ ${formatoMonto(saldo)}", color = if (saldo > 0.005) c.error else c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
         }
         Spacer(Modifier.height(5.dp))
         Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.chipBg)) {

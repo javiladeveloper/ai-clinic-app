@@ -46,8 +46,87 @@ data class Saldo(
     val puedePagarOnline: Boolean = false,
 )
 
-/** Documento del paciente visible en su portal. */
-data class Documento(val id: String, val nombre: String, val categoria: String, val path: String, val fecha: String)
+/**
+ * Documento del paciente visible en su portal. [tipo] = extensión ("pdf", "jpg"…)
+ * cuando el servidor la manda; [tratamientoNombre] = el tratamiento al que se ancló
+ * (campo opcional nuevo; sin él la lista va plana, como antes).
+ */
+data class Documento(
+    val id: String,
+    val nombre: String,
+    val categoria: String,
+    val path: String,
+    val fecha: String,
+    val tipo: String? = null,
+    val tratamientoNombre: String? = null,
+)
+
+/**
+ * Foto evolutiva que la clínica marcó visible para el paciente. [url] = URL firmada
+ * si el servidor ya la manda en la lista; si no, se pide por `?path=` al mostrarla.
+ */
+data class FotoPortal(
+    val id: String,
+    val path: String,
+    val momento: String?,
+    val fecha: String,
+    val url: String? = null,
+    val tratamientoNombre: String? = null,
+)
+
+/** Lo que devuelve GET /api/paciente/mis-documentos: documentos + fotos evolutivas. */
+data class DocumentosPortal(
+    val documentos: List<Documento> = emptyList(),
+    val fotos: List<FotoPortal> = emptyList(),
+)
+
+/**
+ * Cuentas del paciente (GET /api/paciente/mis-pagos): saldo por tratamiento y lo
+ * que tiene A FAVOR en total (`saldoAFavor`, campo opcional: ausente = 0).
+ */
+data class SaldosPortal(
+    val porTratamiento: Map<String, Saldo> = emptyMap(),
+    val saldoAFavor: Double = 0.0,
+)
+
+/** Clase de archivo para el ícono y para decidir si se ve DENTRO de la app. */
+enum class ClaseArchivo { IMAGEN, PDF, OTRO }
+
+/**
+ * Clase del archivo por su tipo (extensión o mime) o, si no vino, por la
+ * extensión del path. Solo jpg/png/webp se ven en el visor de la app; el resto
+ * (PDF, HEIC, Word…) se abre afuera como siempre.
+ */
+fun claseArchivo(tipo: String?, path: String?): ClaseArchivo {
+    val t = tipo?.lowercase()?.substringAfterLast('/')?.substringAfterLast('.')?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?: path?.substringBefore('?')?.substringAfterLast('.', "")?.lowercase()
+    return when (t) {
+        "jpg", "jpeg", "png", "webp" -> ClaseArchivo.IMAGEN
+        "pdf" -> ClaseArchivo.PDF
+        else -> ClaseArchivo.OTRO
+    }
+}
+
+/** Ícono del archivo según su clase (📄 PDF, 🖼 imagen, 📎 el resto). */
+fun iconoArchivo(clase: ClaseArchivo): String = when (clase) {
+    ClaseArchivo.IMAGEN -> "🖼"
+    ClaseArchivo.PDF -> "📄"
+    ClaseArchivo.OTRO -> "📎"
+}
+
+/**
+ * Agrupa por nombre de tratamiento, en el orden en que aparece cada uno. Si
+ * NINGUNO trae tratamiento (servidor viejo) → un solo grupo sin título (lista
+ * plana, como antes). Los que no traen tratamiento van al final, en "General".
+ */
+fun <T> agruparPorTratamiento(items: List<T>, nombreDe: (T) -> String?): List<Pair<String?, List<T>>> {
+    if (items.isEmpty()) return emptyList()
+    if (items.all { nombreDe(it).isNullOrBlank() }) return listOf(null to items)
+    val con = items.filter { !nombreDe(it).isNullOrBlank() }.groupBy { nombreDe(it)!!.trim() }.toList()
+    val sin = items.filter { nombreDe(it).isNullOrBlank() }
+    return con.map { (k, v) -> k as String? to v } + (if (sin.isNotEmpty()) listOf("General" to sin) else emptyList())
+}
 
 /** Una clínica donde el paciente tiene historial. `puedeReservar` = plan Plus + reservas on. */
 data class ClinicaPaciente(
@@ -168,18 +247,24 @@ object SaludRepo {
         }
     }
 
-    /** Saldos por tratamiento_id (solo de clínicas que lo habilitaron). */
-    suspend fun saldos(): Map<String, Saldo> {
-        val tk = token() ?: return emptyMap()
+    /** Saldos por tratamiento_id (solo de clínicas que lo habilitaron) + lo que tiene a favor. */
+    suspend fun saldos(): SaldosPortal {
+        val tk = token() ?: return SaldosPortal()
         val resp = http.get("${Supabase.SITE_URL}/api/paciente/mis-pagos") {
             header("Authorization", "Bearer $tk")
         }
-        if (resp.status != HttpStatusCode.OK) return emptyMap()
-        val obj = json.parseToJsonElement(resp.bodyAsText()).jsonObject["saldos"]?.jsonObject ?: return emptyMap()
-        return obj.mapNotNull { (id, v) ->
+        if (resp.status != HttpStatusCode.OK) return SaldosPortal()
+        return parsearSaldos(resp.bodyAsText())
+    }
+
+    /** El JSON de mis-pagos → saldos (puro, testeable). `saldoAFavor` ausente = 0. */
+    internal fun parsearSaldos(cuerpo: String): SaldosPortal {
+        val raiz = runCatching { json.parseToJsonElement(cuerpo).jsonObject }.getOrNull() ?: return SaldosPortal()
+        val obj = raiz["saldos"] as? JsonObject
+        val porTrat = obj?.mapNotNull { (id, v) ->
             val o = v as? JsonObject ?: return@mapNotNull null
             val pagos = (o["pagos"] as? JsonArray ?: JsonArray(emptyList())).mapNotNull {
-                val p = it.jsonObject
+                val p = it as? JsonObject ?: return@mapNotNull null
                 PagoInfo(
                     fecha = p.str("fecha") ?: return@mapNotNull null,
                     monto = p.dbl("monto"),
@@ -188,27 +273,51 @@ object SaludRepo {
             }
             id to Saldo(o.dbl("acordado"), o.dbl("pagado"), o.dbl("saldo"), o.str("estado") ?: "", pagos,
                 puedePagarOnline = o.bool("puedePagarOnline"))
-        }.toMap()
+        }?.toMap().orEmpty()
+        return SaldosPortal(porTrat, raiz.dbl("saldoAFavor").coerceAtLeast(0.0))
     }
 
-    /** Documentos del paciente (no fotos evolutivas). */
-    suspend fun documentos(): List<Documento> {
-        val tk = token() ?: return emptyList()
+    /** Documentos del paciente + sus fotos evolutivas visibles. */
+    suspend fun documentos(): DocumentosPortal {
+        val tk = token() ?: return DocumentosPortal()
         val resp = http.get("${Supabase.SITE_URL}/api/paciente/mis-documentos") {
             header("Authorization", "Bearer $tk")
         }
-        if (resp.status != HttpStatusCode.OK) return emptyList()
-        val arr = json.parseToJsonElement(resp.bodyAsText()).jsonObject["documentos"] as? JsonArray ?: return emptyList()
-        return arr.mapNotNull {
-            val o = it.jsonObject
+        if (resp.status != HttpStatusCode.OK) return DocumentosPortal()
+        return parsearDocumentos(resp.bodyAsText())
+    }
+
+    /**
+     * El JSON de mis-documentos → documentos y fotos (puro, testeable). Antes se
+     * leía solo `documentos` y las fotos que la clínica marcó visibles se perdían.
+     * `tipo`, `tratamientoNombre` y `fotos[].url` son opcionales.
+     */
+    internal fun parsearDocumentos(cuerpo: String): DocumentosPortal {
+        val raiz = runCatching { json.parseToJsonElement(cuerpo).jsonObject }.getOrNull() ?: return DocumentosPortal()
+        val docs = ((raiz["documentos"] as? JsonArray) ?: JsonArray(emptyList())).mapNotNull {
+            val o = it as? JsonObject ?: return@mapNotNull null
             Documento(
                 id = o.str("id") ?: return@mapNotNull null,
                 nombre = o.str("nombre") ?: "Documento",
                 categoria = o.str("categoria") ?: "",
                 path = o.str("path") ?: return@mapNotNull null,
                 fecha = o.str("fecha") ?: "",
+                tipo = o.str("tipo"),
+                tratamientoNombre = o.str("tratamientoNombre")?.takeIf { n -> n.isNotBlank() },
             )
         }
+        val fotos = ((raiz["fotos"] as? JsonArray) ?: JsonArray(emptyList())).mapNotNull {
+            val o = it as? JsonObject ?: return@mapNotNull null
+            FotoPortal(
+                id = o.str("id") ?: return@mapNotNull null,
+                path = o.str("path") ?: return@mapNotNull null,
+                momento = o.str("momento"),
+                fecha = o.str("fecha") ?: "",
+                url = o.str("url")?.takeIf { u -> u.isNotBlank() },
+                tratamientoNombre = o.str("tratamientoNombre")?.takeIf { n -> n.isNotBlank() },
+            )
+        }
+        return DocumentosPortal(docs, fotos)
     }
 
     /** URL firmada temporal para abrir un documento. */

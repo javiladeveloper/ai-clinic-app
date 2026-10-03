@@ -58,7 +58,47 @@ data class DocumentoFicha(
     val nombre: String,
     val archivoUrl: String,      // path en el bucket (privado): se firma para verlo
     val tipoArchivo: String?,
+    /** "Documento", "Receta", "Consentimiento"… (las fotos evolutivas NO llegan aquí). */
+    val categoria: String? = null,
+    /** Tratamiento al que se ancló al subirlo; null = General (sin tratamiento). */
+    val tratamientoId: String? = null,
 )
+
+/** Categoría de las fotos de la galería: no se listan como documentos. */
+const val CATEGORIA_FOTO_EVOLUTIVA = "Foto evolutiva"
+
+/** Un grupo de documentos de la ficha: un tratamiento (o "General") y sus categorías. */
+data class GrupoDocumentos(
+    val tratamientoId: String?,
+    val titulo: String,
+    val categorias: List<Pair<String, List<DocumentoFicha>>>,
+)
+
+/**
+ * Documentos de la ficha agrupados por TRATAMIENTO → CATEGORÍA. Los tratamientos
+ * salen en el orden de [nombresTratamiento] (el de la ficha); un tratamiento que ya
+ * no está en la lista sale igual, como "Tratamiento anterior". Lo que no tiene
+ * tratamiento va al final, en "General". Las fotos evolutivas se excluyen (viven
+ * en la galería del tratamiento).
+ */
+fun agruparDocumentosFicha(
+    docs: List<DocumentoFicha>,
+    nombresTratamiento: List<Pair<String, String>>,
+): List<GrupoDocumentos> {
+    val lista = docs.filter { it.categoria != CATEGORIA_FOTO_EVOLUTIVA }
+    if (lista.isEmpty()) return emptyList()
+    fun porCategoria(l: List<DocumentoFicha>) =
+        l.groupBy { it.categoria?.takeIf { c -> c.isNotBlank() } ?: "Documento" }.toList()
+    val nombres = nombresTratamiento.toMap()
+    val conTrat = lista.filter { it.tratamientoId != null }.groupBy { it.tratamientoId!! }
+    val orden = nombresTratamiento.map { it.first }.filter { it in conTrat } +
+        conTrat.keys.filter { it !in nombres }
+    val grupos = orden.map { id ->
+        GrupoDocumentos(id, nombres[id] ?: "Tratamiento anterior", porCategoria(conTrat.getValue(id)))
+    }
+    val generales = lista.filter { it.tratamientoId == null }
+    return grupos + (if (generales.isNotEmpty()) listOf(GrupoDocumentos(null, "General", porCategoria(generales))) else emptyList())
+}
 
 /**
  * Exámenes / Derivaciones / Documentos del paciente. Espeja ExamenesDerivaciones (web):
@@ -108,18 +148,22 @@ object SolicitudesRepo {
     suspend fun documentosDe(pacienteId: String): List<DocumentoFicha> {
         val filas = runCatching {
             Supabase.client.postgrest["documentos_paciente"]
-                .select(Columns.list("id, nombre, archivo_url, tipo_archivo")) {
+                .select(Columns.list("id, nombre, archivo_url, tipo_archivo, categoria, tratamiento_id")) {
                     filter { eq("paciente_id", pacienteId) }
                     order("created_at", Order.DESCENDING)
                 }
                 .decodeList<JsonObject>()
         }.getOrDefault(emptyList())
         return filas.mapNotNull { o ->
+            // Las fotos evolutivas son de la galería del tratamiento, no de esta lista.
+            if (o.str("categoria") == CATEGORIA_FOTO_EVOLUTIVA) return@mapNotNull null
             DocumentoFicha(
                 id = o.str("id") ?: return@mapNotNull null,
                 nombre = o.str("nombre") ?: "Documento",
                 archivoUrl = o.str("archivo_url") ?: return@mapNotNull null,
                 tipoArchivo = o.str("tipo_archivo"),
+                categoria = o.str("categoria"),
+                tratamientoId = o.str("tratamiento_id"),
             )
         }
     }
@@ -190,7 +234,11 @@ object SolicitudesRepo {
      * 403 `codigo: LIMITE_PLAN` con un texto claro ("Se llenó el espacio…"), que
      * hay que mostrar tal cual en vez de un "No se pudo" mudo.
      */
-    suspend fun subirArchivoDetalle(pacienteId: String, nombre: String, bytes: ByteArray, mime: String?, prefijo: String): SubidaArchivo {
+    suspend fun subirArchivoDetalle(
+        pacienteId: String, nombre: String, bytes: ByteArray, mime: String?, prefijo: String,
+        /** Tratamiento al que se ancla (campo opcional nuevo del endpoint; un servidor viejo lo ignora). */
+        tratamientoId: String? = null,
+    ): SubidaArchivo {
         return try {
             val tk = token() ?: return SubidaArchivo.Error("Tu sesión expiró. Vuelve a entrar.")
             val resp = http.post("${Supabase.SITE_URL}/api/staff/documento/subir") {
@@ -198,6 +246,7 @@ object SolicitudesRepo {
                 setBody(MultiPartFormDataContent(formData {
                     append("pacienteId", pacienteId)
                     append("prefijo", prefijo)
+                    if (tratamientoId != null) append("tratamientoId", tratamientoId)
                     append("archivo", bytes, Headers.build {
                         append(HttpHeaders.ContentType, mime ?: "application/octet-stream")
                         append(HttpHeaders.ContentDisposition, "filename=\"$nombre\"")
@@ -234,8 +283,11 @@ object SolicitudesRepo {
      * (null = quedó registrado). El trigger de espacio frena con "LIMITE_PLAN: …"
      * aunque la subida haya pasado (dos teléfonos subiendo a la vez).
      */
-    suspend fun registrarDocumentoDetalle(pacienteId: String, nombre: String, archivoPath: String, tipo: String): String? = try {
-        registrarDocumentoInsert(pacienteId, nombre, archivoPath, tipo)
+    suspend fun registrarDocumentoDetalle(
+        pacienteId: String, nombre: String, archivoPath: String, tipo: String,
+        tratamientoId: String? = null,
+    ): String? = try {
+        registrarDocumentoInsert(pacienteId, nombre, archivoPath, tipo, tratamientoId)
         null
     } catch (e: Exception) {
         val m = e.message.orEmpty()
@@ -243,9 +295,13 @@ object SolicitudesRepo {
     }
 
 
-    private suspend fun registrarDocumentoInsert(pacienteId: String, nombre: String, archivoPath: String, tipo: String) {
+    private suspend fun registrarDocumentoInsert(
+        pacienteId: String, nombre: String, archivoPath: String, tipo: String, tratamientoId: String?,
+    ) {
         Supabase.client.postgrest["documentos_paciente"].insert(buildJsonObject {
             put("paciente_id", pacienteId)
+            // Anclado a un tratamiento (null = General). No se manda clinica_id: DEFAULT.
+            if (tratamientoId != null) put("tratamiento_id", tratamientoId)
             put("nombre", nombre)
             put("categoria", "Documento")
             put("archivo_url", archivoPath)

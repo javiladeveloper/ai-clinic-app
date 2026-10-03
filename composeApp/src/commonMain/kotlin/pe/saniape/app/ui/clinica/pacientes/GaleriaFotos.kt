@@ -89,7 +89,8 @@ fun GaleriaFotos(
     fun recargar() {
         scope.launch { fotos = runCatching { FotosRepo.fotosDe(pacienteId) }.getOrDefault(emptyList()) }
     }
-    LaunchedEffect(tratamientoId) { recargar() }
+    // También tras subir fotos desde "Completar sesión" (FotosSesionVersion).
+    LaunchedEffect(tratamientoId, FotosSesionVersion.valor) { recargar() }
 
     val abrirSelector = recordarSelectorArchivo { archivo ->
         pedirArchivo = false

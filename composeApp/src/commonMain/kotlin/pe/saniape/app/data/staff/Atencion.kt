@@ -1,6 +1,8 @@
 package pe.saniape.app.data.staff
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSULTA GUIADA — modelos de `GET /api/staff/atencion/consulta` y reglas puras.
@@ -260,6 +262,64 @@ data class ModulosConsulta(
     val recetasOptIn: Boolean = false,
 )
 
+/**
+ * Triaje que OTRA cita del paciente registró hoy (campo opcional `triajeDeHoy` de
+ * GET consulta, solo cuando esta cita no tiene triaje propio). Lo usa la consulta
+ * para no volver a tomar los vitales: se precargan y se guardan en ESTA cita recién
+ * cuando el médico guarda. [vitales]: columna → número (o texto numérico).
+ */
+@Serializable
+data class TriajeDeHoyApp(
+    val citaId: String? = null,
+    val hora: String? = null,
+    val registradoPor: String? = null,
+    val vitales: JsonObject? = null,
+)
+
+/** Vitales que se aceptan del triaje de hoy (los 8 de norma + el perímetro). */
+private val CLAVES_VITALES_TRIAJE = listOf(
+    "presion_sistolica", "presion_diastolica", "frecuencia_cardiaca",
+    "frecuencia_respiratoria", "temperatura", "saturacion_o2", "peso", "talla",
+    "perimetro_abdominal",
+)
+
+/**
+ * Los vitales del triaje de hoy como texto editable ("70", "36.5"), solo los que
+ * traen un número. Un valor no numérico o vacío se ignora.
+ */
+fun vitalesDeTriajeHoy(t: TriajeDeHoyApp?): Map<String, String> {
+    val v = t?.vitales ?: return emptyMap()
+    return CLAVES_VITALES_TRIAJE.mapNotNull { k ->
+        val n = (v[k] as? JsonPrimitive)?.content?.trim()?.replace(',', '.')?.toDoubleOrNull() ?: return@mapNotNull null
+        k to (if (n % 1.0 == 0.0 && kotlin.math.abs(n) < 1e15) n.toLong().toString() else n.toString())
+    }.toMap()
+}
+
+/** "09:15" desde "09:15:00" o un ISO "2026-10-03T09:15:00". null si no vino. */
+fun horaTriajeHoy(t: TriajeDeHoyApp): String? =
+    t.hora?.trim()?.takeIf { it.isNotEmpty() }?.let { h -> if ('T' in h) h.substringAfter('T') else h }?.take(5)
+
+/** Aviso de origen: "Del triaje de hoy (09:15 · Lic. Ana Ruiz)". */
+fun avisoTriajeHoy(t: TriajeDeHoyApp): String {
+    val detalle = listOfNotNull(horaTriajeHoy(t), t.registradoPor?.trim()?.takeIf { it.isNotEmpty() })
+    return "Del triaje de hoy" + (if (detalle.isNotEmpty()) " (${detalle.joinToString(" · ")})" else "")
+}
+
+/**
+ * El triaje de hoy SOLO aplica si esta cita no tiene vitales propios y el de hoy
+ * trae al menos uno. Así nunca pisa lo que ya se midió en esta consulta.
+ */
+fun triajeDeHoyAplicable(d: DatosConsultaApp): TriajeDeHoyApp? {
+    val t = d.triajeDeHoy ?: return null
+    val a = d.atencion
+    val propios = listOf(
+        a?.presion_sistolica, a?.presion_diastolica, a?.frecuencia_cardiaca, a?.frecuencia_respiratoria,
+        a?.temperatura, a?.saturacion_o2, a?.peso, a?.talla, a?.perimetro_abdominal,
+    )
+    if (propios.any { it != null }) return null
+    return t.takeIf { vitalesDeTriajeHoy(it).isNotEmpty() }
+}
+
 /** Respuesta completa de `GET /api/staff/atencion/consulta?cita=<id>`. */
 @Serializable
 data class DatosConsultaApp(
@@ -276,6 +336,8 @@ data class DatosConsultaApp(
     val diagnosticosSugeridos: List<DiagnosticoCie> = emptyList(),
     val flags: FlagsConsulta = FlagsConsulta(),
     val modulos: ModulosConsulta = ModulosConsulta(),
+    /** Triaje de otra cita de hoy (opcional; ausente en servidores viejos). */
+    val triajeDeHoy: TriajeDeHoyApp? = null,
 )
 
 /**

@@ -1,0 +1,13 @@
+# BORRADOR de las novedades de la próxima versión (aún sin número).
+# Al publicar, copiar a novedades/<versionName>.txt con el formato de siempre
+# (ver docs/ci-cd-despliegue.md → "Novedades de cada versión").
+Fotos en tu app, fotos al completar la sesión y documentos ordenados por tratamiento.
+---
+Pacientes:
+• Ahora ves en "Mi salud" las fotos de tu evolución que tu clínica compartió contigo, y se abren dentro de la app.
+• Si pagaste de más, lo ves: "Tienes S/ X a favor".
+Clínicas:
+• Sube fotos de la sesión al completarla, desde la cámara o la galería.
+• Los documentos del paciente se ordenan por tratamiento: al subir uno, eliges a qué tratamiento pertenece.
+• El saldo a favor del paciente se ve en su ficha.
+• El triaje del día se comparte entre médicos: si otro profesional ya tomó los signos vitales hoy, la consulta los trae listos para revisar.

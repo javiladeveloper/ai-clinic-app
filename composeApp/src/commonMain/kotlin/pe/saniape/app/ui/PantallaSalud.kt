@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -47,7 +48,12 @@ import kotlinx.coroutines.withContext
 import pe.saniape.app.data.AVISO_RECETA_POR_DEFECTO
 import pe.saniape.app.data.RecetasDelPaciente
 import pe.saniape.app.data.RecetasRepo
+import pe.saniape.app.data.ClaseArchivo
 import pe.saniape.app.data.Documento
+import pe.saniape.app.data.FotoPortal
+import pe.saniape.app.data.agruparPorTratamiento
+import pe.saniape.app.data.claseArchivo
+import pe.saniape.app.data.iconoArchivo
 import pe.saniape.app.data.ResultadoPortal
 import pe.saniape.app.data.ResultadoPago
 import pe.saniape.app.data.Saldo
@@ -70,6 +76,14 @@ fun PantallaSalud() {
     var tratamientos by remember { mutableStateOf<List<Tratamiento>>(emptyList()) }
     var saldos by remember { mutableStateOf<Map<String, Saldo>>(emptyMap()) }
     var documentos by remember { mutableStateOf<List<Documento>>(emptyList()) }
+    // Fotos evolutivas que la clínica marcó visibles (antes se descartaban al leer).
+    var fotos by remember { mutableStateOf<List<FotoPortal>>(emptyList()) }
+    // Lo que el paciente tiene a favor en total (campo opcional del servidor).
+    var saldoAFavor by remember { mutableStateOf(0.0) }
+    // URLs firmadas ya pedidas (path → url), para no volver a firmar cada miniatura.
+    var urlsFirmadas by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    // Visor de imágenes dentro de la app (fotos y documentos jpg/png/webp).
+    var visor by remember { mutableStateOf<VisorAbierto?>(null) }
     // Recetas: null = no se sabe (endpoint ausente en un servidor viejo, sin red y
     // sin caché). En ese caso — y si no tiene ninguna — la sección no aparece.
     var recetas by remember { mutableStateOf<RecetasDelPaciente?>(null) }
@@ -106,8 +120,10 @@ fun PantallaSalud() {
                     is ResultadoPortal.Ok -> tratamientos = rt.datos
                     is ResultadoPortal.Error -> errorCarga = true
                 }
-                dSaldos.await().onSuccess { saldos = it }.onFailure { errorCarga = true }
-                dDocs.await().onSuccess { documentos = it }.onFailure { errorCarga = true }
+                dSaldos.await().onSuccess { saldos = it.porTratamiento; saldoAFavor = it.saldoAFavor }
+                    .onFailure { errorCarga = true }
+                dDocs.await().onSuccess { documentos = it.documentos; fotos = it.fotos }
+                    .onFailure { errorCarga = true }
                 // Null = no se pudo saber: se conserva lo que ya había (caché).
                 dRecetas.await()?.let { recetas = it }
             }
@@ -115,6 +131,45 @@ fun PantallaSalud() {
         finally { cargando = false }
     }
     val listaRecetas = recetas?.recetas.orEmpty()
+
+    /** URL firmada de un archivo (caché por path). null = no se pudo (se avisa afuera). */
+    suspend fun urlDe(path: String, yaFirmada: String? = null): String? {
+        yaFirmada?.let { return it }
+        urlsFirmadas[path]?.let { return it }
+        val u = runCatching { SaludRepo.urlDocumento(path) }.getOrNull() ?: return null
+        urlsFirmadas = urlsFirmadas + (path to u)
+        return u
+    }
+
+    /** Abre un documento: imagen → visor de la app; PDF y lo demás → afuera. */
+    fun abrirDocumento(d: Documento) {
+        val esImagen = claseArchivo(d.tipo, d.path) == ClaseArchivo.IMAGEN
+        if (esImagen) visor = VisorAbierto(null, d.nombre)
+        scope.launch {
+            val url = urlDe(d.path)
+            when {
+                url == null -> {
+                    if (esImagen) visor = null
+                    Toaster.error("No se pudo abrir el documento. Revisa tu conexión e inténtalo de nuevo.")
+                }
+                esImagen -> visor = VisorAbierto(url, d.nombre)
+                else -> acciones.abrirUrl(url)
+            }
+        }
+    }
+
+    fun abrirFoto(f: FotoPortal) {
+        val titulo = listOfNotNull(momentoFoto(f.momento), f.fecha.take(10).ifBlank { null }).joinToString(" · ")
+        visor = VisorAbierto(null, titulo)
+        scope.launch {
+            val url = urlDe(f.path, f.url)
+            if (url == null) {
+                visor = null
+                Toaster.error("No se pudo abrir la foto. Revisa tu conexión e inténtalo de nuevo.")
+            } else visor = VisorAbierto(url, titulo)
+        }
+    }
+    val sinNada = tratamientos.isEmpty() && documentos.isEmpty() && fotos.isEmpty() && listaRecetas.isEmpty()
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -128,7 +183,7 @@ fun PantallaSalud() {
                 cargando -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                     CircularProgressIndicator(color = c.navy)
                 }
-                errorCarga && tratamientos.isEmpty() && documentos.isEmpty() && listaRecetas.isEmpty() ->
+                errorCarga && sinNada ->
                     Box(Modifier.fillMaxSize().padding(Sania.dim.xxl), Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("⚠", fontSize = 44.sp)
@@ -144,7 +199,7 @@ fun PantallaSalud() {
                                 modifier = Modifier.clickable { cargando = true; recargar++ })
                         }
                     }
-                tratamientos.isEmpty() && documentos.isEmpty() && listaRecetas.isEmpty() ->
+                sinNada ->
                     Box(Modifier.fillMaxSize().padding(Sania.dim.xxl), Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("💙", fontSize = 44.sp)
@@ -165,6 +220,8 @@ fun PantallaSalud() {
                     val ordenados = tratamientos.sortedByDescending { it.estado == "Activo" }
                     if (ordenados.isNotEmpty()) {
                         item { Etiqueta("MI TRATAMIENTO") }
+                        // Lo que pagó de más (entre todos sus tratamientos): que lo sepa.
+                        if (saldoAFavor > 0.005) item { AvisoAFavor(saldoAFavor) }
                         items(ordenados) { t -> TarjetaTratamiento(t, saldos[t.id]) }
                     }
                     // 💊 Mis recetas: solo si tiene alguna (un paciente de fisio no ve nada nuevo).
@@ -178,20 +235,106 @@ fun PantallaSalud() {
                             TarjetaReceta(r, recetas?.aviso ?: AVISO_RECETA_POR_DEFECTO)
                         }
                     }
+                    // 📷 Mis fotos: las que la clínica marcó visibles (antes/durante/después).
+                    if (fotos.isNotEmpty()) {
+                        item { Spacer(Modifier.height(Sania.dim.sm)); Etiqueta("📷 MIS FOTOS") }
+                        agruparPorTratamiento(fotos) { it.tratamientoNombre }.forEach { (trat, lista) ->
+                            item(key = "fotos-" + (trat ?: "todas")) {
+                                Column {
+                                    trat?.let { SubEtiqueta(it) }
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        items(lista, key = { "foto-" + it.id }) { f ->
+                                            MiniaturaFoto(f, urlProvider = { urlDe(f.path, f.url) }, onAbrir = { abrirFoto(f) })
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if (documentos.isNotEmpty()) {
                         item { Spacer(Modifier.height(Sania.dim.sm)); Etiqueta("MIS DOCUMENTOS") }
-                        items(documentos) { d ->
-                            TarjetaDocumento(d, onAbrir = {
-                                scope.launch {
-                                    val url = SaludRepo.urlDocumento(d.path)
-                                    if (url != null) acciones.abrirUrl(url)
-                                }
-                            })
+                        // Por tratamiento si el servidor lo manda; si no, la lista plana de siempre.
+                        agruparPorTratamiento(documentos) { it.tratamientoNombre }.forEach { (trat, lista) ->
+                            trat?.let { item(key = "doc-grupo-$it") { SubEtiqueta(it) } }
+                            items(lista, key = { "doc-" + it.id }) { d ->
+                                TarjetaDocumento(d, onAbrir = { abrirDocumento(d) })
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    visor?.let { v -> VisorImagen(url = v.url, titulo = v.titulo, onCerrar = { visor = null }) }
+}
+
+/** Visor abierto: [url] null mientras se firma. */
+private data class VisorAbierto(val url: String?, val titulo: String?)
+
+private fun momentoFoto(m: String?): String? = when (m) {
+    "Despues" -> "Después"
+    null, "" -> null
+    else -> m
+}
+
+/** "Tienes S/ X a favor": lo pagado de más entre todos sus tratamientos. */
+@Composable
+private fun AvisoAFavor(monto: Double) {
+    val c = Sania.colors
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.okBg)
+            .border(1.dp, c.ok, RoundedCornerShape(Sania.shape.sm.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("💚", fontSize = 18.sp)
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Tienes S/ ${formato2(monto)} a favor", color = c.ok, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text("Pagaste más de lo acordado. Consulta en la clínica cómo se aplica.",
+                color = c.textoSuave, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun SubEtiqueta(t: String) {
+    Text(t, color = Sania.colors.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = 2.dp, bottom = 4.dp))
+}
+
+/** Miniatura de una foto del portal: se firma al aparecer; tocar abre el visor. */
+@Composable
+private fun MiniaturaFoto(f: FotoPortal, urlProvider: suspend () -> String?, onAbrir: () -> Unit) {
+    val c = Sania.colors
+    var url by remember(f.id) { mutableStateOf(f.url) }
+    var fallo by remember(f.id) { mutableStateOf(false) }
+    LaunchedEffect(f.id) {
+        if (url == null) {
+            url = urlProvider()
+            fallo = url == null
+        }
+    }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            Modifier.size(96.dp).clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.chipBg)
+                .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)).clickable { onAbrir() },
+            contentAlignment = Alignment.Center,
+        ) {
+            val u = url
+            if (u != null) {
+                AsyncImage(model = u, contentDescription = momentoFoto(f.momento) ?: "Foto",
+                    contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            } else if (fallo) {
+                Text("🖼", fontSize = 22.sp)
+            } else {
+                CircularProgressIndicator(color = c.navy, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+            }
+        }
+        Spacer(Modifier.height(3.dp))
+        Text(listOfNotNull(momentoFoto(f.momento), f.fecha.take(10).ifBlank { null }).joinToString(" · "),
+            color = c.textoSuave, fontSize = 10.sp, maxLines = 1)
     }
 }
 
@@ -274,6 +417,9 @@ private fun TarjetaTratamiento(t: Tratamiento, saldo: Saldo?) {
                     ColumnaMonto("PAGADO", "S/ ${formato2(saldo.pagado)}", c.ok, Modifier.weight(1f))
                     when {
                         saldo.saldo > 0 -> ColumnaMonto("DEBES", "S/ ${formato2(saldo.saldo)}", c.pend, Modifier.weight(1f))
+                        // Pagó de más: que lo vea (antes solo decía "Pagado ✓").
+                        saldo.acordado > 0 && saldo.pagado - saldo.acordado > 0.005 ->
+                            ColumnaMonto("A FAVOR", "S/ ${formato2(saldo.pagado - saldo.acordado)}", c.ok, Modifier.weight(1f))
                         saldo.acordado > 0 -> ColumnaMonto("SALDO", "Pagado ✓", c.ok, Modifier.weight(1f))
                         else -> ColumnaMonto("SALDO", "—", c.textoSuave, Modifier.weight(1f))
                     }
@@ -418,13 +564,14 @@ private fun TarjetaDocumento(d: Documento, onAbrir: () -> Unit) {
             .clickable { onAbrir() }.padding(Sania.dim.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("📄", fontSize = 22.sp)
+        val clase = claseArchivo(d.tipo, d.path)
+        Text(iconoArchivo(clase), fontSize = 22.sp)
         Spacer(Modifier.width(Sania.dim.md))
         Column(Modifier.weight(1f)) {
             Text(d.nombre, color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Text("${d.categoria} · ${d.fecha.take(10)}", color = c.textoSuave, fontSize = 12.sp)
         }
-        Text("Abrir →", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(if (clase == ClaseArchivo.IMAGEN) "Ver →" else "Abrir →", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 

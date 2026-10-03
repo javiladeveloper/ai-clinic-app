@@ -52,7 +52,8 @@ fun ContenidoExamenes(
     ctx: ContextoStaff,
     paciente: pe.saniape.app.data.staff.PacienteStaff,
     acciones: AccionesNativas,
-    onAbrirSubida: (categoria: String, solicitudId: String?) -> Unit,
+    /** tratamientoId: al que se ancla el documento (null = General / resultado de examen). */
+    onAbrirSubida: (categoria: String, solicitudId: String?, tratamientoId: String?) -> Unit,
     recargaToken: Int,
 ) {
     val c = Sania.colors
@@ -68,6 +69,14 @@ fun ContenidoExamenes(
     var especialidades by remember { mutableStateOf<List<EspecialidadClinica>>(emptyList()) }
     var nuevo by remember { mutableStateOf<String?>(null) }            // "Examen" | "Derivacion"
     var resultadoDe by remember { mutableStateOf<SolicitudFicha?>(null) }
+    // "+ Subir" con tratamientos: primero se elige a cuál se ancla el documento.
+    var eligiendoTratamiento by remember { mutableStateOf(false) }
+    // Tratamientos de la ficha (los activos primero) → nombre para agrupar y elegir.
+    val tratamientosDoc = remember(paciente.tratamientos) {
+        paciente.tratamientos.filter { it.estado != "Cancelado" }
+            .sortedByDescending { it.estado == "Activo" }
+            .map { it.id to (it.procedimiento ?: it.especialidadNombre ?: "Plan de atención") }
+    }
 
     // Tope de espacio del plan (Básico); null = sin límite y no se mide nada.
     val limiteMb = ctx.planEstado.features.maxEspacioDocumentosMB
@@ -126,7 +135,10 @@ fun ContenidoExamenes(
             titulo = "📎 Documentos del paciente",
             subtitulo = "Resultados de laboratorio, informes, radiografías, recetas escaneadas. PDF o imagen.",
             habilitado = true, botonTexto = "+ Subir",
-            onNuevo = { onAbrirSubida("Documento", null) },
+            onNuevo = {
+                if (tratamientosDoc.isEmpty()) onAbrirSubida("Documento", null, null)
+                else eligiendoTratamiento = true
+            },
             cargando = documentos == null, vacio = (documentos ?: emptyList()).isEmpty(),
             textoVacio = "Sin documentos subidos.",
             textoBloqueado = "",
@@ -140,13 +152,25 @@ fun ContenidoExamenes(
                 if (limiteMb != null && usado != null) BarraEspacioDocumentos(usado, limiteMb)
             },
         ) {
-            (documentos ?: emptyList()).forEach { d ->
+            // Por tratamiento → categoría; lo que no tiene tratamiento, en "General".
+            val grupos = pe.saniape.app.data.staff.agruparDocumentosFicha(documentos ?: emptyList(), tratamientosDoc)
+            // Un solo grupo "General" (nada anclado aún) = la lista de siempre, sin títulos.
+            val conTitulos = !(grupos.size == 1 && grupos[0].tratamientoId == null && grupos[0].categorias.size == 1)
+            grupos.forEach { g -> if (conTitulos) {
+                Text(g.titulo, color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp))
+            }
+            g.categorias.forEach { (categoria, docsCat) -> if (conTitulos) {
+                Text(categoria.uppercase(), color = c.textoSuave, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 4.dp))
+            }
+            docsCat.forEach { d ->
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
                         .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)).padding(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(if (d.tipoArchivo == "pdf") "📄" else "🖼", fontSize = 18.sp)
+                    Text(pe.saniape.app.data.iconoArchivo(pe.saniape.app.data.claseArchivo(d.tipoArchivo, d.archivoUrl)), fontSize = 18.sp)
                     Spacer(Modifier.width(8.dp))
                     Text(d.nombre, color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                         maxLines = 1, modifier = Modifier.weight(1f)
@@ -161,7 +185,23 @@ fun ContenidoExamenes(
                 }
                 Spacer(Modifier.height(6.dp))
             }
+            }
+            }
         }
+    }
+
+    // Elegir el tratamiento del documento ANTES de abrir el selector de archivo.
+    if (eligiendoTratamiento) {
+        ModalTratamientoDocumento(
+            tratamientos = tratamientosDoc,
+            // Por defecto el activo (el primero de la lista ya ordenada).
+            inicial = paciente.tratamientos.firstOrNull { it.estado == "Activo" }?.id,
+            onCancelar = { eligiendoTratamiento = false },
+            onElegir = { tratId ->
+                eligiendoTratamiento = false
+                onAbrirSubida("Documento", null, tratId)
+            },
+        )
     }
 
     // Modal: solicitar examen (externo o en la clínica → deriva al área designada).
@@ -189,7 +229,7 @@ fun ContenidoExamenes(
         ModalResultado(
             solicitud = s,
             onCancelar = { resultadoDe = null },
-            onSubirArchivo = { onAbrirSubida("Resultado", s.id) },
+            onSubirArchivo = { onAbrirSubida("Resultado", s.id, null) },
             onGuardar = { nota ->
                 resultadoDe = null
                 scope.launch {
@@ -563,6 +603,45 @@ fun ModalDerivar(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * "¿De qué tratamiento es este documento?" — se ancla al elegido (el activo por
+ * defecto) o a "General (sin tratamiento)". Luego se abre el selector de archivo.
+ */
+@Composable
+private fun ModalTratamientoDocumento(
+    tratamientos: List<Pair<String, String>>,
+    inicial: String?,
+    onCancelar: () -> Unit,
+    onElegir: (tratamientoId: String?) -> Unit,
+) {
+    val c = Sania.colors
+    var elegido by remember { mutableStateOf(inicial) }
+    DialogoForm(
+        titulo = "Subir documento",
+        subtitulo = "Elige a qué tratamiento pertenece",
+        textoAccion = "Elegir archivo",
+        onCancelar = onCancelar,
+        onAccion = { onElegir(elegido) },
+    ) {
+        val opciones = tratamientos.map { it.first as String? to it.second } + (null to "General (sin tratamiento)")
+        opciones.forEach { (id, nombre) ->
+            val sel = elegido == id
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .background(if (sel) c.navy else c.superficie)
+                    .border(1.dp, if (sel) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                    .clickable { elegido = id }.padding(horizontal = 12.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(if (sel) "●" else "○", color = if (sel) c.sobreNavy else c.textoSuave, fontSize = 14.sp)
+                Spacer(Modifier.width(10.dp))
+                Text(nombre, color = if (sel) c.sobreNavy else c.texto, fontSize = 13.sp,
+                    fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal)
             }
         }
     }

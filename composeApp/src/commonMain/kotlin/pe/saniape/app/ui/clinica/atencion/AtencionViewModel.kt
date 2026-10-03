@@ -322,6 +322,8 @@ internal fun avisoGuardadoAutomatico(errorServidor: String?): String {
  */
 internal fun prefillPorGuardar(d: DatosConsultaApp): Boolean =
     motivoSugeridoAplica(d) ||
+        // Vitales precargados del triaje de hoy: se guardan en ESTA cita al guardar.
+        pe.saniape.app.data.staff.triajeDeHoyAplicable(d) != null ||
         (d.atencion?.diagnosticos.isNullOrEmpty() && d.diagnosticosSugeridos.isNotEmpty())
 
 /** true si el motivo está vacío y la cita trae uno sugerido (se precarga y queda por guardar). */
@@ -356,7 +358,11 @@ internal fun borradorDesde(d: DatosConsultaApp, miTerapeutaId: String? = null): 
         "peso" to vitalATexto(a?.peso),
         "talla" to vitalATexto(a?.talla),
         "perimetro_abdominal" to vitalATexto(a?.perimetro_abdominal),
-    )
+    ).let { propios ->
+        // Sin vitales propios y con triaje de otra cita de hoy: se precargan esos.
+        val hoy = pe.saniape.app.data.staff.triajeDeHoyAplicable(d)
+        if (hoy != null) propios + pe.saniape.app.data.staff.vitalesDeTriajeHoy(hoy) else propios
+    }
     return BorradorAtencion(
         terapeutaId = a?.terapeuta_id ?: d.cita.terapeuta_id ?: miTerapeutaId,
         tratamientoId = d.cita.tratamiento_id,

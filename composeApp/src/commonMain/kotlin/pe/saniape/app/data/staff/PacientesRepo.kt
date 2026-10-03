@@ -226,7 +226,18 @@ data class CitaHito(
 data class ResumenPagos(
     val acordado: Double, val pagado: Double, val saldo: Double,
     val porTratamiento: Map<String, Double> = emptyMap(),   // tratamientoId -> pagado
+    /** Lo pagado DE MÁS: Σ max(pagado − acordado, 0) por tratamiento. Solo se muestra. */
+    val aFavor: Double = 0.0,
 )
+
+/**
+ * Saldo a favor del paciente: por cada tratamiento, lo que pagó por encima de lo
+ * acordado (pares acordado → pagado). NO descuenta la deuda de otros
+ * tratamientos: la deuda se calcula aparte, igual que siempre.
+ */
+fun saldoAFavorDe(acordadoYPagado: List<Pair<Double, Double>>): Double =
+    acordadoYPagado.sumOf { (acordado, pagado) -> (pagado - acordado).coerceAtLeast(0.0) }
+        .let { if (it < 0.005) 0.0 else it }
 
 /** Hitos del recorrido del paciente (Consulta/Evaluación hechas, próxima cita, última atención). */
 data class HitosPaciente(
@@ -1275,7 +1286,8 @@ object PacientesRepo {
         val acordado = facturables.sumOf { it.montoAcordado }
         val pagado = facturables.sumOf { pagadoPorTrat[it.id] ?: 0.0 }
         val saldo = facturables.sumOf { t -> (t.montoAcordado - (pagadoPorTrat[t.id] ?: 0.0)).coerceAtLeast(0.0) }
-        return ResumenPagos(acordado, pagado, saldo, pagadoPorTrat.filterKeys { it != null }.mapKeys { it.key!! })
+        val aFavor = saldoAFavorDe(facturables.map { t -> t.montoAcordado to (pagadoPorTrat[t.id] ?: 0.0) })
+        return ResumenPagos(acordado, pagado, saldo, pagadoPorTrat.filterKeys { it != null }.mapKeys { it.key!! }, aFavor)
     }
 
     /** Solo el saldo (atajo para la stat card). */

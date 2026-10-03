@@ -1067,7 +1067,9 @@ fun SeccionPagos(
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         ColMonto("Acordado", acordado, c.texto)
         ColMonto("Pagado", pagado, c.ok)
-        ColMonto("Saldo", saldo, if (saldo > 0.005) c.error else c.ok)
+        // Pagó de más: "A favor" en vez de un saldo negativo.
+        if (saldo < -0.005) ColMonto("A favor", -saldo, c.ok)
+        else ColMonto("Saldo", saldo, if (saldo > 0.005) c.error else c.ok)
     }
     Spacer(Modifier.height(6.dp))
     Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.chipBg)) {

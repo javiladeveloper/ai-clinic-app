@@ -114,8 +114,21 @@ internal fun PasoVitales(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura
     val valores = vm.borrador.vitales
     val campos = remember(d.modulos.camposTriaje, valores) { camposVitalesConsulta(d.modulos.camposTriaje, valores) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        val triajeHoy = pe.saniape.app.data.staff.triajeDeHoyAplicable(d)
+        if (triajeHoy != null) {
+            // Vitales de otra cita de hoy: se ven precargados y se guardan en ESTA
+            // cita recién cuando el médico guarda.
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.infoBg)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            ) {
+                Text("🩺 " + pe.saniape.app.data.staff.avisoTriajeHoy(triajeHoy) +
+                    ". Revísalas; se guardan en esta consulta al guardar.",
+                    color = c.info, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
         Text(
-            (if (d.atencion?.triaje_at != null) "Tomadas en el triaje; puedes corregirlas." else "Sin triaje: regístralas aquí.") +
+            (if (d.atencion?.triaje_at != null || triajeHoy != null) "Tomadas en el triaje; puedes corregirlas." else "Sin triaje: regístralas aquí.") +
                 (if (d.flags.dental) " En odontología son opcionales." else ""),
             color = c.textoSuave, fontSize = 12.sp,
         )
