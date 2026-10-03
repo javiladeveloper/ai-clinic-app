@@ -264,15 +264,17 @@ data class ModulosConsulta(
 
 /**
  * Triaje que OTRA cita del paciente registró hoy (campo opcional `triajeDeHoy` de
- * GET consulta, solo cuando esta cita no tiene triaje propio). Lo usa la consulta
- * para no volver a tomar los vitales: se precargan y se guardan en ESTA cita recién
- * cuando el médico guarda. [vitales]: columna → número (o texto numérico).
+ * GET consulta: solo si esta cita no tiene triaje propio, es de hoy y no está
+ * Completada/Cancelada). Es PRESTADO: no se aplica solo. El médico toca "Usar
+ * triaje de hoy" y recién entonces se copia al borrador (y se guarda con él).
+ * [vitales]: columna → número (o texto numérico). [motivo]: el del triaje.
  */
 @Serializable
 data class TriajeDeHoyApp(
     val citaId: String? = null,
     val hora: String? = null,
     val registradoPor: String? = null,
+    val motivo: String? = null,
     val vitales: JsonObject? = null,
 )
 
@@ -299,10 +301,34 @@ fun vitalesDeTriajeHoy(t: TriajeDeHoyApp?): Map<String, String> {
 fun horaTriajeHoy(t: TriajeDeHoyApp): String? =
     t.hora?.trim()?.takeIf { it.isNotEmpty() }?.let { h -> if ('T' in h) h.substringAfter('T') else h }?.take(5)
 
-/** Aviso de origen: "Del triaje de hoy (09:15 · Lic. Ana Ruiz)". */
-fun avisoTriajeHoy(t: TriajeDeHoyApp): String {
+/** " (09:15 · Lic. Ana Ruiz)" o "" si no vino ni hora ni quién. */
+private fun detalleTriajeHoy(t: TriajeDeHoyApp): String {
     val detalle = listOfNotNull(horaTriajeHoy(t), t.registradoPor?.trim()?.takeIf { it.isNotEmpty() })
-    return "Del triaje de hoy" + (if (detalle.isNotEmpty()) " (${detalle.joinToString(" · ")})" else "")
+    return if (detalle.isNotEmpty()) " (${detalle.joinToString(" · ")})" else ""
+}
+
+/** Aviso de origen: "Del triaje de hoy (09:15 · Lic. Ana Ruiz)". */
+fun avisoTriajeHoy(t: TriajeDeHoyApp): String = "Del triaje de hoy" + detalleTriajeHoy(t)
+
+/** Botón: "Usar triaje de hoy (09:15 · Lic. Ana Ruiz)". */
+fun botonUsarTriajeHoy(t: TriajeDeHoyApp): String = "Usar triaje de hoy" + detalleTriajeHoy(t)
+
+/**
+ * Copia el triaje prestado al borrador (solo cuando el médico tocó el botón),
+ * SOLO en los campos vacíos: lo que el médico ya escribió no se pisa. La presión
+ * va solo si vienen las DOS cifras y las dos están vacías aquí: media presión
+ * haría rechazar el guardado ("Presión incompleta") y no se bloquea la consulta
+ * por algo prestado. El motivo se copia solo si el de la consulta está vacío.
+ */
+fun aplicarTriajeDeHoy(b: BorradorAtencion, t: TriajeDeHoyApp): BorradorAtencion {
+    val v = vitalesDeTriajeHoy(t).filterKeys { b.vitales[it].isNullOrBlank() }.toMutableMap()
+    if (v["presion_sistolica"] == null || v["presion_diastolica"] == null) {
+        v.remove("presion_sistolica"); v.remove("presion_diastolica")
+    }
+    val motivo = t.motivo?.trim()?.takeIf { it.isNotEmpty() }
+    val textos = if (motivo != null && b.textos["motivo_consulta"].isNullOrBlank())
+        b.textos + ("motivo_consulta" to motivo) else b.textos
+    return b.copy(vitales = b.vitales + v, textos = textos)
 }
 
 /**

@@ -321,9 +321,9 @@ fun PantallaSesiones(
                         if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Sesión #${cc.ses.numero} completada")
                         tecnicas?.let { runCatching { pe.saniape.app.data.staff.TecnicasRepo.registrar(it) } }
                         val tratId = sg.tratamientoId
-                        if (fotosElegidas.isNotEmpty() && tratId != null) {
-                            pe.saniape.app.ui.clinica.pacientes.subirFotosSesion(
-                                sg.pacienteId.orEmpty(), tratId, fotosElegidas, fotosVisibles) { sg.id }
+                        if (tratId != null) {
+                            pe.saniape.app.ui.clinica.pacientes.fotosTrasCompletar(
+                                true, r.encolada, sg.pacienteId.orEmpty(), tratId, fotosElegidas, fotosVisibles) { sg.id }
                         }
                         if (pago != null && tratId != null) {
                             val rp = PacientesRepo.cobrarSesionDetalle(tratId, sg.id, pago.first, pago.second, null)
@@ -335,6 +335,10 @@ fun PantallaSesiones(
                         }
                     } else {
                         pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo completar la sesión")
+                        sg.tratamientoId?.let { tratId ->
+                            pe.saniape.app.ui.clinica.pacientes.fotosTrasCompletar(
+                                false, false, sg.pacienteId.orEmpty(), tratId, fotosElegidas, fotosVisibles) { sg.id }
+                        }
                     }
                     accionando = false
                     recargar()

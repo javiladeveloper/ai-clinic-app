@@ -35,6 +35,8 @@ data class Tratamiento(
     val sesionesCompletadas: Int,
     val fechaInicio: String?,
     val sesiones: List<SesionMin>,
+    /** Paquete / Sesión suelta / Consulta / Unidades (para el "a favor"; null = no se sabe). */
+    val modalidad: String? = null,
 )
 
 data class SesionMin(

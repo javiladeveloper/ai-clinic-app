@@ -350,7 +350,9 @@ fun ModalCompletar(
             val faltaProfesional = esEvaluacion && profesionales != null && terapeutaElegido == null
             // Cobro activado sin monto: no se deja confirmar (como la ficha).
             val faltaMonto = cobro != null && !esEvaluacion && !cobro.valido
-            val bloqueado = faltaProfesional || faltaMonto
+            // Fotos comprimiéndose: se espera un instante para no perderlas.
+            val preparandoFotos = (fotosSesion?.preparando ?: 0) > 0
+            val bloqueado = faltaProfesional || faltaMonto || preparandoFotos
             Box(
                 Modifier.clip(RoundedCornerShape(Sania.shape.md.dp))
                     .background(if (bloqueado) c.borde else c.navy)

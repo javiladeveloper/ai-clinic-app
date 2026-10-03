@@ -1067,9 +1067,11 @@ fun SeccionPagos(
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         ColMonto("Acordado", acordado, c.texto)
         ColMonto("Pagado", pagado, c.ok)
-        // Pagó de más: "A favor" en vez de un saldo negativo.
-        if (saldo < -0.005) ColMonto("A favor", -saldo, c.ok)
-        else ColMonto("Saldo", saldo, if (saldo > 0.005) c.error else c.ok)
+        // Pagó de más: "A favor" (solo con precio, facturable y no suelta; ver
+        // data/SaldoAFavor.kt). Si no aplica, el saldo nunca se muestra negativo.
+        val aFavor = pe.saniape.app.data.saldoAFavorTratamiento(acordado, pagado, t.estado, t.modalidad)
+        if (aFavor > 0.0) ColMonto("A favor", aFavor, c.ok)
+        else ColMonto("Saldo", saldo.coerceAtLeast(0.0), if (saldo > 0.005) c.error else c.ok)
     }
     Spacer(Modifier.height(6.dp))
     Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.chipBg)) {

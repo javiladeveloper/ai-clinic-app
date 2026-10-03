@@ -56,6 +56,8 @@ class FotosSesionPendientes {
     val lista = mutableStateListOf<ArchivoSeleccionado>()
     /** Mostrar al paciente en su app (privadas por defecto, igual que la web). */
     var visiblePaciente by mutableStateOf(false)
+    /** Fotos comprimiéndose (se comprimen al AGREGARLAS): no se deja confirmar hasta que terminen. */
+    var preparando by mutableStateOf(0)
     fun copia(): List<ArchivoSeleccionado> = lista.toList()
 }
 
@@ -85,15 +87,34 @@ fun recordarFotosActivas(puedePlan: Boolean): Boolean? {
 @Composable
 fun BloqueFotosSesion(estado: FotosSesionPendientes) {
     val c = Sania.colors
-    val abrirCamara = recordarCamaraFoto { archivo -> estado.lista.add(archivo) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    // Se comprime al AGREGAR (1600 px / JPEG 70, como la web), fuera del hilo de la
+    // pantalla: así en memoria quedan ~300 KB por foto y no 5-8 MB.
+    fun agregar(archivo: ArchivoSeleccionado) {
+        estado.preparando++
+        scope.launch {
+            try {
+                val listo = kotlinx.coroutines.withContext(Dispatchers.Default) {
+                    runCatching { comprimirImagen(archivo) }.getOrDefault(archivo)
+                }
+                estado.lista.add(listo)
+            } finally {
+                estado.preparando--
+            }
+        }
+    }
+    val abrirCamara = recordarCamaraFoto { archivo -> agregar(archivo) }
     var pedirGaleria by androidx.compose.runtime.remember { mutableStateOf(false) }
     val abrirGaleria = recordarSelectorArchivo { archivo ->
-        pedirGaleria = false
-        if (esImagenSubible(archivo)) estado.lista.add(archivo)
+        if (esImagenSubible(archivo)) agregar(archivo)
         else Toaster.error("Elige una imagen (JPG, PNG o WEBP)")
     }
     // Igual que la galería: el selector se abre tras recomponer (no dentro del clic).
-    LaunchedEffect(pedirGaleria) { if (pedirGaleria) abrirGaleria() }
+    // La bandera se baja ANTES de abrir: si el usuario cancela el selector, el
+    // callback no llega y una bandera en true impedía volver a abrirlo.
+    LaunchedEffect(pedirGaleria) {
+        if (pedirGaleria) { pedirGaleria = false; abrirGaleria() }
+    }
 
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.fondo)
@@ -102,8 +123,14 @@ fun BloqueFotosSesion(estado: FotosSesionPendientes) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("📷 Fotos de la sesión", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f))
-            Text(if (estado.lista.isEmpty()) "opcional" else "${estado.lista.size}",
-                color = c.textoSuave, fontSize = 11.sp)
+            Text(
+                when {
+                    estado.preparando > 0 -> "Preparando foto…"
+                    estado.lista.isEmpty() -> "opcional"
+                    else -> "${estado.lista.size}"
+                },
+                color = c.textoSuave, fontSize = 11.sp,
+            )
         }
         if (estado.lista.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
@@ -173,7 +200,32 @@ object FotosSesionVersion {
 private val alcanceSubidas = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
 /**
- * Sube las fotos de la sesión (comprimidas a 1600 px, como la web) y las registra
+ * Qué hacer con las fotos elegidas según cómo terminó el completar:
+ *  · no se completó → se avisa que las fotos NO se guardaron (nunca en silencio);
+ *  · quedó en la cola sin señal → no se intenta subir (fallaría): se avisa que se
+ *    suban desde la galería del tratamiento cuando haya señal;
+ *  · completada → se suben en segundo plano.
+ */
+fun fotosTrasCompletar(
+    ok: Boolean,
+    encolada: Boolean,
+    pacienteId: String,
+    tratamientoId: String,
+    fotos: List<ArchivoSeleccionado>,
+    visiblePaciente: Boolean,
+    sesionId: suspend () -> String?,
+) {
+    if (fotos.isEmpty()) return
+    val n = if (fotos.size == 1) "la foto" else "las ${fotos.size} fotos"
+    when {
+        !ok -> Toaster.error("La sesión no se completó: $n de la sesión no se guardaron.")
+        encolada -> Toaster.error("Sesión guardada sin señal; $n no se subieron. Súbelas desde la galería del tratamiento.")
+        else -> subirFotosSesion(pacienteId, tratamientoId, fotos, visiblePaciente, sesionId)
+    }
+}
+
+/**
+ * Sube las fotos de la sesión (ya comprimidas al agregarlas) y las registra
  * como fotos evolutivas "Durante" del tratamiento, ligadas a la sesión si se
  * conoce. Corre en segundo plano: la sesión ya quedó completada y no se la hace
  * esperar. [sesionId] puede resolverse tarde (la agenda la busca tras completar).
@@ -191,17 +243,17 @@ fun subirFotosSesion(
         var fallidas = 0
         for (archivo in fotos) {
             val ok = runCatching {
-                val listo = comprimirImagen(archivo)
-                val subido = SolicitudesRepo.subirArchivo(pacienteId, listo.nombre, listo.bytes, listo.mime, "foto")
+                val subido = SolicitudesRepo.subirArchivo(pacienteId, archivo.nombre, archivo.bytes, archivo.mime, "foto")
                     ?: return@runCatching false
                 FotosRepo.registrarFoto(
-                    pacienteId, tratamientoId, sesion, listo.nombre, subido.first, subido.second,
+                    pacienteId, tratamientoId, sesion, archivo.nombre, subido.first, subido.second,
                     "Durante", null, visiblePaciente,
                 )
             }.getOrDefault(false)
             if (!ok) fallidas++
         }
-        FotosSesionVersion.valor++
+        // La galería se refresca solo si entró al menos una.
+        if (fallidas < fotos.size) FotosSesionVersion.valor++
         if (fallidas == 0) Toaster.exito(if (fotos.size == 1) "Foto de la sesión guardada" else "${fotos.size} fotos de la sesión guardadas")
         else Toaster.error("La sesión se completó, pero $fallidas foto(s) no se pudieron subir")
     }

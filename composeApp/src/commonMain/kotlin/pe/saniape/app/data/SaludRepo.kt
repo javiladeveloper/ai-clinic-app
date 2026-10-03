@@ -44,6 +44,10 @@ data class Saldo(
      * no tenerlo.
      */
     val puedePagarOnline: Boolean = false,
+    /** Lo pagado de más en ESTE tratamiento, tal como lo calcula el servidor (no se recalcula). */
+    val aFavor: Double = 0.0,
+    /** Clínica del tratamiento (el crédito nunca se suma entre clínicas). */
+    val clinicaId: String? = null,
 )
 
 /**
@@ -59,6 +63,8 @@ data class Documento(
     val fecha: String,
     val tipo: String? = null,
     val tratamientoNombre: String? = null,
+    /** Id del tratamiento (agrupa: dos paquetes con el mismo nombre NO se funden). */
+    val tratamientoId: String? = null,
 )
 
 /**
@@ -72,6 +78,7 @@ data class FotoPortal(
     val fecha: String,
     val url: String? = null,
     val tratamientoNombre: String? = null,
+    val tratamientoId: String? = null,
 )
 
 /** Lo que devuelve GET /api/paciente/mis-documentos: documentos + fotos evolutivas. */
@@ -86,7 +93,10 @@ data class DocumentosPortal(
  */
 data class SaldosPortal(
     val porTratamiento: Map<String, Saldo> = emptyMap(),
+    /** El crédito de la ÚNICA clínica que lo tiene; 0 si no hay o si hay en 2+ clínicas. */
     val saldoAFavor: Double = 0.0,
+    /** clinicaId → crédito (> 0). Nunca se suma entre clínicas. */
+    val saldoAFavorPorClinica: Map<String, Double> = emptyMap(),
 )
 
 /** Clase de archivo para el ícono y para decidir si se ve DENTRO de la app. */
@@ -115,17 +125,24 @@ fun iconoArchivo(clase: ClaseArchivo): String = when (clase) {
     ClaseArchivo.OTRO -> "📎"
 }
 
+/** Un grupo del portal: [clave] estable y única (para las listas), [titulo] null = sin título. */
+data class GrupoPortal<T>(val clave: String, val titulo: String?, val items: List<T>)
+
 /**
- * Agrupa por nombre de tratamiento, en el orden en que aparece cada uno. Si
- * NINGUNO trae tratamiento (servidor viejo) → un solo grupo sin título (lista
- * plana, como antes). Los que no traen tratamiento van al final, en "General".
+ * Agrupa por ID de tratamiento (no por nombre: dos paquetes que se llaman igual
+ * no se funden, y un procedimiento llamado "General" no choca con el grupo de
+ * los sueltos), en el orden en que aparece cada uno. Si NINGUNO trae tratamiento
+ * (servidor viejo) → un solo grupo sin título (lista plana, como antes). Los que
+ * no traen tratamiento van al final, en "General" (clave fija).
  */
-fun <T> agruparPorTratamiento(items: List<T>, nombreDe: (T) -> String?): List<Pair<String?, List<T>>> {
+fun <T> agruparPorTratamiento(items: List<T>, idDe: (T) -> String?, nombreDe: (T) -> String?): List<GrupoPortal<T>> {
     if (items.isEmpty()) return emptyList()
-    if (items.all { nombreDe(it).isNullOrBlank() }) return listOf(null to items)
-    val con = items.filter { !nombreDe(it).isNullOrBlank() }.groupBy { nombreDe(it)!!.trim() }.toList()
-    val sin = items.filter { nombreDe(it).isNullOrBlank() }
-    return con.map { (k, v) -> k as String? to v } + (if (sin.isNotEmpty()) listOf("General" to sin) else emptyList())
+    if (items.all { idDe(it).isNullOrBlank() }) return listOf(GrupoPortal("todos", null, items))
+    val con = items.filter { !idDe(it).isNullOrBlank() }.groupBy { idDe(it)!! }.map { (id, lista) ->
+        GrupoPortal("t:$id", lista.firstNotNullOfOrNull { nombreDe(it)?.trim()?.takeIf { n -> n.isNotEmpty() } } ?: "Tratamiento", lista)
+    }
+    val sin = items.filter { idDe(it).isNullOrBlank() }
+    return con + (if (sin.isNotEmpty()) listOf(GrupoPortal("general", "General", sin)) else emptyList())
 }
 
 /** Una clínica donde el paciente tiene historial. `puedeReservar` = plan Plus + reservas on. */
@@ -209,6 +226,7 @@ object SaludRepo {
                 sesionesCompletadas = o.intp("sesionesCompletadas"),
                 fechaInicio = o.str("fechaInicio"),
                 sesiones = ses,
+                modalidad = o.str("modalidad"),
             )
         }
         return ResultadoPortal.Ok(lista)
@@ -272,9 +290,15 @@ object SaludRepo {
                 )
             }
             id to Saldo(o.dbl("acordado"), o.dbl("pagado"), o.dbl("saldo"), o.str("estado") ?: "", pagos,
-                puedePagarOnline = o.bool("puedePagarOnline"))
+                puedePagarOnline = o.bool("puedePagarOnline"),
+                aFavor = o.dbl("aFavor").coerceAtLeast(0.0),
+                clinicaId = o.str("clinicaId"))
         }?.toMap().orEmpty()
-        return SaldosPortal(porTrat, raiz.dbl("saldoAFavor").coerceAtLeast(0.0))
+        val porClinica = (raiz["saldoAFavorPorClinica"] as? JsonObject)?.mapNotNull { (id, v) ->
+            val monto = (v as? JsonPrimitive)?.content?.toDoubleOrNull() ?: return@mapNotNull null
+            if (monto > 0.005) id to monto else null
+        }?.toMap().orEmpty()
+        return SaldosPortal(porTrat, raiz.dbl("saldoAFavor").coerceAtLeast(0.0), porClinica)
     }
 
     /** Documentos del paciente + sus fotos evolutivas visibles. */
@@ -304,6 +328,7 @@ object SaludRepo {
                 fecha = o.str("fecha") ?: "",
                 tipo = o.str("tipo"),
                 tratamientoNombre = o.str("tratamientoNombre")?.takeIf { n -> n.isNotBlank() },
+                tratamientoId = o.str("tratamientoId")?.takeIf { n -> n.isNotBlank() },
             )
         }
         val fotos = ((raiz["fotos"] as? JsonArray) ?: JsonArray(emptyList())).mapNotNull {
@@ -315,6 +340,7 @@ object SaludRepo {
                 fecha = o.str("fecha") ?: "",
                 url = o.str("url")?.takeIf { u -> u.isNotBlank() },
                 tratamientoNombre = o.str("tratamientoNombre")?.takeIf { n -> n.isNotBlank() },
+                tratamientoId = o.str("tratamientoId")?.takeIf { n -> n.isNotBlank() },
             )
         }
         return DocumentosPortal(docs, fotos)

@@ -616,14 +616,15 @@ fun PantallaAgenda(
             val conFotos = !evalua && cita.tipo == "Sesión" && cita.tratamientoId != null && cita.pacienteId != null &&
                 pe.saniape.app.ui.clinica.pacientes.recordarFotosActivas(ctx.can("fotosEvolutivas")) == true
             // Tras completar: subir las fotos ligadas a la sesión que quedó vinculada a la cita.
-            fun alCompletarConFotos(): ((Boolean) -> Unit)? {
+            // Sin señal (encolada) o sin completar: se avisa en vez de perderlas.
+            fun alCompletarConFotos(): ((Boolean, Boolean) -> Unit)? {
                 val fotos = if (conFotos) fotosSesion.copia() else emptyList()
                 val pacId = cita.pacienteId
                 val tratId = cita.tratamientoId
                 if (fotos.isEmpty() || pacId == null || tratId == null) return null
                 val visibles = fotosSesion.visiblePaciente
-                return { ok ->
-                    if (ok) pe.saniape.app.ui.clinica.pacientes.subirFotosSesion(pacId, tratId, fotos, visibles) {
+                return { ok, encolada ->
+                    pe.saniape.app.ui.clinica.pacientes.fotosTrasCompletar(ok, encolada, pacId, tratId, fotos, visibles) {
                         pe.saniape.app.data.staff.AgendaRepo.sesionDeCita(cita.id)?.first
                     }
                 }
@@ -647,7 +648,7 @@ fun PantallaAgenda(
                     revisada = null
                     vm.ejecutar(AccionCita.Completar, cita, obs, piezas = piezas, mejorias = mejorias, eva = eva,
                         pago = if (conCobro) cobro.pago() else null,
-                        alTerminar = alCompletarConFotos())
+                        alCompletarSesion = alCompletarConFotos())
                 },
                 diagnosticoInicial = revisada?.takeIf { it.citaId == cita.id }?.diagnostico ?: "",
                 onCancelar = { completar = null; revisada = null },
@@ -661,7 +662,7 @@ fun PantallaAgenda(
                         evaluacionFisio = if (conEvalFisio) evalFisio.valor else null,
                         pago = if (conCobro) cobro.pago() else null,
                         ofrecerPlan = !planResuelto,
-                        alTerminar = alCompletarConFotos(),
+                        alCompletarSesion = alCompletarConFotos(),
                     )
                 },
                 // Recepción completando una evaluación SIN profesional: se pide quién

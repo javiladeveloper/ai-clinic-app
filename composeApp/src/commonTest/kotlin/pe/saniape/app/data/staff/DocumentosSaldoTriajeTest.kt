@@ -37,13 +37,56 @@ class DocumentosSaldoTriajeTest {
         assertTrue(agruparDocumentosFicha(listOf(doc("x", null, CATEGORIA_FOTO_EVOLUTIVA)), emptyList()).isEmpty())
     }
 
+
+    private fun cuenta(acordado: Double, pagado: Double, estado: String? = "Activo", modalidad: String? = "Paquete") =
+        pe.saniape.app.data.CuentaTratamiento(acordado, pagado, estado, modalidad)
+
     @Test
     fun saldo_a_favor_suma_solo_lo_pagado_de_mas() {
         // t1 pagó 50 de más; t2 debe 60 (no se resta); t3 justo.
-        assertEquals(50.0, saldoAFavorDe(listOf(300.0 to 350.0, 100.0 to 40.0, 80.0 to 80.0)))
-        assertEquals(0.0, saldoAFavorDe(listOf(100.0 to 40.0)))
-        assertEquals(0.0, saldoAFavorDe(emptyList()))
-        assertEquals(0.0, saldoAFavorDe(listOf(100.0 to 100.001)))   // centavos de redondeo
+        assertEquals(50.0, pe.saniape.app.data.saldoAFavorDe(listOf(cuenta(300.0, 350.0), cuenta(100.0, 40.0), cuenta(80.0, 80.0))))
+        assertEquals(0.0, pe.saniape.app.data.saldoAFavorDe(listOf(cuenta(100.0, 40.0))))
+        assertEquals(0.0, pe.saniape.app.data.saldoAFavorDe(emptyList()))
+        assertEquals(0.0, pe.saniape.app.data.saldoAFavorDe(listOf(cuenta(100.0, 100.001))))   // medio centavo
+        // Redondeo a 2 decimales por tratamiento.
+        assertEquals(0.1, pe.saniape.app.data.saldoAFavorTratamiento(100.0, 100.104, "Activo", "Paquete"))
+    }
+
+    @Test
+    fun saldo_a_favor_ante_la_duda_no() {
+        // Sin precio acordado: no hay contra qué comparar.
+        assertEquals(0.0, pe.saniape.app.data.saldoAFavorTratamiento(0.0, 40.0, "Activo", "Consulta"))
+        // Sesión suelta: total_sesiones=1 y cada sesión cobrada entra al tratamiento.
+        assertEquals(0.0, pe.saniape.app.data.saldoAFavorTratamiento(80.0, 320.0, "Activo", "Sesión suelta"))
+        // No facturables.
+        assertEquals(0.0, pe.saniape.app.data.saldoAFavorTratamiento(100.0, 150.0, "Eliminado", "Paquete"))
+        assertEquals(0.0, pe.saniape.app.data.saldoAFavorTratamiento(100.0, 150.0, "Cancelado", "Paquete"))
+        // Solo Paquete y Unidades: Consulta y modalidad desconocida/vacía = 0.
+        assertEquals(0.0, pe.saniape.app.data.saldoAFavorTratamiento(100.0, 150.0, "Activo", "Consulta"))
+        assertEquals(0.0, pe.saniape.app.data.saldoAFavorTratamiento(100.0, 150.0, "Activo", null))
+        assertEquals(0.0, pe.saniape.app.data.saldoAFavorTratamiento(100.0, 150.0, "Activo", ""))
+        assertEquals(30.0, pe.saniape.app.data.saldoAFavorTratamiento(700.0, 730.0, "Activo", "Unidades"))
+        assertEquals(50.0, pe.saniape.app.data.saldoAFavorTratamiento(100.0, 150.0, "Alta", "Paquete"))
+        assertEquals(0.0, pe.saniape.app.data.saldoAFavorDe(listOf(
+            cuenta(0.0, 40.0), cuenta(80.0, 320.0, modalidad = "Sesión suelta"), cuenta(100.0, 150.0, estado = "Eliminado"),
+        )))
+    }
+
+    private fun trat(id: String, estado: String?, inicio: String?, creado: String? = null) = TratamientoPaciente(
+        id = id, procedimiento = id, terapeutaId = null, terapeutaNombre = null, modalidad = "Paquete",
+        estado = estado, estadoPago = null, totalSesiones = 10, sesionesCompletadas = 0,
+        precioPaquete = null, precioPorSesion = null, precioAcordado = null, usaSesiones = true,
+        diagnostico = null, medicacion = null, proximoControl = null, especialidadNombre = null,
+        fechaInicio = inicio, createdAt = creado,
+    )
+
+    @Test
+    fun documento_por_defecto_el_activo_mas_reciente() {
+        assertEquals("nuevo", tratamientoPorDefectoDoc(listOf(
+            trat("viejo", "Activo", "2026-08-01"), trat("nuevo", "Activo", "2026-09-20"),
+            trat("alta", "Alta", "2026-10-01"), trat("sin-fecha", "Activo", null, "2026-07-01T10:00:00Z"),
+        )))
+        assertNull(tratamientoPorDefectoDoc(listOf(trat("alta", "Alta", "2026-10-01"))))
     }
 
     private fun consulta(atencion: String, triaje: String?) = AtencionRepo.parsearConsulta(
@@ -58,36 +101,60 @@ class DocumentosSaldoTriajeTest {
     )
 
     private val triaje = """
-        { "citaId": "c1", "hora": "09:15:00", "registradoPor": "Lic. Ana Ruiz",
+        { "citaId": "c1", "hora": "09:15", "registradoPor": "Lic. Ana Ruiz", "motivo": "Cefalea",
           "vitales": { "presion_sistolica": 120, "presion_diastolica": 80, "temperatura": "36,5",
                        "peso": 70.0, "talla": null, "otra": 5 } }
     """.trimIndent()
 
     @Test
-    fun triaje_de_hoy_se_lee_y_se_precarga_si_no_hay_vitales_propios() {
+    fun triaje_de_hoy_es_prestado_no_se_aplica_solo() {
         val d = consulta("null", triaje)
         val t = assertNotNull(d.triajeDeHoy)
-        assertEquals("c1", t.citaId)
+        assertEquals("Cefalea", t.motivo)
         assertEquals(
             mapOf("presion_sistolica" to "120", "presion_diastolica" to "80", "temperatura" to "36.5", "peso" to "70"),
             vitalesDeTriajeHoy(t),
         )
         assertEquals("Del triaje de hoy (09:15 · Lic. Ana Ruiz)", avisoTriajeHoy(t))
+        assertEquals("Usar triaje de hoy (09:15 · Lic. Ana Ruiz)", botonUsarTriajeHoy(t))
         assertNotNull(triajeDeHoyAplicable(d))
+        // Al abrir NO se copia nada ni queda nada por guardar.
         val b = borradorDesde(d)
-        assertEquals("120", b.vitales["presion_sistolica"])
-        assertEquals("36.5", b.vitales["temperatura"])
-        assertEquals("", b.vitales["talla"])
-        // Queda por guardar en ESTA cita (con el próximo guardado del médico).
-        assertTrue(prefillPorGuardar(d))
+        assertEquals("", b.vitales["presion_sistolica"])
+        assertEquals("", b.textos["motivo_consulta"])
+        assertTrue(!prefillPorGuardar(d))
+        // Solo al tocar "Usar triaje de hoy".
+        val usado = aplicarTriajeDeHoy(b, t)
+        assertEquals("120", usado.vitales["presion_sistolica"])
+        assertEquals("36.5", usado.vitales["temperatura"])
+        assertEquals("", usado.vitales["talla"])
+        assertEquals("Cefalea", usado.textos["motivo_consulta"])
     }
 
     @Test
-    fun triaje_de_hoy_no_pisa_vitales_propios_ni_aplica_sin_campo() {
+    fun usar_triaje_no_pisa_el_motivo_y_no_manda_media_presion() {
+        val t = TriajeDeHoyApp(
+            motivo = "Cefalea",
+            vitales = kotlinx.serialization.json.buildJsonObject {
+                put("presion_sistolica", kotlinx.serialization.json.JsonPrimitive(120))
+                put("peso", kotlinx.serialization.json.JsonPrimitive(70))
+            },
+        )
+        val b = BorradorAtencion(textos = mapOf("motivo_consulta" to "Dolor lumbar"), vitales = mapOf("presion_sistolica" to ""))
+        val usado = aplicarTriajeDeHoy(b, t)
+        assertEquals("Dolor lumbar", usado.textos["motivo_consulta"])
+        assertEquals("", usado.vitales["presion_sistolica"])   // sin la diastólica no se copia
+        assertEquals("70", usado.vitales["peso"])
+        // Solo llena los campos VACÍOS: lo que el médico escribió no se pisa.
+        val escrito = BorradorAtencion(vitales = mapOf("peso" to "72", "temperatura" to ""))
+        assertEquals("72", aplicarTriajeDeHoy(escrito, t).vitales["peso"])
+    }
+
+    @Test
+    fun triaje_de_hoy_no_aplica_con_vitales_propios_ni_sin_campo() {
         val propia = consulta("""{ "presion_sistolica": 110, "presion_diastolica": 70 }""", triaje)
         assertNull(triajeDeHoyAplicable(propia))
         assertEquals("110", borradorDesde(propia).vitales["presion_sistolica"])
-        assertEquals("", borradorDesde(propia).vitales["peso"])
 
         val viejo = consulta("null", null)
         assertNull(viejo.triajeDeHoy)

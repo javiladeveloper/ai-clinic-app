@@ -93,14 +93,15 @@ fun GaleriaFotos(
     LaunchedEffect(tratamientoId, FotosSesionVersion.valor) { recargar() }
 
     val abrirSelector = recordarSelectorArchivo { archivo ->
-        pedirArchivo = false
         // Solo imágenes (igual que la web).
         if (archivo.mime?.startsWith("image/") == true || archivo.nombre.substringAfterLast('.', "")
                 .lowercase() in listOf("jpg", "jpeg", "png", "webp", "heic")) {
             pendiente = archivo
         }
     }
-    LaunchedEffect(pedirArchivo) { if (pedirArchivo) abrirSelector() }
+    // La bandera se baja ANTES de abrir: un selector cancelado no llama al
+    // callback y la bandera quedaba en true (el botón ya no volvía a abrirlo).
+    LaunchedEffect(pedirArchivo) { if (pedirArchivo) { pedirArchivo = false; abrirSelector() } }
     // Tomar la foto con la CÁMARA (nativa) — el momento natural en consultorio.
     val abrirCamara = recordarCamaraFoto { archivo -> pendiente = archivo }
 

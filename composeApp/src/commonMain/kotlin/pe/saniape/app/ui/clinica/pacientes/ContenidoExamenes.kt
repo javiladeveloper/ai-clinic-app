@@ -73,7 +73,8 @@ fun ContenidoExamenes(
     var eligiendoTratamiento by remember { mutableStateOf(false) }
     // Tratamientos de la ficha (los activos primero) → nombre para agrupar y elegir.
     val tratamientosDoc = remember(paciente.tratamientos) {
-        paciente.tratamientos.filter { it.estado != "Cancelado" }
+        // Fuera solo los Eliminados (como la web); un Cancelado puede tener documentos.
+        paciente.tratamientos.filter { it.estado != "Eliminado" }
             .sortedByDescending { it.estado == "Activo" }
             .map { it.id to (it.procedimiento ?: it.especialidadNombre ?: "Plan de atención") }
     }
@@ -195,7 +196,7 @@ fun ContenidoExamenes(
         ModalTratamientoDocumento(
             tratamientos = tratamientosDoc,
             // Por defecto el activo (el primero de la lista ya ordenada).
-            inicial = paciente.tratamientos.firstOrNull { it.estado == "Activo" }?.id,
+            inicial = pe.saniape.app.data.staff.tratamientoPorDefectoDoc(paciente.tratamientos),
             onCancelar = { eligiendoTratamiento = false },
             onElegir = { tratId ->
                 eligiendoTratamiento = false

@@ -40,6 +40,14 @@ class AtencionViewModel(
 ) : ViewModel() {
 
     var datos by mutableStateOf<DatosConsultaApp?>(null); private set
+    /**
+     * Triaje de OTRA cita de hoy que se puede usar (ver TriajeDeHoyApp). Se fija
+     * al cargar; NO se aplica solo: [usarTriajeDeHoy] lo copia cuando el médico
+     * toca el botón. Nada prestado se guarda si no lo tocó.
+     */
+    var triajePrestado by mutableStateOf<pe.saniape.app.data.staff.TriajeDeHoyApp?>(null); private set
+    /** El médico ya usó el triaje prestado (el aviso cambia a "usado"). */
+    var triajeUsado by mutableStateOf(false); private set
     /** Carga fallida (la pantalla ofrece reintentar). */
     var error by mutableStateOf<String?>(null); private set
     var cargando by mutableStateOf(true); private set
@@ -101,6 +109,8 @@ class AtencionViewModel(
                     val d = r.datos
                     datos = d
                     borrador = borradorDesde(d, miTerapeutaId)
+                    triajePrestado = if (d.flags.soloLectura) null else pe.saniape.app.data.staff.triajeDeHoyAplicable(d)
+                    triajeUsado = false
                     sucio = false
                     // Motivo / diagnóstico sugeridos (de la cita o el tratamiento) quedan por guardar.
                     sucioPorPrefill = prefillPorGuardar(d) && !d.flags.soloLectura
@@ -133,6 +143,14 @@ class AtencionViewModel(
 
     fun texto(k: String, v: String) = editar { it.copy(textos = it.textos + (k to v)) }
     fun vital(k: String, v: String) = editar { it.copy(vitales = it.vitales + (k to v)) }
+
+    /** "Usar triaje de hoy": copia los vitales prestados (y el motivo si falta). Marca sucio. */
+    fun usarTriajeDeHoy() {
+        val t = triajePrestado ?: return
+        if (soloLectura) return
+        editar { pe.saniape.app.data.staff.aplicarTriajeDeHoy(it, t) }
+        triajeUsado = true
+    }
     fun diagnosticos(l: List<DiagnosticoCie>) = editar { it.copy(diagnosticos = l) }
     fun examenes(l: List<ExamenSolicitado>) = editar { it.copy(examenes = l) }
     fun terapeuta(id: String?) = editar { it.copy(terapeutaId = id) }
@@ -322,8 +340,6 @@ internal fun avisoGuardadoAutomatico(errorServidor: String?): String {
  */
 internal fun prefillPorGuardar(d: DatosConsultaApp): Boolean =
     motivoSugeridoAplica(d) ||
-        // Vitales precargados del triaje de hoy: se guardan en ESTA cita al guardar.
-        pe.saniape.app.data.staff.triajeDeHoyAplicable(d) != null ||
         (d.atencion?.diagnosticos.isNullOrEmpty() && d.diagnosticosSugeridos.isNotEmpty())
 
 /** true si el motivo está vacío y la cita trae uno sugerido (se precarga y queda por guardar). */
@@ -358,11 +374,7 @@ internal fun borradorDesde(d: DatosConsultaApp, miTerapeutaId: String? = null): 
         "peso" to vitalATexto(a?.peso),
         "talla" to vitalATexto(a?.talla),
         "perimetro_abdominal" to vitalATexto(a?.perimetro_abdominal),
-    ).let { propios ->
-        // Sin vitales propios y con triaje de otra cita de hoy: se precargan esos.
-        val hoy = pe.saniape.app.data.staff.triajeDeHoyAplicable(d)
-        if (hoy != null) propios + pe.saniape.app.data.staff.vitalesDeTriajeHoy(hoy) else propios
-    }
+    )
     return BorradorAtencion(
         terapeutaId = a?.terapeuta_id ?: d.cita.terapeuta_id ?: miTerapeutaId,
         tratamientoId = d.cita.tratamiento_id,

@@ -64,6 +64,15 @@ data class DocumentoFicha(
     val tratamientoId: String? = null,
 )
 
+/**
+ * Tratamiento por defecto al subir un documento: el ACTIVO más reciente (por
+ * fecha de inicio o de creación), como tratamientoPorDefecto de la web. null =
+ * ninguno activo → "General".
+ */
+fun tratamientoPorDefectoDoc(tratamientos: List<TratamientoPaciente>): String? =
+    tratamientos.filter { (it.estado ?: "Activo") == "Activo" }
+        .maxByOrNull { it.fechaInicio ?: it.createdAt ?: "" }?.id
+
 /** Categoría de las fotos de la galería: no se listan como documentos. */
 const val CATEGORIA_FOTO_EVOLUTIVA = "Foto evolutiva"
 
@@ -291,7 +300,13 @@ object SolicitudesRepo {
         null
     } catch (e: Exception) {
         val m = e.message.orEmpty()
-        if (m.contains("LIMITE_PLAN")) mensajeLimitePlan(m) else "No se pudo registrar el documento"
+        when {
+            m.contains("LIMITE_PLAN") -> mensajeLimitePlan(m)
+            // Trigger de la base: el tratamiento no es de este paciente / clínica.
+            m.contains("TRATAMIENTO_INVALIDO") ->
+                "Ese tratamiento no pertenece a este paciente. Elige otro o súbelo como General."
+            else -> "No se pudo registrar el documento"
+        }
     }
 
 

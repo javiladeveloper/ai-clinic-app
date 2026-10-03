@@ -80,10 +80,15 @@ fun PantallaSalud() {
     var fotos by remember { mutableStateOf<List<FotoPortal>>(emptyList()) }
     // Lo que el paciente tiene a favor en total (campo opcional del servidor).
     var saldoAFavor by remember { mutableStateOf(0.0) }
-    // URLs firmadas ya pedidas (path → url), para no volver a firmar cada miniatura.
-    var urlsFirmadas by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var saldoAFavorPorClinica by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
+    // URLs firmadas ya pedidas (path → url + cuándo), para no volver a firmar cada
+    // miniatura. Las firmas duran 1 h: pasados ~50 min se vuelven a pedir.
+    var urlsFirmadas by remember { mutableStateOf<Map<String, UrlFirmada>>(emptyMap()) }
     // Visor de imágenes dentro de la app (fotos y documentos jpg/png/webp).
     var visor by remember { mutableStateOf<VisorAbierto?>(null) }
+    // Cada apertura del visor es una petición; solo la última puede llenarlo
+    // (si se cerró mientras se firmaba, no se reabre solo).
+    var peticionVisor by remember { mutableStateOf(0) }
     // Recetas: null = no se sabe (endpoint ausente en un servidor viejo, sin red y
     // sin caché). En ese caso — y si no tiene ninguna — la sección no aparece.
     var recetas by remember { mutableStateOf<RecetasDelPaciente?>(null) }
@@ -120,9 +125,17 @@ fun PantallaSalud() {
                     is ResultadoPortal.Ok -> tratamientos = rt.datos
                     is ResultadoPortal.Error -> errorCarga = true
                 }
-                dSaldos.await().onSuccess { saldos = it.porTratamiento; saldoAFavor = it.saldoAFavor }
+                dSaldos.await().onSuccess {
+                    saldos = it.porTratamiento; saldoAFavor = it.saldoAFavor
+                    saldoAFavorPorClinica = it.saldoAFavorPorClinica
+                }
                     .onFailure { errorCarga = true }
-                dDocs.await().onSuccess { documentos = it.documentos; fotos = it.fotos }
+                dDocs.await().onSuccess { r ->
+                    documentos = r.documentos; fotos = r.fotos
+                    // Las que ya vienen firmadas en la lista cuentan desde ahora.
+                    val ahora = ahoraMs()
+                    urlsFirmadas = urlsFirmadas + r.fotos.mapNotNull { f -> f.url?.let { f.path to UrlFirmada(it, ahora) } }
+                }
                     .onFailure { errorCarga = true }
                 // Null = no se pudo saber: se conserva lo que ya había (caché).
                 dRecetas.await()?.let { recetas = it }
@@ -132,42 +145,47 @@ fun PantallaSalud() {
     }
     val listaRecetas = recetas?.recetas.orEmpty()
 
-    /** URL firmada de un archivo (caché por path). null = no se pudo (se avisa afuera). */
-    suspend fun urlDe(path: String, yaFirmada: String? = null): String? {
-        yaFirmada?.let { return it }
-        urlsFirmadas[path]?.let { return it }
+    /**
+     * URL firmada de un archivo (caché por path, vigente ~50 min de la hora que
+     * dura la firma). null = no se pudo (se avisa afuera).
+     */
+    suspend fun urlDe(path: String): String? {
+        urlsFirmadas[path]?.takeIf { ahoraMs() - it.firmadaEn < VIGENCIA_URL_MS }?.let { return it.url }
         val u = runCatching { SaludRepo.urlDocumento(path) }.getOrNull() ?: return null
-        urlsFirmadas = urlsFirmadas + (path to u)
+        urlsFirmadas = urlsFirmadas + (path to UrlFirmada(u, ahoraMs()))
         return u
+    }
+
+    /** Abre el visor y lo llena SOLO si sigue siendo esta apertura. */
+    fun abrirEnVisor(path: String, titulo: String, error: String) {
+        val id = ++peticionVisor
+        visor = VisorAbierto(null, titulo, id)
+        scope.launch {
+            val url = urlDe(path)
+            if (visor?.peticion != id) return@launch   // se cerró u otra apertura la reemplazó
+            if (url == null) {
+                visor = null
+                Toaster.error(error)
+            } else visor = VisorAbierto(url, titulo, id)
+        }
     }
 
     /** Abre un documento: imagen → visor de la app; PDF y lo demás → afuera. */
     fun abrirDocumento(d: Documento) {
-        val esImagen = claseArchivo(d.tipo, d.path) == ClaseArchivo.IMAGEN
-        if (esImagen) visor = VisorAbierto(null, d.nombre)
+        if (claseArchivo(d.tipo, d.path) == ClaseArchivo.IMAGEN) {
+            abrirEnVisor(d.path, d.nombre, "No se pudo abrir el documento. Revisa tu conexión e inténtalo de nuevo.")
+            return
+        }
         scope.launch {
             val url = urlDe(d.path)
-            when {
-                url == null -> {
-                    if (esImagen) visor = null
-                    Toaster.error("No se pudo abrir el documento. Revisa tu conexión e inténtalo de nuevo.")
-                }
-                esImagen -> visor = VisorAbierto(url, d.nombre)
-                else -> acciones.abrirUrl(url)
-            }
+            if (url == null) Toaster.error("No se pudo abrir el documento. Revisa tu conexión e inténtalo de nuevo.")
+            else acciones.abrirUrl(url)
         }
     }
 
     fun abrirFoto(f: FotoPortal) {
         val titulo = listOfNotNull(momentoFoto(f.momento), f.fecha.take(10).ifBlank { null }).joinToString(" · ")
-        visor = VisorAbierto(null, titulo)
-        scope.launch {
-            val url = urlDe(f.path, f.url)
-            if (url == null) {
-                visor = null
-                Toaster.error("No se pudo abrir la foto. Revisa tu conexión e inténtalo de nuevo.")
-            } else visor = VisorAbierto(url, titulo)
-        }
+        abrirEnVisor(f.path, titulo, "No se pudo abrir la foto. Revisa tu conexión e inténtalo de nuevo.")
     }
     val sinNada = tratamientos.isEmpty() && documentos.isEmpty() && fotos.isEmpty() && listaRecetas.isEmpty()
 
@@ -221,7 +239,17 @@ fun PantallaSalud() {
                     if (ordenados.isNotEmpty()) {
                         item { Etiqueta("MI TRATAMIENTO") }
                         // Lo que pagó de más (entre todos sus tratamientos): que lo sepa.
-                        if (saldoAFavor > 0.005) item { AvisoAFavor(saldoAFavor) }
+                        // Crédito por clínica (nunca sumado entre clínicas): con una sola
+                        // clínica, "Tienes S/ X a favor"; con varias, uno por clínica.
+                        val avisos: List<Pair<String?, Double>> = when {
+                            saldoAFavorPorClinica.size > 1 -> saldoAFavorPorClinica.map { (clinicaId, monto) ->
+                                tratamientos.firstOrNull { saldos[it.id]?.clinicaId == clinicaId }?.clinica to monto
+                            }
+                            saldoAFavor > 0.005 -> listOf(null to saldoAFavor)
+                            saldoAFavorPorClinica.size == 1 -> listOf(null to saldoAFavorPorClinica.values.first())
+                            else -> emptyList()
+                        }
+                        avisos.forEachIndexed { i, (clinica, monto) -> item(key = "a-favor-$i") { AvisoAFavor(monto, clinica) } }
                         items(ordenados) { t -> TarjetaTratamiento(t, saldos[t.id]) }
                     }
                     // 💊 Mis recetas: solo si tiene alguna (un paciente de fisio no ve nada nuevo).
@@ -238,13 +266,13 @@ fun PantallaSalud() {
                     // 📷 Mis fotos: las que la clínica marcó visibles (antes/durante/después).
                     if (fotos.isNotEmpty()) {
                         item { Spacer(Modifier.height(Sania.dim.sm)); Etiqueta("📷 MIS FOTOS") }
-                        agruparPorTratamiento(fotos) { it.tratamientoNombre }.forEach { (trat, lista) ->
-                            item(key = "fotos-" + (trat ?: "todas")) {
+                        agruparPorTratamiento(fotos, { it.tratamientoId }, { it.tratamientoNombre }).forEach { g ->
+                            item(key = "fotos-" + g.clave) {
                                 Column {
-                                    trat?.let { SubEtiqueta(it) }
+                                    g.titulo?.let { SubEtiqueta(it) }
                                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        items(lista, key = { "foto-" + it.id }) { f ->
-                                            MiniaturaFoto(f, urlProvider = { urlDe(f.path, f.url) }, onAbrir = { abrirFoto(f) })
+                                        items(g.items, key = { "foto-" + it.id }) { f ->
+                                            MiniaturaFoto(f, urlProvider = { urlDe(f.path) }, onAbrir = { abrirFoto(f) })
                                         }
                                     }
                                 }
@@ -254,9 +282,9 @@ fun PantallaSalud() {
                     if (documentos.isNotEmpty()) {
                         item { Spacer(Modifier.height(Sania.dim.sm)); Etiqueta("MIS DOCUMENTOS") }
                         // Por tratamiento si el servidor lo manda; si no, la lista plana de siempre.
-                        agruparPorTratamiento(documentos) { it.tratamientoNombre }.forEach { (trat, lista) ->
-                            trat?.let { item(key = "doc-grupo-$it") { SubEtiqueta(it) } }
-                            items(lista, key = { "doc-" + it.id }) { d ->
+                        agruparPorTratamiento(documentos, { it.tratamientoId }, { it.tratamientoNombre }).forEach { g ->
+                            g.titulo?.let { t -> item(key = "doc-grupo-" + g.clave) { SubEtiqueta(t) } }
+                            items(g.items, key = { "doc-" + it.id }) { d ->
                                 TarjetaDocumento(d, onAbrir = { abrirDocumento(d) })
                             }
                         }
@@ -269,8 +297,16 @@ fun PantallaSalud() {
     visor?.let { v -> VisorImagen(url = v.url, titulo = v.titulo, onCerrar = { visor = null }) }
 }
 
-/** Visor abierto: [url] null mientras se firma. */
-private data class VisorAbierto(val url: String?, val titulo: String?)
+/** Visor abierto: [url] null mientras se firma; [peticion] = qué apertura es. */
+private data class VisorAbierto(val url: String?, val titulo: String?, val peticion: Int = 0)
+
+/** Una URL firmada y cuándo se obtuvo (las firmas del servidor duran 1 h). */
+private data class UrlFirmada(val url: String, val firmadaEn: Long)
+
+/** Se vuelve a firmar pasados 50 min (margen sobre la hora que dura la firma). */
+private const val VIGENCIA_URL_MS = 50L * 60 * 1000
+
+private fun ahoraMs(): Long = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
 
 private fun momentoFoto(m: String?): String? = when (m) {
     "Despues" -> "Después"
@@ -280,7 +316,7 @@ private fun momentoFoto(m: String?): String? = when (m) {
 
 /** "Tienes S/ X a favor": lo pagado de más entre todos sus tratamientos. */
 @Composable
-private fun AvisoAFavor(monto: Double) {
+private fun AvisoAFavor(monto: Double, clinica: String? = null) {
     val c = Sania.colors
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.okBg)
@@ -291,7 +327,8 @@ private fun AvisoAFavor(monto: Double) {
         Text("💚", fontSize = 18.sp)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text("Tienes S/ ${formato2(monto)} a favor", color = c.ok, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text("Tienes S/ ${formato2(monto)} a favor" + (clinica?.let { " en $it" } ?: ""),
+                color = c.ok, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Text("Pagaste más de lo acordado. Consulta en la clínica cómo se aplica.",
                 color = c.textoSuave, fontSize = 12.sp)
         }
@@ -308,13 +345,12 @@ private fun SubEtiqueta(t: String) {
 @Composable
 private fun MiniaturaFoto(f: FotoPortal, urlProvider: suspend () -> String?, onAbrir: () -> Unit) {
     val c = Sania.colors
-    var url by remember(f.id) { mutableStateOf(f.url) }
+    // Siempre por urlProvider: usa la firmada de la lista mientras siga vigente.
+    var url by remember(f.id) { mutableStateOf<String?>(null) }
     var fallo by remember(f.id) { mutableStateOf(false) }
     LaunchedEffect(f.id) {
-        if (url == null) {
-            url = urlProvider()
-            fallo = url == null
-        }
+        url = urlProvider()
+        fallo = url == null
     }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
@@ -417,9 +453,11 @@ private fun TarjetaTratamiento(t: Tratamiento, saldo: Saldo?) {
                     ColumnaMonto("PAGADO", "S/ ${formato2(saldo.pagado)}", c.ok, Modifier.weight(1f))
                     when {
                         saldo.saldo > 0 -> ColumnaMonto("DEBES", "S/ ${formato2(saldo.saldo)}", c.pend, Modifier.weight(1f))
-                        // Pagó de más: que lo vea (antes solo decía "Pagado ✓").
-                        saldo.acordado > 0 && saldo.pagado - saldo.acordado > 0.005 ->
-                            ColumnaMonto("A FAVOR", "S/ ${formato2(saldo.pagado - saldo.acordado)}", c.ok, Modifier.weight(1f))
+                        // Pagó de más: que lo vea (antes solo decía "Pagado ✓"). Mismas
+                        // reglas que la web: con precio, facturable y no sesión suelta.
+                        // El servidor ya aplicó las reglas (solo Paquete/Unidades): se usa tal cual.
+                        saldo.aFavor > 0.005 ->
+                            ColumnaMonto("A FAVOR", "S/ ${formato2(saldo.aFavor)}", c.ok, Modifier.weight(1f))
                         saldo.acordado > 0 -> ColumnaMonto("SALDO", "Pagado ✓", c.ok, Modifier.weight(1f))
                         else -> ColumnaMonto("SALDO", "—", c.textoSuave, Modifier.weight(1f))
                     }

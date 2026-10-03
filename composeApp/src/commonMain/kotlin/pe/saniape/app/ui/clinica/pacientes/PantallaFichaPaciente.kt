@@ -975,10 +975,9 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     val ok = r.registrada
                     if (ok) pe.saniape.app.ui.Toaster.exito("Sesión #${ses.numero} completada")
                     else pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo completar la sesión")
-                    // Fotos de la sesión: en segundo plano, ligadas a esta sesión y su tratamiento.
-                    if (ok && fotosElegidas.isNotEmpty()) {
-                        subirFotosSesion(paciente.id, req.trat.id, fotosElegidas, fotosVisibles) { ses.id }
-                    }
+                    // Fotos de la sesión: en segundo plano, ligadas a esta sesión y su
+                    // tratamiento. Sin señal (encolada) o sin completar: se avisa.
+                    fotosTrasCompletar(ok, r.encolada, paciente.id, req.trat.id, fotosElegidas, fotosVisibles) { ses.id }
                     // Cobro en el mismo paso (si lo activó): vinculado a la sesión. No hay un
                     // endpoint que haga las dos cosas juntas, así que si el cobro falla se
                     // dice claro y se ofrece reintentar SOLO el cobro (no volver a completar).
@@ -1204,6 +1203,8 @@ internal fun ModalCompletarSesion(
         subtitulo = "Registra lo realizado en la sesión",
         textoAccion = if (cobrar) "✓ Completar y cobrar" else "✓ Completar",
         accionHabilitada = (!cobrar || (pagoMonto.toDoubleOrNull() ?: 0.0) > 0) &&
+            // Fotos comprimiéndose: se espera (un instante) para no perderlas.
+            (fotosSesion?.preparando ?: 0) == 0 &&
             // Dental: se espera a que cargue "¿Qué se le hizo hoy?" (un instante).
             !(esDental && pacienteId.isNotBlank() && piezasListas == null),
         onCancelar = onCancelar,
@@ -2112,7 +2113,7 @@ private fun ContenidoPagos(
         resumen = runCatching { PacientesRepo.resumenPagosDe(paciente.tratamientos) }.getOrNull()
     }
 
-    val facturables = paciente.tratamientos.filter { it.estado != "Cancelado" }
+    val facturables = paciente.tratamientos.filter { it.estado != "Cancelado" && it.estado != "Eliminado" }
     val r = resumen
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -2184,8 +2185,10 @@ private fun FilaPagoResumen(t: TratamientoPaciente, pagado: Double, onVer: () ->
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Acordado S/ ${formatoMonto(acordado)}", color = c.textoSuave, fontSize = 11.sp)
             Text("Pagado S/ ${formatoMonto(pagado)}", color = c.ok, fontSize = 11.sp)
-            if (pagado - acordado > 0.005) {
-                Text("A favor S/ ${formatoMonto(pagado - acordado)}", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            // A favor solo con precio, facturable y que no sea sesión suelta (data/SaldoAFavor.kt).
+            val aFavor = pe.saniape.app.data.saldoAFavorTratamiento(acordado, pagado, t.estado, t.modalidad)
+            if (aFavor > 0.0) {
+                Text("A favor S/ ${formatoMonto(aFavor)}", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             } else {
                 Text("Saldo S/ ${formatoMonto(saldo)}", color = if (saldo > 0.005) c.error else c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }

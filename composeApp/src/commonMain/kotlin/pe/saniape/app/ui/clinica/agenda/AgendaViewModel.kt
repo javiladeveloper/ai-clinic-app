@@ -557,10 +557,16 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         val piezas: List<String>?, val congelarOdontograma: Boolean,
         /** Fisio (M5): la evaluación estructurada llenada, para no perderla en el reintento. */
         val evaluacionFisio: pe.saniape.app.data.staff.BorradorEvaluacionFisio? = null,
+        /** Fotos de la sesión pendientes de subir: el reintento con profesional no las pierde. */
+        val alCompletarSesion: ((ok: Boolean, encolada: Boolean) -> Unit)? = null,
     )
     var pedirProfesional by mutableStateOf<PedidoProfesional?>(null); private set
 
-    fun cerrarPedidoProfesional() { pedirProfesional = null }
+    fun cerrarPedidoProfesional() {
+        // Cerrar sin elegir = la cita no se completó: las fotos no se guardan (se avisa).
+        pedirProfesional?.alCompletarSesion?.invoke(false, false)
+        pedirProfesional = null
+    }
 
     /**
      * Tras completar una EVALUACIÓN: ofrecer crear el tratamiento sin salir de la
@@ -659,6 +665,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             AccionCita.Completar, p.cita, p.observaciones, p.diagnostico, p.derivarEspId,
             piezas = p.piezas, congelarOdontograma = p.congelarOdontograma, terapeutaId = terapeutaId,
             evaluacionFisio = p.evaluacionFisio,
+            alCompletarSesion = p.alCompletarSesion,
         )
     }
 
@@ -694,12 +701,19 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
          * creó). Se llama tras recargar la agenda.
          */
         alTerminar: ((Boolean) -> Unit)? = null,
+        /**
+         * Completar: resultado detallado (completó, quedó en la cola sin señal) para
+         * las fotos de la sesión. Se llama SIEMPRE que se pasó (también si no se
+         * completó), para que las fotos nunca se pierdan en silencio.
+         */
+        alCompletarSesion: ((ok: Boolean, encolada: Boolean) -> Unit)? = null,
     ) {
         if (accionando) {
             // Callado dejaba la revisión dental en "Guardando…" para siempre.
-            if (alTerminar != null) {
+            if (alTerminar != null || alCompletarSesion != null) {
                 pe.saniape.app.ui.Toaster.info("Espera a que termine la acción en curso")
-                alTerminar(false)
+                alTerminar?.invoke(false)
+                alCompletarSesion?.invoke(false, false)
             }
             return
         }
@@ -723,7 +737,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                         r.codigo == "SIN_PROFESIONAL" -> {
                             pedirProfesional = PedidoProfesional(
                                 cita, observaciones, diagnostico, derivarEspId, piezas, congelarOdontograma,
-                                evaluacionFisio,
+                                evaluacionFisio, alCompletarSesion,
                             )
                             accionando = false
                             alTerminar?.invoke(false)
@@ -735,6 +749,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                             if (r.rechazo != null) {
                                 recargarCitas(); accionando = false
                                 alTerminar?.invoke(false)
+                                alCompletarSesion?.invoke(false, false)
                                 return@launch
                             }
                             false
@@ -805,6 +820,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             recargarBanners()
             accionando = false
             alTerminar?.invoke(ok)
+            if (accion == AccionCita.Completar) alCompletarSesion?.invoke(ok, completadaEncolada)
         }
     }
 

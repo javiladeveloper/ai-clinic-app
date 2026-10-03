@@ -226,5 +226,6 @@ object StaffContextoRepo {
         actual = null
         SedeActiva.limpiar()
         SedesAgendaRepo.limpiarCache()
+        FotosRepo.limpiarCache()
     }
 }

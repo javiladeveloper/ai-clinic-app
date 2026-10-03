@@ -5,9 +5,9 @@ Fotos en tu app, fotos al completar la sesión y documentos ordenados por tratam
 ---
 Pacientes:
 • Ahora ves en "Mi salud" las fotos de tu evolución que tu clínica compartió contigo, y se abren dentro de la app.
-• Si pagaste de más, lo ves: "Tienes S/ X a favor".
+• Si pagaste de más en un paquete, lo ves: "Tienes S/ X a favor".
 Clínicas:
-• Sube fotos de la sesión al completarla, desde la cámara o la galería.
+• Sube fotos de la sesión al completarla, desde la cámara o la galería. Sin señal, la app avisa para subirlas luego desde la galería.
 • Los documentos del paciente se ordenan por tratamiento: al subir uno, eliges a qué tratamiento pertenece.
 • El saldo a favor del paciente se ve en su ficha.
-• El triaje del día se comparte entre médicos: si otro profesional ya tomó los signos vitales hoy, la consulta los trae listos para revisar.
+• El triaje del día se comparte entre médicos: si otro profesional ya tomó los signos vitales hoy, la consulta ofrece "Usar triaje de hoy" para traerlos con un toque.

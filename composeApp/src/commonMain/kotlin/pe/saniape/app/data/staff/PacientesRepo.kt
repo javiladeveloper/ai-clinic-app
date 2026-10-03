@@ -91,6 +91,9 @@ data class TratamientoPaciente(
     val cerradoAt: String? = null,
     /** Especialidades del profesional: el último respaldo de `citaEsFisio`. */
     val especialidadesProfesional: List<String> = emptyList(),
+    /** Para elegir el tratamiento por defecto de un documento (el activo más reciente). */
+    val fechaInicio: String? = null,
+    val createdAt: String? = null,
 ) {
     /** Monto total acordado del tratamiento (igual que la web). */
     val montoAcordado: Double
@@ -226,18 +229,9 @@ data class CitaHito(
 data class ResumenPagos(
     val acordado: Double, val pagado: Double, val saldo: Double,
     val porTratamiento: Map<String, Double> = emptyMap(),   // tratamientoId -> pagado
-    /** Lo pagado DE MÁS: Σ max(pagado − acordado, 0) por tratamiento. Solo se muestra. */
+    /** Lo pagado DE MÁS (reglas en data/SaldoAFavor.kt). Solo se muestra. */
     val aFavor: Double = 0.0,
 )
-
-/**
- * Saldo a favor del paciente: por cada tratamiento, lo que pagó por encima de lo
- * acordado (pares acordado → pagado). NO descuenta la deuda de otros
- * tratamientos: la deuda se calcula aparte, igual que siempre.
- */
-fun saldoAFavorDe(acordadoYPagado: List<Pair<Double, Double>>): Double =
-    acordadoYPagado.sumOf { (acordado, pagado) -> (pagado - acordado).coerceAtLeast(0.0) }
-        .let { if (it < 0.005) 0.0 else it }
 
 /** Hitos del recorrido del paciente (Consulta/Evaluación hechas, próxima cita, última atención). */
 data class HitosPaciente(
@@ -421,6 +415,7 @@ object PacientesRepo {
             cantidad_unidades, precio_unitario,
             diagnostico, medicacion, proximo_control, nota_recepcion, tecnicas_sugeridas,
             procedimiento_id, sesiones_base, cita_origen_id, no_volvio, motivo_cierre, cerrado_at,
+            fecha_inicio, created_at,
             procedimiento:procedimientos(nombre, especialidad_id, modo_cobro, precio, unidad_label, especialidad:especialidades(nombre, usa_sesiones)),
             terapeuta:terapeutas(id, nombre, especialidades:terapeuta_especialidades(especialidad:especialidades(id, nombre)))
         )
@@ -1271,7 +1266,8 @@ object PacientesRepo {
      * Regla idéntica a la web: acordado/pagado totales y saldo = Σ max(acordado − pagado, 0).
      */
     suspend fun resumenPagosDe(tratamientos: List<TratamientoPaciente>): ResumenPagos {
-        val facturables = tratamientos.filter { it.estado != "Cancelado" }
+        // Facturables: fuera Cancelado y Eliminado (como la web).
+        val facturables = tratamientos.filter { it.estado != "Cancelado" && it.estado != "Eliminado" }
         if (facturables.isEmpty()) return ResumenPagos(0.0, 0.0, 0.0)
         val ids = facturables.map { it.id }
         val pagados = runCatching {
@@ -1286,7 +1282,9 @@ object PacientesRepo {
         val acordado = facturables.sumOf { it.montoAcordado }
         val pagado = facturables.sumOf { pagadoPorTrat[it.id] ?: 0.0 }
         val saldo = facturables.sumOf { t -> (t.montoAcordado - (pagadoPorTrat[t.id] ?: 0.0)).coerceAtLeast(0.0) }
-        val aFavor = saldoAFavorDe(facturables.map { t -> t.montoAcordado to (pagadoPorTrat[t.id] ?: 0.0) })
+        val aFavor = pe.saniape.app.data.saldoAFavorDe(facturables.map { t ->
+            pe.saniape.app.data.CuentaTratamiento(t.montoAcordado, pagadoPorTrat[t.id] ?: 0.0, t.estado, t.modalidad)
+        })
         return ResumenPagos(acordado, pagado, saldo, pagadoPorTrat.filterKeys { it != null }.mapKeys { it.key!! }, aFavor)
     }
 
@@ -1424,6 +1422,8 @@ object PacientesRepo {
                 ?: espsProf?.mapNotNull { it.str("id") }?.distinct()?.singleOrNull()
             TratamientoPaciente(
                 id = t.str("id") ?: return@mapNotNull null,
+                fechaInicio = t.str("fecha_inicio"),
+                createdAt = t.str("created_at"),
                 procedimiento = proc,
                 terapeutaId = t.str("terapeuta_id"),
                 terapeutaNombre = ter?.str("nombre"),

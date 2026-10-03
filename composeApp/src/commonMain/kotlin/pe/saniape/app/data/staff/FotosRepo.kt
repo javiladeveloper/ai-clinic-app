@@ -39,8 +39,14 @@ object FotosRepo {
     private fun JsonObject.bool(k: String): Boolean =
         (this[k] as? JsonPrimitive)?.content?.toBoolean() == true
 
-    /** Cache de la config de la clínica (se lee una vez por sesión de la app). */
-    private var fotosActivasCache: Boolean? = null
+    /**
+     * Cache de la config de la clínica (se lee una vez). Va con la clave de la
+     * clínica activa y además se borra al salir y al cambiar de clínica
+     * ([limpiarCache]): con varias clínicas, una no hereda el ajuste de otra.
+     */
+    private var fotosActivasCache: Pair<String?, Boolean>? = null
+
+    fun limpiarCache() { fotosActivasCache = null }
 
     /**
      * La clínica no APAGÓ las fotos evolutivas en su configuración
@@ -49,14 +55,15 @@ object FotosRepo {
      * → encendido (no se esconde una función por un fallo de lectura).
      */
     suspend fun fotosActivasClinica(): Boolean {
-        fotosActivasCache?.let { return it }
+        val clinica = StaffContextoRepo.actual?.clinicaId
+        fotosActivasCache?.let { (clave, valor) -> if (clave == clinica) return valor }
         val valor = runCatching {
             Supabase.client.postgrest["configuracion"]
                 .select(Columns.list("clave, valor")) { filter { eq("clave", "fotos_evolutivas_activa") } }
                 .decodeList<JsonObject>().firstOrNull()?.str("valor")
         }
         if (valor.isFailure) return true
-        return (valor.getOrNull() != "false").also { fotosActivasCache = it }
+        return (valor.getOrNull() != "false").also { fotosActivasCache = clinica to it }
     }
 
     /** Orden de momentos: Antes → Durante → Después, luego cronológico (igual que la web). */
