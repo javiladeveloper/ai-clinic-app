@@ -51,6 +51,9 @@ import pe.saniape.app.data.RecetasRepo
 import pe.saniape.app.data.ClaseArchivo
 import pe.saniape.app.data.Documento
 import pe.saniape.app.data.FotoPortal
+import pe.saniape.app.data.MisEjercicios
+import pe.saniape.app.data.MisEjerciciosRepo
+import pe.saniape.app.data.conEjercicioMarcado
 import pe.saniape.app.data.agruparPorTratamiento
 import pe.saniape.app.data.claseArchivo
 import pe.saniape.app.data.iconoArchivo
@@ -63,8 +66,8 @@ import pe.saniape.app.ui.theme.Sania
 
 /**
  * Tab Salud — mi(s) tratamiento(s) con progreso + timeline, saldo (si la clínica
- * lo habilitó), mis recetas (si tiene) y mis documentos. Igual que MiTratamiento
- * y MisRecetas de la web.
+ * lo habilitó), mis ejercicios de apoyo y mis recetas (si tiene) y mis documentos.
+ * Igual que MiTratamiento, MisEjercicios y MisRecetas de la web.
  */
 @Composable
 fun PantallaSalud() {
@@ -92,6 +95,9 @@ fun PantallaSalud() {
     // Recetas: null = no se sabe (endpoint ausente en un servidor viejo, sin red y
     // sin caché). En ese caso — y si no tiene ninguna — la sección no aparece.
     var recetas by remember { mutableStateOf<RecetasDelPaciente?>(null) }
+    // Ejercicios de apoyo que le dejó su fisio: null = no se sabe (servidor viejo, sin
+    // red). En ese caso — y si no tiene ningún plan vigente — la sección no aparece.
+    var ejercicios by remember { mutableStateOf<MisEjercicios?>(null) }
 
     // En vivo: cuando la clinica confirma el vinculo desde la web, el historial
     // aparece solo. Esta pantalla cargaba una sola vez, asi que el paciente veia
@@ -121,6 +127,7 @@ fun PantallaSalud() {
                 val dSaldos = async { runCatching { SaludRepo.saldos() } }
                 val dDocs = async { runCatching { SaludRepo.documentos() } }
                 val dRecetas = async { runCatching { RecetasRepo.cargar() }.getOrNull() }
+                val dEjercicios = async { runCatching { MisEjerciciosRepo.cargar() }.getOrNull() }
                 when (val rt = dTrat.await()) {
                     is ResultadoPortal.Ok -> tratamientos = rt.datos
                     is ResultadoPortal.Error -> errorCarga = true
@@ -139,11 +146,29 @@ fun PantallaSalud() {
                     .onFailure { errorCarga = true }
                 // Null = no se pudo saber: se conserva lo que ya había (caché).
                 dRecetas.await()?.let { recetas = it }
+                dEjercicios.await()?.let { ejercicios = it }
             }
         } catch (_: Exception) { errorCarga = true }
         finally { cargando = false }
     }
     val listaRecetas = recetas?.recetas.orEmpty()
+    val planesEjercicios = ejercicios?.planes.orEmpty()
+
+    /**
+     * "✓ Ya lo hice hoy" (o deshacer). Guarda y refleja el cambio en la copia local,
+     * sin volver a pedir todo. true = quedó guardado.
+     */
+    suspend fun marcarEjercicio(itemId: String, hecho: Boolean, dolor: Int?): Boolean {
+        val r = MisEjerciciosRepo.marcar(itemId, hecho, dolor)
+        if (!r.ok) {
+            Toaster.error(r.error ?: "No se pudo guardar")
+            // El fisio cambió el plan mientras tanto: se vuelve a pedir.
+            if (r.recargar) recargar++
+            return false
+        }
+        ejercicios = ejercicios?.let { d -> d.copy(planes = d.planes.map { conEjercicioMarcado(it, itemId, hecho, dolor) }) }
+        return true
+    }
 
     /**
      * URL firmada de un archivo (caché por path, vigente ~50 min de la hora que
@@ -187,7 +212,8 @@ fun PantallaSalud() {
         val titulo = listOfNotNull(momentoFoto(f.momento), f.fecha.take(10).ifBlank { null }).joinToString(" · ")
         abrirEnVisor(f.path, titulo, "No se pudo abrir la foto. Revisa tu conexión e inténtalo de nuevo.")
     }
-    val sinNada = tratamientos.isEmpty() && documentos.isEmpty() && fotos.isEmpty() && listaRecetas.isEmpty()
+    val sinNada = tratamientos.isEmpty() && documentos.isEmpty() && fotos.isEmpty() && listaRecetas.isEmpty() &&
+        planesEjercicios.isEmpty()
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -252,10 +278,23 @@ fun PantallaSalud() {
                         avisos.forEachIndexed { i, (clinica, monto) -> item(key = "a-favor-$i") { AvisoAFavor(monto, clinica) } }
                         items(ordenados) { t -> TarjetaTratamiento(t, saldos[t.id]) }
                     }
+                    // 🏠 Mis ejercicios de apoyo: solo si su fisio le dejó alguno vigente
+                    // (el portal de un paciente de otra especialidad no cambia en nada).
+                    if (planesEjercicios.isNotEmpty()) {
+                        item {
+                            if (ordenados.isNotEmpty()) Spacer(Modifier.height(Sania.dim.sm))
+                            Etiqueta("🏠 MIS EJERCICIOS DE APOYO")
+                        }
+                        items(planesEjercicios, key = { "ejercicios-" + it.id }) { p ->
+                            PlanEjerciciosPacienteVista(p, ejercicios?.diaSemana ?: 0) { itemId, hecho, dolor ->
+                                marcarEjercicio(itemId, hecho, dolor)
+                            }
+                        }
+                    }
                     // 💊 Mis recetas: solo si tiene alguna (un paciente de fisio no ve nada nuevo).
                     if (listaRecetas.isNotEmpty()) {
                         item {
-                            if (ordenados.isNotEmpty()) Spacer(Modifier.height(Sania.dim.sm))
+                            if (ordenados.isNotEmpty() || planesEjercicios.isNotEmpty()) Spacer(Modifier.height(Sania.dim.sm))
                             Etiqueta("💊 MIS RECETAS")
                         }
                         item { AvisoCopiaReceta(recetas?.aviso ?: AVISO_RECETA_POR_DEFECTO) }

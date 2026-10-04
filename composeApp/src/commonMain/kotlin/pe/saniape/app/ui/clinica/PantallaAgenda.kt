@@ -56,6 +56,8 @@ import pe.saniape.app.ui.clinica.pacientes.PantallaFichaPaciente
 import pe.saniape.app.data.staff.PacienteStaff
 import pe.saniape.app.data.staff.PacientesRepo
 import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import pe.saniape.app.ui.CargandoLista
 import pe.saniape.app.ui.theme.Sania
@@ -142,9 +144,36 @@ fun PantallaAgenda(
     // Resumen clínico (popup al tocar el nombre) + ficha completa que abre desde ahí.
     var resumenPacienteId by remember { mutableStateOf<String?>(null) }
     var fichaPaciente by remember { mutableStateOf<PacienteStaff?>(null) }
+    // La ficha se abre en la pestaña 🏠 Ejercicios (se cerró una sesión de fisio con "dejarle ejercicios").
+    var fichaEjercicios by remember { mutableStateOf<pe.saniape.app.ui.clinica.fisio.IndicarEjercicios?>(null) }
     var cargandoFicha by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val acciones = pe.saniape.app.ui.recordarAcciones()
+    /**
+     * Cierre con "dejarle ejercicios de apoyo" (fisio): a la ficha del paciente, pestaña
+     * 🏠, con ESA sesión elegida (gemelo de `irAEjercicios` en /citas web). La sesión
+     * puede nacer al completar: se lee del vínculo que deja la cita; si aún no se conoce,
+     * va el tratamiento y el destino cae en la última atendida.
+     */
+    fun abrirFichaConEjercicios(cita: CitaStaff) {
+        val pid = cita.pacienteId ?: return
+        cargandoFicha = true
+        scope.launch {
+            val (sesionId, pac) = coroutineScope {
+                val sesionD = async { pe.saniape.app.data.staff.AgendaRepo.sesionDeCita(cita.id)?.first }
+                val pacD = async { runCatching { PacientesRepo.porId(pid) }.getOrNull() }
+                sesionD.await() to pacD.await()
+            }
+            cargandoFicha = false
+            if (pac == null) {
+                // Sin señal (la sesión quedó en la cola) o la ficha no cargó: no se pierde nada.
+                pe.saniape.app.ui.Toaster.error("No se pudo abrir la ficha. Déjale los ejercicios desde su ficha (pestaña 🏠) cuando tengas conexión.")
+                return@launch
+            }
+            fichaEjercicios = pe.saniape.app.ui.clinica.fisio.IndicarEjercicios(sesionId, cita.tratamientoId)
+            fichaPaciente = pac
+        }
+    }
     // Sala de espera: la cita a la que se le toma el triaje, y un reloj para el
     // "· 12 min" de quien espera (solo con sala de espera; DALU no lo arranca).
     var triajeCita by remember { mutableStateOf<CitaStaff?>(null) }
@@ -629,8 +658,13 @@ fun PantallaAgenda(
                     }
                 }
             }
+            // 🏠 "¿Le dejas ejercicios de apoyo?" (como la web y la ficha): solo en una sesión
+            // de fisio, con permiso de sesiones y con paciente al que abrirle la ficha.
+            val dejarEjercicios = remember(cita.id) { mutableStateOf(false) }
+            val ofreceEjercicios = vm.esFisio(cita) && ctx.puede("sesiones") && cita.pacienteId != null
             ModalCompletar(
                 fotosSesion = if (conFotos) fotosSesion else null,
+                dejarEjercicios = if (ofreceEjercicios) dejarEjercicios else null,
                 cita = cita, especialidades = vm.especialidades, flujo = flujoCita,
                 esDental = vm.esDental(cita),
                 esFisio = vm.esFisio(cita),
@@ -646,8 +680,13 @@ fun PantallaAgenda(
                 onConfirmarFisio = { obs, piezas, mejorias, eva ->
                     completar = null
                     revisada = null
+                    // Con "dejarle ejercicios": si se completó, a la ficha (pestaña 🏠) y sin el
+                    // "¿Agendar la siguiente?", que se abriría encima. Si falla, no se navega.
+                    val conEjercicios = ofreceEjercicios && dejarEjercicios.value
                     vm.ejecutar(AccionCita.Completar, cita, obs, piezas = piezas, mejorias = mejorias, eva = eva,
                         pago = if (conCobro) cobro.pago() else null,
+                        ofrecerSiguienteSesion = !conEjercicios,
+                        alTerminar = if (conEjercicios) ({ ok -> if (ok) abrirFichaConEjercicios(cita) }) else null,
                         alCompletarSesion = alCompletarConFotos())
                 },
                 diagnosticoInicial = revisada?.takeIf { it.citaId == cita.id }?.diagnostico ?: "",
@@ -923,7 +962,11 @@ fun PantallaAgenda(
 
     fichaPaciente?.let { pac ->
         Box(Modifier.fillMaxSize().background(c.fondo)) {
-            PantallaFichaPaciente(ctx = ctx, pacienteInicial = pac, onCerrar = { fichaPaciente = null })
+            PantallaFichaPaciente(
+                ctx = ctx, pacienteInicial = pac,
+                onCerrar = { fichaPaciente = null; fichaEjercicios = null },
+                ejerciciosAlAbrir = fichaEjercicios,
+            )
         }
     }
 }

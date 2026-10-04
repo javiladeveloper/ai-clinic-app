@@ -99,6 +99,28 @@ fun PantallaSesiones(
     var abriendoCompletar by remember { mutableStateOf<String?>(null) }   // id de la sesión que carga su contexto
     var cambioEstado by remember { mutableStateOf<Pair<SesionGlobal, String>?>(null) }
     var reasignar by remember { mutableStateOf<SesionGlobal?>(null) }
+    // Ficha del paciente abierta en la pestaña 🏠 Ejercicios (se cerró una sesión de fisio
+    // con "dejarle ejercicios").
+    var fichaEjercicios by remember {
+        mutableStateOf<Pair<pe.saniape.app.data.staff.PacienteStaff, pe.saniape.app.ui.clinica.fisio.IndicarEjercicios>?>(null)
+    }
+
+    /**
+     * Cierre con "dejarle ejercicios de apoyo" (fisio): a la ficha del paciente, pestaña
+     * 🏠, con ESA sesión elegida (gemelo de `irAEjercicios` en /sesiones web).
+     */
+    suspend fun abrirFichaConEjercicios(s: SesionGlobal) {
+        val pacId = s.pacienteId?.takeIf { it.isNotBlank() } ?: return
+        val pac = pe.saniape.app.ui.conIndicador(pe.saniape.app.ui.Gestion.CARGANDO) {
+            runCatching { PacientesRepo.porId(pacId) }.getOrNull()
+        }
+        if (pac == null) {
+            // Sin señal (la sesión quedó en la cola) o la ficha no cargó: no se pierde nada.
+            pe.saniape.app.ui.Toaster.error("No se pudo abrir la ficha. Déjale los ejercicios desde su ficha (pestaña 🏠) cuando tengas conexión.")
+            return
+        }
+        fichaEjercicios = pac to pe.saniape.app.ui.clinica.fisio.IndicarEjercicios(s.id, s.tratamientoId)
+    }
 
     fun recargar() {
         scope.launch {
@@ -290,8 +312,15 @@ fun PantallaSesiones(
         val fotosSesion = remember(sg.id) { pe.saniape.app.ui.clinica.pacientes.FotosSesionPendientes() }
         val conFotos = sg.tratamientoId != null && !sg.pacienteId.isNullOrBlank() &&
             pe.saniape.app.ui.clinica.pacientes.recordarFotosActivas(ctx.can("fotosEvolutivas")) == true
+        // Fisioterapia (EVA, chips, dictado): por el servicio del tratamiento, como la web.
+        val esFisio = pe.saniape.app.data.staff.citaEsFisio(ctx.mapaFisio, especialidadServicioId = cc.especialidadId)
+        // 🏠 "¿Le dejas ejercicios de apoyo?" (como la web y la ficha): solo en una sesión de
+        // fisio, con permiso de sesiones y con paciente al que abrirle la ficha.
+        val dejarEjercicios = remember(sg.id) { mutableStateOf(false) }
+        val ofreceEjercicios = esFisio && ctx.puede("sesiones") && !sg.pacienteId.isNullOrBlank()
         pe.saniape.app.ui.clinica.pacientes.ModalCompletarSesion(
             fotosSesion = if (conFotos) fotosSesion else null,
+            dejarEjercicios = if (ofreceEjercicios) dejarEjercicios else null,
             ses = cc.ses,
             anterior = cc.anterior,
             tecnicasSugeridas = cc.tecnicasSugeridas,
@@ -299,8 +328,7 @@ fun PantallaSesiones(
             pacienteId = sg.pacienteId.orEmpty(),
             tratamientoId = sg.tratamientoId,
             esDental = esDental,
-            // Fisioterapia (EVA, chips, dictado): por el servicio del tratamiento, como la web.
-            esFisio = pe.saniape.app.data.staff.citaEsFisio(ctx.mapaFisio, especialidadServicioId = cc.especialidadId),
+            esFisio = esFisio,
             onCancelar = { completar = null },
             onConfirmar = { tecnicas, mejorias, dejoRx, pago, piezas, eva ->
                 completar = null
@@ -308,6 +336,7 @@ fun PantallaSesiones(
                 accionando = true
                 val fotosElegidas = if (conFotos) fotosSesion.copia() else emptyList()
                 val fotosVisibles = fotosSesion.visiblePaciente
+                val conEjercicios = ofreceEjercicios && dejarEjercicios.value
                 scope.launch {
                     val r = PacientesRepo.cambiarEstadoSesionDetalle(
                         sg.id, "Completada",
@@ -342,6 +371,8 @@ fun PantallaSesiones(
                     }
                     accionando = false
                     recargar()
+                    // "Dejarle ejercicios de apoyo": solo si la sesión quedó completada.
+                    if (r.registrada && conEjercicios) abrirFichaConEjercicios(sg)
                 }
             },
         )
@@ -386,6 +417,18 @@ fun PantallaSesiones(
                 accion("Profesional reasignado") { PacientesRepo.reasignarSesion(ses.id, profId) }
             },
         )
+    }
+
+    // ── Ficha del paciente en la pestaña 🏠 (tras "dejarle ejercicios de apoyo") ──
+    // Encima de la lista, como la ficha que abre la agenda; al cerrarla se vuelve a Sesiones.
+    fichaEjercicios?.let { (pac, indicar) ->
+        Box(Modifier.fillMaxSize().background(c.fondo)) {
+            pe.saniape.app.ui.clinica.pacientes.PantallaFichaPaciente(
+                ctx = ctx, pacienteInicial = pac,
+                onCerrar = { fichaEjercicios = null; recargar() },
+                ejerciciosAlAbrir = indicar,
+            )
+        }
     }
 }
 

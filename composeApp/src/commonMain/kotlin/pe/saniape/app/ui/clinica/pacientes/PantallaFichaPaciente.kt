@@ -75,7 +75,15 @@ data class CompletarSesionReq(val ses: SesionFicha, val anterior: SesionFicha?, 
  * sesiones/pagos se agregan en el siguiente paso (reusan endpoints de la web).
  */
 @Composable
-fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, onCerrar: () -> Unit) {
+fun PantallaFichaPaciente(
+    ctx: ContextoStaff, pacienteInicial: PacienteStaff, onCerrar: () -> Unit,
+    /**
+     * Se abre desde la agenda o desde Sesiones tras cerrar una sesión de fisio con
+     * "dejarle ejercicios": la ficha arranca en la pestaña 🏠 con esa sesión elegida.
+     * null = la ficha de siempre (pestaña Atenciones).
+     */
+    ejerciciosAlAbrir: pe.saniape.app.ui.clinica.fisio.IndicarEjercicios? = null,
+) {
     val c = Sania.colors
     val acciones = recordarAcciones()
     ManejarAtras(activo = true, onAtras = onCerrar)
@@ -105,7 +113,11 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
     var editarTratamiento by remember { mutableStateOf<TratamientoPaciente?>(null) }
     var registrarAtencion by remember { mutableStateOf<TratamientoPaciente?>(null) }
     var recargarToken by remember { mutableStateOf(0) }   // fuerza recarga de las tarjetas
-    var tab by remember { mutableStateOf("atenciones") }
+    var tab by remember { mutableStateOf(if (ejerciciosAlAbrir != null) "ejercicios" else "atenciones") }
+    // Ejercicios de apoyo: se viene de cerrar una sesión con "dejarle ejercicios" (aquí,
+    // o desde la agenda / Sesiones con [ejerciciosAlAbrir]) → la pestaña 🏠 abre con ESA
+    // sesión elegida. Se olvida al pasar a otra pestaña.
+    var indicarEjercicios by remember { mutableStateOf(ejerciciosAlAbrir) }
     var hitos by remember { mutableStateOf<pe.saniape.app.data.staff.HitosPaciente?>(null) }
     var saldoPendiente by remember { mutableStateOf<Double?>(null) }
     // Lo pagado de más (Σ por tratamiento). Solo informativo: no toca la deuda.
@@ -227,6 +239,13 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         }
     }
     fun recargar() { recargarToken++ }
+
+    // Se llegó a la pestaña 🏠 (desde la agenda o Sesiones) pero, ya cargada la ficha, el
+    // paciente no resultó ser de fisioterapia: esa pestaña no existe para él. Cae en
+    // Atenciones en vez de quedar en blanco.
+    LaunchedEffect(cargando, esPacienteFisio) {
+        if (!cargando && !esPacienteFisio && tab == "ejercicios") { tab = "atenciones"; indicarEjercicios = null }
+    }
 
     // Al volver la señal, repoblar la ficha: si se abrió (o se recargó) sin red, quedó
     // con datos a medias y no se arreglaba sola hasta salir y entrar.
@@ -538,6 +557,8 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     if (esOdontologia) add("odontograma" to "🦷 Odontograma")
                     // SOLO pacientes de fisioterapia (`esPacienteFisio`, arriba).
                     if (esPacienteFisio) add("evaluacion" to "📏 Evaluación")
+                    // 🏠 Ejercicios de apoyo: mismo candado que la 📏 (solo fisioterapia).
+                    if (esPacienteFisio) add("ejercicios" to "🏠 Ejercicios")
                     // SOLO pacientes de especialidades que recetan (`esPacienteReceta`).
                     if (esPacienteReceta) add("recetas" to "💊 Recetas")
                     if (ctx.puede("pagos")) add("pagos" to "💰 Pagos")
@@ -551,7 +572,8 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                             Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
                                 .background(if (activo) c.navy else c.superficie)
                                 .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
-                                .clickable { tab = key }.padding(horizontal = 14.dp, vertical = 8.dp),
+                                .clickable { tab = key; if (key != "ejercicios") indicarEjercicios = null }
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
                         ) { Text(label, color = if (activo) c.sobreNavy else c.texto, fontSize = 12.sp,
                             fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal, maxLines = 1) }
                     }
@@ -676,6 +698,31 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                             textoRegion = paciente.diagnostico,
                             puedeEditar = ctx.puede("sesiones") && !pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
                             miTerapeutaId = ctx.miTerapeutaId,
+                        )
+                    }
+                    // 🏠 Ejercicios de apoyo (fisio): consulta SOLO al abrirse, como la 📏.
+                    "ejercicios" -> if (esPacienteFisio) {
+                        // Los tratamientos de fisioterapia del paciente. Si ninguno se reconoce
+                        // como tal (servicio sin especialidad: el paciente es de fisio por su cita
+                        // o por quien lo mira), valen todos — como la web: mejor ofrecer de más
+                        // que dejar al fisio sin sesiones a las que indicarle.
+                        val deFisio = paciente.tratamientos.filter { tratEsFisio(it) }.ifEmpty { paciente.tratamientos }
+                        pe.saniape.app.ui.clinica.fisio.EjerciciosApoyoTab(
+                            pacienteId = paciente.id,
+                            pacienteNombre = paciente.nombre,
+                            // Para "Enviar por WhatsApp" (como la web y la encuesta del alta);
+                            // sin un celular válido se copia el mensaje con el enlace.
+                            pacienteTelefono = paciente.telefono,
+                            clinicaId = ctx.clinicaId,
+                            clinicaNombre = ctx.clinicaNombre,
+                            puedeEditar = ctx.puede("sesiones") && !pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
+                            tratamientos = deFisio.map {
+                                pe.saniape.app.data.staff.TratamientoDestino(
+                                    it.id, it.procedimiento ?: it.especialidadNombre ?: "Tratamiento", it.estado.orEmpty(),
+                                )
+                            },
+                            recargaToken = recargarToken,
+                            indicarAlAbrir = indicarEjercicios,
                         )
                     }
                     "odontograma" -> if (esOdontologia) {
@@ -944,6 +991,10 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
         // 📷 Fotos de la sesión (como la web): plan con fotos + la clínica no las apagó.
         val fotosSesion = remember(ses.id) { FotosSesionPendientes() }
         val conFotos = recordarFotosActivas(ctx.can("fotosEvolutivas")) == true
+        // 🏠 "¿Le dejas ejercicios de apoyo?" (como el cierre de la web): solo en una
+        // sesión de fisioterapia y con permiso de sesiones.
+        val dejarEjercicios = remember(ses.id) { mutableStateOf(false) }
+        val ofreceEjercicios = esPacienteFisio && tratEsFisio(req.trat) && ctx.puede("sesiones")
         ModalCompletarSesion(
             ses = ses,
             anterior = anterior,
@@ -956,11 +1007,13 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
             esDental = tratEsDental(req.trat),
             esFisio = tratEsFisio(req.trat),
             citaId = hitos?.citaPorSesion?.get(ses.id),
+            dejarEjercicios = if (ofreceEjercicios) dejarEjercicios else null,
             onCancelar = { completarSesion = null },
             onConfirmar = { tecnicas, mejorias, dejoRx, pago, piezas, eva ->
                 completarSesion = null
                 val fotosElegidas = if (conFotos) fotosSesion.copia() else emptyList()
                 val fotosVisibles = fotosSesion.visiblePaciente
+                val conEjercicios = ofreceEjercicios && dejarEjercicios.value
                 scope.launch {
                     // Evolución: solo desde la sesión #2 ("" limpia, null = no tocar),
                     // igual que la web. El aviso de RX viaja aparte, en su propia columna.
@@ -992,6 +1045,13 @@ fun PantallaFichaPaciente(ctx: ContextoStaff, pacienteInicial: PacienteStaff, on
                     }
                     // Aprender las técnicas para sugerirlas la próxima vez (fire-and-forget).
                     tecnicas?.let { TecnicasRepo.registrar(it) }
+                    // "Dejarle ejercicios de apoyo": a la pestaña 🏠 con ESTA sesión elegida (o
+                    // "al terminar" si con ella el tratamiento quedó terminado). La biblioteca no
+                    // se abre sola: abajo puede salir "¿Agendar la siguiente?" y dos diálogos se tapan.
+                    if (ok && conEjercicios) {
+                        indicarEjercicios = pe.saniape.app.ui.clinica.fisio.IndicarEjercicios(ses.id, req.trat.id)
+                        tab = "ejercicios"
+                    }
                     recargar()
                     // Si aún quedan sesiones por hacer, ofrecer agendar la próxima en 1 tap
                     // (evita ir a agenda → +Nueva → buscar paciente → tipo → fecha): con el
@@ -1144,6 +1204,12 @@ internal fun ModalCompletarSesion(
     citaId: String? = null,
     /** Fotos de la sesión (📷). null = sin fotos (plan sin la función o la clínica las apagó). */
     fotosSesion: FotosSesionPendientes? = null,
+    /**
+     * Fisioterapia: ofrecer "🏠 ¿Le dejas ejercicios de apoyo?" (como el cierre de la web).
+     * Quien lo pasa lee su valor tras completar y abre la pestaña 🏠 de la ficha.
+     * null = no se ofrece (el modal queda como antes).
+     */
+    dejarEjercicios: androidx.compose.runtime.MutableState<Boolean>? = null,
     onCancelar: () -> Unit,
     // pago = (monto, método) si activó "¿pagó esta sesión?" — el cobro sale en el
     // MISMO paso que el completar, como la web (antes eran 2 viajes: ✓ y luego 💳).
@@ -1375,6 +1441,14 @@ internal fun ModalCompletarSesion(
         if (fotosSesion != null) {
             Spacer(Modifier.height(12.dp))
             BloqueFotosSesion(fotosSesion)
+        }
+
+        // Fisioterapia: dejarle ejercicios de apoyo para casa. Aquí solo se pregunta;
+        // se eligen después de completar, en la pestaña 🏠 de la ficha.
+        // (El mismo interruptor que el cierre desde la agenda.)
+        if (esFisio && dejarEjercicios != null) {
+            Spacer(Modifier.height(12.dp))
+            pe.saniape.app.ui.clinica.fisio.BloqueDejarEjercicios(dejarEjercicios)
         }
 
         // Cobro en el mismo paso (paridad con la web): toggle "¿pagó esta sesión?".

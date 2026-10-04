@@ -1,9 +1,12 @@
 package pe.saniape.app
 
 import android.app.Application
+import android.os.Build
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
+import coil3.gif.AnimatedImageDecoder
+import coil3.gif.GifDecoder
 import coil3.network.ktor3.KtorNetworkFetcherFactory
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
@@ -32,9 +35,14 @@ class SaniaApplication : Application(), SingletonImageLoader.Factory {
     }
 
     // ImageLoader de Coil con fetcher de red ktor (carga las fotos evolutivas desde
-    // las URLs firmadas de Supabase Storage).
+    // las URLs firmadas de Supabase Storage) y decodificador de GIF animados (los
+    // ejercicios de apoyo): AnimatedImageDecoder desde Android 9 (API 28), que es
+    // más rápido; GifDecoder en los anteriores (minSdk 26).
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)
-            .components { add(KtorNetworkFetcherFactory(httpClient = { HttpClient(OkHttp) })) }
+            .components {
+                add(KtorNetworkFetcherFactory(httpClient = { HttpClient(OkHttp) }))
+                if (Build.VERSION.SDK_INT >= 28) add(AnimatedImageDecoder.Factory()) else add(GifDecoder.Factory())
+            }
             .build()
 }

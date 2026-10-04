@@ -696,9 +696,16 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
          */
         ofrecerPlan: Boolean = true,
         /**
+         * false = no ofrecer "📅 Agendar siguiente" al terminar la sesión. Con
+         * "dejarle ejercicios de apoyo" se va a la ficha (pestaña 🏠) y ese
+         * diálogo se abriría encima; como la web, ahí se omite.
+         */
+        ofrecerSiguienteSesion: Boolean = true,
+        /**
          * Resultado para quien necesita saberlo (la revisión dental: solo se
          * cierra si quedó completada, y si no, avisa que el tratamiento ya se
-         * creó). Se llama tras recargar la agenda.
+         * creó; la sesión de fisio con "dejarle ejercicios": solo entonces se
+         * abre la ficha). Se llama tras recargar la agenda.
          */
         alTerminar: ((Boolean) -> Unit)? = null,
         /**
@@ -807,7 +814,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                     }
                     // "📅 Agendar siguiente": lee el tratamiento YA sincronizado. Sin
                     // señal (encolada) no se ofrece: no se sabe si ya tiene la siguiente.
-                    if (!completadaEncolada && ctx.puede("sesiones") && cita.pacienteId != null) {
+                    if (ofrecerSiguienteSesion && !completadaEncolada && ctx.puede("sesiones") && cita.pacienteId != null) {
                         val atendida = cita.copy(terapeutaId = terapeutaId ?: cita.terapeutaId)
                         viewModelScope.launch {
                             pe.saniape.app.data.staff.SiguienteSesionRepo.evaluar(tratSesion, hoy, excluirCitaId = cita.id)

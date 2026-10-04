@@ -66,6 +66,9 @@ kotlin {
             // Engine Ktor de Android (Supabase lo usa en Android). Es platform-specific:
             // va aquí, NO en commonMain, porque no tiene variante iOS (rompía el sync KMP).
             implementation(libs.ktor.client.android)
+            // Coil: decodificador de GIF animados (ejercicios de apoyo). Solo existe para
+            // Android; se registra en SaniaApplication.newImageLoader.
+            implementation(libs.coil.gif)
             // Login Google nativo
             implementation(libs.androidx.credentials)
             implementation(libs.androidx.credentials.play.services)

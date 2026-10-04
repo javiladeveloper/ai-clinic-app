@@ -62,6 +62,8 @@ play-app-update-ktx = { module = "com.google.android.play:app-update-ktx", versi
 # Coil 3 (carga de imágenes remotas para fotos evolutivas) — motor de red ktor
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-ktor = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil" }
+# GIF animados (ejercicios de apoyo). Solo Android: en iOS se muestra la postura estática.
+coil-gif = { module = "io.coil-kt.coil3:coil-gif", version.ref = "coil" }
 
 # SQLDelight: base local para la cola offline (escrituras que sobreviven sin señal)
 sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }

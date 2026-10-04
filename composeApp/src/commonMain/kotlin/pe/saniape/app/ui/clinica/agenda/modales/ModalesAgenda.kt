@@ -106,6 +106,13 @@ fun ModalCompletar(
      * llama las sube tras completar (subirFotosSesion).
      */
     fotosSesion: pe.saniape.app.ui.clinica.pacientes.FotosSesionPendientes? = null,
+    /**
+     * Fisioterapia: "🏠 ¿Le dejas ejercicios de apoyo?" (como la ficha y la web). Solo
+     * se pinta en la Sesión de fisio (el mismo candado que la EVA); null = no aparece.
+     * Quien llama lee su valor al confirmar y, si la sesión se completó, abre la
+     * ficha del paciente en la pestaña 🏠.
+     */
+    dejarEjercicios: androidx.compose.runtime.MutableState<Boolean>? = null,
 ) {
     val c = Sania.colors
     var terapeutaElegido by remember { mutableStateOf<String?>(null) }
@@ -294,6 +301,11 @@ fun ModalCompletar(
                 if (fotosSesion != null && !esEvaluacion && cita.tipo == "Sesión") {
                     Spacer(Modifier.height(Sania.dim.lg))
                     pe.saniape.app.ui.clinica.pacientes.BloqueFotosSesion(fotosSesion)
+                }
+                // Fisioterapia: dejarle ejercicios de apoyo para casa (se eligen después, en la ficha).
+                if (fisioSesion && dejarEjercicios != null) {
+                    Spacer(Modifier.height(Sania.dim.lg))
+                    pe.saniape.app.ui.clinica.fisio.BloqueDejarEjercicios(dejarEjercicios)
                 }
                 if (cobro != null && !esEvaluacion && cita.tipo == "Sesión") {
                     Spacer(Modifier.height(Sania.dim.lg))
