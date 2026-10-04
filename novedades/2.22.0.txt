@@ -1,0 +1,13 @@
+# Novedades de la 2.22.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Fisioterapia: ejercicios de apoyo para casa. Elige de una biblioteca de 600 ejercicios con animación, indícalos en cada sesión y el paciente los ve en su app.
+---
+Fisioterapia:
+• Nueva pestaña "🏠 Ejercicios" en la ficha: elige de la biblioteca (600 ejercicios con animación) filtrando por región, malestar, objetivo, posición y equipo.
+• Se indican por sesión —valen hasta la siguiente— o al terminar el tratamiento, para seguir en casa.
+• Ajusta series, repeticiones, días de la semana, lado, carga e indicaciones para cada paciente.
+• "Repetir los de la sesión anterior" en un toque.
+• Al completar una sesión: "¿Le dejas ejercicios de apoyo?", desde la ficha, la agenda y Sesiones.
+• Envíaselos por WhatsApp y mira cuánto los cumple y el dolor que anotó.
+Pacientes:
+• "Mis ejercicios de apoyo" en Mi salud: la animación, cuánto hacer, qué días y lo que te indicó tu fisioterapeuta. Marca "Ya lo hice hoy".
