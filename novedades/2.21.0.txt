@@ -1,0 +1,12 @@
+# Novedades de la 2.21.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Fotos de la sesión, documentos por tratamiento y triaje compartido entre médicos.
+---
+Pacientes:
+• En "Mi salud" ves las fotos que tu clínica compartió contigo, dentro de la app.
+• Si pagaste de más en un paquete, lo ves: "Tienes S/ X a favor".
+Clínicas:
+• Sube fotos al completar la sesión, desde la cámara o la galería.
+• Los documentos del paciente se ordenan por tratamiento.
+• "Usar triaje de hoy": trae los signos vitales que otro médico ya tomó hoy.
+• El saldo a favor del paciente se ve en su ficha.
