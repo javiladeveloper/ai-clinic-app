@@ -11,6 +11,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.plus
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -256,18 +257,35 @@ object AgendaRepo {
      * de verdad (p. ej. hoy, por la evaluación de mañana); null = la de la cita.
      * El endpoint es idempotente por cita (ya cobrada → ok sin duplicar), así que
      * encolarlo sin señal es seguro.
+     *
+     * [pagos] = cobro DIVIDIDO (Efectivo + Yape…): va `pagos` en lugar de
+     * `metodo` (ver [cuerpoCobrarCita]). El servidor responde `yaEstaba` si la
+     * cita ya estaba cobrada (llega en [ResultadoCobro.yaEstaba]).
+     *
+     * Ante una respuesta INCIERTA (5xx / timeout de Vercel: el cobro pudo haber
+     * entrado) se CONSERVA la clave de idempotencia y el reintento de la MISMA
+     * operación (mismo cuerpo) la reusa; se suelta en cuanto hay una respuesta
+     * cierta (ok, rechazo de negocio o encolada, que ya la lleva consigo).
      */
     suspend fun cobrarCita(
         citaId: String, metodo: String, modo: String, fecha: String?,
-    ): pe.saniape.app.data.offline.ResultadoEscritura = enviarOEncolarDetalle(
-        "cita:cobrar", "/api/staff/cita/cobrar",
-        buildJsonObject {
-            put("citaId", citaId)
-            put("metodo", metodo)
-            put("modo", modo)
-            if (!fecha.isNullOrBlank()) put("fecha", fecha)
-        },
-    )
+        pagos: List<PartePago>? = null,
+    ): ResultadoCobro {
+        val cuerpo = cuerpoCobrarCita(citaId, metodo, modo, fecha, pagos)
+        val firma = cuerpo.toString()
+        val clave = mutexClavesCobro.withLock { clavesCobroInciertas[firma] }
+            ?: pe.saniape.app.data.offline.nuevaIdemKey()
+        val r = enviarOEncolarDetalle("cita:cobrar", "/api/staff/cita/cobrar", cuerpo, idemKey = clave)
+        mutexClavesCobro.withLock {
+            if (rechazoIncierto(r.rechazo)) clavesCobroInciertas[firma] = clave
+            else clavesCobroInciertas.remove(firma)
+        }
+        return ResultadoCobro(r, yaEstaba = yaEstabaDe(r.cuerpo))
+    }
+
+    /** Claves de cobros con respuesta incierta, por cuerpo exacto (ver [cobrarCita]). */
+    private val clavesCobroInciertas = mutableMapOf<String, String>()
+    private val mutexClavesCobro = kotlinx.coroutines.sync.Mutex()
 
     private fun cuerpoCompletar(
         citaId: String, observaciones: String?, diagnostico: String?, derivarEspecialidadId: String?,
