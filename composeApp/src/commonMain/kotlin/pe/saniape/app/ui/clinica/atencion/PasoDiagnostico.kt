@@ -64,12 +64,32 @@ private val TIPOS_DIAGNOSTICO = listOf(
     Triple("R", "Repetido", "Definitivo ya registrado antes, en control"),
 )
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun PasoDiagnostico(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura: Boolean) {
+    EditorDiagnosticosCie(
+        lista = vm.borrador.diagnosticos,
+        onLista = { vm.diagnosticos(it) },
+        soloLectura = soloLectura,
+        dental = d.flags.dental,
+    )
+}
+
+/**
+ * El buscador CIE-10 con la lista de diagnósticos elegidos (P/D/R, ↑, ✕). Lo usa
+ * la consulta guiada y la impresión diagnóstica de la evaluación psicológica:
+ * un solo buscador en toda la app.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun EditorDiagnosticosCie(
+    lista: List<DiagnosticoCie>,
+    onLista: (List<DiagnosticoCie>) -> Unit,
+    soloLectura: Boolean,
+    dental: Boolean = false,
+    /** La nota de arriba (la de la consulta cita la NTS 139). */
+    nota: String = "CIE-10 con tipo: Presuntivo, Definitivo o Repetido (NTS 139, 4.2.9). Sin siglas.",
+) {
     val c = Sania.colors
-    val dental = d.flags.dental
-    val lista = vm.borrador.diagnosticos
     val lleno = lista.size >= MAX_DIAGNOSTICOS
 
     var q by remember { mutableStateOf("") }
@@ -100,15 +120,12 @@ internal fun PasoDiagnostico(vm: AtencionViewModel, d: DatosConsultaApp, soloLec
         // Por defecto Presuntivo (lo más prudente); el profesional lo cambia.
         val nuevo = dx?.copy(tipo = "P") ?: DiagnosticoCie(codigo = null, descripcion = textoLibre.orEmpty().trim(), tipo = "P")
         if (nuevo.descripcion.isBlank()) return
-        vm.diagnosticos(lista + nuevo)
+        onLista(lista + nuevo)
         q = ""
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            "CIE-10 con tipo: Presuntivo, Definitivo o Repetido (NTS 139, 4.2.9). Sin siglas.",
-            color = c.textoSuave, fontSize = 12.sp,
-        )
+        Text(nota, color = c.textoSuave, fontSize = 12.sp)
 
         // ── Los elegidos ──
         if (lista.isEmpty() && soloLectura) {
@@ -117,13 +134,13 @@ internal fun PasoDiagnostico(vm: AtencionViewModel, d: DatosConsultaApp, soloLec
         lista.forEachIndexed { i, dx ->
             FilaDiagnostico(
                 n = i + 1, dx = dx, soloLectura = soloLectura, puedeSubir = i > 0,
-                onTipo = { t -> vm.diagnosticos(lista.mapIndexed { j, x -> if (j == i) x.copy(tipo = t) else x }) },
+                onTipo = { t -> onLista(lista.mapIndexed { j, x -> if (j == i) x.copy(tipo = t) else x }) },
                 onSubir = {
                     val copia = lista.toMutableList()
                     val tmp = copia[i]; copia[i] = copia[i - 1]; copia[i - 1] = tmp
-                    vm.diagnosticos(copia)
+                    onLista(copia)
                 },
-                onQuitar = { vm.diagnosticos(lista.filterIndexed { j, _ -> j != i }) },
+                onQuitar = { onLista(lista.filterIndexed { j, _ -> j != i }) },
             )
         }
         if (!soloLectura && lleno) {
