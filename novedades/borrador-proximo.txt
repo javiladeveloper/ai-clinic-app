@@ -1,0 +1,9 @@
+# BORRADOR de las novedades de la próxima versión (aún sin número).
+# Al publicar, copiar a novedades/<versionName>.txt con el formato de siempre
+# (ver docs/ci-cd-despliegue.md → "Novedades de cada versión").
+El saldo a favor ahora cuenta también consultas y sesiones sueltas, y los tratamientos cancelados ya no aparecen como deuda en Mi salud.
+---
+Clínicas:
+• Saldo a favor más exacto: en consultas y sesiones sueltas se compara lo pagado con lo realmente atendido (sesiones y citas hechas), no solo con el precio inicial.
+Pacientes:
+• Mi salud: los tratamientos cancelados van en su propio apartado "Tratamientos cancelados", al final y cerrado. Nunca muestran deuda; si pagaste algo, solo verás cuánto.
