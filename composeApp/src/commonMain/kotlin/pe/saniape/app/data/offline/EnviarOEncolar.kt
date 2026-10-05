@@ -68,6 +68,12 @@ suspend fun enviarOEncolarDetalle(
     cuerpo: JsonObject,
     idTemporal: String? = null,
     dependeDe: Long? = null,
+    /**
+     * La clave de idempotencia a usar; null = una nueva. Quien recibió una
+     * respuesta INCIERTA (5xx, timeout) la conserva y la pasa aquí al reintentar
+     * la MISMA operación, para que el servidor la reconozca y no la duplique.
+     */
+    idemKey: String? = null,
 ): ResultadoEscritura {
     // Clave LÓGICA de la operación ("qué se está haciendo", no "qué envío es"):
     // tipo + el id sobre el que actúa. Dos toques del mismo botón comparten clave.
@@ -84,7 +90,7 @@ suspend fun enviarOEncolarDetalle(
     }
     try {
         return pe.saniape.app.ui.conIndicador {
-            enviarOEncolarInterno(tipo, endpoint, cuerpo, idTemporal, dependeDe)
+            enviarOEncolarInterno(tipo, endpoint, cuerpo, idTemporal, dependeDe, idemKey)
         }
     } finally {
         mutexEnVuelo.withLock { enVuelo.remove(claveLogica) }
@@ -110,17 +116,18 @@ private suspend fun enviarOEncolarInterno(
     cuerpo: JsonObject,
     idTemporal: String?,
     dependeDe: Long?,
+    idemKeyDada: String?,
 ): ResultadoEscritura {
-    val idemKey = nuevaIdemKey()
+    val idemKey = idemKeyDada ?: nuevaIdemKey()
 
     // Si el payload trae ids temporales, no tiene sentido intentarlo inline:
     // el servidor no los conoce. Va directo a la cola, que los traducirá.
     val tieneTemporales = cuerpo.toString().contains("tmp-")
     if (!tieneTemporales) {
-        val (resultado, rechazo) = runCatching { Sincronizador.enviarAhoraDetalle(endpoint, cuerpo, idemKey) }
-            .getOrDefault(ResultadoEnvio.SIN_RED to null)
+        val (resultado, rechazo, respuesta) = runCatching { Sincronizador.enviarAhoraCompleto(endpoint, cuerpo, idemKey) }
+            .getOrDefault(Triple(ResultadoEnvio.SIN_RED, null, null))
         when (resultado) {
-            ResultadoEnvio.OK -> return ResultadoEscritura(registrada = true)
+            ResultadoEnvio.OK -> return ResultadoEscritura(registrada = true, cuerpo = respuesta)
             // RECHAZO del servidor (400/403/409 de negocio…): NO encolar. Reintentarlo
             // daría el mismo error una y otra vez, y decirle al usuario "se registrará
             // al volver la señal" sería mentirle: el problema no es la conexión.

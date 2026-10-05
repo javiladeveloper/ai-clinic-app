@@ -105,14 +105,23 @@ object Sincronizador {
     /** Igual que [enviarAhora], pero con el rechazo del servidor (texto + código) si lo hubo. */
     suspend fun enviarAhoraDetalle(
         endpoint: String, cuerpo: JsonObject, idemKey: String,
-    ): Pair<ResultadoEnvio, RechazoServidor?> {
+    ): Pair<ResultadoEnvio, RechazoServidor?> =
+        enviarAhoraCompleto(endpoint, cuerpo, idemKey).let { (res, rechazo, _) -> res to rechazo }
+
+    /**
+     * Igual que [enviarAhoraDetalle], y además el JSON con que respondió el
+     * servidor cuando aceptó (p. ej. `yaEstaba` del cobro de una cita).
+     */
+    suspend fun enviarAhoraCompleto(
+        endpoint: String, cuerpo: JsonObject, idemKey: String,
+    ): Triple<ResultadoEnvio, RechazoServidor?, JsonObject?> {
         val conClave = JsonObject(cuerpo + ("idempotency_key" to JsonPrimitive(idemKey)))
         val r = enviar(endpoint, conClave)
         return when {
-            r == null -> ResultadoEnvio.SIN_RED to null   // reintentable → encolar
-            r.exito -> ResultadoEnvio.OK to null
+            r == null -> Triple(ResultadoEnvio.SIN_RED, null, null)   // reintentable → encolar
+            r.exito -> Triple(ResultadoEnvio.OK, null, r.json)
             // el servidor dijo que no → no encolar
-            else -> ResultadoEnvio.RECHAZADO to RechazoServidor(r.error ?: "Error del servidor", r.codigo, r.status)
+            else -> Triple(ResultadoEnvio.RECHAZADO, RechazoServidor(r.error ?: "Error del servidor", r.codigo, r.status), null)
         }
     }
 
@@ -192,6 +201,7 @@ object Sincronizador {
     private data class Respuesta(
         val exito: Boolean, val id: String?, val error: String?,
         val codigo: String? = null, val status: Int = 0,
+        val json: JsonObject? = null,
     )
 
     /**
@@ -210,7 +220,7 @@ object Sincronizador {
             }
             val json = runCatching { Json.parseToJsonElement(resp.bodyAsText()).jsonObject }.getOrNull()
             when (clasificarRespuesta(resp.status.value, json)) {
-                DestinoRespuesta.OK -> Respuesta(true, (json?.get("id") as? JsonPrimitive)?.contentOrNull, null)
+                DestinoRespuesta.OK -> Respuesta(true, (json?.get("id") as? JsonPrimitive)?.contentOrNull, null, json = json)
                 // 409 de idempotencia: otra ejecución con la misma clave está en curso → reintentar luego.
                 DestinoRespuesta.REINTENTAR -> null
                 DestinoRespuesta.RECHAZO -> Respuesta(
