@@ -1,0 +1,896 @@
+package pe.saniape.app.data.staff
+
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EVALUACIÓN PSICOLÓGICA — modelos y lecturas puras del contrato
+// (docs/app-contrato-evaluacion-psico.md en la web).
+//
+// La app NO reimplementa reglas: los estados de los 6 chips, la edad en meses,
+// el armado del informe, el PDF y quién ve qué los resuelve el servidor. Aquí
+// solo hay: los modelos, el parseo TOLERANTE (un campo null o con otra forma no
+// tumba la pantalla) y los catálogos de textos de la UI, copiados tal cual de
+// lib/evaluacion-psicologica.ts (son textos, no reglas).
+//
+// Convención del contrato: el sobre y los cuerpos van en camelCase; las
+// entidades (evaluación, test aplicado, informe, catálogo) llegan como filas de
+// la base, en snake_case.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** `procedimientos.tipo_clinico` que enciende todo esto. */
+const val TIPO_CLINICO_EVALUACION_PSICO = "evaluacion_psicologica"
+
+/** Categoría del informe emitido en los documentos del paciente (lo ve en "Mi salud"). */
+const val CATEGORIA_INFORME_PSICOLOGICO = "Informe psicológico"
+
+// ── Catálogos de la UI (copia de lib/evaluacion-psicologica.ts) ──────────────
+
+data class OpcionPsico(val valor: String, val nombre: String)
+
+/** Los 6 componentes, en orden. `titulo` corto para el chip; `tituloLargo` para la sección. */
+data class ComponentePsico(val clave: String, val titulo: String, val tituloLargo: String, val icono: String)
+
+val COMPONENTES_PSICO = listOf(
+    ComponentePsico("entrevista", "Entrevista", "Entrevista", "🗣️"),
+    ComponentePsico("fuentes", "Recopilación", "Recopilación de información", "📂"),
+    ComponentePsico("observacion", "Observación", "Observación de la conducta", "👁️"),
+    ComponentePsico("tests", "Tests", "Aplicación de tests", "📝"),
+    ComponentePsico("analisis", "Análisis", "Análisis completo", "🧩"),
+    ComponentePsico("plan", "Plan", "Plan de intervención", "🎯"),
+)
+
+data class SeccionEntrevista(val clave: String, val titulo: String, val ayuda: String, val corta: Boolean = false)
+
+val SECCIONES_ENTREVISTA = listOf(
+    SeccionEntrevista("motivo", "Motivo de consulta", "Qué preocupa y para qué se pide la evaluación."),
+    SeccionEntrevista("solicitante", "Quién lo solicita", "Padres, colegio, el propio paciente, médico…", corta = true),
+    SeccionEntrevista("informante", "Informante", "Quién da la información (madre, padre, el paciente…).", corta = true),
+    SeccionEntrevista("derivadoPor", "Derivado por", "Profesional o institución que deriva, si hay.", corta = true),
+    SeccionEntrevista("historiaPersonal", "Historia personal", "Datos relevantes de su historia."),
+    SeccionEntrevista("desarrollo", "Desarrollo", "Embarazo, parto, hitos del desarrollo (sobre todo en niños)."),
+    SeccionEntrevista("escolaridad", "Escolaridad / laboral", "Rendimiento, conducta en el colegio o historia laboral."),
+    SeccionEntrevista("salud", "Salud", "Enfermedades, medicación, sueño, alimentación."),
+    SeccionEntrevista("familia", "Familia", "Composición, dinámica y relaciones familiares."),
+    SeccionEntrevista("antecedentes", "Antecedentes", "Antecedentes psicológicos, psiquiátricos o familiares relevantes."),
+)
+
+val TIPOS_FUENTE = listOf(
+    OpcionPsico("padres", "Padres / familia"),
+    OpcionPsico("colegio", "Colegio"),
+    OpcionPsico("medico", "Médico derivador"),
+    OpcionPsico("informe_previo", "Informe previo"),
+    OpcionPsico("otro", "Otra fuente"),
+)
+
+data class GuiaObservacion(val clave: String, val titulo: String, val opciones: List<String>)
+
+val GUIA_OBSERVACION = listOf(
+    GuiaObservacion("apariencia", "Apariencia", listOf("Adecuada a la edad", "Aseo adecuado", "Descuidada", "Vestimenta acorde al contexto")),
+    GuiaObservacion("actitud", "Actitud", listOf("Colaboradora", "Tímida", "Desconfiada", "Oposicionista", "Ansiosa", "Indiferente")),
+    GuiaObservacion("contactoVisual", "Contacto visual", listOf("Adecuado", "Escaso", "Evitativo", "Fijo")),
+    GuiaObservacion("lenguaje", "Lenguaje", listOf("Fluido", "Coherente", "Pobre", "Dificultades articulatorias", "Verborreico", "Ecolalia")),
+    GuiaObservacion("atencion", "Atención", listOf("Sostenida", "Dispersa", "Fluctuante", "Requiere redirección")),
+    GuiaObservacion("psicomotricidad", "Psicomotricidad", listOf("Adecuada", "Inquietud motora", "Enlentecida", "Torpeza motora", "Estereotipias")),
+    GuiaObservacion("afecto", "Afecto", listOf("Eutímico", "Ansioso", "Triste", "Plano", "Lábil", "Irritable")),
+)
+
+val AREAS_ANALISIS = listOf(
+    OpcionPsico("intelectual", "Área intelectual / cognitiva"),
+    OpcionPsico("visomotora", "Área visomotora"),
+    OpcionPsico("emocional", "Área emocional"),
+    OpcionPsico("personalidad", "Personalidad"),
+    OpcionPsico("familiar_social", "Área familiar y social"),
+    OpcionPsico("vocacional", "Área vocacional"),
+)
+
+val ENFOQUES_PSICO = listOf(
+    OpcionPsico("tcc", "Cognitivo-conductual (TCC)"),
+    OpcionPsico("act", "Aceptación y compromiso (ACT)"),
+    OpcionPsico("dbt", "Dialéctico-conductual (DBT)"),
+    OpcionPsico("mindfulness", "Mindfulness / tercera generación"),
+    OpcionPsico("emdr", "EMDR"),
+    OpcionPsico("tcc_trauma", "TCC centrada en el trauma"),
+    OpcionPsico("sistemica", "Sistémica / familiar"),
+    OpcionPsico("eft", "Focalizada en las emociones (EFT)"),
+    OpcionPsico("gottman", "Método Gottman (pareja)"),
+    OpcionPsico("psicodinamica", "Psicodinámica / psicoanalítica"),
+    OpcionPsico("humanista", "Humanista / centrada en la persona"),
+    OpcionPsico("gestalt", "Gestalt"),
+    OpcionPsico("breve_soluciones", "Breve centrada en soluciones"),
+    OpcionPsico("interpersonal", "Interpersonal (TIP)"),
+    OpcionPsico("juego", "Terapia de juego"),
+    OpcionPsico("parental", "Entrenamiento parental / modificación de conducta"),
+    OpcionPsico("aba", "Análisis conductual aplicado (ABA)"),
+    OpcionPsico("cognitiva", "Rehabilitación / estimulación cognitiva"),
+    OpcionPsico("psicoeducacion", "Psicoeducación"),
+    OpcionPsico("crisis", "Intervención en crisis"),
+    OpcionPsico("integrativa", "Integrativa / ecléctica"),
+)
+
+val FRECUENCIAS_PSICO = listOf(
+    OpcionPsico("semanal", "Semanal"),
+    OpcionPsico("quincenal", "Quincenal"),
+    OpcionPsico("dos_por_semana", "2 por semana"),
+    OpcionPsico("mensual", "Mensual"),
+)
+
+val ESTADOS_TEST_PSICO = listOf(
+    OpcionPsico("aplicado", "Aplicado"),
+    OpcionPsico("calificado", "Calificado"),
+    OpcionPsico("interpretado", "Interpretado"),
+)
+
+val VALIDEZ_PSICO = listOf(
+    OpcionPsico("valido", "Válido"),
+    OpcionPsico("dudoso", "Dudoso"),
+    OpcionPsico("invalido", "Inválido"),
+)
+
+val POBLACIONES_PSICO = listOf(
+    OpcionPsico("ninos", "Niños"),
+    OpcionPsico("adolescentes", "Adolescentes"),
+    OpcionPsico("adultos", "Adultos"),
+)
+
+/** Las 8 secciones de texto del informe (la 1 es la filiación y la 9 la firma). */
+data class SeccionInforme(val clave: String, val numero: Int, val titulo: String)
+
+val SECCIONES_INFORME = listOf(
+    SeccionInforme("motivo", 2, "Motivo de evaluación"),
+    SeccionInforme("antecedentes", 3, "Antecedentes relevantes"),
+    SeccionInforme("observacion", 4, "Observación de conducta"),
+    SeccionInforme("tecnicas", 5, "Técnicas e instrumentos aplicados"),
+    SeccionInforme("resultados", 6, "Resultados, análisis e interpretación"),
+    SeccionInforme("conclusiones", 7, "Conclusiones"),
+    SeccionInforme("impresionDiagnostica", 7, "Impresión diagnóstica"),
+    SeccionInforme("recomendaciones", 8, "Recomendaciones"),
+)
+
+val CAMPOS_FILIACION = listOf(
+    OpcionPsico("nombre", "Nombre"),
+    OpcionPsico("edad", "Edad"),
+    OpcionPsico("dni", "DNI"),
+    OpcionPsico("instruccion", "Grado de instrucción"),
+    OpcionPsico("ocupacion", "Ocupación"),
+    OpcionPsico("informante", "Informante"),
+    OpcionPsico("derivadoPor", "Derivado por"),
+    OpcionPsico("fechasEvaluacion", "Fechas de evaluación"),
+    OpcionPsico("psicologo", "Psicólogo(a)"),
+    OpcionPsico("colegiatura", "C.Ps.P."),
+)
+
+// ── Modelos ──────────────────────────────────────────────────────────────────
+
+/** Componente 1. Los textos por clave de [SECCIONES_ENTREVISTA]; el genograma es una foto. */
+data class EntrevistaPsico(
+    val textos: Map<String, String> = emptyMap(),
+    val genogramaDocumentoId: String? = null,
+) {
+    fun texto(clave: String): String = textos[clave].orEmpty()
+    fun con(clave: String, valor: String): EntrevistaPsico = copy(textos = textos + (clave to valor))
+}
+
+data class FuentePsico(
+    val id: String,
+    val tipo: String = "padres",
+    val nombre: String = "",
+    val fecha: String? = null,
+    val resumen: String = "",
+    val documentoIds: List<String> = emptyList(),
+)
+
+data class ObservacionPsico(
+    val seleccion: Map<String, List<String>> = emptyMap(),
+    val notas: String = "",
+) {
+    fun elegidas(clave: String): List<String> = seleccion[clave].orEmpty()
+    /** Marca o desmarca [opcion] en el aspecto [clave] (chip). */
+    fun alternar(clave: String, opcion: String): ObservacionPsico {
+        val actual = elegidas(clave)
+        val nuevo = if (opcion in actual) actual - opcion else actual + opcion
+        return copy(seleccion = seleccion + (clave to nuevo))
+    }
+}
+
+data class AnalisisPsico(
+    val areas: Map<String, String> = emptyMap(),
+    val conclusiones: String = "",
+)
+
+data class PlanPsico(
+    val objetivos: List<String> = emptyList(),
+    val enfoques: List<String> = emptyList(),
+    val enfoqueOtro: String = "",
+    val numeroSesiones: Int? = null,
+    val frecuencia: String? = null,
+    val sesionesFamilia: String = "",
+    val reevaluarAlCerrar: Boolean = false,
+    val procedimientoId: String? = null,
+    val precio: Double? = null,
+    val recomendaciones: String = "",
+    val incluirEnInforme: Boolean = false,
+    /** Lo pone /plan-tratamiento ("✓ Tratamiento creado"). `guardar` lo ignora. */
+    val tratamientoCreadoId: String? = null,
+)
+
+data class EvaluacionPsico(
+    val id: String,
+    val pacienteId: String = "",
+    val tratamientoId: String? = null,
+    val terapeutaId: String? = null,
+    /** 'abierta' | 'cerrada' (se cierra al emitir el informe). */
+    val estado: String = "abierta",
+    val entrevista: EntrevistaPsico = EntrevistaPsico(),
+    val fuentes: List<FuentePsico> = emptyList(),
+    val observacion: ObservacionPsico = ObservacionPsico(),
+    val analisis: AnalisisPsico = AnalisisPsico(),
+    val diagnosticos: List<DiagnosticoCie> = emptyList(),
+    val plan: PlanPsico = PlanPsico(),
+)
+
+/** Estado de un chip: 'vacio' | 'en_curso' | 'completo' (lo calcula el servidor). */
+data class EstadosPsico(val porComponente: Map<String, String> = emptyMap()) {
+    fun de(clave: String): String = porComponente[clave]?.takeIf { it in ESTADOS_CHIP } ?: "vacio"
+}
+
+private val ESTADOS_CHIP = setOf("vacio", "en_curso", "completo")
+
+data class PuntajeEscalaPsico(
+    val escala: String = "",
+    val directo: String = "",
+    val transformado: String = "",
+    val percentil: String = "",
+    val categoria: String = "",
+)
+
+data class PuntajeGlobalPsico(val puntaje: String = "", val categoria: String = "", val descripcion: String = "")
+
+/** El test del catálogo embebido en un test aplicado. */
+data class TestRefPsico(
+    val id: String = "",
+    val nombreCorto: String = "",
+    val nombre: String = "",
+    val categoria: String = "",
+    val tipoPuntaje: String = "",
+    val generaImagen: Boolean = false,
+)
+
+data class TestAplicadoPsico(
+    val id: String,
+    val evaluacionId: String = "",
+    val testId: String = "",
+    val fecha: String = "",
+    val edadMeses: Int? = null,
+    val informante: String = "",
+    /** 'presencial' | 'virtual' */
+    val modalidad: String = "presencial",
+    val forma: String = "",
+    val baremo: String = "",
+    /** 'valido' | 'dudoso' | 'invalido' | null */
+    val validez: String? = null,
+    val puntajes: List<PuntajeEscalaPsico> = emptyList(),
+    val global: PuntajeGlobalPsico = PuntajeGlobalPsico(),
+    val interpretacion: String = "",
+    val observaciones: String = "",
+    /** 'aplicado' → 'calificado' → 'interpretado' */
+    val estado: String = "aplicado",
+    val enInforme: Boolean = true,
+    val test: TestRefPsico? = null,
+) {
+    val nombreCorto: String get() = test?.nombreCorto?.ifBlank { null } ?: "Test"
+}
+
+data class EscalaCatalogoPsico(val nombre: String, val grupo: String? = null)
+
+data class TestCatalogoPsico(
+    val id: String,
+    /** null = catálogo global de Sania; uuid = test propio de la clínica. */
+    val clinicaId: String? = null,
+    val nombreCorto: String,
+    val nombre: String = "",
+    val categoria: String = "",
+    val poblacion: List<String> = emptyList(),
+    val tipoPuntaje: String = "",
+    val generaImagen: Boolean = false,
+    val escalas: List<EscalaCatalogoPsico> = emptyList(),
+    /** Los 35 más usados en Perú van primero (orden bajo). */
+    val orden: Int = 9999,
+)
+
+/** Foto o adjunto protegido de la evaluación (nunca lo ve el paciente). */
+data class FotoPsico(
+    val id: String,
+    val nombre: String = "Foto",
+    val path: String,
+    val tipo: String? = null,
+    val testAplicadoId: String? = null,
+    /** 'test' | 'genograma' | 'fuente' */
+    val uso: String = "test",
+    val createdAt: String? = null,
+    /**
+     * Cómo VERLA, si el servidor lo manda (URL firmada o endpoint propio del
+     * material protegido). Sin él, [EvaluacionPsicoRepo.urlDeArchivo] cae al
+     * firmado de siempre por `path`. La UI nunca arma rutas de Storage.
+     */
+    val url: String? = null,
+)
+
+data class ContenidoInformePsico(
+    val filiacion: Map<String, String> = emptyMap(),
+    val secciones: Map<String, String> = emptyMap(),
+    val lugar: String = "",
+    val fecha: String = "",
+)
+
+data class InformePsico(
+    val id: String,
+    val evaluacionId: String = "",
+    val version: Int = 1,
+    /** 'borrador' | 'emitido' (emitido = congelado). */
+    val estado: String = "borrador",
+    val contenido: ContenidoInformePsico = ContenidoInformePsico(),
+    val documentoId: String? = null,
+    val emitidoAt: String? = null,
+) {
+    val emitido: Boolean get() = estado == "emitido"
+}
+
+data class DocumentoInformePsico(val id: String, val path: String, val nombre: String, val url: String? = null)
+
+/** Lo que precarga el formulario de tratamiento de siempre ("Crear tratamiento con este plan"). */
+data class PrefillPlanPsico(
+    val procedimientoId: String? = null,
+    val terapeutaId: String? = null,
+    val modalidad: String = "Paquete",
+    val totalSesiones: Int? = null,
+    val precioPaquete: Double? = null,
+    val diagnostico: String? = null,
+)
+
+data class SugerenciaSesionesPsico(val clave: String, val nombre: String, val sesiones: Int)
+
+data class ServicioPsico(val id: String, val nombre: String, val precio: Double? = null)
+
+data class TratamientoEvalPsico(
+    val id: String,
+    val pacienteId: String = "",
+    val terapeutaId: String? = null,
+    val estado: String? = null,
+    val totalSesiones: Int = 0,
+    val sesionesCompletadas: Int = 0,
+    val procedimientoNombre: String? = null,
+    /** 'incluida' | 'adicional' | null */
+    val devolucion: String? = null,
+)
+
+data class PacienteEvalPsico(
+    val id: String,
+    val nombre: String = "Paciente",
+    val dni: String? = null,
+    val edadTexto: String = "",
+)
+
+/** Todo el espacio de trabajo (GET / abrir). */
+data class EspacioEvalPsico(
+    val esEvaluacionPsico: Boolean,
+    val soloLectura: Boolean = false,
+    val tratamiento: TratamientoEvalPsico? = null,
+    val paciente: PacienteEvalPsico? = null,
+    val evaluacion: EvaluacionPsico? = null,
+    val estados: EstadosPsico = EstadosPsico(),
+    val tests: List<TestAplicadoPsico> = emptyList(),
+    val fotos: List<FotoPsico> = emptyList(),
+    val informe: InformePsico? = null,
+    val informePdf: DocumentoInformePsico? = null,
+    val planPrefill: PrefillPlanPsico? = null,
+    val sugerenciaSesiones: SugerenciaSesionesPsico? = null,
+    val servicios: List<ServicioPsico> = emptyList(),
+)
+
+/** Respuesta de `guardar`: lo que la pantalla refresca (lo escrito NO se pisa). */
+data class GuardadoPsico(
+    val estados: EstadosPsico?,
+    val sugerencia: SugerenciaSesionesPsico?,
+)
+
+// ── Lectura tolerante ────────────────────────────────────────────────────────
+// Un campo null, ausente o con otra forma toma su valor por defecto y la
+// pantalla sigue: nada de crashes por un JSONB viejo o a medio llenar.
+
+private fun JsonElement?.obj(): JsonObject? = when (this) {
+    is JsonObject -> this
+    is JsonArray -> firstOrNull() as? JsonObject   // los joins de PostgREST pueden venir como arreglo
+    else -> null
+}
+
+private fun JsonObject?.txt(k: String): String? =
+    (this?.get(k) as? JsonPrimitive)?.takeIf { it !is JsonNull }?.contentOrNull?.takeIf { it != "null" }
+
+private fun JsonObject?.texto(k: String): String = txt(k).orEmpty()
+
+private fun JsonObject?.entero(k: String): Int? = txt(k)?.trim()?.toDoubleOrNull()?.toInt()
+
+private fun JsonObject?.decimal(k: String): Double? = txt(k)?.trim()?.replace(',', '.')?.toDoubleOrNull()
+
+private fun JsonObject?.si(k: String, defecto: Boolean): Boolean = when (txt(k)?.lowercase()) {
+    "true" -> true
+    "false" -> false
+    else -> defecto
+}
+
+private fun JsonObject?.lista(k: String): List<JsonElement> = (this?.get(k) as? JsonArray).orEmpty()
+
+private fun JsonObject?.textos(k: String): List<String> = lista(k).mapNotNull { e ->
+    (e as? JsonPrimitive)?.takeIf { it !is JsonNull }?.contentOrNull
+}
+
+private fun JsonObject?.mapaTextos(k: String): Map<String, String> =
+    (this?.get(k) as? JsonObject)?.mapNotNull { (clave, v) ->
+        (v as? JsonPrimitive)?.takeIf { it !is JsonNull }?.contentOrNull?.let { clave to it }
+    }?.toMap().orEmpty()
+
+internal fun leerEntrevista(o: JsonObject?): EntrevistaPsico = EntrevistaPsico(
+    textos = SECCIONES_ENTREVISTA.associate { it.clave to o.texto(it.clave) }.filterValues { it.isNotEmpty() },
+    genogramaDocumentoId = o.txt("genogramaDocumentoId")?.ifBlank { null },
+)
+
+internal fun leerFuentes(e: JsonElement?): List<FuentePsico> = (e as? JsonArray).orEmpty().mapIndexedNotNull { i, x ->
+    val o = x as? JsonObject ?: return@mapIndexedNotNull null
+    FuentePsico(
+        // Sin id (dato viejo): uno estable por posición, para poder editarla.
+        id = o.txt("id")?.ifBlank { null } ?: "f$i",
+        tipo = o.txt("tipo")?.takeIf { t -> TIPOS_FUENTE.any { it.valor == t } } ?: "otro",
+        nombre = o.texto("nombre"),
+        fecha = o.txt("fecha")?.ifBlank { null },
+        resumen = o.texto("resumen"),
+        documentoIds = o.textos("documentoIds"),
+    )
+}
+
+internal fun leerObservacion(o: JsonObject?): ObservacionPsico = ObservacionPsico(
+    seleccion = (o?.get("seleccion") as? JsonObject)?.mapValues { (_, v) ->
+        (v as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p !is JsonNull }?.contentOrNull }
+    }.orEmpty(),
+    notas = o.texto("notas"),
+)
+
+internal fun leerAnalisis(o: JsonObject?): AnalisisPsico = AnalisisPsico(
+    areas = o.mapaTextos("areas"),
+    conclusiones = o.texto("conclusiones"),
+)
+
+internal fun leerDiagnosticos(e: JsonElement?): List<DiagnosticoCie> = (e as? JsonArray).orEmpty().mapNotNull { x ->
+    val o = x as? JsonObject ?: return@mapNotNull null
+    val descripcion = o.texto("descripcion")
+    val codigo = o.txt("codigo")?.ifBlank { null }
+    if (descripcion.isBlank() && codigo == null) return@mapNotNull null
+    DiagnosticoCie(codigo = codigo, descripcion = descripcion, tipo = o.txt("tipo")?.takeIf { it in setOf("P", "D", "R") } ?: "P")
+}
+
+internal fun leerPlan(o: JsonObject?): PlanPsico = PlanPsico(
+    objetivos = o.textos("objetivos"),
+    enfoques = o.textos("enfoques"),
+    enfoqueOtro = o.texto("enfoqueOtro"),
+    numeroSesiones = o.entero("numeroSesiones")?.takeIf { it > 0 },
+    frecuencia = o.txt("frecuencia")?.takeIf { f -> FRECUENCIAS_PSICO.any { it.valor == f } },
+    sesionesFamilia = o.texto("sesionesFamilia"),
+    reevaluarAlCerrar = o.si("reevaluarAlCerrar", false),
+    procedimientoId = o.txt("procedimientoId")?.ifBlank { null },
+    precio = o.decimal("precio"),
+    recomendaciones = o.texto("recomendaciones"),
+    incluirEnInforme = o.si("incluirEnInforme", false),
+    tratamientoCreadoId = o.txt("tratamientoCreadoId")?.ifBlank { null },
+)
+
+internal fun leerEvaluacion(o: JsonObject?): EvaluacionPsico? {
+    val id = o.txt("id") ?: return null
+    return EvaluacionPsico(
+        id = id,
+        pacienteId = o.texto("paciente_id"),
+        tratamientoId = o.txt("tratamiento_id"),
+        terapeutaId = o.txt("terapeuta_id"),
+        estado = o.txt("estado") ?: "abierta",
+        entrevista = leerEntrevista(o?.get("entrevista").obj()),
+        fuentes = leerFuentes(o?.get("fuentes")),
+        observacion = leerObservacion(o?.get("observacion").obj()),
+        analisis = leerAnalisis(o?.get("analisis").obj()),
+        diagnosticos = leerDiagnosticos(o?.get("diagnosticos")),
+        plan = leerPlan(o?.get("plan").obj()),
+    )
+}
+
+internal fun leerEstados(o: JsonObject?): EstadosPsico? =
+    o?.let { EstadosPsico(COMPONENTES_PSICO.associate { c -> c.clave to (it.txt(c.clave) ?: "vacio") }) }
+
+internal fun leerTestAplicado(o: JsonObject?): TestAplicadoPsico? {
+    val id = o.txt("id") ?: return null
+    val t = o?.get("test").obj()
+    val g = o?.get("global").obj()
+    return TestAplicadoPsico(
+        id = id,
+        evaluacionId = o.texto("evaluacion_id"),
+        testId = o.texto("test_id"),
+        fecha = o.texto("fecha").take(10),
+        edadMeses = o.entero("edad_meses"),
+        informante = o.texto("informante"),
+        modalidad = if (o.txt("modalidad") == "virtual") "virtual" else "presencial",
+        forma = o.texto("forma"),
+        baremo = o.texto("baremo"),
+        validez = o.txt("validez")?.takeIf { v -> VALIDEZ_PSICO.any { it.valor == v } },
+        puntajes = o.lista("puntajes").mapNotNull { x ->
+            val p = x as? JsonObject ?: return@mapNotNull null
+            PuntajeEscalaPsico(p.texto("escala"), p.texto("directo"), p.texto("transformado"), p.texto("percentil"), p.texto("categoria"))
+        },
+        global = PuntajeGlobalPsico(g.texto("puntaje"), g.texto("categoria"), g.texto("descripcion")),
+        interpretacion = o.texto("interpretacion"),
+        observaciones = o.texto("observaciones"),
+        estado = o.txt("estado")?.takeIf { e -> ESTADOS_TEST_PSICO.any { it.valor == e } } ?: "aplicado",
+        enInforme = o.si("en_informe", true),
+        test = t?.let {
+            TestRefPsico(
+                id = it.texto("id"), nombreCorto = it.texto("nombre_corto"), nombre = it.texto("nombre"),
+                categoria = it.texto("categoria"), tipoPuntaje = it.texto("tipo_puntaje"),
+                generaImagen = it.si("genera_imagen", false),
+            )
+        },
+    )
+}
+
+internal fun leerTestCatalogo(o: JsonObject?): TestCatalogoPsico? {
+    val id = o.txt("id") ?: return null
+    val corto = o.txt("nombre_corto")?.ifBlank { null } ?: o.txt("nombre")?.ifBlank { null } ?: return null
+    return TestCatalogoPsico(
+        id = id,
+        clinicaId = o.txt("clinica_id")?.ifBlank { null },
+        nombreCorto = corto,
+        nombre = o.texto("nombre"),
+        categoria = o.txt("categoria")?.ifBlank { null } ?: "Otros",
+        poblacion = o.textos("poblacion"),
+        tipoPuntaje = o.texto("tipo_puntaje"),
+        generaImagen = o.si("genera_imagen", false),
+        escalas = o.lista("estructura_escalas").mapNotNull { x ->
+            val e = x as? JsonObject
+            val nombre = e.txt("nombre")?.trim()?.ifBlank { null } ?: (x as? JsonPrimitive)?.contentOrNull?.trim()?.ifBlank { null }
+            nombre?.let { EscalaCatalogoPsico(it, e.txt("grupo")) }
+        },
+        orden = o.entero("orden") ?: 9999,
+    )
+}
+
+internal fun leerFoto(o: JsonObject?): FotoPsico? {
+    val id = o.txt("id") ?: return null
+    val url = (o.txt("url") ?: o.txt("verUrl"))?.ifBlank { null }
+    // Sin path pero con URL propia (material protegido servido por endpoint) también sirve.
+    val path = o.txt("path") ?: o.txt("archivo_url") ?: if (url != null) "" else return null
+    return FotoPsico(
+        id = id,
+        nombre = o.txt("nombre")?.ifBlank { null } ?: "Foto",
+        path = path,
+        tipo = o.txt("tipo") ?: o.txt("tipo_archivo"),
+        testAplicadoId = o.txt("testAplicadoId") ?: o.txt("test_aplicado_id"),
+        uso = o.txt("uso")?.takeIf { it in setOf("test", "genograma", "fuente") } ?: "test",
+        createdAt = o.txt("created_at"),
+        url = url,
+    )
+}
+
+internal fun leerInforme(o: JsonObject?): InformePsico? {
+    val id = o.txt("id") ?: return null
+    val c = o?.get("contenido").obj()
+    return InformePsico(
+        id = id,
+        evaluacionId = o.texto("evaluacion_id"),
+        version = o.entero("version") ?: 1,
+        estado = if (o.txt("estado") == "emitido") "emitido" else "borrador",
+        contenido = ContenidoInformePsico(
+            filiacion = c.mapaTextos("filiacion"),
+            secciones = c.mapaTextos("secciones"),
+            lugar = c.texto("lugar"),
+            fecha = c.texto("fecha"),
+        ),
+        documentoId = o.txt("documento_id"),
+        emitidoAt = o.txt("emitido_at"),
+    )
+}
+
+internal fun leerDocumentoInforme(o: JsonObject?): DocumentoInformePsico? {
+    val id = o.txt("id") ?: return null
+    val url = (o.txt("url") ?: o.txt("verUrl"))?.ifBlank { null }
+    val path = o.txt("path") ?: if (url != null) "" else return null
+    return DocumentoInformePsico(id, path, o.txt("nombre") ?: "Informe psicológico.pdf", url)
+}
+
+internal fun leerPrefill(o: JsonObject?): PrefillPlanPsico? = o?.let {
+    PrefillPlanPsico(
+        procedimientoId = it.txt("procedimiento_id")?.ifBlank { null },
+        terapeutaId = it.txt("terapeuta_id")?.ifBlank { null },
+        modalidad = it.txt("modalidad") ?: "Paquete",
+        totalSesiones = it.entero("total_sesiones")?.takeIf { n -> n > 0 },
+        precioPaquete = it.decimal("precio_paquete"),
+        diagnostico = it.txt("diagnostico")?.ifBlank { null },
+    )
+}
+
+internal fun leerSugerencia(o: JsonObject?): SugerenciaSesionesPsico? {
+    val n = o.entero("sesiones")?.takeIf { it > 0 } ?: return null
+    return SugerenciaSesionesPsico(o.texto("clave"), o.texto("nombre"), n)
+}
+
+/** El sobre de GET / abrir → espacio de trabajo (puro, testeable). null = no se pudo leer. */
+internal fun parsearEspacioPsico(o: JsonObject?): EspacioEvalPsico? {
+    if (o == null) return null
+    if (!o.si("esEvaluacionPsico", false)) return EspacioEvalPsico(esEvaluacionPsico = false)
+    val t = o["tratamiento"].obj()
+    val proc = t?.get("procedimiento").obj()
+    val p = o["paciente"].obj()
+    return EspacioEvalPsico(
+        esEvaluacionPsico = true,
+        soloLectura = o.si("soloLectura", false),
+        tratamiento = t.txt("id")?.let { id ->
+            TratamientoEvalPsico(
+                id = id,
+                pacienteId = t.texto("pacienteId"),
+                terapeutaId = t.txt("terapeutaId"),
+                estado = t.txt("estado"),
+                totalSesiones = t.entero("totalSesiones") ?: 0,
+                sesionesCompletadas = t.entero("sesionesCompletadas") ?: 0,
+                procedimientoNombre = proc.txt("nombre"),
+                devolucion = proc.txt("devolucion"),
+            )
+        },
+        paciente = p.txt("id")?.let { id ->
+            PacienteEvalPsico(id, p.txt("nombre") ?: "Paciente", p.txt("dni")?.ifBlank { null }, p.texto("edadTexto"))
+        },
+        evaluacion = leerEvaluacion(o["evaluacion"].obj()),
+        estados = leerEstados(o["estados"].obj()) ?: EstadosPsico(),
+        tests = o.lista("tests").mapNotNull { leerTestAplicado(it.obj()) },
+        fotos = o.lista("fotos").mapNotNull { leerFoto(it.obj()) },
+        informe = leerInforme(o["informe"].obj()),
+        informePdf = leerDocumentoInforme(o["informePdf"].obj()),
+        planPrefill = leerPrefill(o["planPrefill"].obj()),
+        sugerenciaSesiones = leerSugerencia(o["sugerenciaSesiones"].obj()),
+        servicios = o.lista("servicios").mapNotNull { x ->
+            val s = x.obj()
+            val id = s.txt("id") ?: return@mapNotNull null
+            ServicioPsico(id, s.txt("nombre") ?: "Servicio", s.decimal("precio"))
+        },
+    )
+}
+
+/** Respuesta de `guardar` (estados + sugerencia). */
+internal fun parsearGuardadoPsico(o: JsonObject?): GuardadoPsico = GuardadoPsico(
+    estados = leerEstados(o?.get("estados").obj()),
+    sugerencia = leerSugerencia(o?.get("sugerenciaSesiones").obj()),
+)
+
+/** `{ ok, tests: [...] }` del catálogo, ordenado como lo manda el servidor (orden, nombre). */
+internal fun parsearCatalogoPsico(o: JsonObject?): List<TestCatalogoPsico> =
+    o.lista("tests").mapNotNull { leerTestCatalogo(it.obj()) }
+
+internal fun testDeRespuesta(o: JsonObject?): TestAplicadoPsico? = leerTestAplicado(o?.get("test").obj())
+internal fun testCatalogoDeRespuesta(o: JsonObject?): TestCatalogoPsico? = leerTestCatalogo(o?.get("test").obj())
+internal fun fotoDeRespuesta(o: JsonObject?): FotoPsico? = leerFoto(o?.get("foto").obj())
+internal fun informeDeRespuesta(o: JsonObject?): InformePsico? = leerInforme(o?.get("informe").obj())
+internal fun totalSesionesDeRespuesta(o: JsonObject?): Int? = o.entero("totalSesiones")
+internal fun idDeRespuesta(o: JsonObject?): String? = o.txt("id")?.ifBlank { null }
+
+// ── Cuerpos (lo que va al servidor: el componente COMPLETO, camelCase) ───────
+
+internal fun jsonEntrevista(e: EntrevistaPsico): JsonObject = buildJsonObject {
+    SECCIONES_ENTREVISTA.forEach { put(it.clave, e.texto(it.clave)) }
+    put("genogramaDocumentoId", e.genogramaDocumentoId)
+}
+
+internal fun jsonFuentes(l: List<FuentePsico>): JsonArray = JsonArray(l.map { f ->
+    buildJsonObject {
+        put("id", f.id)
+        put("tipo", f.tipo)
+        put("nombre", f.nombre)
+        put("fecha", f.fecha)
+        put("resumen", f.resumen)
+        putJsonArray("documentoIds") { f.documentoIds.forEach { add(JsonPrimitive(it)) } }
+    }
+})
+
+internal fun jsonObservacion(o: ObservacionPsico): JsonObject = buildJsonObject {
+    putJsonObject("seleccion") {
+        o.seleccion.filterValues { it.isNotEmpty() }.forEach { (k, v) -> put(k, JsonArray(v.map { JsonPrimitive(it) })) }
+    }
+    put("notas", o.notas)
+}
+
+internal fun jsonAnalisis(a: AnalisisPsico): JsonObject = buildJsonObject {
+    putJsonObject("areas") { a.areas.filterValues { it.isNotBlank() }.forEach { (k, v) -> put(k, v) } }
+    put("conclusiones", a.conclusiones)
+}
+
+internal fun jsonDiagnosticos(l: List<DiagnosticoCie>): JsonArray = JsonArray(l.map { d ->
+    buildJsonObject {
+        put("codigo", d.codigo)
+        put("descripcion", d.descripcion)
+        put("tipo", d.tipo)
+    }
+})
+
+internal fun jsonPlan(p: PlanPsico): JsonObject = buildJsonObject {
+    // Los objetivos vacíos (la fila nueva que aún no se escribió) no viajan.
+    putJsonArray("objetivos") { p.objetivos.map { it.trim() }.filter { it.isNotEmpty() }.forEach { add(JsonPrimitive(it)) } }
+    putJsonArray("enfoques") { p.enfoques.forEach { add(JsonPrimitive(it)) } }
+    put("enfoqueOtro", p.enfoqueOtro)
+    put("numeroSesiones", p.numeroSesiones)
+    put("frecuencia", p.frecuencia)
+    put("sesionesFamilia", p.sesionesFamilia)
+    put("reevaluarAlCerrar", p.reevaluarAlCerrar)
+    put("procedimientoId", p.procedimientoId)
+    put("precio", p.precio)
+    put("recomendaciones", p.recomendaciones)
+    put("incluirEnInforme", p.incluirEnInforme)
+}
+
+/** `datos` de test/editar: todos los campos editables, en snake_case (como la fila). */
+internal fun jsonDatosTest(t: TestAplicadoPsico): JsonObject = buildJsonObject {
+    if (t.fecha.isNotBlank()) put("fecha", t.fecha)
+    put("informante", t.informante)
+    put("modalidad", t.modalidad)
+    put("forma", t.forma)
+    put("baremo", t.baremo)
+    put("validez", t.validez)
+    putJsonArray("puntajes") {
+        t.puntajes.forEach { p ->
+            add(buildJsonObject {
+                put("escala", p.escala); put("directo", p.directo); put("transformado", p.transformado)
+                put("percentil", p.percentil); put("categoria", p.categoria)
+            })
+        }
+    }
+    putJsonObject("global") {
+        put("puntaje", t.global.puntaje); put("categoria", t.global.categoria); put("descripcion", t.global.descripcion)
+    }
+    put("interpretacion", t.interpretacion)
+    put("observaciones", t.observaciones)
+    put("estado", t.estado)
+    put("en_informe", t.enInforme)
+}
+
+internal fun jsonContenidoInforme(c: ContenidoInformePsico): JsonObject = buildJsonObject {
+    putJsonObject("filiacion") { CAMPOS_FILIACION.forEach { put(it.valor, c.filiacion[it.valor].orEmpty()) } }
+    putJsonObject("secciones") { SECCIONES_INFORME.forEach { put(it.clave, c.secciones[it.clave].orEmpty()) } }
+    put("lugar", c.lugar)
+    put("fecha", c.fecha)
+}
+
+// ── Reglas de presentación (puras) ───────────────────────────────────────────
+
+/**
+ * ¿Mostrar "🧠 Evaluación"? (puedeVerEvaluacionPsico de la web). La base decide
+ * igual con RLS; esto es para no ofrecer un botón que respondería "sin acceso".
+ * Admin, o el profesional del tratamiento, o quien atiende alguna de sus citas o
+ * sesiones (o está en su `cita_equipo`).
+ */
+fun puedeVerEvaluacionPsico(
+    rol: String?,
+    miTerapeutaId: String?,
+    tratamientoTerapeutaId: String?,
+    terapeutasCitas: List<String?> = emptyList(),
+): Boolean {
+    if (rol == "Admin") return true
+    val yo = miTerapeutaId ?: return false
+    return tratamientoTerapeutaId == yo || yo in terapeutasCitas
+}
+
+/**
+ * "+ Agregar cita de evaluación": es agenda (no contenido clínico) → cualquier
+ * staff con permiso de citas o sesiones, con el tratamiento vivo y la ficha activa.
+ */
+fun puedeAgregarCitaEvaluacion(puedeCitas: Boolean, puedeSesiones: Boolean, estadoTratamiento: String?, fichaInactiva: Boolean): Boolean =
+    !fichaInactiva && (puedeCitas || puedeSesiones) && (estadoTratamiento == "Activo" || estadoTratamiento == "Completado")
+
+/** "8 años 3 meses" a partir de meses cumplidos (textoEdad de la web). */
+fun textoEdadMeses(meses: Int?): String {
+    if (meses == null || meses < 0) return ""
+    val a = meses / 12
+    val m = meses % 12
+    val anos = if (a == 1) "1 año" else "$a años"
+    val mes = if (m == 1) "1 mes" else "$m meses"
+    return when {
+        a == 0 -> mes
+        m == 0 -> anos
+        else -> "$anos $mes"
+    }
+}
+
+/** dd/mm/aaaa sin pasar por Date (no corre el día por zona horaria). */
+fun fechaDmyPsico(iso: String?): String {
+    val m = Regex("^(\\d{4})-(\\d{2})-(\\d{2})").find(iso.orEmpty()) ?: return ""
+    val (a, mes, d) = m.destructured
+    return "$d/$mes/$a"
+}
+
+/** "cita 2 de 3" del encabezado (la siguiente por hacer, sin pasarse del total). */
+fun textoCitaDeEvaluacion(t: TratamientoEvalPsico?): String {
+    if (t == null) return ""
+    val total = t.totalSesiones
+    val actual = minOf(t.sesionesCompletadas + 1, maxOf(total, 1))
+    val devolucion = when (t.devolucion) {
+        "incluida" -> " · la última es la devolución"
+        "adicional" -> " · devolución aparte"
+        else -> ""
+    }
+    return "cita $actual de ${if (total > 0) total.toString() else "—"}$devolucion"
+}
+
+private fun sinTildesPsico(s: String): String = s.lowercase()
+    .replace('á', 'a').replace('é', 'e').replace('í', 'i').replace('ó', 'o').replace('ú', 'u').replace('ñ', 'n')
+
+/**
+ * Catálogo filtrado (texto en nombre corto, nombre o categoría; y población) y
+ * agrupado por categoría. Los grupos van en el orden del servidor: la primera
+ * aparición manda, así el ranking de los más usados queda arriba.
+ */
+fun agruparCatalogoPsico(
+    tests: List<TestCatalogoPsico>,
+    busqueda: String,
+    poblacion: String? = null,
+): List<Pair<String, List<TestCatalogoPsico>>> {
+    val q = sinTildesPsico(busqueda.trim())
+    val filtrados = tests.filter { t ->
+        (poblacion == null || poblacion in t.poblacion) &&
+            (q.isEmpty() || listOf(t.nombreCorto, t.nombre, t.categoria).any { sinTildesPsico(it).contains(q) })
+    }
+    return filtrados.groupBy { it.categoria }.toList()
+}
+
+/** Filas de puntaje vacías con las escalas del catálogo (por si el servidor no las precargó). */
+fun puntajesDesdeEscalas(escalas: List<EscalaCatalogoPsico>): List<PuntajeEscalaPsico> =
+    escalas.map { it.nombre.trim() }.filter { it.isNotEmpty() }.map { PuntajeEscalaPsico(escala = it) }
+
+/** Id local estable de una fuente nueva (lo genera el cliente, como la web). */
+fun nuevoIdFuente(existentes: List<FuentePsico>, semilla: Long): String {
+    var n = semilla
+    var id = "f${n.toString(36)}"
+    while (existentes.any { it.id == id }) { n++; id = "f${n.toString(36)}" }
+    return id
+}
+
+/** Al quitar una foto: deja de estar en el genograma y en los adjuntos de las fuentes. */
+fun sinFoto(ev: EvaluacionPsico, fotoId: String): EvaluacionPsico = ev.copy(
+    entrevista = if (ev.entrevista.genogramaDocumentoId == fotoId) ev.entrevista.copy(genogramaDocumentoId = null) else ev.entrevista,
+    fuentes = ev.fuentes.map { f -> if (fotoId in f.documentoIds) f.copy(documentoIds = f.documentoIds - fotoId) else f },
+)
+
+/**
+ * Precio propuesto al elegir el servicio del plan: si no había precio, servicio
+ * × sesiones (con 2 decimales). Si ya había uno, se respeta (lo pudo negociar).
+ */
+fun precioPropuestoPlan(precioActual: Double?, precioServicio: Double?, sesiones: Int?): Double? {
+    if (precioActual != null) return precioActual
+    if (precioServicio == null || sesiones == null || sesiones <= 0) return null
+    return kotlin.math.round(precioServicio * sesiones * 100) / 100
+}
+
+/** La sugerencia se ofrece solo si cambia algo ("Sugerido: N sesiones — usar"). */
+fun ofrecerSugerencia(sugerencia: SugerenciaSesionesPsico?, numeroSesiones: Int?): Boolean =
+    sugerencia != null && sugerencia.sesiones != numeroSesiones
+
+/** Texto de un error del servidor para el usuario (algunos códigos con frase propia). */
+fun mensajeErrorPsico(status: Int, codigo: String?, error: String?): String = when {
+    codigo == "SIN_ACCESO_EVALUACION" ->
+        "Solo el Admin y el profesional tratante pueden ver esta evaluación (es confidencial)."
+    codigo == "EVALUACION_CERRADA" -> "El informe ya se emitió: la evaluación quedó en solo lectura."
+    codigo == "NO_AUTENTICADO" || status == 401 -> "Tu sesión expiró. Vuelve a entrar."
+    // 404 sin `codigo` ni texto propio (la página 404 de Next): el endpoint no
+    // existe todavía en el servidor.
+    status == 404 && codigo == null && (error.isNullOrBlank() || error.startsWith("No se pudo completar (HTTP")) ->
+        "La evaluación psicológica aún no está disponible. Actualiza la app o inténtalo más tarde."
+    !error.isNullOrBlank() -> error
+    else -> "No se pudo completar (HTTP $status)."
+}
