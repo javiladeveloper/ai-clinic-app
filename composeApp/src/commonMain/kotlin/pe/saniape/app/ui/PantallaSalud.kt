@@ -62,6 +62,7 @@ import pe.saniape.app.data.ResultadoPago
 import pe.saniape.app.data.Saldo
 import pe.saniape.app.data.SaludRepo
 import pe.saniape.app.data.Tratamiento
+import pe.saniape.app.data.separarTratamientosPortal
 import pe.saniape.app.ui.theme.Sania
 
 /**
@@ -212,7 +213,11 @@ fun PantallaSalud() {
         val titulo = listOfNotNull(momentoFoto(f.momento), f.fecha.take(10).ifBlank { null }).joinToString(" · ")
         abrirEnVisor(f.path, titulo, "No se pudo abrir la foto. Revisa tu conexión e inténtalo de nuevo.")
     }
-    val sinNada = tratamientos.isEmpty() && documentos.isEmpty() && fotos.isEmpty() && listaRecetas.isEmpty() &&
+    // Vigentes en la lista principal; cancelados aparte (colapsado); eliminados nunca.
+    val separados = separarTratamientosPortal(tratamientos)
+    var verCancelados by remember { mutableStateOf(false) }
+    val hayTratamientos = separados.vigentes.isNotEmpty() || separados.cancelados.isNotEmpty()
+    val sinNada = !hayTratamientos && documentos.isEmpty() && fotos.isEmpty() && listaRecetas.isEmpty() &&
         planesEjercicios.isEmpty()
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
@@ -261,8 +266,8 @@ fun PantallaSalud() {
                     verticalArrangement = Arrangement.spacedBy(Sania.dim.md),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = Sania.dim.lg),
                 ) {
-                    val ordenados = tratamientos.sortedByDescending { it.estado == "Activo" }
-                    if (ordenados.isNotEmpty()) {
+                    val ordenados = separados.vigentes
+                    if (hayTratamientos) {
                         item { Etiqueta("MI TRATAMIENTO") }
                         // Lo que pagó de más (entre todos sus tratamientos): que lo sepa.
                         // Crédito por clínica (nunca sumado entre clínicas): con una sola
@@ -276,13 +281,24 @@ fun PantallaSalud() {
                             else -> emptyList()
                         }
                         avisos.forEachIndexed { i, (clinica, monto) -> item(key = "a-favor-$i") { AvisoAFavor(monto, clinica) } }
-                        items(ordenados) { t -> TarjetaTratamiento(t, saldos[t.id]) }
+                        items(ordenados, key = { "trat-" + it.id }) { t -> TarjetaTratamiento(t, saldos[t.id]) }
+                        // Cancelados: al final, colapsados, sin deuda ni progreso.
+                        if (separados.cancelados.isNotEmpty()) {
+                            item(key = "cancelados-cabecera") {
+                                CabeceraCancelados(separados.cancelados.size, verCancelados) { verCancelados = !verCancelados }
+                            }
+                            if (verCancelados) {
+                                items(separados.cancelados, key = { "cancelado-" + it.id }) { t ->
+                                    TarjetaCancelado(t, saldos[t.id])
+                                }
+                            }
+                        }
                     }
                     // 🏠 Mis ejercicios de apoyo: solo si su fisio le dejó alguno vigente
                     // (el portal de un paciente de otra especialidad no cambia en nada).
                     if (planesEjercicios.isNotEmpty()) {
                         item {
-                            if (ordenados.isNotEmpty()) Spacer(Modifier.height(Sania.dim.sm))
+                            if (hayTratamientos) Spacer(Modifier.height(Sania.dim.sm))
                             Etiqueta("🏠 MIS EJERCICIOS DE APOYO")
                         }
                         items(planesEjercicios, key = { "ejercicios-" + it.id }) { p ->
@@ -294,7 +310,7 @@ fun PantallaSalud() {
                     // 💊 Mis recetas: solo si tiene alguna (un paciente de fisio no ve nada nuevo).
                     if (listaRecetas.isNotEmpty()) {
                         item {
-                            if (ordenados.isNotEmpty() || planesEjercicios.isNotEmpty()) Spacer(Modifier.height(Sania.dim.sm))
+                            if (hayTratamientos || planesEjercicios.isNotEmpty()) Spacer(Modifier.height(Sania.dim.sm))
                             Etiqueta("💊 MIS RECETAS")
                         }
                         item { AvisoCopiaReceta(recetas?.aviso ?: AVISO_RECETA_POR_DEFECTO) }
@@ -619,6 +635,49 @@ private fun TarjetaTratamiento(t: Tratamiento, saldo: Saldo?) {
                     }
                 }
             }
+        }
+    }
+}
+
+/** "Tratamientos cancelados (N)": abre/cierra el apartado (cerrado por defecto). */
+@Composable
+private fun CabeceraCancelados(cantidad: Int, abierto: Boolean, onAlternar: () -> Unit) {
+    val c = Sania.colors
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).clickable { onAlternar() }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("TRATAMIENTOS CANCELADOS ($cantidad)", color = c.textoSuave, fontSize = Sania.txt.mini,
+            fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        Text(if (abierto) "Ocultar ▲" else "Ver ▼", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+/**
+ * Un tratamiento CANCELADO: nombre, clínica y, si pagó algo, "Pagado S/ X" en
+ * neutro. Nunca deuda ni botón de pago ni barra de progreso: ya no se cobra.
+ */
+@Composable
+private fun TarjetaCancelado(t: Tratamiento, saldo: Saldo?) {
+    val c = Sania.colors
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
+            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(Sania.dim.tarjeta),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            Column(Modifier.weight(1f)) {
+                Text(t.procedimiento, color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
+                t.clinica?.let { Text("🏥 $it", color = c.textoSuave, fontSize = 12.sp) }
+            }
+            Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.chipBg)
+                .padding(horizontal = 10.dp, vertical = 4.dp)) {
+                Text("Cancelado", color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        if (saldo != null && saldo.pagado > 0.005) {
+            Spacer(Modifier.height(6.dp))
+            Text("Pagado S/ ${formato2(saldo.pagado)}", color = c.textoSuave, fontSize = 12.sp)
         }
     }
 }

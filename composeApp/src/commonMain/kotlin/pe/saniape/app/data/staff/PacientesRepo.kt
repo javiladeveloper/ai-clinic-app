@@ -94,7 +94,29 @@ data class TratamientoPaciente(
     /** Para elegir el tratamiento por defecto de un documento (el activo más reciente). */
     val fechaInicio: String? = null,
     val createdAt: String? = null,
+    /**
+     * Para el saldo a favor de Sesión suelta / Consulta (data/SaldoAFavor.kt):
+     * sesiones no anuladas y citas no canceladas DEL tratamiento. Vienen embebidas
+     * en el SELECT de la ficha (sin viajes extra); null = no se cargaron (lista).
+     */
+    val sesionesRealizadas: Int? = null,
+    val citasNoCanceladas: Int? = null,
 ) {
+    /**
+     * La cuenta de este tratamiento para el saldo a favor, con lo [pagado].
+     * Sin los conteos cargados, un cobro por atención NO arriesga un "a favor"
+     * (realizadas = ∞ ⇒ acordado efectivo ≥ lo pagado): ante la duda, no.
+     */
+    fun cuentaCon(pagado: Double): pe.saniape.app.data.CuentaTratamiento {
+        val sinConteos = sesionesRealizadas == null && citasNoCanceladas == null
+        return pe.saniape.app.data.CuentaTratamiento(
+            acordado = montoAcordado, pagado = pagado, estado = estado, modalidad = modalidad,
+            precioPorSesion = precioPorSesion, precioAcordado = precioAcordado, totalSesiones = totalSesiones,
+            sesionesRealizadas = if (sinConteos) Int.MAX_VALUE / 2 else sesionesRealizadas ?: 0,
+            citasNoCanceladas = citasNoCanceladas ?: 0,
+        )
+    }
+
     /** Monto total acordado del tratamiento (igual que la web). */
     val montoAcordado: Double
         get() = precioAcordado
@@ -231,6 +253,8 @@ data class ResumenPagos(
     val porTratamiento: Map<String, Double> = emptyMap(),   // tratamientoId -> pagado
     /** Lo pagado DE MÁS (reglas en data/SaldoAFavor.kt). Solo se muestra. */
     val aFavor: Double = 0.0,
+    /** tratamientoId → lo pagado de más en ESE tratamiento (solo los > 0). */
+    val aFavorPorTratamiento: Map<String, Double> = emptyMap(),
 )
 
 /** Hitos del recorrido del paciente (Consulta/Evaluación hechas, próxima cita, última atención). */
@@ -416,6 +440,8 @@ object PacientesRepo {
             diagnostico, medicacion, proximo_control, nota_recepcion, tecnicas_sugeridas,
             procedimiento_id, sesiones_base, cita_origen_id, no_volvio, motivo_cierre, cerrado_at,
             fecha_inicio, created_at,
+            ses_estados:sesiones!sesiones_tratamiento_id_fkey(estado),
+            citas_estados:citas!citas_tratamiento_id_fkey(estado),
             procedimiento:procedimientos(nombre, especialidad_id, modo_cobro, precio, unidad_label, especialidad:especialidades(nombre, usa_sesiones)),
             terapeuta:terapeutas(id, nombre, especialidades:terapeuta_especialidades(especialidad:especialidades(id, nombre)))
         )
@@ -1282,10 +1308,11 @@ object PacientesRepo {
         val acordado = facturables.sumOf { it.montoAcordado }
         val pagado = facturables.sumOf { pagadoPorTrat[it.id] ?: 0.0 }
         val saldo = facturables.sumOf { t -> (t.montoAcordado - (pagadoPorTrat[t.id] ?: 0.0)).coerceAtLeast(0.0) }
-        val aFavor = pe.saniape.app.data.saldoAFavorDe(facturables.map { t ->
-            pe.saniape.app.data.CuentaTratamiento(t.montoAcordado, pagadoPorTrat[t.id] ?: 0.0, t.estado, t.modalidad)
-        })
-        return ResumenPagos(acordado, pagado, saldo, pagadoPorTrat.filterKeys { it != null }.mapKeys { it.key!! }, aFavor)
+        val aFavorPorTrat = facturables.associate { t ->
+            t.id to pe.saniape.app.data.saldoAFavorTratamiento(t.cuentaCon(pagadoPorTrat[t.id] ?: 0.0))
+        }.filterValues { it > 0.0 }
+        val aFavor = pe.saniape.app.data.saldoAFavorDe(facturables.map { t -> t.cuentaCon(pagadoPorTrat[t.id] ?: 0.0) })
+        return ResumenPagos(acordado, pagado, saldo, pagadoPorTrat.filterKeys { it != null }.mapKeys { it.key!! }, aFavor, aFavorPorTrat)
     }
 
     /** Solo el saldo (atajo para la stat card). */
@@ -1455,6 +1482,12 @@ object PacientesRepo {
                 motivoCierre = t.str("motivo_cierre"),
                 cerradoAt = t.str("cerrado_at"),
                 especialidadesProfesional = espsProf?.mapNotNull { it.str("id") }?.distinct().orEmpty(),
+                sesionesRealizadas = (t["ses_estados"] as? JsonArray)?.count { e ->
+                    (e as? JsonObject)?.str("estado") !in pe.saniape.app.data.ESTADOS_SESION_ANULADA
+                },
+                citasNoCanceladas = (t["citas_estados"] as? JsonArray)?.count { e ->
+                    (e as? JsonObject)?.str("estado") != "Cancelada"
+                },
             )
         }
         return PacienteStaff(

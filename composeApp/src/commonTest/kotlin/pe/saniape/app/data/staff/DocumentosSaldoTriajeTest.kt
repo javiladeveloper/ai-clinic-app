@@ -9,8 +9,8 @@ import pe.saniape.app.ui.clinica.atencion.borradorDesde
 import pe.saniape.app.ui.clinica.atencion.prefillPorGuardar
 
 /**
- * Ficha del staff: documentos por tratamiento → categoría, saldo a favor (solo
- * se muestra; la deuda no cambia) y el triaje de hoy compartido entre médicos
+ * Ficha del staff: documentos por tratamiento → categoría (el saldo a favor vive
+ * en data/SaldoAFavorTest) y el triaje de hoy compartido entre médicos
  * (`triajeDeHoy`, campo opcional de GET /api/staff/atencion/consulta).
  */
 class DocumentosSaldoTriajeTest {
@@ -37,40 +37,6 @@ class DocumentosSaldoTriajeTest {
         assertTrue(agruparDocumentosFicha(listOf(doc("x", null, CATEGORIA_FOTO_EVOLUTIVA)), emptyList()).isEmpty())
     }
 
-
-    private fun cuenta(acordado: Double, pagado: Double, estado: String? = "Activo", modalidad: String? = "Paquete") =
-        pe.saniape.app.data.CuentaTratamiento(acordado, pagado, estado, modalidad)
-
-    @Test
-    fun saldo_a_favor_suma_solo_lo_pagado_de_mas() {
-        // t1 pagó 50 de más; t2 debe 60 (no se resta); t3 justo.
-        assertEquals(50.0, pe.saniape.app.data.saldoAFavorDe(listOf(cuenta(300.0, 350.0), cuenta(100.0, 40.0), cuenta(80.0, 80.0))))
-        assertEquals(0.0, pe.saniape.app.data.saldoAFavorDe(listOf(cuenta(100.0, 40.0))))
-        assertEquals(0.0, pe.saniape.app.data.saldoAFavorDe(emptyList()))
-        assertEquals(0.0, pe.saniape.app.data.saldoAFavorDe(listOf(cuenta(100.0, 100.001))))   // medio centavo
-        // Redondeo a 2 decimales por tratamiento.
-        assertEquals(0.1, pe.saniape.app.data.saldoAFavorTratamiento(100.0, 100.104, "Activo", "Paquete"))
-    }
-
-    @Test
-    fun saldo_a_favor_ante_la_duda_no() {
-        // Sin precio acordado: no hay contra qué comparar.
-        assertEquals(0.0, pe.saniape.app.data.saldoAFavorTratamiento(0.0, 40.0, "Activo", "Consulta"))
-        // Sesión suelta: total_sesiones=1 y cada sesión cobrada entra al tratamiento.
-        assertEquals(0.0, pe.saniape.app.data.saldoAFavorTratamiento(80.0, 320.0, "Activo", "Sesión suelta"))
-        // No facturables.
-        assertEquals(0.0, pe.saniape.app.data.saldoAFavorTratamiento(100.0, 150.0, "Eliminado", "Paquete"))
-        assertEquals(0.0, pe.saniape.app.data.saldoAFavorTratamiento(100.0, 150.0, "Cancelado", "Paquete"))
-        // Solo Paquete y Unidades: Consulta y modalidad desconocida/vacía = 0.
-        assertEquals(0.0, pe.saniape.app.data.saldoAFavorTratamiento(100.0, 150.0, "Activo", "Consulta"))
-        assertEquals(0.0, pe.saniape.app.data.saldoAFavorTratamiento(100.0, 150.0, "Activo", null))
-        assertEquals(0.0, pe.saniape.app.data.saldoAFavorTratamiento(100.0, 150.0, "Activo", ""))
-        assertEquals(30.0, pe.saniape.app.data.saldoAFavorTratamiento(700.0, 730.0, "Activo", "Unidades"))
-        assertEquals(50.0, pe.saniape.app.data.saldoAFavorTratamiento(100.0, 150.0, "Alta", "Paquete"))
-        assertEquals(0.0, pe.saniape.app.data.saldoAFavorDe(listOf(
-            cuenta(0.0, 40.0), cuenta(80.0, 320.0, modalidad = "Sesión suelta"), cuenta(100.0, 150.0, estado = "Eliminado"),
-        )))
-    }
 
     private fun trat(id: String, estado: String?, inicio: String?, creado: String? = null) = TratamientoPaciente(
         id = id, procedimiento = id, terapeutaId = null, terapeutaNombre = null, modalidad = "Paquete",

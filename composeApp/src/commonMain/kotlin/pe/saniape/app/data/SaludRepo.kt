@@ -145,6 +145,24 @@ fun <T> agruparPorTratamiento(items: List<T>, idDe: (T) -> String?, nombreDe: (T
     return con + (if (sin.isNotEmpty()) listOf(GrupoPortal("general", "General", sin)) else emptyList())
 }
 
+/**
+ * Los tratamientos del portal, separados (QA 2026-10-05): los VIGENTES van en la
+ * lista principal (en curso primero) y los CANCELADOS en un apartado propio, sin
+ * deuda ni progreso. Los Eliminados no se muestran nunca.
+ */
+data class TratamientosPortal(
+    val vigentes: List<Tratamiento> = emptyList(),
+    val cancelados: List<Tratamiento> = emptyList(),
+)
+
+fun separarTratamientosPortal(lista: List<Tratamiento>): TratamientosPortal {
+    val visibles = lista.filter { it.estado != "Eliminado" }
+    return TratamientosPortal(
+        vigentes = visibles.filter { it.estado != "Cancelado" }.sortedByDescending { it.estado == "Activo" },
+        cancelados = visibles.filter { it.estado == "Cancelado" },
+    )
+}
+
 /** Una clínica donde el paciente tiene historial. `puedeReservar` = plan Plus + reservas on. */
 data class ClinicaPaciente(
     val clinicaId: String,

@@ -2226,6 +2226,7 @@ private fun ContenidoPagos(
                     if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde).padding(vertical = 0.dp))
                     FilaPagoResumen(
                         t = t, pagado = r?.porTratamiento?.get(t.id) ?: 0.0,
+                        aFavor = r?.aFavorPorTratamiento?.get(t.id) ?: 0.0,
                         onVer = onVerEnAtenciones,
                     )
                 }
@@ -2238,7 +2239,7 @@ private fun ContenidoPagos(
 
 /** Fila resumida de pagos de un tratamiento: nombre + acordado/pagado/saldo + barra + estado. */
 @Composable
-private fun FilaPagoResumen(t: TratamientoPaciente, pagado: Double, onVer: () -> Unit) {
+private fun FilaPagoResumen(t: TratamientoPaciente, pagado: Double, aFavor: Double, onVer: () -> Unit) {
     val c = Sania.colors
     val acordado = t.montoAcordado
     val saldo = (acordado - pagado).coerceAtLeast(0.0)
@@ -2259,8 +2260,8 @@ private fun FilaPagoResumen(t: TratamientoPaciente, pagado: Double, onVer: () ->
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Acordado S/ ${formatoMonto(acordado)}", color = c.textoSuave, fontSize = 11.sp)
             Text("Pagado S/ ${formatoMonto(pagado)}", color = c.ok, fontSize = 11.sp)
-            // A favor solo con precio, facturable y que no sea sesión suelta (data/SaldoAFavor.kt).
-            val aFavor = pe.saniape.app.data.saldoAFavorTratamiento(acordado, pagado, t.estado, t.modalidad)
+            // A favor: ya calculado en resumenPagosDe (reglas en data/SaldoAFavor.kt;
+            // en suelta/consulta cuenta lo realizado, no solo el acordado).
             if (aFavor > 0.0) {
                 Text("A favor S/ ${formatoMonto(aFavor)}", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             } else {
