@@ -1,6 +1,5 @@
-# BORRADOR de las novedades de la próxima versión (aún sin número).
-# Al publicar, copiar a novedades/<versionName>.txt con el formato de siempre
-# (ver docs/ci-cd-despliegue.md → "Novedades de cada versión").
+# Novedades de la 2.23.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
 Llega la evaluación psicológica a la app, el saldo a favor ahora cuenta también consultas y sesiones sueltas, y los tratamientos cancelados ya no aparecen como deuda en Mi salud.
 ---
 Clínicas:
