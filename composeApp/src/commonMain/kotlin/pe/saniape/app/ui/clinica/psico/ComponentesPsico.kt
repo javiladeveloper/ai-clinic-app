@@ -194,16 +194,17 @@ internal fun SubtituloPsico(texto: String) {
 
 // ── Fotos protegidas ─────────────────────────────────────────────────────────
 
-/** URLs para ver (1 h en el servidor; acá se reusan 50 min). Una sola para toda la pantalla. */
+/** URLs para ver (1 h en el servidor; acá se reusan 50 min), por id del documento. */
 private object UrlsFotosPsico {
     private var urls: Map<String, Pair<String, Long>> = emptyMap()
     private const val VIGENCIA_MS = 50L * 60 * 1000
-    suspend fun de(f: FotoPsico): String? {
+    /** La URL, o el error legible (sin acceso, sin red…). */
+    suspend fun de(f: FotoPsico): EvaluacionPsicoRepo.VerArchivo {
         val ahora = Clock.System.now().toEpochMilliseconds()
-        urls[f.id]?.takeIf { ahora - it.second < VIGENCIA_MS }?.let { return it.first }
-        val u = EvaluacionPsicoRepo.urlDeFoto(f) ?: return null
-        urls = urls + (f.id to (u to ahora))
-        return u
+        urls[f.id]?.takeIf { ahora - it.second < VIGENCIA_MS }?.let { return EvaluacionPsicoRepo.VerArchivo.Ok(it.first) }
+        val r = EvaluacionPsicoRepo.urlDeDocumento(f.id)
+        if (r is EvaluacionPsicoRepo.VerArchivo.Ok) urls = urls + (f.id to (r.url to ahora))
+        return r
     }
 }
 
@@ -242,14 +243,11 @@ internal fun BloqueFotosPsico(
 
     fun ver(f: FotoPsico) {
         scope.launch {
-            val clase = claseArchivo(f.tipo, f.path)
-            if (clase == ClaseArchivo.IMAGEN) {
-                verFoto = f; urlVer = null
-                urlVer = UrlsFotosPsico.de(f)
-                if (urlVer == null) { verFoto = null; Toaster.error("No se pudo abrir la foto. Revisa tu conexión.") }
-            } else {
-                val u = UrlsFotosPsico.de(f)
-                if (u == null) Toaster.error("No se pudo abrir el archivo. Revisa tu conexión.") else acciones.abrirUrl(u)
+            val imagen = claseArchivo(f.tipo, f.path.ifBlank { f.nombre }) == ClaseArchivo.IMAGEN
+            if (imagen) { verFoto = f; urlVer = null }
+            when (val r = UrlsFotosPsico.de(f)) {
+                is EvaluacionPsicoRepo.VerArchivo.Ok -> if (imagen) urlVer = r.url else acciones.abrirUrl(r.url)
+                is EvaluacionPsicoRepo.VerArchivo.Error -> { verFoto = null; Toaster.error(r.mensaje) }
             }
         }
     }
@@ -297,8 +295,10 @@ internal fun BloqueFotosPsico(
 @Composable
 private fun MiniaturaPsico(f: FotoPsico, soloLectura: Boolean, onVer: () -> Unit, onBorrar: () -> Unit) {
     val c = Sania.colors
-    val clase = claseArchivo(f.tipo, f.path)
-    val url by produceState<String?>(null, f.path) { if (clase == ClaseArchivo.IMAGEN) value = UrlsFotosPsico.de(f) }
+    val clase = claseArchivo(f.tipo, f.path.ifBlank { f.nombre })
+    val url by produceState<String?>(null, f.id) {
+        if (clase == ClaseArchivo.IMAGEN) value = (UrlsFotosPsico.de(f) as? EvaluacionPsicoRepo.VerArchivo.Ok)?.url
+    }
     Box(Modifier.size(76.dp)) {
         Box(
             Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)).background(c.chipBg)

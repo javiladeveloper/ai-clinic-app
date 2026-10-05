@@ -175,11 +175,20 @@ fun ContenidoExamenes(
                     Spacer(Modifier.width(8.dp))
                     Text(d.nombre, color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                         maxLines = 1, modifier = Modifier.weight(1f)
-                            .clickable { scope.launch { SolicitudesRepo.urlFirmada(d.archivoUrl)?.let { acciones.abrirUrl(it) } } })
-                    Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable {
+                            .clickable { scope.launch {
+                                if (d.categoria == pe.saniape.app.data.staff.CATEGORIA_INFORME_PSICOLOGICO) {
+                                    // Vive bajo protegido/: se ve por id, solo Admin o tratante (contrato §0).
+                                    when (val r = pe.saniape.app.data.staff.EvaluacionPsicoRepo.urlDeDocumento(d.id)) {
+                                        is pe.saniape.app.data.staff.EvaluacionPsicoRepo.VerArchivo.Ok -> acciones.abrirUrl(r.url)
+                                        is pe.saniape.app.data.staff.EvaluacionPsicoRepo.VerArchivo.Error -> pe.saniape.app.ui.Toaster.error(r.mensaje)
+                                    }
+                                } else SolicitudesRepo.urlFirmada(d.archivoUrl)?.let { acciones.abrirUrl(it) }
+                            } })
+                    // El informe psicológico emitido no se borra (nadie: Código de Ética del CPsP).
+                    if (d.categoria != pe.saniape.app.data.staff.CATEGORIA_INFORME_PSICOLOGICO) Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable {
                         scope.launch {
-                            val ok = SolicitudesRepo.eliminarDocumento(d.id)
-                            if (ok) pe.saniape.app.ui.Toaster.exito("Documento eliminado") else pe.saniape.app.ui.Toaster.error("No se pudo eliminar")
+                            val error = SolicitudesRepo.eliminarDocumento(d.id)
+                            if (error == null) pe.saniape.app.ui.Toaster.exito("Documento eliminado") else pe.saniape.app.ui.Toaster.error(error)
                             recargar()
                         }
                     })

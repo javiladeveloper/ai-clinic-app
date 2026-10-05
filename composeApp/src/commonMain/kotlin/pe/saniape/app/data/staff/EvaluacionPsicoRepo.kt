@@ -122,49 +122,43 @@ object EvaluacionPsicoRepo {
         return (ids(citas, "terapeuta_id") + ids(sesiones, "terapeuta_id") + ids(equipo, "terapeuta_id")).distinct()
     }
 
-    /**
-     * La URL para VER una foto protegida o el PDF del informe. Un solo lugar:
-     *  1. si el servidor manda cómo verla ([url]: firmada, o un endpoint `/api/...`
-     *     que responde `{ url }`), eso;
-     *  2. si no, el endpoint del material protegido por id
-     *     (`GET /api/staff/evaluacion-psico/foto?documentoId=` → `{ url }`, solo
-     *     Admin o tratante; las rutas `protegido/` ya no se firman por path);
-     *  3. con un servidor que aún no lo tiene (404/405), el firmado de siempre por
-     *     `path` (`/api/documento`).
-     * Sin acceso → null y la pantalla lo dice. La UI nunca arma rutas de Storage.
-     */
-    suspend fun urlDeArchivo(documentoId: String?, path: String?, url: String?): String? {
-        val directa = url?.trim()?.ifBlank { null }
-        if (directa != null) {
-            if (directa.startsWith("http")) return directa
-            if (directa.startsWith("/")) return urlDeEndpoint(directa).first
-        }
-        if (!documentoId.isNullOrBlank()) {
-            val (u, status) = urlDeEndpoint("$BASE/foto?documentoId=$documentoId")
-            if (u != null) return u
-            // 403 = sin acceso (no se intenta por otro lado); otro error real, tampoco.
-            if (status != 404 && status != 405) return null
-        }
-        val p = path?.trim()?.ifBlank { null } ?: return null
-        return SolicitudesRepo.urlFirmada(p)
+    /** URL para ver un archivo protegido, o por qué no se puede. */
+    sealed class VerArchivo {
+        data class Ok(val url: String) : VerArchivo()
+        data class Error(val mensaje: String) : VerArchivo()
     }
 
-    /** GET a un endpoint que responde `{ url }` → (url, status). */
-    private suspend fun urlDeEndpoint(ruta: String): Pair<String?, Int> {
-        val tk = token() ?: return null to 401
+    /**
+     * La URL (firmada 1 h) para VER una foto protegida o el PDF del informe:
+     * `GET /api/staff/evaluacion-psico/foto?documentoId=` → `{ ok, url }`. Un
+     * solo camino: estos archivos viven bajo `protegido/` y la app nunca los
+     * firma ni los lee directo de Storage. Solo Admin o tratante
+     * (403 SIN_ACCESO_EVALUACION / 404 DOCUMENTO_NO_ENCONTRADO).
+     */
+    suspend fun urlDeDocumento(documentoId: String): VerArchivo {
+        val tk = token() ?: return VerArchivo.Error("Tu sesión expiró. Vuelve a entrar.")
         return try {
-            val resp = http.get("${Supabase.SITE_URL}$ruta") { header("Authorization", "Bearer $tk") }
-            val st = resp.status.value
-            if (st !in 200..299) null to st else urlDeRespuesta(resp.bodyAsText()) to st
-        } catch (e: CancellationException) { throw e } catch (_: Exception) { null to 0 }
+            val resp = http.get("${Supabase.SITE_URL}$BASE/foto") {
+                header("Authorization", "Bearer $tk")
+                parameter("documentoId", documentoId)
+            }
+            val cuerpo = runCatching { resp.bodyAsText() }.getOrNull()
+            aVerArchivo(resp.status.value, cuerpo)
+        } catch (e: CancellationException) { throw e } catch (_: Exception) { VerArchivo.Error(MSJ_SIN_RED) }
+    }
+
+    internal fun aVerArchivo(status: Int, cuerpo: String?): VerArchivo {
+        if (status in 200..299) {
+            return urlDeRespuesta(cuerpo.orEmpty())?.let { VerArchivo.Ok(it) }
+                ?: VerArchivo.Error("No se pudo abrir el archivo.")
+        }
+        val r = AtencionRepo.resultadoDeRespuesta(status, cuerpo).rechazo
+        return VerArchivo.Error(mensajeErrorPsico(status, r?.codigo, r?.error))
     }
 
     internal fun urlDeRespuesta(cuerpo: String): String? =
         (runCatching { json.parseToJsonElement(cuerpo).jsonObject["url"] }.getOrNull() as? JsonPrimitive)
             ?.content?.takeIf { it.startsWith("http") }
-
-    suspend fun urlDeFoto(f: FotoPsico): String? = urlDeArchivo(f.id, f.path, f.url)
-    suspend fun urlDeInformePdf(d: DocumentoInformePsico): String? = urlDeArchivo(d.id, d.path, d.url)
 
     // ── Lecturas ─────────────────────────────────────────────────────────────
 

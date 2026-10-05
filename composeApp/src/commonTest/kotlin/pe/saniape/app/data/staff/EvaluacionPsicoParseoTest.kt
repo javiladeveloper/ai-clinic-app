@@ -57,8 +57,8 @@ class EvaluacionPsicoParseoTest {
           "tipo_puntaje": "CI", "genera_imagen": false } } ],
       "fotos": [ { "id": "d1", "nombre": "HTP - casa.jpg", "path": "p1/t1/a.jpg", "tipo": "jpg", "testAplicadoId": null,
           "uso": "fuente", "created_at": "z" },
-        { "id": "d2", "nombre": "Hoja", "verUrl": "/api/staff/evaluacion-psico/foto/ver?id=d2", "tipo": "pdf", "uso": "test" },
-        { "id": "d3", "nombre": "Sin ruta" } ],
+        { "id": "d2", "nombre": "Hoja", "path": "protegido/p1/t1/b.pdf", "tipo": "pdf", "uso": "test", "testAplicadoId": "ta1" },
+        { "nombre": "sin id" } ],
       "informe": { "id": "i1", "evaluacion_id": "e1", "version": 1, "estado": "borrador",
         "contenido": { "filiacion": { "nombre": "Ana Pérez", "edad": "8 años 3 meses" },
           "secciones": { "motivo": "Bajo rendimiento", "conclusiones": "" }, "lugar": "Tacna", "fecha": "2026-10-15" },
@@ -112,9 +112,9 @@ class EvaluacionPsicoParseoTest {
         assertFalse(ta.enInforme)
         assertEquals("CIT 98", ta.global.puntaje)
 
-        // La foto sin ruta ni URL se descarta; la servida por endpoint vale aunque no tenga path.
+        // Sin id se descarta (se ven por id: GET foto?documentoId=).
         assertEquals(listOf("d1", "d2"), e.fotos.map { it.id })
-        assertEquals("/api/staff/evaluacion-psico/foto/ver?id=d2", e.fotos[1].url)
+        assertEquals("ta1", e.fotos[1].testAplicadoId)
 
         val inf = assertNotNull(e.informe)
         assertFalse(inf.emitido)
@@ -266,9 +266,28 @@ class EvaluacionPsicoParseoTest {
         val ok = EvaluacionPsicoRepo.aCarga(200, """{ "ok": true, "esEvaluacionPsico": false }""")
         assertTrue(ok is EvaluacionPsicoRepo.Carga.Ok && !ok.espacio.esEvaluacionPsico)
 
-        assertEquals("https://x/y", EvaluacionPsicoRepo.urlDeRespuesta("""{ "url": "https://x/y" }"""))
-        assertNull(EvaluacionPsicoRepo.urlDeRespuesta("""{ "url": "/relativa" }"""))
-        assertNull(EvaluacionPsicoRepo.urlDeRespuesta("no es json"))
+        // Ver una foto o el PDF: GET foto?documentoId= → { ok, url } o el motivo.
+        assertEquals(EvaluacionPsicoRepo.VerArchivo.Ok("https://x/y"),
+            EvaluacionPsicoRepo.aVerArchivo(200, """{ "ok": true, "url": "https://x/y" }"""))
+        assertTrue(EvaluacionPsicoRepo.aVerArchivo(200, "no es json") is EvaluacionPsicoRepo.VerArchivo.Error)
+        val sinAcc = EvaluacionPsicoRepo.aVerArchivo(403, """{ "error": "x", "codigo": "SIN_ACCESO_EVALUACION" }""")
+        assertTrue((sinAcc as EvaluacionPsicoRepo.VerArchivo.Error).mensaje.contains("profesional tratante"))
+        val noHay = EvaluacionPsicoRepo.aVerArchivo(404, """{ "error": "x", "codigo": "DOCUMENTO_NO_ENCONTRADO" }""")
+        assertTrue((noHay as EvaluacionPsicoRepo.VerArchivo.Error).mensaje.contains("No se encontró el archivo"))
+
+        // Códigos nuevos del contrato con frase propia.
+        assertTrue(mensajeErrorPsico(403, "SIN_PERMISO", "x").contains("permiso de citas o de sesiones"))
+        assertTrue(mensajeErrorPsico(409, "INFORME_YA_EMITIDO", null).contains("congelado"))
+        assertTrue(mensajeErrorPsico(409, "TRATAMIENTO_CAMBIO", null).contains("Recarga"))
+        assertTrue(mensajeErrorPsico(409, "TEST_DUPLICADO", null).contains("nombre corto"))
+        // Sin frase propia (INFORME_INCOMPLETO, LIMITE_PLAN…): el texto del servidor.
+        assertEquals("Falta el motivo. Faltan las conclusiones.",
+            mensajeErrorPsico(422, "INFORME_INCOMPLETO", "Falta el motivo. Faltan las conclusiones."))
+        // Triggers de la base en un borrado directo.
+        assertTrue(fraseDeErrorBasePsico("P0001: INFORME_EMITIDO_NO_SE_BORRA")!!.contains("no se puede borrar"))
+        assertTrue(fraseDeErrorBasePsico("error TRATAMIENTO_CON_INFORME_EMITIDO")!!.contains("informe psicológico emitido"))
+        assertNull(fraseDeErrorBasePsico("otro error"))
+        assertNull(fraseDeErrorBasePsico(null))
     }
 
     @Test

@@ -94,7 +94,9 @@ fun agruparDocumentosFicha(
     docs: List<DocumentoFicha>,
     nombresTratamiento: List<Pair<String, String>>,
 ): List<GrupoDocumentos> {
-    val lista = docs.filter { it.categoria != CATEGORIA_FOTO_EVOLUTIVA }
+    // Ni las fotos evolutivas (galería) ni las fotos de tests psicológicos (material
+    // protegido: solo en el espacio de la evaluación, contrato §0).
+    val lista = docs.filter { it.categoria != CATEGORIA_FOTO_EVOLUTIVA && it.categoria != CATEGORIA_TEST_PSICOLOGICO }
     if (lista.isEmpty()) return emptyList()
     fun porCategoria(l: List<DocumentoFicha>) =
         l.groupBy { it.categoria?.takeIf { c -> c.isNotBlank() } ?: "Documento" }.toList()
@@ -165,7 +167,7 @@ object SolicitudesRepo {
         }.getOrDefault(emptyList())
         return filas.mapNotNull { o ->
             // Las fotos evolutivas son de la galería del tratamiento, no de esta lista.
-            if (o.str("categoria") == CATEGORIA_FOTO_EVOLUTIVA) return@mapNotNull null
+            if (o.str("categoria") == CATEGORIA_FOTO_EVOLUTIVA || o.str("categoria") == CATEGORIA_TEST_PSICOLOGICO) return@mapNotNull null
             DocumentoFicha(
                 id = o.str("id") ?: return@mapNotNull null,
                 nombre = o.str("nombre") ?: "Documento",
@@ -224,11 +226,15 @@ object SolicitudesRepo {
         true
     } catch (e: Exception) { false }
 
-    /** Elimina un documento (solo el registro; el archivo del bucket queda huérfano, como la web). */
-    suspend fun eliminarDocumento(documentoId: String): Boolean = try {
+    /**
+     * Elimina un documento (solo el registro; el archivo del bucket queda huérfano,
+     * como la web). null = listo; si no, el motivo para mostrar (p. ej. el informe
+     * psicológico emitido no se borra: trigger INFORME_EMITIDO_NO_SE_BORRA).
+     */
+    suspend fun eliminarDocumento(documentoId: String): String? = try {
         Supabase.client.postgrest["documentos_paciente"].delete { filter { eq("id", documentoId) } }
-        true
-    } catch (e: Exception) { false }
+        null
+    } catch (e: Exception) { fraseDeErrorBasePsico(e.message) ?: "No se pudo eliminar" }
 
     /**
      * Sube un archivo al bucket privado vía /api/staff/documento/subir (multipart, Bearer).

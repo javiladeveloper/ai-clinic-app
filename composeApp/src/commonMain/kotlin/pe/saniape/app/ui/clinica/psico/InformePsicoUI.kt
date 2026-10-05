@@ -59,8 +59,10 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
     fun verPdf() {
         val pdf = vm.informePdf ?: return
         scope.launch {
-            val u = EvaluacionPsicoRepo.urlDeInformePdf(pdf)
-            if (u == null) Toaster.error("No se pudo abrir el PDF (sin acceso o sin conexión).") else acciones.abrirUrl(u)
+            when (val r = EvaluacionPsicoRepo.urlDeDocumento(pdf.id)) {
+                is EvaluacionPsicoRepo.VerArchivo.Ok -> acciones.abrirUrl(r.url)
+                is EvaluacionPsicoRepo.VerArchivo.Error -> Toaster.error(r.mensaje)
+            }
         }
     }
 

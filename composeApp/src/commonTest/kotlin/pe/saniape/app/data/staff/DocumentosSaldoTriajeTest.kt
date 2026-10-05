@@ -35,6 +35,12 @@ class DocumentosSaldoTriajeTest {
         assertEquals(listOf("b", "f"), g.last().categorias.single().second.map { it.id })
         assertNull(g.last().tratamientoId)
         assertTrue(agruparDocumentosFicha(listOf(doc("x", null, CATEGORIA_FOTO_EVOLUTIVA)), emptyList()).isEmpty())
+        // Las fotos de tests psicológicos (material protegido) tampoco; el informe emitido sí.
+        val psico = agruparDocumentosFicha(
+            listOf(doc("htp", "t9", CATEGORIA_TEST_PSICOLOGICO), doc("inf", "t9", CATEGORIA_INFORME_PSICOLOGICO)),
+            listOf("t9" to "Evaluación psicológica"),
+        )
+        assertEquals(listOf("inf"), psico.flatMap { it.categorias }.flatMap { it.second }.map { it.id })
     }
 
 

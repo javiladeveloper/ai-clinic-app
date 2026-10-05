@@ -29,6 +29,9 @@ import kotlinx.serialization.json.putJsonObject
 /** `procedimientos.tipo_clinico` que enciende todo esto. */
 const val TIPO_CLINICO_EVALUACION_PSICO = "evaluacion_psicologica"
 
+/** Categoría de las fotos de tests (material protegido: nunca en Documentos ni en el portal). */
+const val CATEGORIA_TEST_PSICOLOGICO = "Test psicológico"
+
 /** Categoría del informe emitido en los documentos del paciente (lo ve en "Mi salud"). */
 const val CATEGORIA_INFORME_PSICOLOGICO = "Informe psicológico"
 
@@ -306,7 +309,11 @@ data class TestCatalogoPsico(
     val orden: Int = 9999,
 )
 
-/** Foto o adjunto protegido de la evaluación (nunca lo ve el paciente). */
+/**
+ * Foto o adjunto protegido de la evaluación (nunca lo ve el paciente). Vive bajo
+ * `protegido/…` en Storage: la app NUNCA lo firma ni lo lee directo; se ve por
+ * id con [EvaluacionPsicoRepo.urlDeDocumento]. [path] es solo informativo.
+ */
 data class FotoPsico(
     val id: String,
     val nombre: String = "Foto",
@@ -316,12 +323,6 @@ data class FotoPsico(
     /** 'test' | 'genograma' | 'fuente' */
     val uso: String = "test",
     val createdAt: String? = null,
-    /**
-     * Cómo VERLA, si el servidor lo manda (URL firmada o endpoint propio del
-     * material protegido). Sin él, [EvaluacionPsicoRepo.urlDeArchivo] cae al
-     * firmado de siempre por `path`. La UI nunca arma rutas de Storage.
-     */
-    val url: String? = null,
 )
 
 data class ContenidoInformePsico(
@@ -344,7 +345,7 @@ data class InformePsico(
     val emitido: Boolean get() = estado == "emitido"
 }
 
-data class DocumentoInformePsico(val id: String, val path: String, val nombre: String, val url: String? = null)
+data class DocumentoInformePsico(val id: String, val path: String, val nombre: String)
 
 /** Lo que precarga el formulario de tratamiento de siempre ("Crear tratamiento con este plan"). */
 data class PrefillPlanPsico(
@@ -568,9 +569,8 @@ internal fun leerTestCatalogo(o: JsonObject?): TestCatalogoPsico? {
 
 internal fun leerFoto(o: JsonObject?): FotoPsico? {
     val id = o.txt("id") ?: return null
-    val url = (o.txt("url") ?: o.txt("verUrl"))?.ifBlank { null }
-    // Sin path pero con URL propia (material protegido servido por endpoint) también sirve.
-    val path = o.txt("path") ?: o.txt("archivo_url") ?: if (url != null) "" else return null
+    // Se ve por id (GET foto?documentoId=): el path es solo informativo.
+    val path = o.txt("path") ?: o.txt("archivo_url") ?: ""
     return FotoPsico(
         id = id,
         nombre = o.txt("nombre")?.ifBlank { null } ?: "Foto",
@@ -579,7 +579,6 @@ internal fun leerFoto(o: JsonObject?): FotoPsico? {
         testAplicadoId = o.txt("testAplicadoId") ?: o.txt("test_aplicado_id"),
         uso = o.txt("uso")?.takeIf { it in setOf("test", "genograma", "fuente") } ?: "test",
         createdAt = o.txt("created_at"),
-        url = url,
     )
 }
 
@@ -604,9 +603,7 @@ internal fun leerInforme(o: JsonObject?): InformePsico? {
 
 internal fun leerDocumentoInforme(o: JsonObject?): DocumentoInformePsico? {
     val id = o.txt("id") ?: return null
-    val url = (o.txt("url") ?: o.txt("verUrl"))?.ifBlank { null }
-    val path = o.txt("path") ?: if (url != null) "" else return null
-    return DocumentoInformePsico(id, path, o.txt("nombre") ?: "Informe psicológico.pdf", url)
+    return DocumentoInformePsico(id, o.txt("path").orEmpty(), o.txt("nombre") ?: "Informe psicológico.pdf")
 }
 
 internal fun leerPrefill(o: JsonObject?): PrefillPlanPsico? = o?.let {
@@ -881,16 +878,51 @@ fun precioPropuestoPlan(precioActual: Double?, precioServicio: Double?, sesiones
 fun ofrecerSugerencia(sugerencia: SugerenciaSesionesPsico?, numeroSesiones: Int?): Boolean =
     sugerencia != null && sugerencia.sesiones != numeroSesiones
 
+/**
+ * Frase propia de cada `codigo` del contrato (§2 y los puntuales). Los que no
+ * están aquí muestran el texto del servidor. null = sin frase propia.
+ */
+internal fun fraseDeCodigoPsico(codigo: String?): String? = when (codigo) {
+    "SIN_ACCESO_EVALUACION" -> "Solo el Admin y el profesional tratante pueden ver esta evaluación (es confidencial)."
+    "SIN_PERMISO" -> "No tienes permiso para agregar citas a la evaluación (se necesita el permiso de citas o de sesiones)."
+    "NO_ES_STAFF" -> "Tu usuario no es del equipo de esta clínica. Revisa la clínica activa."
+    "EVALUACION_CERRADA" -> "El informe ya se emitió: la evaluación quedó en solo lectura."
+    "INFORME_YA_EMITIDO" -> "El informe ya se emitió: queda congelado y no se puede cambiar."
+    "INFORME_EMITIDO_NO_SE_BORRA" -> "El informe psicológico emitido no se puede borrar (Código de Ética del CPsP, art. 18)."
+    "TRATAMIENTO_CON_INFORME_EMITIDO" -> "Este tratamiento tiene un informe psicológico emitido: no se puede borrar."
+    "NO_ES_EVALUACION_PSICOLOGICA" -> "Este tratamiento no es una evaluación psicológica."
+    "TRATAMIENTO_NO_ENCONTRADO" -> "No se encontró el tratamiento (o es de otra clínica)."
+    "EVALUACION_NO_ENCONTRADA" -> "No se encontró la evaluación o no tienes acceso."
+    "EVALUACION_SIN_TRATAMIENTO" -> "El tratamiento de esta evaluación se borró."
+    "CITA_NO_ENCONTRADA" -> "No se encontró la cita."
+    "SESION_NO_ENCONTRADA" -> "No se encontró la sesión."
+    "DOCUMENTO_NO_ENCONTRADO", "FOTO_NO_ENCONTRADA" -> "No se encontró el archivo (o no tienes acceso)."
+    "TEST_NO_ENCONTRADO" -> "No se encontró el test aplicado. Recarga la evaluación."
+    "TEST_CATALOGO_NO_ENCONTRADO" -> "Ese test ya no está en el catálogo."
+    "TEST_DUPLICADO" -> "La clínica ya tiene un test propio con ese nombre corto."
+    "TRATAMIENTO_CAMBIO" -> "Otra persona cambió las citas de esta evaluación al mismo tiempo. Recarga e inténtalo de nuevo."
+    "TRATAMIENTO_DE_OTRO_PACIENTE" -> "Ese tratamiento es de otro paciente."
+    else -> null
+}
+
 /** Texto de un error del servidor para el usuario (algunos códigos con frase propia). */
-fun mensajeErrorPsico(status: Int, codigo: String?, error: String?): String = when {
-    codigo == "SIN_ACCESO_EVALUACION" ->
-        "Solo el Admin y el profesional tratante pueden ver esta evaluación (es confidencial)."
-    codigo == "EVALUACION_CERRADA" -> "El informe ya se emitió: la evaluación quedó en solo lectura."
+fun mensajeErrorPsico(status: Int, codigo: String?, error: String?): String = fraseDeCodigoPsico(codigo) ?: when {
     codigo == "NO_AUTENTICADO" || status == 401 -> "Tu sesión expiró. Vuelve a entrar."
     // 404 sin `codigo` ni texto propio (la página 404 de Next): el endpoint no
     // existe todavía en el servidor.
     status == 404 && codigo == null && (error.isNullOrBlank() || error.startsWith("No se pudo completar (HTTP")) ->
         "La evaluación psicológica aún no está disponible. Actualiza la app o inténtalo más tarde."
+    // INFORME_INCOMPLETO, DATOS_INVALIDOS, LIMITE_PLAN…: el texto del servidor dice qué falta.
     !error.isNullOrBlank() -> error
     else -> "No se pudo completar (HTTP $status)."
+}
+
+/**
+ * Un error de la base (trigger) dentro del mensaje de una excepción de
+ * PostgREST → su frase. Para borrados directos (documentos) que la base frena.
+ */
+fun fraseDeErrorBasePsico(mensaje: String?): String? {
+    val m = mensaje ?: return null
+    return listOf("INFORME_EMITIDO_NO_SE_BORRA", "TRATAMIENTO_CON_INFORME_EMITIDO", "EVALUACION_CERRADA")
+        .firstOrNull { m.contains(it) }?.let { fraseDeCodigoPsico(it) }
 }
