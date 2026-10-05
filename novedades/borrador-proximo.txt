@@ -1,9 +1,14 @@
 # BORRADOR de las novedades de la próxima versión (aún sin número).
 # Al publicar, copiar a novedades/<versionName>.txt con el formato de siempre
 # (ver docs/ci-cd-despliegue.md → "Novedades de cada versión").
-El saldo a favor ahora cuenta también consultas y sesiones sueltas, y los tratamientos cancelados ya no aparecen como deuda en Mi salud.
+Llega la evaluación psicológica a la app, el saldo a favor ahora cuenta también consultas y sesiones sueltas, y los tratamientos cancelados ya no aparecen como deuda en Mi salud.
 ---
 Clínicas:
+• Evaluación psicológica: en el tratamiento de evaluación (y desde su cita en la agenda) toca "🧠 Evaluación" para trabajar entrevista, recopilación, observación, tests, análisis y plan, con guardado automático.
+• Tests con su catálogo, puntajes por escala y fotos de dibujos y hojas con la cámara (material protegido: el paciente nunca las ve).
+• Informe psicológico: ármalo, revísalo y emítelo desde el celular; queda en los documentos del paciente. "Crear tratamiento con este plan" abre el formulario de siempre ya lleno.
+• "+ Agregar cita de evaluación" suma citas a la evaluación sin cambiar el precio.
 • Saldo a favor más exacto: en consultas y sesiones sueltas se compara lo pagado con lo realmente atendido (sesiones y citas hechas), no solo con el precio inicial.
 Pacientes:
+• Mi salud: tu informe psicológico emitido aparece en Documentos para abrirlo, descargarlo o imprimirlo.
 • Mi salud: los tratamientos cancelados van en su propio apartado "Tratamientos cancelados", al final y cerrado. Nunca muestran deuda; si pagaste algo, solo verás cuánto.
