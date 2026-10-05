@@ -86,14 +86,17 @@ internal fun estadoChipInforme(estado: String?): String = when (estado) {
 @Composable
 fun PantallaEvaluacionPsico(
     ctx: ContextoStaff,
-    tratamientoId: String,
+    /** El tratamiento de la evaluación; o null y [citaId] (desde la agenda). */
+    tratamientoId: String?,
     apertura: Long,
     acciones: AccionesNativas,
     onSalir: () -> Unit,
     onCrearTratamiento: ((evaluacionId: String, prefill: PrefillPlanPsico) -> Unit)? = null,
+    /** Desde la agenda: la cita (el servidor resuelve su tratamiento, contrato §11). */
+    citaId: String? = null,
 ) {
     val c = Sania.colors
-    val vm: EvaluacionPsicoViewModel = viewModel(key = "psico:$tratamientoId:$apertura") { EvaluacionPsicoViewModel(tratamientoId) }
+    val vm: EvaluacionPsicoViewModel = viewModel(key = "psico:${tratamientoId ?: citaId}:$apertura") { EvaluacionPsicoViewModel(tratamientoId, citaId) }
     val scope = rememberCoroutineScope()
 
     fun salir() { vm.guardarAlSalir(); onSalir() }

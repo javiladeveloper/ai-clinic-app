@@ -71,7 +71,26 @@ private const val DEMORA_INFORME_MS = 1200L
  * lo pendiente se manda en el acto. La respuesta solo refresca los chips y la
  * sugerencia de sesiones: lo escrito mientras viajaba NO se pisa.
  */
-class EvaluacionPsicoViewModel(private val tratamientoId: String) : ViewModel() {
+class EvaluacionPsicoViewModel(
+    tratamientoInicial: String?,
+    /**
+     * Desde la agenda: la cita que el profesional SÍ ve (GET ?citaId=, contrato
+     * §11). Quien atiende una cita sin el permiso `pacientes` puede no ver el
+     * tratamiento; el servidor lo resuelve. El id del tratamiento sale de la respuesta.
+     */
+    private val citaId: String? = null,
+) : ViewModel() {
+
+    /** Se conoce al abrir (o llega en la primera respuesta, si se abrió por la cita). */
+    private var tratamientoId: String? = tratamientoInicial
+
+    /** GET por tratamiento si ya se conoce; si no, por la cita. */
+    private suspend fun leerEspacio(): EvaluacionPsicoRepo.Carga {
+        val r = if (tratamientoId != null) EvaluacionPsicoRepo.cargar(tratamientoId = tratamientoId)
+        else EvaluacionPsicoRepo.cargar(citaId = citaId)
+        if (r is EvaluacionPsicoRepo.Carga.Ok) r.espacio.tratamiento?.id?.let { tratamientoId = it }
+        return r
+    }
 
     var cargando by mutableStateOf(true); private set
     /** Carga fallida (con [sinAcceso] para el mensaje de confidencialidad). */
@@ -104,10 +123,11 @@ class EvaluacionPsicoViewModel(private val tratamientoId: String) : ViewModel() 
             cargando = true
             error = null
             sinAcceso = false
-            var r = EvaluacionPsicoRepo.cargar(tratamientoId = tratamientoId)
+            var r = leerEspacio()
             // Primera vez: se abre sola (idempotente; dos toques no duplican).
-            if (r is EvaluacionPsicoRepo.Carga.Ok && r.espacio.esEvaluacionPsico && r.espacio.evaluacion == null && !r.espacio.soloLectura) {
-                r = EvaluacionPsicoRepo.abrir(tratamientoId)
+            val tId = tratamientoId
+            if (r is EvaluacionPsicoRepo.Carga.Ok && r.espacio.esEvaluacionPsico && r.espacio.evaluacion == null && !r.espacio.soloLectura && tId != null) {
+                r = EvaluacionPsicoRepo.abrir(tId)
             }
             when (r) {
                 is EvaluacionPsicoRepo.Carga.Ok -> {
@@ -141,7 +161,7 @@ class EvaluacionPsicoViewModel(private val tratamientoId: String) : ViewModel() 
 
     /** Recarga todo SIN tocar lo que se está escribiendo (tras emitir, agregar test…). */
     private suspend fun refrescar() {
-        val r = EvaluacionPsicoRepo.cargar(tratamientoId = tratamientoId)
+        val r = leerEspacio()
         if (r is EvaluacionPsicoRepo.Carga.Ok && r.espacio.evaluacion != null) {
             val hayPendientes = pendientes.isNotEmpty() || testsPendientes.isNotEmpty()
             espacio = r.espacio
@@ -236,7 +256,8 @@ class EvaluacionPsicoViewModel(private val tratamientoId: String) : ViewModel() 
         if (accionando != null) return
         accionando = "cita"
         viewModelScope.launch {
-            val r = conIndicador { EvaluacionPsicoRepo.agregarCita(tratamientoId) }
+            val tId = tratamientoId ?: run { accionando = null; return@launch }
+            val r = conIndicador { EvaluacionPsicoRepo.agregarCita(tId) }
             accionando = null
             if (r.registrada) {
                 // Cómo se cuentan las citas lo decide el servidor: se toma lo que
@@ -324,7 +345,7 @@ class EvaluacionPsicoViewModel(private val tratamientoId: String) : ViewModel() 
 
     /** Los chips sin pisar lo escrito (el GET los trae calculados). */
     private suspend fun refrescarEstados() {
-        val r = EvaluacionPsicoRepo.cargar(tratamientoId = tratamientoId)
+        val r = leerEspacio()
         if (r is EvaluacionPsicoRepo.Carga.Ok) estados = r.espacio.estados
     }
 
@@ -482,7 +503,7 @@ class EvaluacionPsicoViewModel(private val tratamientoId: String) : ViewModel() 
      */
     suspend fun prefillParaCrear(): Pair<String, PrefillPlanPsico>? {
         if (!enviarPendientes()) return null
-        val r = conIndicador(Gestion.CARGANDO) { EvaluacionPsicoRepo.cargar(tratamientoId = tratamientoId) }
+        val r = conIndicador(Gestion.CARGANDO) { leerEspacio() }
         if (r !is EvaluacionPsicoRepo.Carga.Ok) {
             Toaster.error((r as EvaluacionPsicoRepo.Carga.Error).mensaje)
             return null

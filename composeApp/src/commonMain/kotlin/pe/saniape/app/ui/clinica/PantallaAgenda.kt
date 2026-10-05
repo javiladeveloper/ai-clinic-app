@@ -597,10 +597,10 @@ fun PantallaAgenda(
 
     // 🧠 Evaluación psicológica de la cita (su tratamiento), a pantalla completa.
     evalPsico?.let { (cita, apertura) ->
-        val tId = cita.tratamientoId
-        if (tId != null) {
+        // Por la CITA (GET ?citaId=): quien la atiende puede no ver el tratamiento.
+        run {
             pe.saniape.app.ui.clinica.psico.PantallaEvaluacionPsico(
-                ctx = ctx, tratamientoId = tId, apertura = apertura, acciones = acciones,
+                ctx = ctx, tratamientoId = null, citaId = cita.id, apertura = apertura, acciones = acciones,
                 onSalir = { evalPsico = null; vm.refrescar() },
                 onCrearTratamiento = if (ctx.puede("sesiones") && cita.pacienteId != null) { evId, prefill ->
                     evalPsico = null
