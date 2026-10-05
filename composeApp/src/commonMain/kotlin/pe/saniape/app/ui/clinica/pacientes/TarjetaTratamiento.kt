@@ -102,6 +102,13 @@ fun TarjetaTratamiento(
     soloLectura: Boolean = false,
     /** Tras un alta correcta: la ficha ofrece la encuesta de satisfacción. */
     onAltaHecha: (TratamientoPaciente) -> Unit = {},
+    /**
+     * Evaluación psicológica (servicio con `tipo_clinico`): sus botones van en
+     * [bloqueEvaluacionPsico] y no se ofrece "➕ Ampliar" (las citas se suman sin
+     * cobrar más, con su botón propio). En false la tarjeta queda como siempre.
+     */
+    esEvaluacionPsico: Boolean = false,
+    bloqueEvaluacionPsico: (@Composable () -> Unit)? = null,
 ) {
     // Permisos EFECTIVOS: el rol decide (puede()), y la baja del paciente los apaga.
     val puedeSesionesEf = puedeSesiones && !soloLectura
@@ -305,6 +312,9 @@ fun TarjetaTratamiento(
             }
         }
 
+        // 🧠 Evaluación psicológica: el espacio de trabajo y "+ Agregar cita de evaluación".
+        bloqueEvaluacionPsico?.invoke()
+
         // Fisio (M3): al paquete le quedan 1–2 sesiones → ofrecer renovar.
         if (esFisio) {
             pe.saniape.app.data.staff.avisoRenovacion(t.estado, t.modalidad, t.totalSesiones, t.sesionesCompletadas)
@@ -336,7 +346,8 @@ fun TarjetaTratamiento(
                     // En consultas todo (incl. costo) se registra en "Registrar atención" (paso Control).
                     if (!t.esConsulta) {
                         ItemMenu("✏ Editar tratamiento", c.texto) { menuTrat = false; onEditar(t) }
-                        ItemMenu("➕ Ampliar (más sesiones)", c.navy) { menuTrat = false; onAmpliar(t) }
+                        // Evaluación psicológica: las citas se suman sin cobrar (botón propio).
+                        if (!esEvaluacionPsico) ItemMenu("➕ Ampliar (más sesiones)", c.navy) { menuTrat = false; onAmpliar(t) }
                     }
                     // Derivar este tratamiento a otra especialidad (feature Premium).
                     if (puedeDerivar && t.estado == "Activo")

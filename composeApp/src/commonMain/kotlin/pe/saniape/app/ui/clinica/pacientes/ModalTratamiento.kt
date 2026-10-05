@@ -103,6 +103,13 @@ fun ModalCrearTratamiento(
      */
     citaOrigenId: String? = null,
     terapeutaInicialId: String? = null,
+    /**
+     * Evaluación psicológica · "Crear tratamiento con este plan": servicio,
+     * profesional, Paquete, sesiones y precio que propuso el plan (el
+     * `planPrefill` que arma el servidor). Todo editable; se crea por el camino
+     * de siempre. El diagnóstico llega por [diagnosticoPrevio].
+     */
+    prefillPlan: pe.saniape.app.data.staff.PrefillPlanPsico? = null,
 ) {
     val c = Sania.colors
     var procedimientos by remember { mutableStateOf<List<ProcedimientoRef>>(emptyList()) }
@@ -128,6 +135,8 @@ fun ModalCrearTratamiento(
     var plantillaPend by remember { mutableStateOf<PlantillaRef?>(null) }
     // Igual que la plantilla: la renovación se aplica DESPUÉS del prefill del servicio.
     var renovPend by remember { mutableStateOf(renovacion) }
+    // El plan de la evaluación psicológica, igual: después del prefill del servicio.
+    var planPend by remember { mutableStateOf(prefillPlan) }
     // medicación y próximo control: no se piden al crear (se llenan al editar tras atender).
     // Campañas de descuento vigentes (⚡ promos): se ofrecen al elegir el servicio.
     var campanias by remember { mutableStateOf<List<pe.saniape.app.data.staff.CampaniaApp>>(emptyList()) }
@@ -184,6 +193,15 @@ fun ModalCrearTratamiento(
                 proc = pr   // dispara el prefill del servicio; luego se aplica renovPend
             } else renovPend = null
         }
+        // Plan de la evaluación psicológica: su servicio y quien evaluó (suele seguir la terapia).
+        prefillPlan?.let { pp ->
+            if (miTerapeutaId == null) pp.terapeutaId?.let { tId -> terapeuta = ters.find { it.id == tId } ?: terapeuta }
+            procedimientos.find { it.id == pp.procedimientoId }?.let { pr ->
+                pr.especialidadId?.let { eId -> especialidad = esps.find { it.id == eId } ?: especialidad }
+                proc = pr   // dispara el prefill del servicio; luego se aplica planPend
+            }
+            // Sin servicio en el plan: las sesiones y el precio se aplican al elegir uno.
+        }
     }
 
     // Profesionales de la especialidad elegida (o todos si no hay especialidad).
@@ -228,6 +246,12 @@ fun ModalCrearTratamiento(
                 r.precioPaquete?.let { precioPaquete = it.toString() }
                 r.precioPorSesion?.let { precioPorSesion = it.toString() }
                 renovPend = null
+            }
+            planPend?.let { pp ->
+                modalidad = "Paquete"
+                pp.totalSesiones?.takeIf { it > 0 }?.let { totalSesiones = it.toString() }
+                pp.precioPaquete?.let { precioPaquete = formatoNum(it) }
+                planPend = null
             }
             plantillaPend?.let { pl ->
                 pl.modalidad?.takeIf { it == "Paquete" || it == "Sesión suelta" }?.let { modalidad = it }
@@ -319,7 +343,7 @@ fun ModalCrearTratamiento(
             Row(Modifier.fillMaxWidth().background(c.navyDark).padding(horizontal = 18.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(if (renovacion != null) "📦 Nuevo paquete" else "Nuevo tratamiento", color = c.sobreNavy, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                Text(if (renovacion != null) "📦 Nuevo paquete" else if (prefillPlan != null) "🎯 Tratamiento del plan" else "Nuevo tratamiento", color = c.sobreNavy, fontSize = 19.sp, fontWeight = FontWeight.Bold)
                 Text(
                     when {
                         esUnidades -> "Por unidades · ${proc?.unidadLabel ?: "unidades"} × precio"
@@ -689,6 +713,40 @@ suspend fun guardarTratamientoNuevo(pacienteId: String, nuevo: TratamientoNuevo)
     )
     if (ok) nuevo.plantillaId?.let { runCatching { PacientesRepo.contarUsoPlantilla(it) } }
     return ok
+}
+
+/**
+ * "Crear tratamiento con este plan" (evaluación psicológica): se crea por el
+ * camino de SIEMPRE (`/api/staff/tratamiento/accion`, `crear`) pero directo,
+ * para leer el `id` y atarlo al plan (`/plan-tratamiento`: "✓ Tratamiento
+ * creado" y los objetivos a objetivos_tratamiento). Sin señal no se crea (no
+ * habría id que atar). Devuelve true si el tratamiento quedó creado.
+ */
+suspend fun crearTratamientoDelPlan(pacienteId: String, nuevo: TratamientoNuevo, evaluacionId: String): Boolean {
+    val cuerpo = PacientesRepo.cuerpoCrearTratamiento(
+        pacienteId = pacienteId, procedimientoId = nuevo.procedimientoId,
+        terapeutaId = nuevo.terapeutaId, modalidad = nuevo.modalidad,
+        totalSesiones = nuevo.totalSesiones, precioPaquete = nuevo.precioPaquete,
+        precioPorSesion = nuevo.precioPorSesion, precioAcordado = nuevo.precioAcordado,
+        diagnostico = nuevo.diagnostico, citaOrigenId = nuevo.citaOrigenId,
+        medicacion = nuevo.medicacion, proximoControl = nuevo.proximoControl,
+        cantidadUnidades = nuevo.cantidadUnidades, precioUnitario = nuevo.precioUnitario,
+        tecnicasSugeridas = nuevo.tecnicasSugeridas,
+        campaniaId = nuevo.campaniaId, motivoPrecio = nuevo.motivoPrecio,
+        fechaInicio = nuevo.fechaInicio,
+        primeraFecha = nuevo.primeraFecha, primeraHora = nuevo.primeraHora,
+    )
+    val r = pe.saniape.app.ui.conIndicador { pe.saniape.app.data.staff.EvaluacionPsicoRepo.crearTratamientoConId(cuerpo) }
+    if (!r.registrada) {
+        pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo crear el tratamiento")
+        return false
+    }
+    nuevo.plantillaId?.let { runCatching { PacientesRepo.contarUsoPlantilla(it) } }
+    val id = pe.saniape.app.data.staff.idDeRespuesta(r.cuerpo)
+    val atado = id != null && pe.saniape.app.data.staff.EvaluacionPsicoRepo.vincularPlan(evaluacionId, id).registrada
+    if (atado) pe.saniape.app.ui.Toaster.exito("Tratamiento creado con el plan de la evaluación")
+    else pe.saniape.app.ui.Toaster.error("Se creó el tratamiento, pero no se pudo marcar en el plan de la evaluación")
+    return true
 }
 
 /** "80" o "79.50" — para mostrar montos sin colas de decimales. */

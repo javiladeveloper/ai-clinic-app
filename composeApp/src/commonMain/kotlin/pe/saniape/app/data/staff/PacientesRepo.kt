@@ -975,7 +975,30 @@ object PacientesRepo {
         hallazgoIds: List<String> = emptyList(),
         // Primera sesión en el mismo paso (servidor: lib/primera-sesion.ts). null = no.
         primeraFecha: String? = null, primeraHora: String? = null,
-    ): Boolean = accionTratamiento(buildJsonObject {
+    ): Boolean = accionTratamiento(cuerpoCrearTratamiento(pacienteId = pacienteId, procedimientoId = procedimientoId, terapeutaId = terapeutaId, modalidad = modalidad, totalSesiones = totalSesiones, precioPaquete = precioPaquete, precioPorSesion = precioPorSesion, precioAcordado = precioAcordado, diagnostico = diagnostico, citaOrigenId = citaOrigenId, medicacion = medicacion, proximoControl = proximoControl, cantidadUnidades = cantidadUnidades, precioUnitario = precioUnitario, tecnicasSugeridas = tecnicasSugeridas, campaniaId = campaniaId, motivoPrecio = motivoPrecio, fechaInicio = fechaInicio, hallazgoIds = hallazgoIds, primeraFecha = primeraFecha, primeraHora = primeraHora))
+
+    /**
+     * El cuerpo de `accion: crear` (una sola fuente): lo usa [crearTratamiento]
+     * (con la cola offline) y la evaluación psicológica, que lo manda directo
+     * porque necesita el `id` del tratamiento creado para atarlo al plan.
+     */
+    internal fun cuerpoCrearTratamiento(
+        pacienteId: String, procedimientoId: String, terapeutaId: String?, modalidad: String,
+        totalSesiones: Int?, precioPaquete: Double?, precioPorSesion: Double?, precioAcordado: Double?,
+        diagnostico: String?, citaOrigenId: String? = null, medicacion: String? = null, proximoControl: String? = null,
+        // Modalidad Unidades (injerto capilar, botox…): cantidad × precio unitario.
+        cantidadUnidades: Int? = null, precioUnitario: Double? = null,
+        // Técnicas sugeridas por sesión (de la plantilla): precargan el completar sesión.
+        tecnicasSugeridas: String? = null,
+        // Campaña aplicada, motivo del descuento y fecha de inicio (paridad web 2026-09-02).
+        campaniaId: String? = null, motivoPrecio: String? = null, fechaInicio: String? = null,
+        // Odontología: los hallazgos del odontograma que originan este
+        // tratamiento. Los ata el SERVIDOR, así funciona también desde la cola
+        // offline sin que la app necesite el id del tratamiento nuevo.
+        hallazgoIds: List<String> = emptyList(),
+        // Primera sesión en el mismo paso (servidor: lib/primera-sesion.ts). null = no.
+        primeraFecha: String? = null, primeraHora: String? = null,
+    ): JsonObject = buildJsonObject {
         put("accion", "crear"); put("pacienteId", pacienteId); put("procedimientoId", procedimientoId)
         if (!primeraFecha.isNullOrBlank()) put("primeraSesion", buildJsonObject {
             put("fecha", primeraFecha); put("hora", primeraHora ?: "09:00")
@@ -999,7 +1022,7 @@ object PacientesRepo {
         if (hallazgoIds.isNotEmpty()) {
             put("hallazgoIds", kotlinx.serialization.json.JsonArray(hallazgoIds.map { JsonPrimitive(it) }))
         }
-    })
+    }
 
     suspend fun editarTratamiento(
         tratamientoId: String, totalSesiones: Int?, precioPaquete: Double?,

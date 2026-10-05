@@ -209,6 +209,14 @@ fun PantallaFichaPaciente(
     )
     // "Nuevo paquete" (M3): abre el form de tratamiento prellenado con este.
     var renovarDesde by remember { mutableStateOf<TratamientoPaciente?>(null) }
+    // ── 🧠 Evaluación psicológica (servicios con tipo_clinico) ──
+    // Consulta chica y APARTE: sin la columna en la base o sin servicios así
+    // (DALU y casi todas) queda vacío y la ficha no cambia.
+    var procsEvalPsico by remember { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(Unit) { procsEvalPsico = pe.saniape.app.data.staff.EvaluacionPsicoRepo.procedimientosEvaluacion() }
+    // (tratamiento, apertura) del espacio abierto; y el plan a convertir en tratamiento.
+    var evalPsicoAbierta by remember { mutableStateOf<Pair<String, Long>?>(null) }
+    var planPsico by remember { mutableStateOf<Pair<String, pe.saniape.app.data.staff.PrefillPlanPsico>?>(null) }
     LaunchedEffect(pacienteInicial.id, recargarToken) {
         actualizando = true
         // conIndicador solo en las RECARGAS (token > 0), no en la carga inicial: al abrir
@@ -259,6 +267,20 @@ fun PantallaFichaPaciente(
     DisposableEffect(pacienteInicial.id) {
         val job = pe.saniape.app.data.staff.RealtimeFicha.suscribir(scope) { recargar() }
         onDispose { job.cancel() }
+    }
+
+    // 🧠 Evaluación psicológica a pantalla completa (encima de la ficha).
+    evalPsicoAbierta?.let { (tId, apertura) ->
+        pe.saniape.app.ui.clinica.psico.PantallaEvaluacionPsico(
+            ctx = ctx, tratamientoId = tId, apertura = apertura, acciones = acciones,
+            onSalir = { evalPsicoAbierta = null; recargar() },
+            // "Crear tratamiento con este plan": el formulario de SIEMPRE, pre-llenado.
+            onCrearTratamiento = if (ctx.puede("sesiones") || ctx.puede("pacientes")) { evId, prefill ->
+                evalPsicoAbierta = null
+                planPsico = evId to prefill
+            } else null,
+        )
+        return
     }
 
     // Crear cita (control que nace de un tratamiento) — pantalla completa.
@@ -610,6 +632,8 @@ fun PantallaFichaPaciente(
                         tratEsDental = tratEsDental,
                         tratEsFisio = tratEsFisio,
                         onNuevoPaquete = { renovarDesde = it },
+                        procsEvalPsico = procsEvalPsico,
+                        onEvaluacionPsico = { evalPsicoAbierta = it.id to kotlinx.datetime.Clock.System.now().toEpochMilliseconds() },
                         onCompletarSesion = { ses, anterior, tecSug, trat -> completarSesion = CompletarSesionReq(ses, anterior, tecSug, trat) },
                         onRecargar = { recargar() },
                         onEditarTrat = { editarTratamiento = it },
@@ -769,6 +793,25 @@ fun PantallaFichaPaciente(
                     if (ok) pe.saniape.app.ui.Toaster.exito(if (nuevo.primeraFecha != null) "Tratamiento creado con su primera sesión" else "Tratamiento creado") else pe.saniape.app.ui.Toaster.error("No se pudo crear el tratamiento")
                     // Si se usó una plantilla, contar el uso (ordena "más usadas primero").
                     nuevo.plantillaId?.let { PacientesRepo.contarUsoPlantilla(it) }
+                    recargar()
+                }
+            },
+        )
+    }
+
+    // "Crear tratamiento con este plan" (evaluación psicológica): el mismo formulario,
+    // pre-llenado; al crearlo se ata al plan ("✓ Tratamiento creado").
+    planPsico?.let { (evId, prefill) ->
+        ModalCrearTratamiento(
+            pacienteId = paciente.id,
+            miTerapeutaId = ctx.miTerapeutaId,
+            diagnosticoPrevio = prefill.diagnostico ?: paciente.diagnostico,
+            prefillPlan = prefill,
+            onCancelar = { planPsico = null },
+            onGuardar = { nuevo ->
+                planPsico = null
+                scope.launch {
+                    crearTratamientoDelPlan(paciente.id, nuevo, evId)
                     recargar()
                 }
             },
@@ -1972,6 +2015,9 @@ private fun ContenidoAtenciones(
     tratEsDental: (TratamientoPaciente) -> Boolean = { false },
     tratEsFisio: (TratamientoPaciente) -> Boolean = { false },
     onNuevoPaquete: (TratamientoPaciente) -> Unit = {},
+    /** Servicios de evaluación psicológica (vacío = nada cambia) y abrir su espacio. */
+    procsEvalPsico: Set<String> = emptySet(),
+    onEvaluacionPsico: (TratamientoPaciente) -> Unit = {},
     onCompletarSesion: (SesionFicha, SesionFicha?, String?, TratamientoPaciente) -> Unit,
     onRecargar: () -> Unit,
     onEditarTrat: (TratamientoPaciente) -> Unit,
@@ -2055,6 +2101,18 @@ private fun ContenidoAtenciones(
             onRegistrarAtencion = onRegistrarAtencion,
             soloLectura = soloLectura,
             onAltaHecha = onAltaHecha,
+            esEvaluacionPsico = t.procedimientoId != null && t.procedimientoId in procsEvalPsico,
+            bloqueEvaluacionPsico = if (t.procedimientoId != null && t.procedimientoId in procsEvalPsico) {
+                {
+                    pe.saniape.app.ui.clinica.psico.AccionesEvaluacionPsico(
+                        tratamientoId = t.id, terapeutaId = t.terapeutaId, estado = t.estado,
+                        rol = ctx.rol, miTerapeutaId = ctx.miTerapeutaId,
+                        puedeCitas = ctx.puede("citas"), puedeSesiones = ctx.puede("sesiones"),
+                        fichaInactiva = soloLectura, recargaToken = recargaToken,
+                        onAbrir = { onEvaluacionPsico(t) }, onCitaAgregada = onRecargar,
+                    )
+                }
+            } else null,
         )
     }
 
@@ -2100,7 +2158,18 @@ private fun ContenidoAtenciones(
         // Otros tratamientos en la clínica (a cargo de otro profesional) — solo lectura.
         if (otros.isNotEmpty()) {
             Spacer(Modifier.height(Sania.dim.md))
-            OtrosTratamientos(otros)
+            OtrosTratamientos(otros, alPie = { t ->
+                if (t.procedimientoId != null && t.procedimientoId in procsEvalPsico) {
+                    pe.saniape.app.ui.clinica.psico.AccionesEvaluacionPsico(
+                        tratamientoId = t.id, terapeutaId = t.terapeutaId, estado = t.estado,
+                        rol = ctx.rol, miTerapeutaId = ctx.miTerapeutaId,
+                        // Solo abrir: agregar citas es de quien lleva el tratamiento.
+                        puedeCitas = false, puedeSesiones = false,
+                        fichaInactiva = soloLectura, recargaToken = recargaToken,
+                        onAbrir = { onEvaluacionPsico(t) }, onCitaAgregada = onRecargar,
+                    )
+                }
+            })
         }
     }
 }
@@ -2111,7 +2180,11 @@ private fun ContenidoAtenciones(
  * progreso, profesional, diagnóstico, y al expandir, las sesiones completadas. Igual que la web.
  */
 @Composable
-private fun OtrosTratamientos(otros: List<TratamientoPaciente>) {
+private fun OtrosTratamientos(
+    otros: List<TratamientoPaciente>,
+    /** Algo más bajo cada tratamiento (la evaluación psicológica que atendió). */
+    alPie: @Composable (TratamientoPaciente) -> Unit = {},
+) {
     val c = Sania.colors
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
@@ -2167,6 +2240,7 @@ private fun OtrosTratamientos(otros: List<TratamientoPaciente>) {
                         }
                     }
                 }
+                alPie(t)
             }
         }
     }
