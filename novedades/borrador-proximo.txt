@@ -1,0 +1,8 @@
+# BORRADOR de las novedades de la próxima versión (aún sin número).
+# Al publicar, copiar a novedades/<versionName>.txt con el formato de siempre
+# (ver docs/ci-cd-despliegue.md → "Novedades de cada versión").
+Las consultas y evaluaciones se pueden cobrar con más de un medio de pago a la vez, y la caja cuadra por método.
+---
+Clínicas:
+• Cobro dividido: al cobrar una consulta o evaluación, marca "Pagó con más de un medio" y reparte el monto entre 2 y 4 medios (p. ej. S/ 20 en efectivo + S/ 20 por Yape). Verás en vivo cuánto falta o sobra; Cobrar se activa solo cuando suma exacto.
+• Funciona igual desde la agenda y desde el cierre de la consulta guiada, también al abonar el cobro al tratamiento. En caja entra un ingreso por cada medio, así el arqueo por método cuadra.
