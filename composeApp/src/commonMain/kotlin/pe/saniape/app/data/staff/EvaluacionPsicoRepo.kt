@@ -123,35 +123,48 @@ object EvaluacionPsicoRepo {
     }
 
     /**
-     * La URL para VER una foto o el PDF del informe. Un solo lugar: si el
-     * servidor manda cómo verla ([url]: firmada, o un endpoint `/api/...` que
-     * responde `{ url }`), se usa eso; si no, el firmado de siempre por `path`
-     * (`/api/documento`). El servidor decide quién la ve: sin acceso responde
-     * null y la pantalla lo dice.
+     * La URL para VER una foto protegida o el PDF del informe. Un solo lugar:
+     *  1. si el servidor manda cómo verla ([url]: firmada, o un endpoint `/api/...`
+     *     que responde `{ url }`), eso;
+     *  2. si no, el endpoint del material protegido por id
+     *     (`GET /api/staff/evaluacion-psico/foto?documentoId=` → `{ url }`, solo
+     *     Admin o tratante; las rutas `protegido/` ya no se firman por path);
+     *  3. con un servidor que aún no lo tiene (404/405), el firmado de siempre por
+     *     `path` (`/api/documento`).
+     * Sin acceso → null y la pantalla lo dice. La UI nunca arma rutas de Storage.
      */
-    suspend fun urlDeArchivo(path: String?, url: String?): String? {
+    suspend fun urlDeArchivo(documentoId: String?, path: String?, url: String?): String? {
         val directa = url?.trim()?.ifBlank { null }
         if (directa != null) {
             if (directa.startsWith("http")) return directa
-            if (directa.startsWith("/")) {
-                val tk = token() ?: return null
-                return try {
-                    val resp = http.get("${Supabase.SITE_URL}$directa") { header("Authorization", "Bearer $tk") }
-                    if (resp.status.value !in 200..299) null
-                    else urlDeRespuesta(resp.bodyAsText())
-                } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
-            }
+            if (directa.startsWith("/")) return urlDeEndpoint(directa).first
+        }
+        if (!documentoId.isNullOrBlank()) {
+            val (u, status) = urlDeEndpoint("$BASE/foto?documentoId=$documentoId")
+            if (u != null) return u
+            // 403 = sin acceso (no se intenta por otro lado); otro error real, tampoco.
+            if (status != 404 && status != 405) return null
         }
         val p = path?.trim()?.ifBlank { null } ?: return null
         return SolicitudesRepo.urlFirmada(p)
+    }
+
+    /** GET a un endpoint que responde `{ url }` → (url, status). */
+    private suspend fun urlDeEndpoint(ruta: String): Pair<String?, Int> {
+        val tk = token() ?: return null to 401
+        return try {
+            val resp = http.get("${Supabase.SITE_URL}$ruta") { header("Authorization", "Bearer $tk") }
+            val st = resp.status.value
+            if (st !in 200..299) null to st else urlDeRespuesta(resp.bodyAsText()) to st
+        } catch (e: CancellationException) { throw e } catch (_: Exception) { null to 0 }
     }
 
     internal fun urlDeRespuesta(cuerpo: String): String? =
         (runCatching { json.parseToJsonElement(cuerpo).jsonObject["url"] }.getOrNull() as? JsonPrimitive)
             ?.content?.takeIf { it.startsWith("http") }
 
-    suspend fun urlDeFoto(f: FotoPsico): String? = urlDeArchivo(f.path, f.url)
-    suspend fun urlDeInformePdf(d: DocumentoInformePsico): String? = urlDeArchivo(d.path, d.url)
+    suspend fun urlDeFoto(f: FotoPsico): String? = urlDeArchivo(f.id, f.path, f.url)
+    suspend fun urlDeInformePdf(d: DocumentoInformePsico): String? = urlDeArchivo(d.id, d.path, d.url)
 
     // ── Lecturas ─────────────────────────────────────────────────────────────
 
