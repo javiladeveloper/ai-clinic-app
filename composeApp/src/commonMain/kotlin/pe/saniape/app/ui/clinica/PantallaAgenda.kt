@@ -115,9 +115,15 @@ fun PantallaAgenda(
     // Sub-pantalla: la consulta guiada ("▶ Atender") de esta cita, nativa.
     var atendiendo by remember { mutableStateOf<Atendiendo?>(null) }
     var prefillEval by remember { mutableStateOf<PrefillCita?>(null) }
+    // 🧠 Evaluación psicológica: (cita, apertura) del espacio abierto y el plan a crear.
+    var evalPsico by remember { mutableStateOf<Pair<CitaStaff, Long>?>(null) }
+    var planPsico by remember { mutableStateOf<Triple<CitaStaff, String, pe.saniape.app.data.staff.PrefillPlanPsico>?>(null) }
+    // Servicios de evaluación psicológica (consulta aparte; vacío = la agenda no cambia).
+    var procsEvalPsico by remember { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(Unit) { procsEvalPsico = pe.saniape.app.data.staff.EvaluacionPsicoRepo.procedimientosEvaluacion() }
     // Crear cita y Atender tapan la agenda entera: sin barra de tabs encima. Al
     // salir de la agenda por otro camino (onDispose) la barra vuelve sí o sí.
-    val pantallaCompleta = creandoCita || prefillEval != null || atendiendo != null
+    val pantallaCompleta = creandoCita || prefillEval != null || atendiendo != null || evalPsico != null
     DisposableEffect(pantallaCompleta) {
         onPantallaCompleta(pantallaCompleta)
         onDispose { onPantallaCompleta(false) }
@@ -527,6 +533,7 @@ fun PantallaAgenda(
                                         AccionTarjeta.Cobrar -> cobrar = cita
                                         // La consulta guiada, nativa (antes se abría en la web).
                                         AccionTarjeta.Atender -> atendiendo = Atendiendo(cita.id)
+                                        AccionTarjeta.EvaluacionPsico -> evalPsico = cita to kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
                                     }
                                 },
                                 onVerResumen = { resumenPacienteId = it },
@@ -538,6 +545,10 @@ fun PantallaAgenda(
                                 flujo = vm.flujoDe(cita),
                                 puedeCobrar = ctx.puede("pagos"),
                                 estadoPago = vm.estadosPago[cita.id],
+                                // Gemelo de evalPsicoDe (/citas web): servicio de evaluación + Admin o
+                                // quien atiende la cita. La base decide al abrir.
+                                evaluacionPsico = cita.procedimientoId != null && cita.procedimientoId in procsEvalPsico &&
+                                    pe.saniape.app.data.staff.puedeVerEvaluacionPsico(ctx.rol, ctx.miTerapeutaId, null, listOf(cita.terapeutaId)),
                                 sala = vm.etapaDe(cita)?.let { etapa ->
                                     val a = vm.atencionDe(cita)
                                     pe.saniape.app.ui.clinica.agenda.componentes.SalaTarjeta(
@@ -582,6 +593,40 @@ fun PantallaAgenda(
             onVerFicha = { resumenPacienteId = it },
             onOdontograma = { id -> vm.citas.firstOrNull { it.id == id }?.let { odontogramaCita = it } },
         )
+    }
+
+    // 🧠 Evaluación psicológica de la cita (su tratamiento), a pantalla completa.
+    evalPsico?.let { (cita, apertura) ->
+        val tId = cita.tratamientoId
+        if (tId != null) {
+            pe.saniape.app.ui.clinica.psico.PantallaEvaluacionPsico(
+                ctx = ctx, tratamientoId = tId, apertura = apertura, acciones = acciones,
+                onSalir = { evalPsico = null; vm.refrescar() },
+                onCrearTratamiento = if (ctx.puede("sesiones") && cita.pacienteId != null) { evId, prefill ->
+                    evalPsico = null
+                    planPsico = Triple(cita, evId, prefill)
+                } else null,
+            )
+        }
+    }
+    planPsico?.let { (cita, evId, prefill) ->
+        val pid = cita.pacienteId
+        if (pid != null) {
+            pe.saniape.app.ui.clinica.pacientes.ModalCrearTratamiento(
+                pacienteId = pid,
+                miTerapeutaId = ctx.miTerapeutaId,
+                diagnosticoPrevio = prefill.diagnostico,
+                prefillPlan = prefill,
+                onCancelar = { planPsico = null },
+                onGuardar = { nuevo ->
+                    planPsico = null
+                    scope.launch {
+                        pe.saniape.app.ui.clinica.pacientes.crearTratamientoDelPlan(pid, nuevo, evId)
+                        vm.refrescar()
+                    }
+                },
+            )
+        }
     }
 
     // ── Modales ──

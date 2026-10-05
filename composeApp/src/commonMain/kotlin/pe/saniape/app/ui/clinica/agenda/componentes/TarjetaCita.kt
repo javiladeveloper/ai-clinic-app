@@ -85,6 +85,8 @@ fun TarjetaCita(
      * de siempre (💰 Pagado / ⚠ Debe de la Consulta/Evaluación).
      */
     estadoPago: pe.saniape.app.data.staff.EstadoPagoCita? = null,
+    /** "🧠 Evaluación": la cita es de una evaluación psicológica y quien mira puede trabajarla. */
+    evaluacionPsico: Boolean = false,
 ) {
     val c = Sania.colors
     val acciones = recordarAcciones()
@@ -222,6 +224,7 @@ fun TarjetaCita(
                 pasarA = flujo.labelEvaluacion.takeIf { flujo.pasaAEvaluacion(cita.tipo) },
                 crearTratamiento = crearTratamiento && cita.pacienteId != null,
                 sala = sala?.takeIf { cita.pacienteId != null },
+                evaluacionPsico = evaluacionPsico && cita.tratamientoId != null,
                 cobrar = cobrable && puedeCobrar && !pagada)
             if (acc.isNotEmpty()) {
                 Spacer(Modifier.height(Sania.dim.md))
@@ -245,6 +248,8 @@ enum class AccionTarjeta {
     Atender,
     /** "💰 Cobrar": registrar el cobro de una Consulta/Evaluación (método + fecha del pago). */
     Cobrar,
+    /** "🧠 Evaluación": el espacio de trabajo de la evaluación psicológica de su tratamiento. */
+    EvaluacionPsico,
 }
 
 /**
@@ -299,6 +304,7 @@ private fun accionesPara(
     pasarA: String? = null,
     /** Consulta/Evaluación con costo, sin cobrar, y quien mira tiene permiso 'pagos'. */
     cobrar: Boolean = false,
+    evaluacionPsico: Boolean = false,
 ): List<Triple<String, AccionTarjeta, Color>> {
     val c = Sania.colors
     val lista = mutableListOf<Triple<String, AccionTarjeta, Color>>()
@@ -330,6 +336,8 @@ private fun accionesPara(
         if (sala?.triajeOn == true && principal != AccionTarjeta.Triaje) lista.add(Triple(textoTriaje, AccionTarjeta.Triaje, c.info))
         if (principal != AccionTarjeta.Atender) lista.add(Triple(textoAtender, accionAtender, c.navy))
     } else if (estado == "Pendiente") lista.add(Triple("✓ Confirmar", AccionTarjeta.Confirmar, c.ok))
+    // Evaluación psicológica: el espacio de trabajo, en cualquier estado (como la web).
+    if (evaluacionPsico && estado != "Cancelada") lista.add(Triple("🧠 Evaluación", AccionTarjeta.EvaluacionPsico, c.purple))
     if (pasarA != null && activa) lista.add(Triple("→ $pasarA", AccionTarjeta.PasarEvaluacion, c.info))
     if (activa && principal == null) lista.add(Triple("✓ Completar", AccionTarjeta.Completar, c.navy))
     if (estado == "Completada" || estado == "Cancelada") lista.add(Triple("↩ Revertir", AccionTarjeta.Revertir, c.pend))
