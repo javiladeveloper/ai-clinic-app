@@ -355,17 +355,17 @@ private fun BloqueCobro(vm: AtencionViewModel, d: DatosConsultaApp, ctx: Context
         ModalCobrarCita(
             cita = citaStaffDeConsulta(d),
             onCancelar = { if (!cobrando) abierto = false },
-            onConfirmar = { metodo, modo, fecha ->
+            onConfirmar = { metodo, modo, fecha, pagos ->
                 if (!cobrando) {
                     vm.lanzar("cobrar") {
-                        val r = AgendaRepo.cobrarCita(cita.id, metodo, modo, fecha)
+                        val r = AgendaRepo.cobrarCita(cita.id, metodo, modo, fecha, pagos)
                         if (r.registrada) {
                             abierto = false
                             // Encolada: enviarOEncolar ya avisó "se registrará al volver la señal".
-                            if (!r.encolada) Toaster.exito(textoCobrado(nombreTipo, monto, modo, fecha, cita.fecha))
+                            if (!r.encolada) Toaster.exito(textoCobrado(nombreTipo, monto, modo, fecha, cita.fecha, pagos, r.yaEstaba))
                             vm.recargar()
                         } else {
-                            r.rechazo?.let { Toaster.error(it.error) }
+                            r.rechazo?.let { Toaster.error(pe.saniape.app.data.staff.mensajeRechazoCobro(it, pagos != null)) }
                         }
                     }
                 }
@@ -376,16 +376,27 @@ private fun BloqueCobro(vm: AtencionViewModel, d: DatosConsultaApp, ctx: Context
     }
 }
 
-/** El toast del cobro, igual que en la agenda ("Cobrado S/ 80.00 (fechado el 29/09)"). */
-internal fun textoCobrado(nombreTipo: String, monto: String, modo: String, fechaPago: String, fechaCita: String): String {
+/**
+ * El toast del cobro, el mismo en la agenda y en la consulta guiada: "Cobrado
+ * S/ 80.00 (fechado el 29/09)", "Cobrado S/ 40.00 (Efectivo + Yape)". Si la cita
+ * [yaEstaba] cobrada (otra persona, el auto-cobro…), se dice eso: el servidor no
+ * registró el cobro de nuevo.
+ */
+internal fun textoCobrado(
+    nombreTipo: String, monto: String, modo: String, fechaPago: String, fechaCita: String,
+    pagos: List<pe.saniape.app.data.staff.PartePago>? = null, yaEstaba: Boolean = false,
+): String {
+    if (yaEstaba) return "Esta ${nombreTipo.lowercase()} ya estaba cobrada: no se registró de nuevo"
+    val medios = pagos?.takeIf { it.isNotEmpty() && modo != "gratis" }
+        ?.let { " (${pe.saniape.app.data.staff.etiquetaMetodos(it)})" }.orEmpty()
     val fechada = if (modo != "gratis" && fechaPago.take(10) != fechaCita.take(10)) {
         val p = fechaPago.take(10).split("-")
         if (p.size == 3) " (fechado el ${p[2]}/${p[1]})" else ""
     } else ""
     return when (modo) {
         "gratis" -> "$nombreTipo sin costo: quedó saldada"
-        "abonar" -> "$monto abonados al tratamiento$fechada"
-        else -> "Cobrado $monto$fechada"
+        "abonar" -> "$monto abonados al tratamiento$medios$fechada"
+        else -> "Cobrado $monto$medios$fechada"
     }
 }
 

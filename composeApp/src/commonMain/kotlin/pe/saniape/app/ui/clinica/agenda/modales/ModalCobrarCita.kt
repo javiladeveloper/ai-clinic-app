@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,9 +38,14 @@ import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.data.staff.CitaStaff
+import pe.saniape.app.data.staff.FilaPago
+import pe.saniape.app.data.staff.PartePago
+import pe.saniape.app.data.staff.filasIniciales
+import pe.saniape.app.data.staff.repartoValido
 import pe.saniape.app.ui.clinica.pacientes.ChipsMetodoPago
 import pe.saniape.app.ui.clinica.pacientes.DialogoForm
 import pe.saniape.app.ui.clinica.pacientes.rememberMetodoPagoInicial
+import pe.saniape.app.ui.clinica.pacientes.rememberMetodosPago
 import pe.saniape.app.ui.fechaDMA
 import pe.saniape.app.ui.theme.Sania
 
@@ -52,15 +59,21 @@ import pe.saniape.app.ui.theme.Sania
  *
  * Tres destinos del cobro (Renova 2026-08-26): cobrar normal, abonarlo al
  * tratamiento del paciente, o no cobrar (la cita queda en S/ 0 y saldada).
- * [onConfirmar] recibe (método, modo, fecha yyyy-MM-dd). Sin botón de tarjeta: la
- * app no tiene aquí el flujo de QR de la web.
+ * [onConfirmar] recibe (método, modo, fecha yyyy-MM-dd, pagos). Sin botón de
+ * tarjeta: la app no tiene aquí el flujo de QR de la web.
+ *
+ * COBRO DIVIDIDO (DALU 2026-10-03): con "Pagó con más de un medio" se reparte el
+ * monto en 2 a 4 medios (S/ 20 Efectivo + S/ 20 Yape) y `pagos` llega con las
+ * partes validadas; si no, llega null y vale `metodo`. Cobrar se habilita solo
+ * cuando el reparto cuadra al céntimo. Las filas viven fuera del `if` del modo:
+ * si un cobro responde "incierto", el reintento sale con el MISMO reparto.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ModalCobrarCita(
     cita: CitaStaff,
     onCancelar: () -> Unit,
-    onConfirmar: (metodo: String, modo: String, fecha: String) -> Unit,
+    onConfirmar: (metodo: String, modo: String, fecha: String, pagos: List<PartePago>?) -> Unit,
     guardando: Boolean,
     /** Cómo llama el flujo de la clínica al tipo de la cita ("Diagnóstico"…). */
     nombreTipo: String = cita.tipo ?: "Cita",
@@ -70,6 +83,12 @@ fun ModalCobrarCita(
     var metodo by rememberMetodoPagoInicial(cita.pacienteId)
     var fecha by remember(cita.id) { mutableStateOf(cita.fecha.take(10).ifBlank { pe.saniape.app.ui.clinica.agenda.hoyIso() }) }
     var mostrarFecha by remember { mutableStateOf(false) }
+    val metodos = rememberMetodosPago()
+    var dividido by remember(cita.id) { mutableStateOf(false) }
+    var filas by remember(cita.id) { mutableStateOf<List<FilaPago>>(emptyList()) }
+    val total = cita.costo ?: 0.0
+    val conDivision = dividido && modo != "gratis"
+    val reparto = if (conDivision) repartoValido(filas, total) else null
     val monto = textoSoles(cita.costo ?: 0.0)
     val tipoMin = nombreTipo.lowercase()
 
@@ -95,9 +114,12 @@ fun ModalCobrarCita(
             modo == "abonar" -> "Cobrar y abonar $monto"
             else -> "Cobrar $monto"
         },
-        accionHabilitada = !guardando,
+        accionHabilitada = !guardando && (!conDivision || reparto != null),
         onCancelar = { if (!guardando) onCancelar() },
-        onAccion = { onConfirmar(metodo, modo, fecha) },
+        onAccion = {
+            if (conDivision) reparto?.let { onConfirmar(metodo, modo, fecha, it) }
+            else onConfirmar(metodo, modo, fecha, null)
+        },
     ) {
         // Qué se cobra: tipo · paciente, y el monto grande.
         Column(
@@ -126,7 +148,28 @@ fun ModalCobrarCita(
         if (modo != "gratis") {
             Spacer(Modifier.height(14.dp))
             Etiqueta("MÉTODO DE PAGO")
-            ChipsMetodoPago(metodo) { metodo = it }
+            if (!dividido) ChipsMetodoPago(metodo) { metodo = it }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable(enabled = !guardando) {
+                    dividido = !dividido
+                    if (dividido && filas.isEmpty()) filas = filasIniciales(metodos, metodo)
+                },
+            ) {
+                Checkbox(
+                    checked = dividido,
+                    onCheckedChange = {
+                        dividido = it
+                        if (it && filas.isEmpty()) filas = filasIniciales(metodos, metodo)
+                    },
+                    enabled = !guardando,
+                    colors = CheckboxDefaults.colors(checkedColor = c.navy),
+                )
+                Text("Pagó con más de un medio", color = c.texto, fontSize = 13.sp)
+            }
+            if (dividido) {
+                PagoDividido(total = total, metodos = metodos, filas = filas, onCambiar = { filas = it }, deshabilitado = guardando)
+            }
 
             Spacer(Modifier.height(14.dp))
             Etiqueta("FECHA DEL PAGO")
@@ -151,7 +194,8 @@ fun ModalCobrarCita(
             when (modo) {
                 "gratis" -> "No entra dinero a caja: la $tipoMin queda saldada con S/ 0."
                 "abonar" -> "Entra a caja como pago del tratamiento: lo verás sumado en la ficha del paciente."
-                else -> "Entra a caja en la fecha del pago, con este método. Si el paciente aún no paga, puedes atenderlo igual y cobrarle después."
+                else -> if (conDivision) "Entra a caja un ingreso por cada medio, en la fecha del pago (el arqueo por método cuadra)."
+                    else "Entra a caja en la fecha del pago, con este método. Si el paciente aún no paga, puedes atenderlo igual y cobrarle después."
             },
             color = c.textoSuave, fontSize = 12.sp, lineHeight = 16.sp,
         )

@@ -864,36 +864,38 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     /**
      * Cobrar una Consulta/Evaluación (gemelo del "💵 Registrar cobro" de /citas web):
      * [modo] "cobrar" | "abonar" | "gratis"; [fecha] (yyyy-MM-dd) = día en que el
-     * paciente pagó (por defecto el de la cita). [onFin] recibe true si quedó
-     * registrado (en el servidor o en la cola): solo entonces se cierra el modal, así
-     * un rechazo (p. ej. sin tratamiento al cual abonar) deja elegir otro destino.
+     * paciente pagó (por defecto el de la cita); [pagos] = cobro dividido en varios
+     * medios (null = un solo [metodo]). [onFin] recibe true si quedó registrado (en
+     * el servidor o en la cola): solo entonces se cierra el modal, así un rechazo
+     * (p. ej. sin tratamiento al cual abonar, o un cobro incierto que se repite con
+     * el mismo reparto) deja el formulario tal cual.
      */
-    fun cobrar(cita: CitaStaff, metodo: String, modo: String, fecha: String, onFin: (Boolean) -> Unit = {}) {
+    fun cobrar(
+        cita: CitaStaff, metodo: String, modo: String, fecha: String,
+        pagos: List<pe.saniape.app.data.staff.PartePago>? = null, onFin: (Boolean) -> Unit = {},
+    ) {
         if (accionando) return
         viewModelScope.launch {
             accionando = true
-            val r = AgendaRepo.cobrarCita(cita.id, metodo, modo, fecha)
+            val r = AgendaRepo.cobrarCita(cita.id, metodo, modo, fecha, pagos)
             if (r.registrada) {
                 // Encolada: enviarOEncolar ya avisó "se registrará al volver la señal".
                 if (!r.encolada) {
-                    val monto = pe.saniape.app.ui.clinica.agenda.modales.textoSoles(cita.costo ?: 0.0)
-                    val fechada = if (modo != "gratis" && fecha.take(10) != cita.fecha.take(10)) {
-                        val p = fecha.take(10).split("-")
-                        if (p.size == 3) " (fechado el ${p[2]}/${p[1]})" else ""
-                    } else ""
                     pe.saniape.app.ui.Toaster.exito(
-                        when (modo) {
-                            "gratis" -> "${flujoDe(cita).nombreTipo(cita.tipo)} sin costo: quedó saldada"
-                            "abonar" -> "$monto abonados al tratamiento$fechada"
-                            else -> "Cobrado $monto$fechada"
-                        }
+                        pe.saniape.app.ui.clinica.atencion.textoCobrado(
+                            flujoDe(cita).nombreTipo(cita.tipo),
+                            pe.saniape.app.ui.clinica.agenda.modales.textoSoles(cita.costo ?: 0.0),
+                            modo, fecha, cita.fecha, pagos, r.yaEstaba,
+                        )
                     )
                 }
                 recargarCitas()
                 recargarBanners()
             } else {
                 // Sin rechazo = ni se pudo encolar (o doble toque, que ya avisó).
-                r.rechazo?.let { pe.saniape.app.ui.Toaster.error(it.error) }
+                r.rechazo?.let {
+                    pe.saniape.app.ui.Toaster.error(pe.saniape.app.data.staff.mensajeRechazoCobro(it, pagos != null))
+                }
             }
             accionando = false
             onFin(r.registrada)
