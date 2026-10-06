@@ -184,8 +184,17 @@ fun ContenidoExamenes(
                                     }
                                 } else SolicitudesRepo.urlFirmada(d.archivoUrl)?.let { acciones.abrirUrl(it) }
                             } })
-                    // El informe psicológico emitido no se borra (nadie: Código de Ética del CPsP).
-                    if (d.categoria != pe.saniape.app.data.staff.CATEGORIA_INFORME_PSICOLOGICO) Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable {
+                    // 🔒 informe psicológico (solo Admin y tratante); "· reemplazado" si
+                    // se emitió una versión nueva (el paciente ya no ve esta).
+                    if (d.informeReemplazado) {
+                        Text("· reemplazado", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 4.dp))
+                    }
+                    // El informe psicológico emitido no se borra (nadie: Código de Ética del
+                    // CPsP): en vez de 🗑 lleva 🔒, que al tocarlo dice por qué (§13.4).
+                    if (d.protegidoPsico) Text("🔒", fontSize = 14.sp, modifier = Modifier.clickable {
+                        pe.saniape.app.ui.Toaster.info(pe.saniape.app.data.staff.MOTIVO_INFORME_NO_SE_BORRA)
+                    })
+                    else Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable {
                         scope.launch {
                             val error = SolicitudesRepo.eliminarDocumento(d.id)
                             if (error == null) pe.saniape.app.ui.Toaster.exito("Documento eliminado") else pe.saniape.app.ui.Toaster.error(error)
