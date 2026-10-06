@@ -701,6 +701,7 @@ fun PantallaFichaPaciente(
                     "resumen" -> ContenidoResumen(
                         ctx = ctx, paciente = paciente, acciones = acciones,
                         onEditarClinico = { editarClinico = true },
+                        procsEvalPsico = procsEvalPsico,
                     )
                     // Doble candado, como la 🦷: sin recetas en el paciente no se monta.
                     "recetas" -> if (esPacienteReceta) ContenidoRecetasFicha(
@@ -2372,6 +2373,8 @@ private fun CifraPago(label: String, valor: String, color: androidx.compose.ui.g
 private fun ContenidoResumen(
     ctx: ContextoStaff, paciente: PacienteStaff, acciones: pe.saniape.app.ui.AccionesNativas,
     onEditarClinico: () -> Unit,
+    /** Servicios de evaluación psicológica: con uno, la historia puede llevar el informe (Admin/tratante). */
+    procsEvalPsico: Set<String> = emptySet(),
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -2592,6 +2595,14 @@ private fun ContenidoResumen(
                     color = c.sobreNavy, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
         }
+
+        // 🧠 La misma historia con el informe psicológico vigente y/o los puntajes de
+        // tests (contrato §13.3). Solo Admin/tratante y con una evaluación psicológica.
+        pe.saniape.app.ui.clinica.psico.HistoriaPsicoTarjeta(
+            pacienteId = paciente.id, pacienteNombre = paciente.nombre,
+            tratamientos = paciente.tratamientos, procsEvalPsico = procsEvalPsico,
+            rol = ctx.rol, miTerapeutaId = ctx.miTerapeutaId, acciones = acciones,
+        )
     }
 }
 

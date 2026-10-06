@@ -222,6 +222,33 @@ object EvaluacionPsicoRepo {
         } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
     }
 
+    sealed class Historia {
+        data class Ok(val evaluaciones: List<EvalHistoriaPsico>) : Historia()
+        data class Error(val mensaje: String) : Historia()
+    }
+
+    /**
+     * Para la historia clínica imprimible (contrato §13.3): por evaluación que el
+     * usuario puede ver (Admin o tratante), el informe VIGENTE y, solo con
+     * [tests], los puntajes de los tests. Nunca fotos. Los demás reciben vacío.
+     */
+    suspend fun historia(pacienteId: String, tests: Boolean): Historia {
+        val tk = token() ?: return Historia.Error("Tu sesión expiró. Vuelve a entrar.")
+        return try {
+            val resp = http.get("${Supabase.SITE_URL}$BASE/historia") {
+                header("Authorization", "Bearer $tk")
+                parameter("pacienteId", pacienteId)
+                if (tests) parameter("tests", "1")
+            }
+            val cuerpo = runCatching { json.parseToJsonElement(resp.bodyAsText()).jsonObject }.getOrNull()
+            if (resp.status.value in 200..299) Historia.Ok(parsearHistoriaPsico(cuerpo))
+            else {
+                fun c(k: String) = (cuerpo?.get(k) as? JsonPrimitive)?.content?.takeIf { it != "null" }
+                Historia.Error(mensajeErrorPsico(resp.status.value, c("codigo"), c("error")))
+            }
+        } catch (e: CancellationException) { throw e } catch (_: Exception) { Historia.Error(MSJ_SIN_RED) }
+    }
+
     /** HTML imprimible del informe (borrador con marca de agua o emitido). null si no se pudo. */
     suspend fun htmlInforme(informeId: String): String? {
         val tk = token() ?: return null
