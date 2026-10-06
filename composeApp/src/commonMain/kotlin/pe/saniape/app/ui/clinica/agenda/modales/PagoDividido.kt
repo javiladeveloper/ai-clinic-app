@@ -56,6 +56,11 @@ fun PagoDividido(
     filas: List<FilaPago>,
     onCambiar: (List<FilaPago>) -> Unit,
     deshabilitado: Boolean = false,
+    /**
+     * Tope de filas. El pago de un tratamiento con saldo a favor usa 3: la parte
+     * con saldo ya ocupa uno de los 4 medios que acepta el servidor.
+     */
+    maxFilas: Int = MAX_PARTES_COBRO,
 ) {
     val c = Sania.colors
     val lista = metodos.ifEmpty { listOf("Efectivo") }
@@ -96,7 +101,7 @@ fun PagoDividido(
         val dif = diferenciaFilas(filas, total)
         val cuadra = repartoValido(filas, total) != null
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            if (filas.size < MAX_PARTES_COBRO) {
+            if (filas.size < maxFilas) {
                 Text(
                     "+ Agregar otro medio", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.clickable(enabled = !deshabilitado) { onCambiar(filas + filaNueva(lista, filas)) }

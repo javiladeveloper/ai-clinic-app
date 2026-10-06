@@ -1989,8 +1989,10 @@ private fun BotonContacto(label: String, color: androidx.compose.ui.graphics.Col
 
 /** Formatea un monto a 2 decimales (sin depender de String.format, no disponible en common). */
 private fun formatoMonto(n: Double): String {
-    val cent = (n * 100).toLong()
-    return "${cent / 100}.${(cent % 100).toString().padStart(2, '0')}"
+    // Redondeo (no truncado: 0.29 × 100 = 28.999…) y con signo delante.
+    val cent = kotlin.math.round(n * 100).toLong()
+    val abs = kotlin.math.abs(cent)
+    return (if (cent < 0) "-" else "") + "${abs / 100}.${(abs % 100).toString().padStart(2, '0')}"
 }
 
 /** Tarjeta de estadística (Estado / Saldo / Próxima cita / Última atención). */
@@ -2283,7 +2285,7 @@ private fun ContenidoPagos(
             }
             if (r != null && r.aFavor > 0.005) {
                 Spacer(Modifier.height(8.dp))
-                Text("💚 A favor S/ ${formatoMonto(r.aFavor)} (pagó más de lo acordado)", color = c.ok,
+                Text("💚 A favor S/ ${formatoMonto(r.aFavor)} (saldo disponible para pagar otro tratamiento)", color = c.ok,
                     fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }

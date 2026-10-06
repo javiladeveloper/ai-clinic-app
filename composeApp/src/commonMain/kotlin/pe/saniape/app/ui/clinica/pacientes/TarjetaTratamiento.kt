@@ -121,6 +121,7 @@ fun TarjetaTratamiento(
     var menuDe by remember { mutableStateOf<SesionFicha?>(null) }   // sesión con menú ⋯ abierto
     var cambioToken by remember { mutableStateOf(0) }   // recarga la sección de pagos tras cobros
     var menuTrat by remember { mutableStateOf(false) }   // menú ⋯ del tratamiento
+    var eliminarAbierto by remember { mutableStateOf(false) }   // "🗑 Eliminar tratamiento" (Admin)
     // Sesiones objetivo de cada modal (o null).
     var editarSesion by remember { mutableStateOf<SesionFicha?>(null) }
     // Admin corrigiendo una sesión del historial (completada / tratamiento cerrado / ficha de baja).
@@ -142,8 +143,15 @@ fun TarjetaTratamiento(
         if (!confirmarAlta) return@LaunchedEffect
         saldoAlta = null
         saldoAlta = runCatching {
-            (t.montoAcordado - PacientesRepo.pagosDe(t.id).sumOf { it.monto }).coerceAtLeast(0.0)
+            (t.montoAcordado - pe.saniape.app.data.staff.pagadoNeto(PacientesRepo.pagosDe(t.id))).coerceAtLeast(0.0)
         }.getOrNull()
+    }
+    if (eliminarAbierto) {
+        DialogoEliminarTratamiento(
+            t = t,
+            onCerrar = { eliminarAbierto = false },
+            onTermino = { eliminarAbierto = false; onCambioRealizado() },
+        )
     }
     // Fisio (M4): modal "No volvió" abierto (con cuántas citas/sesiones futuras tiene).
     var noVolvioFuturas by remember { mutableStateOf<Int?>(null) }
@@ -378,6 +386,9 @@ fun TarjetaTratamiento(
                         "Suspendido", "Cancelado" ->
                             ItemMenu("↻ Reactivar", c.ok) { menuTrat = false; onCambiarEstadoTrat(t.id, "Activo") }
                     }
+                    // Eliminar (borrado lógico): solo el Admin, como la ficha web. Antes de
+                    // eliminar se decide qué pasa con su dinero (caja y saldo a favor).
+                    if (esAdmin) ItemMenu("🗑 Eliminar tratamiento", c.error) { menuTrat = false; eliminarAbierto = true }
                 }
             }
         }
@@ -1047,6 +1058,13 @@ fun SeccionPagos(
     var editMonto by remember { mutableStateOf("") }
     var editMetodo by remember { mutableStateOf("Efectivo") }
     var borrarId by remember { mutableStateOf<String?>(null) }   // confirmación de borrado
+    // ── Pagar con saldo a favor (docs/app-contrato-pagar-con-saldo.md) ──
+    var usarSaldo by remember { mutableStateOf(false) }
+    var montoSaldo by remember { mutableStateOf("") }
+    /** null = el resto con UN medio ([metodo]); si no, el reparto en varios medios. */
+    var filasResto by remember { mutableStateOf<List<pe.saniape.app.data.staff.FilaPago>?>(null) }
+    var consultaSaldo by remember { mutableStateOf<pe.saniape.app.data.staff.ConsultaSaldo?>(null) }
+    var consultaSaldoToken by remember { mutableStateOf(0) }
 
 
     // Recarga al montar y cada vez que cambia recargaToken (tras cobrar una sesión).
@@ -1055,8 +1073,23 @@ fun SeccionPagos(
     }
 
     val acordado = t.montoAcordado
-    val pagado = pagos?.sumOf { it.monto } ?: 0.0
+    // Pagado NETO: Σ de todas las filas, también las de saldo (el "consumo" resta).
+    val pagado = pagos?.let { pe.saniape.app.data.staff.pagadoNeto(it) } ?: 0.0
     val saldo = acordado - pagado
+    // Disponible del paciente (sin contar ESTE tratamiento): se PREGUNTA al servidor al
+    // abrir "Registrar pago", solo si este tratamiento debe algo y puede recibir saldo.
+    val admiteSaldo = !soloLectura && pacienteId != null && t.estado != "Cancelado" && t.estado != "Eliminado"
+    LaunchedEffect(agregando, consultaSaldoToken, t.id) {
+        if (!agregando || !admiteSaldo || saldo <= 0.005) { consultaSaldo = null; return@LaunchedEffect }
+        consultaSaldo = pe.saniape.app.data.staff.PagarConSaldoRepo.saldoDisponible(pacienteId!!, t.id)
+    }
+    val disponibleSaldo = (consultaSaldo as? pe.saniape.app.data.staff.ConsultaSaldo.Ok)?.saldo?.disponible ?: 0.0
+    val usableSaldo = pe.saniape.app.data.staff.saldoUsable(disponibleSaldo, saldo)
+    val puedeUsarSaldo = admiteSaldo && usableSaldo > 0.005
+    val totalForm = pe.saniape.app.data.staff.montoDeTexto(monto)
+    val validacionSaldo = if (usarSaldo && puedeUsarSaldo)
+        pe.saniape.app.data.staff.partesDelFormulario(totalForm, montoSaldo, usableSaldo, metodo, filasResto) else null
+    fun limpiarSaldo() { usarSaldo = false; montoSaldo = ""; filasResto = null }
     // Pedido de afuera (confirmación de alta con deuda): abrir el registro con el
     // saldo, una vez por pedido y recién con los pagos cargados.
     var registroAbiertoPara by remember { mutableStateOf(0) }
@@ -1089,10 +1122,20 @@ fun SeccionPagos(
         Box(Modifier.fillMaxWidth(frac).height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.ok))
     }
 
-    // Lista de pagos
+    // Cancelado con dinero pagado y no atendido: no es saldo a favor hasta que el Admin lo pasa.
+    pagos?.let { AvisoSaldoCancelado(t, it, esAdmin, soloLectura, onCambio) }
+
+    // Lista de pagos. Un pago con saldo a favor o en varias partes va en UNA línea
+    // ("Saldo a favor S/ X + Yape S/ Y"); el saldo que salió hacia otro tratamiento,
+    // como "Saldo aplicado a …" (sin acciones). Los pagos simples, como siempre.
     pagos?.takeIf { it.isNotEmpty() }?.let { lista ->
         Spacer(Modifier.height(8.dp))
-        lista.forEach { p ->
+        pe.saniape.app.data.staff.agruparPagos(lista).forEach { g ->
+            if (g.agrupado) {
+                FilaPagoAgrupado(g, esAdmin, soloLectura, onCambio)
+                return@forEach
+            }
+            val p = g.partes.first()
             if (editando == p.id) {
                 // Edición inline (solo Admin)
                 Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
@@ -1190,6 +1233,7 @@ fun SeccionPagos(
         MiniBtn(if (saldo > 0.005) "+ Registrar pago" else "+ Pago adicional", c.navy, !guardando) {
             // Precarga el monto con el SALDO pendiente: registrar el pago completo = 1 confirmación.
             monto = if (saldo > 0.005) formato2(saldo) else ""
+            limpiarSaldo()
             agregando = true
         }
     } else {
@@ -1201,9 +1245,36 @@ fun SeccionPagos(
                 keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(6.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            rememberMetodosPago().forEach { m -> ChipMetodo(m, metodo == m) { metodo = m } }
+        val metodosClinica = rememberMetodosPago()
+        // PAGAR CON SALDO A FAVOR: solo si el paciente tiene saldo y este tratamiento
+        // debe algo. Sin saldo, el formulario es el de siempre.
+        if (puedeUsarSaldo) {
+            Spacer(Modifier.height(6.dp))
+            OpcionSaldoAFavor(
+                usable = usableSaldo, total = totalForm,
+                usar = usarSaldo,
+                onUsar = { on ->
+                    usarSaldo = on
+                    if (on) {
+                        val (s, _) = pe.saniape.app.data.staff.repartoSugerido(totalForm ?: 0.0, usableSaldo)
+                        montoSaldo = if (s > 0) pe.saniape.app.data.staff.textoMonto(s) else ""
+                    } else { montoSaldo = ""; filasResto = null }
+                },
+                montoSaldo = montoSaldo, onMontoSaldo = { montoSaldo = it },
+                metodos = metodosClinica, metodoResto = metodo, onMetodoResto = { metodo = it },
+                filasResto = filasResto, onFilasResto = { filasResto = it },
+                validacion = validacionSaldo, deshabilitado = guardando,
+            )
+        } else if (consultaSaldo == pe.saniape.app.data.staff.ConsultaSaldo.SinRed) {
+            Spacer(Modifier.height(4.dp))
+            Text("Sin conexión: no se pudo consultar el saldo a favor del paciente.", color = c.textoSuave, fontSize = 10.sp)
+        }
+        if (!(usarSaldo && puedeUsarSaldo)) {
+            Spacer(Modifier.height(6.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                metodosClinica.filterNot { pe.saniape.app.data.staff.esMetodoSaldo(it) }
+                    .forEach { m -> ChipMetodo(m, metodo == m) { metodo = m } }
+            }
         }
         Spacer(Modifier.height(6.dp))
         androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(), 
@@ -1213,9 +1284,39 @@ fun SeccionPagos(
         )
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MiniBtn("Guardar pago", c.ok, !guardando) {
+            MiniBtn("Guardar pago", c.ok, !guardando && validacionSaldo !is pe.saniape.app.data.staff.ValidacionPartes.Error) {
                 val m = monto.toDoubleOrNull()
                 if (m == null || m <= 0 || guardando) return@MiniBtn
+                if (usarSaldo && puedeUsarSaldo) {
+                    // Con saldo: DIRECTO al servidor (nunca a la cola offline: necesita el
+                    // saldo en vivo). La clave se conserva ante una respuesta incierta.
+                    val v = validacionSaldo as? pe.saniape.app.data.staff.ValidacionPartes.Ok ?: return@MiniBtn
+                    guardando = true
+                    scope.launch {
+                        val r = pe.saniape.app.ui.conIndicador(pe.saniape.app.ui.Gestion.GUARDANDO) {
+                            pe.saniape.app.data.staff.PagarConSaldoRepo.registrar(
+                                pe.saniape.app.data.staff.cuerpoPagoConSaldo(t.id, m, v.partes, notaPago.trim().ifBlank { null }, recordar = false),
+                            )
+                        }
+                        guardando = false
+                        when (r) {
+                            is pe.saniape.app.data.staff.ResultadoPagoSaldo.Ok -> {
+                                if (filasResto == null && v.partes.size > 1) pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(pacienteId, metodo)
+                                monto = ""; notaPago = ""; agregando = false; limpiarSaldo()
+                                pe.saniape.app.ui.Toaster.exito("Pago registrado: ${pe.saniape.app.data.staff.resumenPartes(v.partes)}")
+                                onCambio()
+                            }
+                            is pe.saniape.app.data.staff.ResultadoPagoSaldo.Rechazo -> {
+                                pe.saniape.app.ui.Toaster.error(r.mensaje)
+                                // El disponible cambió (otra recepción lo usó): volver a preguntarlo.
+                                if (r.rechazo.codigo == pe.saniape.app.data.staff.CODIGO_SALDO_INSUFICIENTE) consultaSaldoToken++
+                            }
+                            pe.saniape.app.data.staff.ResultadoPagoSaldo.SinRed ->
+                                pe.saniape.app.ui.Toaster.error(pe.saniape.app.data.staff.MENSAJE_PAGO_SALDO_SIN_RED)
+                        }
+                    }
+                    return@MiniBtn
+                }
                 guardando = true
                 scope.launch {
                     val ok = PacientesRepo.registrarPago(t.id, m, metodo, notaPago.trim().ifBlank { null })
@@ -1230,7 +1331,7 @@ fun SeccionPagos(
                     } else pe.saniape.app.ui.Toaster.error("No se pudo registrar el pago")
                 }
             }
-            MiniBtn("Cancelar", c.textoSuave, !guardando) { agregando = false; monto = ""; notaPago = "" }
+            MiniBtn("Cancelar", c.textoSuave, !guardando) { agregando = false; monto = ""; notaPago = ""; limpiarSaldo() }
         }
     }
 }
@@ -1270,8 +1371,10 @@ private fun modalidadIcono(m: String?): String = when (m) {
 }
 
 private fun formato2(n: Double): String {
-    val cent = (n * 100).toLong()
-    return "${cent / 100}.${(cent % 100).toString().padStart(2, '0')}"
+    // Redondeo (no truncado: 0.29 × 100 = 28.999…) y con signo delante.
+    val cent = kotlin.math.round(n * 100).toLong()
+    val abs = kotlin.math.abs(cent)
+    return (if (cent < 0) "-" else "") + "${abs / 100}.${(abs % 100).toString().padStart(2, '0')}"
 }
 
 // ── Modales de acciones de sesión ──
