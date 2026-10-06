@@ -68,9 +68,17 @@ sealed class ValidacionPagos {
  * (máx. 2 decimales), y la suma igual al total al céntimo. Devuelve las partes
  * normalizadas (método sin espacios sobrantes, monto redondeado a céntimos).
  */
-fun validarPagosDivididos(pagos: List<PartePago>, total: Double): ValidacionPagos {
-    if (pagos.size < MIN_PARTES_COBRO || pagos.size > MAX_PARTES_COBRO) {
-        return ValidacionPagos.Error("Un pago dividido lleva de $MIN_PARTES_COBRO a $MAX_PARTES_COBRO medios de pago.")
+fun validarPagosDivididos(
+    pagos: List<PartePago>,
+    total: Double,
+    /** 1 = el pago de un tratamiento con saldo a favor (puede ir todo con saldo). */
+    minPartes: Int = MIN_PARTES_COBRO,
+): ValidacionPagos {
+    if (pagos.size < minPartes || pagos.size > MAX_PARTES_COBRO) {
+        return ValidacionPagos.Error(
+            if (minPartes <= 1) "Un pago lleva de 1 a $MAX_PARTES_COBRO medios de pago."
+            else "Un pago dividido lleva de $minPartes a $MAX_PARTES_COBRO medios de pago."
+        )
     }
     val normalizados = pagos.mapIndexed { i, p ->
         val n = i + 1

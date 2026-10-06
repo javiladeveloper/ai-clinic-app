@@ -101,6 +101,13 @@ data class TratamientoPaciente(
      */
     val sesionesRealizadas: Int? = null,
     val citasNoCanceladas: Int? = null,
+    /**
+     * Cancelado cuyo "pagado y no atendido" un Admin pasó a saldo a favor
+     * (`saldo_liberado_at`, `saldo_liberado_por` = auth uid). La app NO los
+     * escribe: van por /api/staff/tratamiento/{liberar,revocar}-saldo.
+     */
+    val saldoLiberadoAt: String? = null,
+    val saldoLiberadoPor: String? = null,
 ) {
     /**
      * La cuenta de este tratamiento para el saldo a favor, con lo [pagado].
@@ -114,6 +121,7 @@ data class TratamientoPaciente(
             precioPorSesion = precioPorSesion, precioAcordado = precioAcordado, totalSesiones = totalSesiones,
             sesionesRealizadas = if (sinConteos) Int.MAX_VALUE / 2 else sesionesRealizadas ?: 0,
             citasNoCanceladas = citasNoCanceladas ?: 0,
+            saldoLiberado = saldoLiberadoAt != null,
         )
     }
 
@@ -182,6 +190,15 @@ data class PagoFicha(
     val notas: String?,
     val fecha: String,
     val numeroSesion: Int?,   // si el pago nació de una sesión (cobro), su número
+    // ── Pagar con saldo a favor (docs/app-contrato-pagar-con-saldo.md §6) ──
+    /** null = pago normal · "uso" = parte pagada con saldo · "consumo" = saldo que SALIÓ hacia otro tratamiento (monto < 0). */
+    val saldoTipo: String? = null,
+    /** En un consumo: el id del uso (para saber a qué tratamiento fue). */
+    val saldoUsoId: String? = null,
+    /** Une las partes de UN pago mixto ("Saldo a favor S/ X + Yape S/ Y"). */
+    val grupoPagoId: String? = null,
+    /** En un consumo: el nombre del tratamiento donde se aplicó ese saldo. */
+    val destinoNombre: String? = null,
 )
 
 /** Un paquete del tarifario de un procedimiento (N sesiones por un precio fijo). */
@@ -439,7 +456,7 @@ object PacientesRepo {
             cantidad_unidades, precio_unitario,
             diagnostico, medicacion, proximo_control, nota_recepcion, tecnicas_sugeridas,
             procedimiento_id, sesiones_base, cita_origen_id, no_volvio, motivo_cierre, cerrado_at,
-            fecha_inicio, created_at,
+            fecha_inicio, created_at, saldo_liberado_at, saldo_liberado_por,
             ses_estados:sesiones!sesiones_tratamiento_id_fkey(estado),
             citas_estados:citas!citas_tratamiento_id_fkey(estado),
             procedimiento:procedimientos(nombre, especialidad_id, modo_cobro, precio, unidad_label, especialidad:especialidades(nombre, usa_sesiones)),
@@ -827,12 +844,12 @@ object PacientesRepo {
     /** Pagos registrados de un tratamiento (para la PagoCard de la ficha). */
     suspend fun pagosDe(tratamientoId: String): List<PagoFicha> {
         val filas = Supabase.client.postgrest["pagos_tratamiento"]
-            .select(Columns.raw("id, monto, metodo, notas, fecha, sesion:sesiones(numero)")) {
+            .select(Columns.raw("id, monto, metodo, notas, fecha, saldo_tipo, saldo_uso_id, grupo_pago_id, sesion:sesiones(numero)")) {
                 filter { eq("tratamiento_id", tratamientoId) }
                 order("fecha", Order.DESCENDING)
             }
             .decodeList<JsonObject>()
-        return filas.mapNotNull { o ->
+        val pagos = filas.mapNotNull { o ->
             val numSes = ((o["sesion"] as? JsonObject)?.get("numero") as? JsonPrimitive)?.content?.toIntOrNull()
             PagoFicha(
                 id = o.str("id") ?: return@mapNotNull null,
@@ -841,8 +858,29 @@ object PacientesRepo {
                 notas = o.str("notas"),
                 fecha = o.str("fecha") ?: "",
                 numeroSesion = numSes,
+                saldoTipo = o.str("saldo_tipo"),
+                saldoUsoId = o.str("saldo_uso_id"),
+                grupoPagoId = o.str("grupo_pago_id"),
             )
         }
+        // "Saldo aplicado a <tratamiento>": el nombre del tratamiento del uso. UNA
+        // lectura más, solo si este tratamiento dio saldo (casi nunca). Si falla,
+        // la línea dice "otro tratamiento" (es adorno).
+        val usos = pagos.filter { it.saldoTipo == SALDO_TIPO_CONSUMO }.mapNotNull { it.saldoUsoId }.distinct()
+        if (usos.isEmpty()) return pagos
+        val nombres = runCatching {
+            Supabase.client.postgrest["pagos_tratamiento"]
+                .select(Columns.raw("id, tratamiento:tratamientos(procedimiento:procedimientos(nombre))")) {
+                    filter { isIn("id", usos) }
+                }
+                .decodeList<JsonObject>()
+                .mapNotNull { o ->
+                    val id = o.str("id") ?: return@mapNotNull null
+                    val proc = ((o["tratamiento"] as? JsonObject)?.get("procedimiento") as? JsonObject)?.str("nombre")
+                    id to (proc ?: "Tratamiento")
+                }.toMap()
+        }.getOrElse { if (it is kotlin.coroutines.cancellation.CancellationException) throw it; emptyMap() }
+        return pagos.map { p -> if (p.saldoTipo == SALDO_TIPO_CONSUMO) p.copy(destinoNombre = nombres[p.saldoUsoId]) else p }
     }
 
     /** Registra un pago vía endpoint (inserta pago + ingreso en caja + recalcula estado). */
@@ -1317,8 +1355,11 @@ object PacientesRepo {
     suspend fun resumenPagosDe(tratamientos: List<TratamientoPaciente>): ResumenPagos {
         // Facturables: fuera Cancelado y Eliminado (como la web).
         val facturables = tratamientos.filter { it.estado != "Cancelado" && it.estado != "Eliminado" }
-        if (facturables.isEmpty()) return ResumenPagos(0.0, 0.0, 0.0)
-        val ids = facturables.map { it.id }
+        // El saldo a favor DISPONIBLE mira también los cancelados (los que un Admin
+        // liberó): sus pagos se leen en la MISMA consulta.
+        val conSaldo = tratamientos.filter { it.estado != "Eliminado" }
+        if (conSaldo.isEmpty()) return ResumenPagos(0.0, 0.0, 0.0)
+        val ids = conSaldo.map { it.id }
         val pagados = runCatching {
             Supabase.client.postgrest["pagos_tratamiento"]
                 .select(Columns.list("tratamiento_id, monto")) {
@@ -1327,14 +1368,20 @@ object PacientesRepo {
                 .decodeList<JsonObject>()
         }.getOrDefault(emptyList())
         val pagadoPorTrat = pagados.groupBy { it.str("tratamiento_id") }
-            .mapValues { (_, lista) -> lista.sumOf { it.dbl("monto") ?: 0.0 } }
+            // En céntimos: con las filas de saldo (+uso / -consumo) la suma en coma
+            // flotante dejaba restos de 0.0000001 que pintaban "debe S/ 0.00".
+            .mapValues { (_, lista) -> lista.sumOf { aCentimos(it.dbl("monto") ?: 0.0) } / 100.0 }
         val acordado = facturables.sumOf { it.montoAcordado }
         val pagado = facturables.sumOf { pagadoPorTrat[it.id] ?: 0.0 }
         val saldo = facturables.sumOf { t -> (t.montoAcordado - (pagadoPorTrat[t.id] ?: 0.0)).coerceAtLeast(0.0) }
-        val aFavorPorTrat = facturables.associate { t ->
-            t.id to pe.saniape.app.data.saldoAFavorTratamiento(t.cuentaCon(pagadoPorTrat[t.id] ?: 0.0))
-        }.filterValues { it > 0.0 }
-        val aFavor = pe.saniape.app.data.saldoAFavorDe(facturables.map { t -> t.cuentaCon(pagadoPorTrat[t.id] ?: 0.0) })
+        // "A favor" = lo DISPONIBLE para pagar con saldo, como el chip de la ficha
+        // web: excedentes + lo no atendido de los cancelados LIBERADOS, ya neto de
+        // lo aplicado a otros tratamientos (las filas 'consumo' restan solas).
+        // Gemelo de saldoDisponiblePaciente (lib/saldo-a-favor.ts).
+        val cuentas = conSaldo.map { t -> t.id to t.cuentaCon(pagadoPorTrat[t.id] ?: 0.0) }
+        val aFavorPorTrat = cuentas.associate { (id, cta) -> id to pe.saniape.app.data.saldoDisponibleTratamiento(cta) }
+            .filterValues { it > 0.0 }
+        val aFavor = pe.saniape.app.data.saldoDisponibleDe(cuentas.map { it.second })
         return ResumenPagos(acordado, pagado, saldo, pagadoPorTrat.filterKeys { it != null }.mapKeys { it.key!! }, aFavor, aFavorPorTrat)
     }
 
@@ -1511,6 +1558,8 @@ object PacientesRepo {
                 citasNoCanceladas = (t["citas_estados"] as? JsonArray)?.count { e ->
                     (e as? JsonObject)?.str("estado") != "Cancelada"
                 },
+                saldoLiberadoAt = t.str("saldo_liberado_at"),
+                saldoLiberadoPor = t.str("saldo_liberado_por"),
             )
         }
         return PacienteStaff(

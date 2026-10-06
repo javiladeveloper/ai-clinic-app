@@ -48,7 +48,17 @@ enum class ResultadoEnvio {
  * que escribió el endpoint y, si lo mandó, su `codigo` (p. ej. SIN_PROFESIONAL o
  * capacidad_citas_agotada) para que la pantalla ofrezca el arreglo adecuado.
  */
-data class RechazoServidor(val error: String, val codigo: String? = null, val status: Int = 0)
+data class RechazoServidor(
+    val error: String,
+    val codigo: String? = null,
+    val status: Int = 0,
+    /**
+     * El cuerpo completo del rechazo, para los campos extra que algunos endpoints
+     * mandan junto al `error` (p. ej. `disponible` en SALDO_INSUFICIENTE o `deuda`
+     * en SALDO_EXCEDE_DEUDA del pago con saldo a favor). null si no vino JSON.
+     */
+    val datos: JsonObject? = null,
+)
 
 /** Qué hacer con una respuesta HTTP de un endpoint de staff. */
 enum class DestinoRespuesta { OK, REINTENTAR, RECHAZO }
@@ -121,7 +131,7 @@ object Sincronizador {
             r == null -> Triple(ResultadoEnvio.SIN_RED, null, null)   // reintentable → encolar
             r.exito -> Triple(ResultadoEnvio.OK, null, r.json)
             // el servidor dijo que no → no encolar
-            else -> Triple(ResultadoEnvio.RECHAZADO, RechazoServidor(r.error ?: "Error del servidor", r.codigo, r.status), null)
+            else -> Triple(ResultadoEnvio.RECHAZADO, RechazoServidor(r.error ?: "Error del servidor", r.codigo, r.status, r.json), null)
         }
     }
 
@@ -232,6 +242,7 @@ object Sincronizador {
                     error = (json?.get("error") as? JsonPrimitive)?.contentOrNull ?: "HTTP ${resp.status.value}",
                     codigo = (json?.get("codigo") as? JsonPrimitive)?.contentOrNull,
                     status = resp.status.value,
+                    json = json,
                 )
             }
         }
