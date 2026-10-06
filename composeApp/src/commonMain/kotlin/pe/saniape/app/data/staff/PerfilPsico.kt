@@ -362,19 +362,24 @@ fun textoDiferenciaPsico(d: Double?): String = when {
     else -> numeroPsico(d)
 }
 
+/** ▲ sube, ▼ baja, = igual: SIEMPRE por el signo de la diferencia (nunca por el sentido). */
+fun flechaDiferenciaPsico(d: Double?): String = when {
+    d == null -> ""
+    d > 0 -> "▲"
+    d < 0 -> "▼"
+    else -> "="
+}
+
 /**
- * "▼ mejora · clínicamente relevante". La flecha va por el signo de la
- * diferencia (en Rosenberg o APGAR, mejorar es subir); la palabra la da el
- * servidor. null si el servidor no indicó sentido.
+ * "▼ mejora · clínicamente relevante" (§14.3). La flecha va por el signo de la
+ * diferencia (en Rosenberg o APGAR, mejorar es subir: ▲ mejora); la palabra la
+ * da el servidor. null si no indicó sentido (otro instrumento, o puntajes
+ * corregidos a mano: entonces llega un aviso).
  */
 fun textoSentidoPsico(f: FilaComparacionPsico): String? {
     val s = f.sentido ?: return null
-    val flecha = when {
-        s == "igual" -> "="
-        (f.diferencia ?: 0.0) > 0 -> "▲"
-        else -> "▼"
-    }
-    return "$flecha $s${if (f.relevante == true) " · clínicamente relevante" else ""}"
+    val flecha = flechaDiferenciaPsico(f.diferencia).ifEmpty { if (s == "igual") "=" else "" }
+    return "$flecha $s${if (f.relevante == true) " · clínicamente relevante" else ""}".trim()
 }
 
 /** Opción del selector de aplicaciones anteriores: "01/07/2026 · 15 / 27 · Depresión…". */

@@ -3,7 +3,9 @@ package pe.saniape.app.data.staff
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.put
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Informe psicológico — FASE 3: anexo de perfiles y borrador con IA
@@ -12,7 +14,7 @@ import kotlinx.serialization.json.contentOrNull
 // La IA hoy está APAGADA en todos los planes (feature `ia` del plan): la UI solo
 // ofrece el botón con `ctx.can("ia")`, y el servidor lo vuelve a verificar.
 // No guarda nada: propone texto para las secciones VACÍAS; aceptar es por
-// sección y lo escribe la app en el borrador con la marca `asistido_ia`.
+// sección y lo escribe el SERVIDOR (accion 'aceptar'), que pone `asistido_ia`.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Secciones que la IA puede proponer (nunca la impresión diagnóstica ni las técnicas). */
@@ -41,26 +43,17 @@ internal fun parsearPropuestasIa(o: JsonObject?): PropuestasIaPsico {
 }
 
 /**
- * Aceptar la propuesta de UNA sección (aceptarPropuesta de la web): la escribe
- * en el borrador y suma la sección a `asistido_ia` (la marca solo crece). Una
- * sección con texto no se pisa salvo [reemplazar].
+ * Cuerpo de "Aceptar en el informe" (§14.4): lo escribe EL SERVIDOR, que pone
+ * la marca `asistido_ia` (es el único camino que marca; al `guardar` el
+ * servidor ignora la marca del cliente). `409 SECCION_CON_TEXTO` → confirmar y
+ * reintentar con [reemplazar]. [texto] es el editado por la psicóloga.
  */
-fun aceptarPropuestaIa(
-    c: ContenidoInformePsico, clave: String, texto: String,
-    modelo: String, hoy: String, sinConsentimientoConfirmado: Boolean, reemplazar: Boolean = false,
-): ContenidoInformePsico {
-    if (clave !in SECCIONES_IA_PSICO || texto.isBlank()) return c
-    if (!c.secciones[clave].isNullOrBlank() && !reemplazar) return c
-    val previo = c.asistidoIa
-    return c.copy(
-        secciones = c.secciones + (clave to texto.trim()),
-        asistidoIa = AsistidoIaPsico(
-            secciones = (previo?.secciones.orEmpty() + clave).distinct(),
-            modelo = modelo.ifBlank { previo?.modelo.orEmpty() },
-            fecha = hoy,
-            sinConsentimientoConfirmado = previo?.sinConsentimientoConfirmado == true || sinConsentimientoConfirmado,
-        ),
-    )
+internal fun jsonAceptarPropuestaIa(informeId: String, clave: String, texto: String, reemplazar: Boolean): JsonObject = buildJsonObject {
+    put("accion", "aceptar")
+    put("informeId", informeId)
+    put("clave", clave)
+    put("texto", texto.trim())
+    put("reemplazar", reemplazar)
 }
 
 /** ¿La sección lleva el sello "✨ asistido por IA"? */

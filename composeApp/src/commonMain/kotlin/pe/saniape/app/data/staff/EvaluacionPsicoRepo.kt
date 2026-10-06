@@ -383,6 +383,13 @@ object EvaluacionPsicoRepo {
             put("confirmarSinConsentimiento", confirmarSinConsentimiento)
         })
 
+    /**
+     * Fase 3 (§14.4): "Aceptar en el informe" una propuesta. El servidor escribe
+     * la sección y la marca `asistido_ia`; `cuerpo.informe` = el borrador.
+     */
+    suspend fun aceptarPropuestaIA(informeId: String, clave: String, texto: String, reemplazar: Boolean): ResultadoEscritura =
+        postJson("$BASE/informe/ia", jsonAceptarPropuestaIa(informeId, clave, texto, reemplazar))
+
     suspend fun borrarTest(testAplicadoId: String): ResultadoEscritura =
         postJson("$BASE/test", buildJsonObject {
             put("accion", "borrar")

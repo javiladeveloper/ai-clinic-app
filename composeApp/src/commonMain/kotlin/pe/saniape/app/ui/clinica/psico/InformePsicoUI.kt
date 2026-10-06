@@ -28,8 +28,6 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import pe.saniape.app.data.staff.CAMPOS_FILIACION
 import pe.saniape.app.data.staff.SECCIONES_IA_PSICO
-import pe.saniape.app.data.staff.aceptarPropuestaIa
-import pe.saniape.app.data.staff.hoyClinicaIso
 import pe.saniape.app.data.staff.ofrecerAnexoPerfiles
 import pe.saniape.app.data.staff.seccionAsistidaIa
 import pe.saniape.app.data.staff.EvaluacionPsicoRepo
@@ -79,8 +77,6 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
     var confirmarDescartar by remember { mutableStateOf(false) }
     // IA (fase 3): propuestas en pantalla (no se guardan hasta aceptarlas) y su consentimiento.
     var propuestas by remember { mutableStateOf<Map<String, String>?>(null) }
-    var iaModelo by remember { mutableStateOf("") }
-    var iaSinConsentimiento by remember { mutableStateOf(false) }
     var pedirConsentimiento by remember { mutableStateOf(false) }
     var confirmoConsentimiento by remember { mutableStateOf(false) }
     var reemplazarIa by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -90,8 +86,6 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
             when (r) {
                 is EvaluacionPsicoViewModel.ResultadoIa.Ok -> {
                     pedirConsentimiento = false; confirmoConsentimiento = false
-                    iaModelo = r.propuestas.modelo
-                    iaSinConsentimiento = r.sinConsentimientoConfirmado
                     propuestas = r.propuestas.propuestas
                     editando = true
                 }
@@ -103,10 +97,15 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
     fun quitarPropuesta(clave: String) {
         propuestas = propuestas?.minus(clave)?.ifEmpty { null }
     }
+    /** Lo escribe el servidor (con la marca); si la sección ya tiene texto, se confirma y se reintenta. */
     fun aceptarIa(clave: String, texto: String, reemplazar: Boolean) {
-        val actual = vm.informe ?: return
-        vm.editarInforme(aceptarPropuestaIa(actual.contenido, clave, texto, iaModelo, hoyClinicaIso(), iaSinConsentimiento, reemplazar))
-        quitarPropuesta(clave)
+        vm.aceptarPropuestaIa(clave, texto, reemplazar) { r ->
+            when (r) {
+                EvaluacionPsicoViewModel.ResultadoAceptarIa.OK -> quitarPropuesta(clave)
+                EvaluacionPsicoViewModel.ResultadoAceptarIa.CON_TEXTO -> reemplazarIa = clave to texto
+                EvaluacionPsicoViewModel.ResultadoAceptarIa.ERROR -> Unit
+            }
+        }
     }
 
     fun verHtml(informeId: String? = null) {
@@ -234,12 +233,9 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
                 Text("Borrador de apoyo: revisa, corrige y acepta por sección. Nada se guarda ni se emite sin ti.", color = c.textoSuave, fontSize = 12.sp)
                 SECCIONES_IA_PSICO.filter { it in props }.forEach { clave ->
                     val titulo = secciones.firstOrNull { it.clave == clave }?.let { "${it.numero}. ${it.titulo}" } ?: clave
-                    PropuestaIaPsico(titulo, props.getValue(clave),
+                    PropuestaIaPsico(titulo, props.getValue(clave), ocupado = vm.accionando != null,
                         onDescartar = { quitarPropuesta(clave) },
-                        onAceptar = { texto ->
-                            if (vm.informe?.contenido?.secciones?.get(clave).isNullOrBlank()) aceptarIa(clave, texto, false)
-                            else reemplazarIa = clave to texto
-                        })
+                        onAceptar = { texto -> aceptarIa(clave, texto, false) })
                 }
                 BotonPsico("Descartar todas", color = c.textoSuave, modifier = Modifier.fillMaxWidth()) { propuestas = null }
             }
@@ -430,7 +426,7 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
 
 /** Una propuesta de la IA: texto editable, "Descartar" y "Aceptar en el informe". */
 @Composable
-private fun PropuestaIaPsico(titulo: String, texto: String, onDescartar: () -> Unit, onAceptar: (String) -> Unit) {
+private fun PropuestaIaPsico(titulo: String, texto: String, ocupado: Boolean, onDescartar: () -> Unit, onAceptar: (String) -> Unit) {
     val c = Sania.colors
     var v by remember(titulo, texto) { mutableStateOf(texto) }
     Column(
@@ -441,7 +437,7 @@ private fun PropuestaIaPsico(titulo: String, texto: String, onDescartar: () -> U
         TextoLargoPsico(titulo, v, { v = it }, false)
         androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             BotonPsico("Descartar", color = c.textoSuave, modifier = Modifier.weight(1f)) { onDescartar() }
-            BotonPsico("Aceptar en el informe", color = c.ok, relleno = true, habilitado = v.isNotBlank(), modifier = Modifier.weight(1.4f)) { onAceptar(v) }
+            BotonPsico("Aceptar en el informe", color = c.ok, relleno = true, habilitado = v.isNotBlank() && !ocupado, modifier = Modifier.weight(1.4f)) { onAceptar(v) }
         }
     }
 }

@@ -346,6 +346,21 @@ class EvaluacionPsicoFase3Test {
         // Rosenberg: subir es mejorar → la flecha sigue al signo.
         assertEquals("▲ mejora", textoSentidoPsico(FilaComparacionPsico("Autoestima", 20.0, 26.0, 6.0, sentido = "mejora", relevante = null)))
         assertEquals("+6", textoDiferenciaPsico(6.0))
+        // La flecha nunca sale del sentido: solo del signo.
+        assertEquals("▲", flechaDiferenciaPsico(2.0))
+        assertEquals("▼", flechaDiferenciaPsico(-2.0))
+        assertEquals("=", flechaDiferenciaPsico(0.0))
+        assertEquals("", flechaDiferenciaPsico(null))
+        assertEquals("= igual", textoSentidoPsico(FilaComparacionPsico("X", 5.0, 5.0, 0.0, sentido = "igual")))
+        // Corregido a mano: el servidor no manda sentido y agrega un aviso, que se lee tal cual.
+        val editado = leerComparacion(obj("""
+            { "anterior": { "id": "a" }, "actual": { "id": "b" },
+              "filas": [{ "escala": "PHQ-9 total", "antes": 15, "despues": 9, "diferencia": -6, "sentido": null, "relevante": null }],
+              "avisos": ["Hay puntajes corregidos a mano: se muestran tal como quedaron, sin indicar mejora o empeora automática."] }
+        """))!!
+        assertNull(textoSentidoPsico(editado.filas.single()))
+        assertFalse(mostrarCambioRetest(editado))
+        assertEquals(1, editado.avisos.size)
 
         // Sin anteriores: comparación null.
         val vacio = parsearRetestPsico(obj("""{ "ok": true, "actual": { "id": "ta2" }, "anteriores": [], "comparacion": null }"""))
@@ -390,12 +405,13 @@ class EvaluacionPsicoFase3Test {
         assertTrue(seccionAsistidaIa(i.contenido, "motivo"))
         assertFalse(seccionAsistidaIa(i.contenido, "antecedentes"))
 
-        // Al guardar solo viaja `incluir` (los perfiles los calcula el servidor) y la marca de IA.
+        // Al guardar solo viaja `incluir` (los perfiles los calcula el servidor); la marca de
+        // IA no viaja: el servidor ignora la del cliente (§14.4).
         val j = jsonContenidoInforme(conAnexoPerfiles(i.contenido, false))
         val anexo = j["anexoPerfiles"] as JsonObject
         assertEquals("false", (anexo["incluir"] as JsonPrimitive).content)
         assertNull(anexo["perfiles"])
-        assertEquals("motivo", ((j["asistido_ia"] as JsonObject)["secciones"] as JsonArray).single().let { (it as JsonPrimitive).content })
+        assertNull(j["asistido_ia"])
         // Sin anexo ni IA en el contenido (servidor sin fase 3): no viajan.
         val viejo = jsonContenidoInforme(ContenidoInformePsico())
         assertNull(viejo["anexoPerfiles"])
@@ -415,22 +431,16 @@ class EvaluacionPsicoFase3Test {
         assertEquals("llama3.2:3b", p.modelo)
         assertFalse(p.consentimientoIA)
 
-        val base = ContenidoInformePsico(secciones = mapOf("resultados" to "ya escrito"))
-        val c1 = aceptarPropuestaIa(base, "motivo", "  Texto M ", "llama3.2:3b", "2026-10-10", sinConsentimientoConfirmado = false)
-        assertEquals("Texto M", c1.secciones["motivo"])
-        assertEquals(AsistidoIaPsico(listOf("motivo"), "llama3.2:3b", "2026-10-10", false), c1.asistidoIa)
-        // Una sección con texto no se pisa sin "reemplazar".
-        assertEquals(c1, aceptarPropuestaIa(c1, "resultados", "R", "m", "2026-10-11", false))
-        val c2 = aceptarPropuestaIa(c1, "resultados", "R", "", "2026-10-11", sinConsentimientoConfirmado = true, reemplazar = true)
-        assertEquals("R", c2.secciones["resultados"])
-        assertEquals(listOf("motivo", "resultados"), c2.asistidoIa?.secciones)
-        assertEquals("llama3.2:3b", c2.asistidoIa?.modelo)     // sin modelo nuevo, queda el anterior
-        assertTrue(c2.asistidoIa!!.sinConsentimientoConfirmado)
-        // La marca solo crece: una vez confirmado sin consentimiento, queda.
-        assertTrue(aceptarPropuestaIa(c2, "conclusiones", "C", "m", "2026-10-12", false).asistidoIa!!.sinConsentimientoConfirmado)
-        // Nunca la impresión diagnóstica ni texto vacío.
-        assertEquals(c2, aceptarPropuestaIa(c2, "impresionDiagnostica", "X", "m", "2026-10-12", false))
-        assertEquals(c2, aceptarPropuestaIa(c2, "conclusiones", "   ", "m", "2026-10-12", false))
+        // Aceptar lo escribe el SERVIDOR (accion 'aceptar'), con el texto editado y recortado.
+        val cuerpo = jsonAceptarPropuestaIa("i1", "motivo", "  Texto M editado ", reemplazar = false)
+        assertEquals("aceptar", (cuerpo["accion"] as JsonPrimitive).content)
+        assertEquals("i1", (cuerpo["informeId"] as JsonPrimitive).content)
+        assertEquals("motivo", (cuerpo["clave"] as JsonPrimitive).content)
+        assertEquals("Texto M editado", (cuerpo["texto"] as JsonPrimitive).content)
+        assertEquals("false", (cuerpo["reemplazar"] as JsonPrimitive).content)
+        assertEquals("true", (jsonAceptarPropuestaIa("i1", "motivo", "x", reemplazar = true)["reemplazar"] as JsonPrimitive).content)
+        assertNull(cuerpo["asistido_ia"])
+        assertEquals("Esa sección ya tiene texto.", mensajeErrorPsico(409, "SECCION_CON_TEXTO", "x"))
         assertEquals("El borrador con IA no está incluido en el plan de la clínica.", mensajeErrorPsico(403, "PLAN_SIN_IA", "x"))
         // 503 IA_NO_DISPONIBLE: el texto del servidor tal cual.
         assertEquals("El asistente de IA no está disponible en este momento.", mensajeErrorPsico(503, "IA_NO_DISPONIBLE", "El asistente de IA no está disponible en este momento."))

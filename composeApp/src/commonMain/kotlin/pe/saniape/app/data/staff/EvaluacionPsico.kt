@@ -386,7 +386,7 @@ data class ContenidoInformePsico(
      * contenido no lo trae (servidor sin fase 3 o nunca se tocó).
      */
     val anexoPerfiles: AnexoPerfilesPsico? = null,
-    /** Fase 3: secciones redactadas con IA y aceptadas (la marca solo crece). */
+    /** Fase 3: secciones redactadas con IA y aceptadas (la pone solo el servidor, al aceptar). */
     val asistidoIa: AsistidoIaPsico? = null,
 )
 
@@ -936,15 +936,7 @@ internal fun jsonContenidoInforme(c: ContenidoInformePsico): JsonObject = buildJ
     put("fecha", c.fecha)
     // Fase 3: solo `incluir` (los perfiles los calcula el servidor). Sin tocarlo no viaja.
     c.anexoPerfiles?.let { a -> putJsonObject("anexoPerfiles") { put("incluir", a.incluir) } }
-    // La marca de IA solo crece: el servidor une la que llega con la guardada.
-    c.asistidoIa?.let { a ->
-        putJsonObject("asistido_ia") {
-            putJsonArray("secciones") { a.secciones.forEach { add(JsonPrimitive(it)) } }
-            put("modelo", a.modelo)
-            put("fecha", a.fecha)
-            put("sinConsentimientoConfirmado", a.sinConsentimientoConfirmado)
-        }
-    }
+    // `asistido_ia` no viaja: al guardar el servidor ignora la del cliente (§14.4).
 }
 
 // ── Reglas de presentación (puras) ───────────────────────────────────────────
@@ -1174,6 +1166,7 @@ internal fun fraseDeCodigoPsico(codigo: String?): String? = when (codigo) {
     "APLICACION_ANTERIOR_NO_ENCONTRADA" -> "No se encontró esa aplicación anterior (o no tienes acceso)."
     "PLAN_SIN_IA" -> "El borrador con IA no está incluido en el plan de la clínica."
     "SIN_SECCIONES_VACIAS" -> "No hay secciones vacías para proponer: la IA solo redacta las que están en blanco."
+    "SECCION_CON_TEXTO" -> "Esa sección ya tiene texto."
     "IA_SIN_PROPUESTA" -> "La IA no devolvió una propuesta útil. Inténtalo de nuevo."
     "DEMASIADAS_SOLICITUDES" -> "Demasiadas solicitudes seguidas. Espera un minuto e inténtalo de nuevo."
     "INFORME_NO_ENCONTRADO" -> "No se encontró el informe. Recarga la evaluación."

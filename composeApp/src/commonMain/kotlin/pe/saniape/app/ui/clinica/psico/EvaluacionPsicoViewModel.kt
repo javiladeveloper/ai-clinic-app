@@ -699,6 +699,43 @@ class EvaluacionPsicoViewModel(
         }
     }
 
+    /** Resultado de "Aceptar en el informe" una propuesta de la IA. */
+    enum class ResultadoAceptarIa { OK, CON_TEXTO, ERROR }
+
+    /**
+     * Acepta UNA propuesta: antes se manda lo pendiente (el servidor parte de lo
+     * guardado) y el SERVIDOR escribe la sección con la marca `asistido_ia`.
+     * `409 SECCION_CON_TEXTO` → la pantalla confirma y reintenta con [reemplazar].
+     */
+    fun aceptarPropuestaIa(clave: String, texto: String, reemplazar: Boolean, alTerminar: (ResultadoAceptarIa) -> Unit) {
+        val i = informe ?: return
+        if (i.emitido || accionando != null) return
+        accionando = "ia:$clave"
+        viewModelScope.launch {
+            temporizadorInforme?.cancel()
+            if (!enviarInforme()) { accionando = null; alTerminar(ResultadoAceptarIa.ERROR); return@launch }
+            val r = conIndicador { EvaluacionPsicoRepo.aceptarPropuestaIA(i.id, clave, texto, reemplazar) }
+            accionando = null
+            val nuevo = informeDeRespuesta(r.cuerpo)
+            when {
+                r.registrada -> {
+                    val actual = informe
+                    if (nuevo != null && actual?.id == nuevo.id) {
+                        // Si se siguió escribiendo mientras viajaba, solo se suman la sección y la marca.
+                        informe = if (informePendiente == null) nuevo
+                        else actual.copy(contenido = actual.contenido.copy(
+                            secciones = actual.contenido.secciones + (clave to (nuevo.contenido.secciones[clave] ?: texto.trim())),
+                            asistidoIa = nuevo.contenido.asistidoIa,
+                        ))
+                    } else refrescar()
+                    alTerminar(ResultadoAceptarIa.OK)
+                }
+                r.codigo == "SECCION_CON_TEXTO" -> alTerminar(ResultadoAceptarIa.CON_TEXTO)
+                else -> { Toaster.error(r.mensajePsico()); alTerminar(ResultadoAceptarIa.ERROR) }
+            }
+        }
+    }
+
     // ── Plan → tratamiento ───────────────────────────────────────────────────
 
     /**

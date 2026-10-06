@@ -97,6 +97,9 @@ internal fun ResultadoItemsPsico(r: RespuestasTestPsico, corto: String) {
                     if (res.faltantes.isNotEmpty()) " (${res.faltantes.joinToString(", ")})." else ".",
                 color = c.textoSuave, fontSize = 12.sp,
             )
+            // Corregido a mano: lo que vale es la tabla; del cálculo original solo se usan las alertas.
+            r.editado -> Text("Los puntajes se corrigieron a mano después del cálculo: valen los de la tabla. \"Responder ítems\" de nuevo recalcula.",
+                color = c.textoSuave, fontSize = 12.sp)
             else -> {
                 res.total?.let { t ->
                     Text("${t.nombre}: ${textoPuntajeEscala(t)}", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -105,7 +108,6 @@ internal fun ResultadoItemsPsico(r: RespuestasTestPsico, corto: String) {
                     Text("${s.nombre}: ${textoPuntajeEscala(s).ifBlank { "—" }}${s.categoria?.let { " · $it" } ?: ""}", color = c.texto, fontSize = 12.sp)
                 }
                 res.categoria?.let { Text(it, color = c.texto, fontSize = 13.sp) }
-                if (r.editado) Text("Los puntajes se corrigieron a mano después del cálculo: valen los de la tabla.", color = c.textoSuave, fontSize = 11.sp)
             }
         }
     }
@@ -169,6 +171,10 @@ internal fun DialogoResponderItems(
                 if (ins.consigna.isNotBlank()) Text(ins.consigna, color = c.texto, fontSize = 14.sp)
                 if (ins.sinTextoItems) {
                     AvisoPsico("El texto de los ítems no se reproduce aquí (la licencia no permite modificar el formulario). Aplica el formulario oficial impreso y marca lo que respondió el paciente.",
+                        c.pend, c.pendBg)
+                }
+                if (previo != null && previo.instrumento != ins.id) {
+                    AvisoPsico("Cambias de versión: al guardar, se quitan de la tabla las escalas de la versión anterior (las filas que agregaste a mano quedan).",
                         c.pend, c.pendBg)
                 }
                 AlertasTestPsico(alertas)
