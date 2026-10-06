@@ -544,6 +544,54 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             val r = pe.saniape.app.data.staff.CobroRepo.estadosPago(ids)
             estadosPago = r
         }
+        cargarMediosPago(nuevas)
+    }
+
+    /**
+     * Con qué medios se pagó cada cita COBRADA ("Efectivo + Yape"), como la
+     * moneda de /citas web. Solo para quien ve la caja (permiso 'pagos'): al
+     * resto no se le pide ni se le muestra. UNA lectura por lista cargada, en
+     * paralelo con el estado de pago; un fallo deja el mapa vacío ("Pagado" a secas).
+     */
+    var mediosPago by mutableStateOf<Map<String, String>>(emptyMap()); private set
+    private var mediosPagoJob: kotlinx.coroutines.Job? = null
+
+    private fun cargarMediosPago(nuevas: List<CitaStaff>) {
+        mediosPagoJob?.cancel()
+        val pagadas = if (ctx.puede("pagos")) nuevas.filter { it.pagadaAt != null && it.estado != "Cancelada" }.map { it.id } else emptyList()
+        if (pagadas.isEmpty()) { mediosPago = emptyMap(); return }
+        mediosPago = mediosPago.filterKeys { it in pagadas }
+        mediosPagoJob = viewModelScope.launch {
+            mediosPago = pe.saniape.app.data.staff.CobroRepo.metodosPagoDeCitas(pagadas)
+        }
+    }
+
+    /** ¿Ofrecer "Anular cobro" en esta cita? (Admin + pagos + cobro con varios medios). */
+    fun puedeAnularCobro(cita: CitaStaff): Boolean = pe.saniape.app.data.staff.puedeAnularCobro(
+        ctx.rol, ctx.puede("pagos"), cita.tipo, cita.costo, cita.estado, cita.pagadaAt, mediosPago[cita.id],
+    )
+
+    /**
+     * Anula el cobro dividido de la cita (solo Admin; el servidor lo valida igual):
+     * borra todas sus partes de caja y la cita vuelve a "por cobrar". La atención
+     * no se toca. Tras el sí del servidor se recarga la agenda (pagada_at = null).
+     */
+    fun anularCobro(cita: CitaStaff, onFin: (Boolean) -> Unit = {}) {
+        if (accionando) return
+        viewModelScope.launch {
+            accionando = true
+            val error = pe.saniape.app.ui.conIndicador { pe.saniape.app.data.staff.CobroRepo.anularCobro(cita.id) }
+            if (error == null) {
+                pe.saniape.app.ui.Toaster.exito("Cobro anulado: la cita quedó por cobrar")
+                mediosPago = mediosPago - cita.id
+                recargarCitas()
+                recargarBanners()
+            } else {
+                pe.saniape.app.ui.Toaster.error(error)
+            }
+            accionando = false
+            onFin(error == null)
+        }
     }
 
     /**

@@ -87,6 +87,14 @@ fun TarjetaCita(
     estadoPago: pe.saniape.app.data.staff.EstadoPagoCita? = null,
     /** "🧠 Evaluación": la cita es de una evaluación psicológica y quien mira puede trabajarla. */
     evaluacionPsico: Boolean = false,
+    /**
+     * Con qué se pagó la cita cobrada ("Yape", "Efectivo + Yape"), como la moneda
+     * de /citas web. Solo llega a quien ve la caja (permiso 'pagos'); null = no se
+     * sabe (todavía, sin red) o no corresponde → "Pagado" a secas.
+     */
+    mediosPago: String? = null,
+    /** "↺ Anular cobro" (Admin, cobro con varios medios): lo decide la pantalla. */
+    anularCobro: Boolean = false,
 ) {
     val c = Sania.colors
     val acciones = recordarAcciones()
@@ -189,7 +197,13 @@ fun TarjetaCita(
                         cita.tipo == "Consulta" -> add(Triple("Gratis", c.teal, c.tealBg))
                     }
                 }
-                if (!conBadgePago && cobrable && puedeCobrar && pagada) add(Triple("💰 Pagado", c.ok, c.okBg))
+                val medios = mediosPago?.takeIf { puedeCobrar && it.isNotBlank() }
+                if (!conBadgePago && cobrable && puedeCobrar && pagada) {
+                    add(Triple(if (medios != null) "💰 Pagado · $medios" else "💰 Pagado", c.ok, c.okBg))
+                } else if (conBadgePago && cobrable && pagada && medios != null) {
+                    // El badge del servidor ya dice "Pagado": aquí solo con qué.
+                    add(Triple("💳 $medios", c.ok, c.okBg))
+                }
                 // Sin permiso de cobrar, la deuda tiene que verse igual: el profesional
                 // necesita saber que el paciente no pagó aunque no sea él quien cobra.
                 if (!conBadgePago && cobrable && !puedeCobrar && !pagada && cita.estado == "Completada") {
@@ -225,7 +239,8 @@ fun TarjetaCita(
                 crearTratamiento = crearTratamiento && cita.pacienteId != null,
                 sala = sala?.takeIf { cita.pacienteId != null },
                 evaluacionPsico = evaluacionPsico && cita.tratamientoId != null,
-                cobrar = cobrable && puedeCobrar && !pagada)
+                cobrar = cobrable && puedeCobrar && !pagada,
+                anularCobro = anularCobro && pagada)
             if (acc.isNotEmpty()) {
                 Spacer(Modifier.height(Sania.dim.md))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
@@ -250,6 +265,8 @@ enum class AccionTarjeta {
     Cobrar,
     /** "🧠 Evaluación": el espacio de trabajo de la evaluación psicológica de su tratamiento. */
     EvaluacionPsico,
+    /** "↺ Anular cobro": borra el cobro dividido de caja y la cita vuelve a "por cobrar" (solo Admin). */
+    AnularCobro,
 }
 
 /**
@@ -305,6 +322,8 @@ private fun accionesPara(
     /** Consulta/Evaluación con costo, sin cobrar, y quien mira tiene permiso 'pagos'. */
     cobrar: Boolean = false,
     evaluacionPsico: Boolean = false,
+    /** Cobro dividido ya hecho y quien mira es Admin con 'pagos'. */
+    anularCobro: Boolean = false,
 ): List<Triple<String, AccionTarjeta, Color>> {
     val c = Sania.colors
     val lista = mutableListOf<Triple<String, AccionTarjeta, Color>>()
@@ -350,6 +369,8 @@ private fun accionesPara(
     if (odontograma && tipo != "Sesión") lista.add(Triple("🦷 Odontograma", AccionTarjeta.Odontograma, c.info))
     // Crear el plan desde la cita que evalúa (no cancelada), como la web.
     if (crearTratamiento && estado != "Cancelada") lista.add(Triple("🩺 Crear tratamiento", AccionTarjeta.CrearTratamiento, c.purple))
+    // Corregir un cobro dividido es anularlo y volver a cobrar (como la web, solo Admin).
+    if (anularCobro && estado != "Cancelada") lista.add(Triple("↺ Anular cobro", AccionTarjeta.AnularCobro, c.error))
     if (estado != "Cancelada" && estado != "Completada") {
         lista.add(Triple("✏ Editar", AccionTarjeta.Editar, c.textoSuave))
         lista.add(Triple("✕ Cancelar", AccionTarjeta.Cancelar, c.error))

@@ -142,6 +142,8 @@ fun PantallaAgenda(
     var pasarEval by remember { mutableStateOf<CitaStaff?>(null) }
     // "💰 Cobrar" de una Consulta/Evaluación (método + fecha del pago).
     var cobrar by remember { mutableStateOf<CitaStaff?>(null) }
+    // "↺ Anular cobro" (cobro dividido, solo Admin): se confirma antes de borrar de caja.
+    var anularCobroCita by remember { mutableStateOf<CitaStaff?>(null) }
     // "✗ No vino" de una vencida: confirmación con motivo + "📅 Reponer".
     var noVino by remember { mutableStateOf<CitaStaff?>(null) }
     // Derivación cuya evaluación se está agendando: se marca procesada SOLO si la
@@ -534,6 +536,7 @@ fun PantallaAgenda(
                                         // La consulta guiada, nativa (antes se abría en la web).
                                         AccionTarjeta.Atender -> atendiendo = Atendiendo(cita.id)
                                         AccionTarjeta.EvaluacionPsico -> evalPsico = cita to kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+                                        AccionTarjeta.AnularCobro -> anularCobroCita = cita
                                     }
                                 },
                                 onVerResumen = { resumenPacienteId = it },
@@ -545,6 +548,8 @@ fun PantallaAgenda(
                                 flujo = vm.flujoDe(cita),
                                 puedeCobrar = ctx.puede("pagos"),
                                 estadoPago = vm.estadosPago[cita.id],
+                                mediosPago = vm.mediosPago[cita.id],
+                                anularCobro = vm.puedeAnularCobro(cita),
                                 // Gemelo de evalPsicoDe (/citas web): servicio de evaluación + Admin o
                                 // quien atiende la cita. La base decide al abrir.
                                 evaluacionPsico = cita.procedimientoId != null && cita.procedimientoId in procsEvalPsico &&
@@ -884,6 +889,33 @@ fun PantallaAgenda(
             profesionales = vm.terapeutas,
             onCancelar = { vm.cerrarPedidoProfesional() },
             onElegir = { vm.completarConProfesional(it) },
+        )
+    }
+    anularCobroCita?.let { cita ->
+        val medios = vm.mediosPago[cita.id]
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { if (!vm.accionando) anularCobroCita = null },
+            title = { Text("↺ ¿Anular este cobro?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "${cita.pacienteNombre ?: "El paciente"} pagó ${pe.saniape.app.ui.clinica.agenda.modales.textoSoles(cita.costo ?: 0.0)}" +
+                        (medios?.let { " con $it" } ?: "") + ". Se borrarán de caja TODAS sus partes y la cita volverá a " +
+                        "\"por cobrar\" para cobrarla de nuevo. La atención, el diagnóstico y el historial no cambian.",
+                    color = c.textoSuave, fontSize = 13.sp,
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    enabled = !vm.accionando,
+                    onClick = { vm.anularCobro(cita) { anularCobroCita = null } },
+                ) { Text(if (vm.accionando) "Anulando…" else "Anular cobro", color = c.error, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(enabled = !vm.accionando, onClick = { anularCobroCita = null }) {
+                    Text("No, dejarlo", color = c.textoSuave)
+                }
+            },
+            containerColor = c.superficie,
         )
     }
     cobrar?.let { cita ->

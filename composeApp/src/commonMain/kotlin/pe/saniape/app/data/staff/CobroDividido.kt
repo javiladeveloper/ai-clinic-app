@@ -204,3 +204,95 @@ data class ResultadoCobro(val escritura: ResultadoEscritura, val yaEstaba: Boole
 /** `{ ok: true, yaEstaba: true }` → true. */
 fun yaEstabaDe(respuesta: JsonObject?): Boolean =
     (respuesta?.get("yaEstaba") as? JsonPrimitive)?.content == "true"
+
+// ── Con qué medios se pagó una cita (gemelo de lib/comprobante-cita.ts + metodosPagoDeCitas) ──
+//
+// El cobro de una Consulta/Evaluación entra a caja con `comprobante = cita:<id>`;
+// si se dividió, las partes 2..4 van como `cita:<id>#2`… y la parte 1 dice
+// "(parte 1 de n)" al final de su descripción. La cita no guarda el método.
+
+private val RE_COMPROBANTE_CITA = Regex("""^cita:([^#\s]+)(?:#([2-9]|[1-9]\d+))?$""")
+
+/** Comprobante de la parte [parte] (1 = el de siempre) del cobro de una cita. */
+fun comprobanteCita(citaId: String, parte: Int = 1): String =
+    if (parte <= 1) "cita:$citaId" else "cita:$citaId#$parte"
+
+/** Comprobantes de las partes 2..n (solo existen si el cobro se dividió). */
+fun comprobantesExtraDeCita(citaId: String): List<String> =
+    (2..MAX_PARTES_COBRO).map { comprobanteCita(citaId, it) }
+
+/** Id de la cita de un comprobante `cita:<id>` o `cita:<id>#n`; null si no lo es. */
+fun citaIdDeComprobante(c: String?): String? = RE_COMPROBANTE_CITA.find(c.orEmpty().trim())?.groupValues?.get(1)
+
+/** Número de parte (1 = base) de un comprobante de cita; null si no lo es. */
+fun parteDeComprobante(c: String?): Int? {
+    val m = RE_COMPROBANTE_CITA.find(c.orEmpty().trim()) ?: return null
+    return m.groupValues[2].takeIf { it.isNotEmpty() }?.toIntOrNull() ?: 1
+}
+
+/** "(parte 1 de 3)" al final de la descripción de la parte base → 3; null si no es un cobro dividido. */
+fun partesDeDescripcion(descripcion: String?): Int? {
+    val n = Regex("""\(parte 1 de (\d+)\)\s*$""").find(descripcion.orEmpty())?.groupValues?.get(1)?.toIntOrNull()
+    return n?.takeIf { it in MIN_PARTES_COBRO..MAX_PARTES_COBRO }
+}
+
+/** "Efectivo + Yape" a partir de los métodos (sin repetir ni vacíos, en orden). */
+fun etiquetaDeMetodos(metodos: List<String?>): String =
+    metodos.map { it.orEmpty().trim() }.filter { it.isNotEmpty() }.distinct().joinToString(" + ")
+
+/** ¿La etiqueta es de un cobro con varios medios? (lo que habilita "Anular cobro", como la web). */
+fun esCobroDividido(etiqueta: String?): Boolean = etiqueta?.contains(" + ") == true
+
+/** Un movimiento de caja del cobro de una cita, tal como se lee de `movimientos`. */
+data class MovimientoCobroCita(val comprobante: String, val metodo: String?, val descripcion: String? = null)
+
+/** Citas cuyo cobro se dividió (su parte base dice "(parte 1 de n)"): solo de ellas se piden las partes 2..n. */
+fun citasConCobroDividido(base: List<MovimientoCobroCita>): Set<String> =
+    base.filter { partesDeDescripcion(it.descripcion) != null }.mapNotNull { citaIdDeComprobante(it.comprobante) }.toSet()
+
+/**
+ * Con qué se pagó cada cita: "Yape", o "Efectivo + Yape" si el cobro se dividió
+ * ([extra] = las partes 2..n de esas citas). Las partes se ordenan por número.
+ */
+fun metodosPorCita(base: List<MovimientoCobroCita>, extra: List<MovimientoCobroCita> = emptyList()): Map<String, String> {
+    val porCita = mutableMapOf<String, String>()
+    for (m in base) {
+        val id = citaIdDeComprobante(m.comprobante) ?: continue
+        m.metodo?.trim()?.takeIf { it.isNotEmpty() }?.let { porCita[id] = it }
+    }
+    val divididas = citasConCobroDividido(base)
+    if (divididas.isEmpty()) return porCita
+    val partes = (base + extra).sortedBy { parteDeComprobante(it.comprobante) ?: 0 }
+    for (id in divididas) {
+        val etiqueta = etiquetaDeMetodos(partes.filter { citaIdDeComprobante(it.comprobante) == id }.map { it.metodo })
+        if (etiqueta.isNotEmpty()) porCita[id] = etiqueta
+    }
+    return porCita
+}
+
+/**
+ * ¿Ofrecer "Anular cobro"? Gemelo del menú de /citas web: solo el Admin con
+ * permiso de pagos, en una Consulta/Evaluación con costo ya cobrada con VARIOS
+ * medios. Un cobro simple se corrige de otra forma (el servidor responde 409).
+ */
+fun puedeAnularCobro(
+    rol: String?, puedePagos: Boolean, tipo: String?, costo: Double?, estado: String?,
+    pagadaAt: String?, medios: String?,
+): Boolean = rol == "Admin" && puedePagos && tipo != "Sesión" && (costo ?: 0.0) > 0 &&
+    estado != "Cancelada" && pagadaAt != null && esCobroDividido(medios)
+
+/**
+ * El resultado de "Anular cobro", legible. [status] 0 = sin respuesta (sin
+ * señal o timeout: pudo haber entrado): no se encola a propósito — borra dinero de caja y debe hacerse con el
+ * Admin mirando. Los 409 del servidor (cobro simple, caja cerrada) ya traen el
+ * texto que dice qué hacer.
+ */
+fun mensajeAnularCobro(status: Int, error: String?): String = when {
+    status == 0 -> "Sin conexión: no se pudo confirmar la anulación. Con señal, recarga la agenda y mira si la cita quedó por cobrar antes de reintentar."
+    status == 401 -> "Tu sesión expiró. Vuelve a entrar."
+    status == 403 -> error?.takeIf { it.isNotBlank() } ?: "Solo el administrador puede anular un cobro."
+    status == 404 -> "No se encontró la cita (puede que la hayan borrado). Recarga la agenda."
+    status >= 500 -> "No se pudo anular el cobro. Recarga la agenda para ver si quedó por cobrar antes de reintentar."
+    !error.isNullOrBlank() -> error
+    else -> "No se pudo anular el cobro (HTTP $status)."
+}
