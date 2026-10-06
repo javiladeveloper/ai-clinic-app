@@ -1073,7 +1073,8 @@ fun PantallaFichaPaciente(
                     else pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo completar la sesión")
                     // Fotos de la sesión: en segundo plano, ligadas a esta sesión y su
                     // tratamiento. Sin señal (encolada) o sin completar: se avisa.
-                    fotosTrasCompletar(ok, r.encolada, paciente.id, req.trat.id, fotosElegidas, fotosVisibles) { ses.id }
+                    fotosTrasCompletar(ok, r.encolada, paciente.id, req.trat.id, fotosElegidas, fotosVisibles,
+                        sesionIdOffline = ses.id) { ses.id }
                     // Cobro en el mismo paso (si lo activó): vinculado a la sesión. No hay un
                     // endpoint que haga las dos cosas juntas, así que si el cobro falla se
                     // dice claro y se ofrece reintentar SOLO el cobro (no volver a completar).

@@ -202,9 +202,13 @@ private val alcanceSubidas = CoroutineScope(SupervisorJob() + Dispatchers.Defaul
 /**
  * Qué hacer con las fotos elegidas según cómo terminó el completar:
  *  · no se completó → se avisa que las fotos NO se guardaron (nunca en silencio);
- *  · quedó en la cola sin señal → no se intenta subir (fallaría): se avisa que se
- *    suban desde la galería del tratamiento cuando haya señal;
+ *  · quedó en la cola sin señal → se guardan en el teléfono (FotosPendientes) y
+ *    se suben solas cuando la sesión ya esté en el servidor; lo que no cabe en
+ *    el tope (10 fotos / 20 MB en espera) se avisa;
  *  · completada → se suben en segundo plano.
+ *
+ * [sesionIdOffline] / [citaIdOffline]: a qué sesión ligarlas si quedan en espera
+ * (la ficha conoce la sesión; la agenda, la cita, y la sesión se busca después).
  */
 fun fotosTrasCompletar(
     ok: Boolean,
@@ -213,13 +217,21 @@ fun fotosTrasCompletar(
     tratamientoId: String,
     fotos: List<ArchivoSeleccionado>,
     visiblePaciente: Boolean,
+    sesionIdOffline: String? = null,
+    citaIdOffline: String? = null,
     sesionId: suspend () -> String?,
 ) {
     if (fotos.isEmpty()) return
     val n = if (fotos.size == 1) "la foto" else "las ${fotos.size} fotos"
     when {
         !ok -> Toaster.error("La sesión no se completó: $n de la sesión no se guardaron.")
-        encolada -> Toaster.error("Sesión guardada sin señal; $n no se subieron. Súbelas desde la galería del tratamiento.")
+        encolada -> alcanceSubidas.launch {
+            val r = pe.saniape.app.data.offline.FotosPendientes.guardar(
+                pacienteId, tratamientoId, sesionIdOffline, citaIdOffline, fotos, visiblePaciente,
+            )
+            val (bien, texto) = pe.saniape.app.data.offline.avisoFotosGuardadas(r)
+            if (bien) Toaster.exito(texto) else Toaster.error(texto)
+        }
         else -> subirFotosSesion(pacienteId, tratamientoId, fotos, visiblePaciente, sesionId)
     }
 }

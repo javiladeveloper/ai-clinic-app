@@ -703,7 +703,8 @@ fun PantallaAgenda(
                 if (fotos.isEmpty() || pacId == null || tratId == null) return null
                 val visibles = fotosSesion.visiblePaciente
                 return { ok, encolada ->
-                    pe.saniape.app.ui.clinica.pacientes.fotosTrasCompletar(ok, encolada, pacId, tratId, fotos, visibles) {
+                    pe.saniape.app.ui.clinica.pacientes.fotosTrasCompletar(ok, encolada, pacId, tratId, fotos, visibles,
+                        citaIdOffline = cita.id) {
                         pe.saniape.app.data.staff.AgendaRepo.sesionDeCita(cita.id)?.first
                     }
                 }

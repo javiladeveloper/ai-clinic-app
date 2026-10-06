@@ -352,7 +352,8 @@ fun PantallaSesiones(
                         val tratId = sg.tratamientoId
                         if (tratId != null) {
                             pe.saniape.app.ui.clinica.pacientes.fotosTrasCompletar(
-                                true, r.encolada, sg.pacienteId.orEmpty(), tratId, fotosElegidas, fotosVisibles) { sg.id }
+                                true, r.encolada, sg.pacienteId.orEmpty(), tratId, fotosElegidas, fotosVisibles,
+                                sesionIdOffline = sg.id) { sg.id }
                         }
                         if (pago != null && tratId != null) {
                             val rp = PacientesRepo.cobrarSesionDetalle(tratId, sg.id, pago.first, pago.second, null)

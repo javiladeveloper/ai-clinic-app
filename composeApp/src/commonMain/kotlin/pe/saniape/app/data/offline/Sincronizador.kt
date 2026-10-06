@@ -195,6 +195,9 @@ object Sincronizador {
             }
         } finally {
             mutex.unlock()
+            // Fotos de sesión que esperaban señal: se suben cuando su sesión ya no
+            // tiene nada pendiente en la cola (ver FotosPendientes).
+            FotosPendientes.disparar()
         }
     }
 
