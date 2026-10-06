@@ -28,8 +28,16 @@ sealed interface ResultadoPortal<out T> {
     data object Error : ResultadoPortal<Nothing>
 }
 
-/** Un pago registrado del tratamiento (informativo para el paciente). */
-data class PagoInfo(val fecha: String, val monto: Double, val metodo: String?)
+/**
+ * Un pago registrado del tratamiento (informativo para el paciente). [detalle]
+ * (desde 2026-10-06): un pago con saldo a favor llega como UNA entrada
+ * ("Saldo a favor S/ 205.97 + Yape S/ 284.03") y el saldo que salió hacia otro
+ * tratamiento con monto NEGATIVO ("Saldo aplicado a Ortodoncia"). Se muestra
+ * [etiqueta] = detalle ?: metodo.
+ */
+data class PagoInfo(val fecha: String, val monto: Double, val metodo: String?, val detalle: String? = null) {
+    val etiqueta: String? get() = detalle?.takeIf { it.isNotBlank() } ?: metodo
+}
 
 /** Cuenta del tratamiento: costo, pagado, saldo y detalle de pagos (informativo). */
 data class Saldo(
@@ -305,6 +313,7 @@ object SaludRepo {
                     fecha = p.str("fecha") ?: return@mapNotNull null,
                     monto = p.dbl("monto"),
                     metodo = p.str("metodo"),
+                    detalle = p.str("detalle"),
                 )
             }
             id to Saldo(o.dbl("acordado"), o.dbl("pagado"), o.dbl("saldo"), o.str("estado") ?: "", pagos,

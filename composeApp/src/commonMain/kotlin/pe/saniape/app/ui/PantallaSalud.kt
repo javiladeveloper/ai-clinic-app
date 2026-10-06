@@ -594,9 +594,12 @@ private fun TarjetaTratamiento(t: Tratamiento, saldo: Saldo?) {
                             saldo.pagos.forEach { p ->
                                 Row(Modifier.fillMaxWidth().padding(vertical = 2.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(p.fecha + (p.metodo?.let { " · $it" } ?: ""),
-                                        color = c.textoSuave, fontSize = 12.sp)
-                                    Text("S/ ${formato2(p.monto)}", color = c.texto,
+                                    // detalle ?: metodo: "Saldo a favor S/ 205.97 + Yape S/ 284.03"
+                                    // o "Saldo aplicado a Ortodoncia" (monto negativo, en gris).
+                                    Text(p.fecha + (p.etiqueta?.let { " · $it" } ?: ""),
+                                        color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                    Text((if (p.monto < 0) "-" else "") + "S/ ${formato2(kotlin.math.abs(p.monto))}",
+                                        color = if (p.monto < 0) c.textoSuave else c.texto,
                                         fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
@@ -677,7 +680,14 @@ private fun TarjetaCancelado(t: Tratamiento, saldo: Saldo?) {
         }
         if (saldo != null && saldo.pagado > 0.005) {
             Spacer(Modifier.height(6.dp))
-            Text("Pagado S/ ${formato2(saldo.pagado)}", color = c.textoSuave, fontSize = 12.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Pagado S/ ${formato2(saldo.pagado)}", color = c.textoSuave, fontSize = 12.sp)
+                // Lo pagado y no atendido que la clínica pasó a saldo a favor (contrato
+                // portal §2.2): `aFavor` del servidor, sin liberar llega 0.
+                if (saldo.aFavor > 0.005) {
+                    Text(" · a tu favor", color = c.teal, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }
@@ -712,6 +722,9 @@ private fun TarjetaDocumento(d: Documento, onAbrir: () -> Unit) {
 }
 
 private fun formato2(n: Double): String {
-    val centavos = (n * 100).toLong()
-    return "${centavos / 100}.${(centavos % 100).toString().padStart(2, '0')}"
+    // Redondeo (no truncado) y con signo delante: el saldo que salió hacia otro
+    // tratamiento llega NEGATIVO ("-205.97", no "-205.-97").
+    val centavos = kotlin.math.round(n * 100).toLong()
+    val abs = kotlin.math.abs(centavos)
+    return (if (centavos < 0) "-" else "") + "${abs / 100}.${(abs % 100).toString().padStart(2, '0')}"
 }

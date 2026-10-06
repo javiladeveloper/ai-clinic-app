@@ -120,4 +120,25 @@ class PortalDocumentosSaldosTest {
         assertEquals("Tratamiento", agruparPorTratamiento(listOf(D("x", "t9", null)), { it.tratId }, { it.nombre })[0].titulo)
         assertTrue(agruparPorTratamiento(emptyList<D>(), { it.tratId }, { it.nombre }).isEmpty())
     }
+
+    // Pagar con saldo a favor (2026-10-06): un pago mixto llega como UNA entrada con
+    // `detalle`, y el saldo que salió hacia otro tratamiento con monto negativo.
+    @Test
+    fun portal_lee_el_detalle_del_pago_mixto_y_del_consumo() {
+        val s = SaludRepo.parsearSaldos(
+            """
+            { "saldos": { "t1": { "acordado": 490, "pagado": 490, "saldo": 0, "aFavor": 0, "estado": "Pagado",
+                "pagos": [
+                  { "fecha": "2026-10-06", "monto": 490, "metodo": "Saldo a favor + Yape", "detalle": "Saldo a favor S/ 205.97 + Yape S/ 284.03" },
+                  { "fecha": "2026-10-01", "monto": -205.97, "metodo": "Saldo a favor", "detalle": "Saldo aplicado a Ortodoncia" },
+                  { "fecha": "2026-09-01", "monto": 100, "metodo": "Efectivo" }
+                ] } } }
+            """.trimIndent()
+        )
+        val pagos = s.porTratamiento["t1"]!!.pagos
+        assertEquals("Saldo a favor S/ 205.97 + Yape S/ 284.03", pagos[0].etiqueta)
+        assertEquals(-205.97, pagos[1].monto)
+        assertEquals("Saldo aplicado a Ortodoncia", pagos[1].etiqueta)
+        assertEquals("Efectivo", pagos[2].etiqueta)
+    }
 }
