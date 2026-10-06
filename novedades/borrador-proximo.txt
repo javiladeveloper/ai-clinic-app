@@ -1,0 +1,10 @@
+# BORRADOR de las novedades de la próxima versión (aún sin número).
+# Al publicar, copiar a novedades/<versionName>.txt con el formato de siempre
+# (ver docs/ci-cd-despliegue.md → "Novedades de cada versión").
+La agenda muestra con qué medios se pagó cada cita y el administrador puede anular un cobro dividido. Las fotos de una sesión completada sin señal ya no se pierden, y la historia clínica puede llevar el informe psicológico.
+---
+Clínicas:
+• Agenda: una cita cobrada dice con qué se pagó ("💰 Pagado · Efectivo + Yape"). Solo lo ve quien tiene acceso a pagos.
+• Anular cobro (solo el administrador): en una cita cobrada con varios medios aparece "↺ Anular cobro". Tras confirmar, se borran de caja todas sus partes y la cita vuelve a "por cobrar" para cobrarla de nuevo; la atención no cambia. Si la caja de ese día ya se cerró, se avisa qué hacer.
+• Fotos de la sesión sin señal: si completas una sesión sin conexión, sus fotos quedan guardadas en el teléfono y se suben solas a la galería del tratamiento al volver la señal, ligadas a esa sesión (hasta 10 fotos / 20 MB en espera; si no caben, se avisa).
+• Historia clínica con informe psicológico (Admin y profesional tratante): en Resumen de la ficha, marca "Incluir el informe psicológico vigente" y/o "Incluir los puntajes de los tests" y ábrela para imprimir o guardar en PDF. Las fotos de dibujos y protocolos nunca se incluyen.
