@@ -323,6 +323,15 @@ object EvaluacionPsicoRepo {
             put("idempotency_key", nuevaIdemKey())
         })
 
+    /**
+     * Fase 2 (§13.1): "Emitir nueva versión" → borrador v+1 con el contenido del
+     * último emitido. Idempotente en el servidor (si ya hay ese borrador, lo
+     * devuelve con `creado: false`). `cuerpo.informe` = el borrador. Un servidor
+     * sin la fase 2 responde 400 DATOS_INVALIDOS (ver [mensajeErrorNuevaVersion]).
+     */
+    suspend fun nuevaVersionInforme(evaluacionId: String): ResultadoEscritura =
+        postJson("$BASE/informe", buildJsonObject { put("accion", "nueva_version"); put("evaluacionId", evaluacionId) })
+
     /** "+ Agregar cita de evaluación": suma citas SIN cambiar el precio. `cuerpo.totalSesiones`. */
     suspend fun agregarCita(tratamientoId: String, cantidad: Int = 1): ResultadoEscritura =
         postJson("$BASE/agregar-cita", buildJsonObject {

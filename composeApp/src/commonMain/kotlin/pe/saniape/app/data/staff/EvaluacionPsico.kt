@@ -158,6 +158,29 @@ val SECCIONES_INFORME = listOf(
     SeccionInforme("recomendaciones", 8, "Recomendaciones"),
 )
 
+/** El subtítulo que el informe llevó siempre (fase 1): el encabezado de la plantilla estándar. */
+const val ENCABEZADO_INFORME_POR_DEFECTO =
+    "Documento confidencial. Su contenido es de uso exclusivo del evaluado o su representante."
+
+/** Sin motivo ni conclusiones no hay informe: la plantilla no los puede ocultar. */
+val SECCIONES_OBLIGATORIAS_INFORME = setOf("motivo", "conclusiones")
+
+internal const val MAX_TITULO_SECCION_INFORME = 120
+
+/** La plantilla estándar: reproduce exactamente el informe de la fase 1. */
+fun plantillaInformePorDefecto(): PlantillaInformePsico = PlantillaInformePsico(
+    secciones = SECCIONES_INFORME.map { SeccionPlantillaPsico(it.clave, it.titulo, true) },
+    encabezado = ENCABEZADO_INFORME_POR_DEFECTO,
+    pie = "",
+)
+
+/**
+ * Por qué no se borra el PDF de un informe emitido (MOTIVO_INFORME_NO_SE_BORRA
+ * de la web, contrato §13.4).
+ */
+const val MOTIVO_INFORME_NO_SE_BORRA =
+    "El PDF de un informe psicológico emitido no se puede borrar: es un registro clínico y el Código de Ética del CPsP (art. 18) pide conservarlo sin enmendaduras. Para corregirlo, emite una nueva versión desde 🧠 Evaluación → Informe: esta queda en el historial y el paciente verá solo la nueva."
+
 val CAMPOS_FILIACION = listOf(
     OpcionPsico("nombre", "Nombre"),
     OpcionPsico("edad", "Edad"),
@@ -325,11 +348,33 @@ data class FotoPsico(
     val createdAt: String? = null,
 )
 
+/** Una sección (2–8) de la plantilla del informe de la clínica (fase 2, contrato §13.2). */
+data class SeccionPlantillaPsico(val clave: String, val titulo: String, val visible: Boolean = true)
+
+/**
+ * Plantilla del informe (copia de lib/informe-psicologico-plantilla.ts): las 8
+ * secciones en el orden del informe, con su título y si se muestran, más los
+ * textos fijos de encabezado (bajo el título) y pie (después de la firma).
+ * `armar` la COPIA dentro del contenido: lo armado no cambia si la clínica la edita.
+ */
+data class PlantillaInformePsico(
+    val secciones: List<SeccionPlantillaPsico>,
+    val encabezado: String = ENCABEZADO_INFORME_POR_DEFECTO,
+    val pie: String = "",
+)
+
+/** "Reemplaza a la versión N emitida el …" (solo en informes v ≥ 2). */
+data class ReemplazaAPsico(val version: Int, val emitido: String = "")
+
 data class ContenidoInformePsico(
     val filiacion: Map<String, String> = emptyMap(),
     val secciones: Map<String, String> = emptyMap(),
     val lugar: String = "",
     val fecha: String = "",
+    /** Fase 2: la plantilla con que se armó (null = informe de la fase 1 → la estándar). La pone el servidor. */
+    val plantilla: PlantillaInformePsico? = null,
+    /** Fase 2: a qué versión reemplaza (solo v ≥ 2). La pone el servidor. */
+    val reemplazaA: ReemplazaAPsico? = null,
 )
 
 data class InformePsico(
@@ -341,11 +386,33 @@ data class InformePsico(
     val contenido: ContenidoInformePsico = ContenidoInformePsico(),
     val documentoId: String? = null,
     val emitidoAt: String? = null,
+    /** Fase 2: la versión posterior emitida que lo reemplazó (null en el vigente y en borradores). */
+    val reemplazadoPor: String? = null,
+    val reemplazadoAt: String? = null,
 ) {
     val emitido: Boolean get() = estado == "emitido"
+    /** Borrador o emitido de una versión ≥ 2 (corrige a una anterior). */
+    val esVersionNueva: Boolean get() = version > 1
 }
 
 data class DocumentoInformePsico(val id: String, val path: String, val nombre: String)
+
+/** Una fila del historial de versiones del informe (`informes` del GET, fase 2). */
+data class VersionInformePsico(
+    val id: String,
+    val version: Int,
+    /** 'borrador' | 'emitido' */
+    val estado: String = "borrador",
+    val emitidoAt: String? = null,
+    val documentoId: String? = null,
+    val reemplazadoPor: String? = null,
+    /** Número de la versión que la reemplazó ("Reemplazado por v2"). */
+    val reemplazadoPorVersion: Int? = null,
+    /** El emitido vigente: el que ve el paciente. */
+    val vigente: Boolean = false,
+    /** Su PDF (se ve por GET foto?documentoId=; solo Admin y tratante). */
+    val pdf: DocumentoInformePsico? = null,
+)
 
 /** Lo que precarga el formulario de tratamiento de siempre ("Crear tratamiento con este plan"). */
 data class PrefillPlanPsico(
@@ -390,8 +457,12 @@ data class EspacioEvalPsico(
     val estados: EstadosPsico = EstadosPsico(),
     val tests: List<TestAplicadoPsico> = emptyList(),
     val fotos: List<FotoPsico> = emptyList(),
+    /** El ÚLTIMO informe (puede ser el borrador de una versión nueva). */
     val informe: InformePsico? = null,
+    /** El PDF del VIGENTE (el último emitido, el que ve el paciente), aunque haya un borrador nuevo. */
     val informePdf: DocumentoInformePsico? = null,
+    /** Fase 2: historial de versiones, de la más nueva a la más vieja (vacío en un servidor sin fase 2). */
+    val informes: List<VersionInformePsico> = emptyList(),
     val planPrefill: PrefillPlanPsico? = null,
     val sugerenciaSesiones: SugerenciaSesionesPsico? = null,
     val servicios: List<ServicioPsico> = emptyList(),
@@ -595,15 +666,75 @@ internal fun leerInforme(o: JsonObject?): InformePsico? {
             secciones = c.mapaTextos("secciones"),
             lugar = c.texto("lugar"),
             fecha = c.texto("fecha"),
+            plantilla = (c?.get("plantilla") as? JsonObject)?.let { leerPlantillaInforme(it) },
+            reemplazaA = leerReemplazaA(c?.get("reemplazaA").obj()),
         ),
         documentoId = o.txt("documento_id"),
         emitidoAt = o.txt("emitido_at"),
+        reemplazadoPor = o.txt("reemplazado_por")?.ifBlank { null },
+        reemplazadoAt = o.txt("reemplazado_at")?.ifBlank { null },
     )
+}
+
+internal fun leerReemplazaA(o: JsonObject?): ReemplazaAPsico? {
+    val v = o.entero("version")?.takeIf { it >= 1 } ?: return null
+    return ReemplazaAPsico(v, o.texto("emitido").take(10))
 }
 
 internal fun leerDocumentoInforme(o: JsonObject?): DocumentoInformePsico? {
     val id = o.txt("id") ?: return null
     return DocumentoInformePsico(id, o.txt("path").orEmpty(), o.txt("nombre") ?: "Informe psicológico.pdf")
+}
+
+/** Una fila del historial (`informes`). Sin id ni versión válida se descarta. */
+internal fun leerVersionInforme(o: JsonObject?): VersionInformePsico? {
+    val id = o.txt("id") ?: return null
+    val version = o.entero("version")?.takeIf { it >= 1 } ?: return null
+    val reemplazadoPor = o.txt("reemplazado_por")?.ifBlank { null }
+    return VersionInformePsico(
+        id = id,
+        version = version,
+        estado = if (o.txt("estado") == "emitido") "emitido" else "borrador",
+        emitidoAt = o.txt("emitido_at")?.ifBlank { null },
+        documentoId = o.txt("documento_id")?.ifBlank { null },
+        reemplazadoPor = reemplazadoPor,
+        reemplazadoPorVersion = o.entero("reemplazadoPorVersion"),
+        // Uno reemplazado nunca es el vigente, diga lo que diga el campo.
+        vigente = reemplazadoPor == null && o.si("vigente", false),
+        pdf = leerDocumentoInforme(o?.get("pdf").obj()),
+    )
+}
+
+/**
+ * La plantilla tal como llega (contenido.plantilla o GET /plantilla), SANEADA
+ * como sanearPlantilla de la web: cada una de las 8 secciones exactamente una
+ * vez (desconocidas fuera, repetidas cuenta la primera, faltantes al final en su
+ * orden estándar), título vacío = el estándar y motivo/conclusiones siempre
+ * visibles. Encabezado/pie ausentes = los de la estándar.
+ */
+internal fun leerPlantillaInforme(o: JsonObject?): PlantillaInformePsico {
+    val base = plantillaInformePorDefecto()
+    if (o == null) return base
+    val vistas = mutableSetOf<String>()
+    val secciones = mutableListOf<SeccionPlantillaPsico>()
+    o.lista("secciones").forEach { x ->
+        val s = x as? JsonObject ?: return@forEach
+        val clave = s.txt("clave") ?: return@forEach
+        val estandar = SECCIONES_INFORME.firstOrNull { it.clave == clave } ?: return@forEach
+        if (!vistas.add(clave)) return@forEach
+        val titulo = s.texto("titulo").take(MAX_TITULO_SECCION_INFORME).replace(Regex("\\s+"), " ").trim()
+        secciones += SeccionPlantillaPsico(
+            clave = clave,
+            titulo = titulo.ifEmpty { estandar.titulo },
+            visible = clave in SECCIONES_OBLIGATORIAS_INFORME || s.si("visible", true),
+        )
+    }
+    base.secciones.filter { it.clave !in vistas }.forEach { secciones += it }
+    return PlantillaInformePsico(
+        secciones = secciones,
+        encabezado = o.txt("encabezado")?.trim() ?: base.encabezado,
+        pie = o.txt("pie")?.trim() ?: base.pie,
+    )
 }
 
 internal fun leerPrefill(o: JsonObject?): PrefillPlanPsico? = o?.let {
@@ -653,6 +784,7 @@ internal fun parsearEspacioPsico(o: JsonObject?): EspacioEvalPsico? {
         fotos = o.lista("fotos").mapNotNull { leerFoto(it.obj()) },
         informe = leerInforme(o["informe"].obj()),
         informePdf = leerDocumentoInforme(o["informePdf"].obj()),
+        informes = o.lista("informes").mapNotNull { leerVersionInforme(it as? JsonObject) }.sortedByDescending { it.version },
         planPrefill = leerPrefill(o["planPrefill"].obj()),
         sugerenciaSesiones = leerSugerencia(o["sugerenciaSesiones"].obj()),
         servicios = o.lista("servicios").mapNotNull { x ->
@@ -878,6 +1010,61 @@ fun precioPropuestoPlan(precioActual: Double?, precioServicio: Double?, sesiones
 fun ofrecerSugerencia(sugerencia: SugerenciaSesionesPsico?, numeroSesiones: Int?): Boolean =
     sugerencia != null && sugerencia.sesiones != numeroSesiones
 
+// ── Informe: plantilla y versiones (fase 2) ──────────────────────────────────
+
+/** La plantilla con que se muestra UN informe: la copiada al armarlo o, en los de la fase 1, la estándar. */
+fun plantillaDelInforme(c: ContenidoInformePsico?): PlantillaInformePsico = c?.plantilla ?: plantillaInformePorDefecto()
+
+/**
+ * Secciones VISIBLES con su número, en el orden de la plantilla
+ * (seccionesNumeradas de la web). La 1 es la filiación, así que empiezan en 2;
+ * la impresión diagnóstica que va JUSTO después de las conclusiones comparte su
+ * número. Con la estándar: 2, 3, 4, 5, 6, 7, 7, 8.
+ */
+fun seccionesNumeradasInforme(p: PlantillaInformePsico?): List<SeccionInforme> {
+    val pl = p ?: plantillaInformePorDefecto()
+    val out = mutableListOf<SeccionInforme>()
+    var n = 1
+    pl.secciones.forEach { s ->
+        // Las obligatorias nunca se ocultan (aunque llegue una plantilla rara).
+        if (!s.visible && s.clave !in SECCIONES_OBLIGATORIAS_INFORME) return@forEach
+        if (!(s.clave == "impresionDiagnostica" && out.lastOrNull()?.clave == "conclusiones")) n += 1
+        out += SeccionInforme(s.clave, n, s.titulo)
+    }
+    return out
+}
+
+/**
+ * "Versión 2. Reemplaza a la versión 1 emitida el 05/10/2026." (textoReemplazo
+ * de la web; la nueva versión siempre es la anterior + 1). "" sin reemplazo.
+ */
+fun textoReemplazoInforme(r: ReemplazaAPsico?): String {
+    if (r == null || r.version < 1) return ""
+    val fecha = fechaDmyPsico(r.emitido)
+    return "Versión ${r.version + 1}. Reemplaza a la versión ${r.version}${if (fecha.isNotEmpty()) " emitida el $fecha" else ""}."
+}
+
+/** Estado de una fila del historial: (texto, tono) con tono 'vigente' | 'reemplazado' | 'borrador' | 'emitido'. */
+fun estadoVersionInforme(v: VersionInformePsico): Pair<String, String> = when {
+    v.estado == "borrador" -> "Borrador" to "borrador"
+    v.vigente -> "Vigente · lo ve el paciente" to "vigente"
+    v.reemplazadoPorVersion != null -> "Reemplazado por v${v.reemplazadoPorVersion}" to "reemplazado"
+    v.reemplazadoPor != null -> "Reemplazado" to "reemplazado"
+    else -> "Emitido" to "emitido"
+}
+
+/** El historial se muestra cuando hay más de una versión (como la web). */
+fun mostrarHistorialInforme(versiones: List<VersionInformePsico>): Boolean = versiones.size > 1
+
+/**
+ * Error de "Emitir nueva versión". Un servidor sin la fase 2 responde
+ * `400 DATOS_INVALIDOS` ("Acción no válida"): se dice que aún no está disponible.
+ */
+fun mensajeErrorNuevaVersion(status: Int, codigo: String?, error: String?): String =
+    if (codigo == "DATOS_INVALIDOS" || (status == 404 && codigo == null))
+        "Emitir una nueva versión del informe aún no está disponible. Inténtalo más tarde."
+    else mensajeErrorPsico(status, codigo, error)
+
 /**
  * Frase propia de cada `codigo` del contrato (§2 y los puntuales). Los que no
  * están aquí muestran el texto del servidor. null = sin frase propia.
@@ -887,8 +1074,13 @@ internal fun fraseDeCodigoPsico(codigo: String?): String? = when (codigo) {
     "SIN_PERMISO" -> "No tienes permiso para agregar citas a la evaluación (se necesita el permiso de citas o de sesiones)."
     "NO_ES_STAFF" -> "Tu usuario no es del equipo de esta clínica. Revisa la clínica activa."
     "EVALUACION_CERRADA" -> "El informe ya se emitió: la evaluación quedó en solo lectura."
-    "INFORME_YA_EMITIDO" -> "El informe ya se emitió: queda congelado y no se puede cambiar."
-    "INFORME_EMITIDO_NO_SE_BORRA" -> "El informe psicológico emitido no se puede borrar (Código de Ética del CPsP, art. 18)."
+    "INFORME_YA_EMITIDO" -> "El informe ya se emitió: queda congelado y no se puede cambiar. Para corregirlo, emite una nueva versión."
+    "INFORME_EMITIDO_CONGELADO" -> "Un informe emitido no se edita. Para corregirlo, emite una nueva versión."
+    "INFORME_EMITIDO_NO_SE_BORRA" -> MOTIVO_INFORME_NO_SE_BORRA
+    "INFORME_NO_EMITIDO" -> "El informe todavía es un borrador: edítalo y emítelo."
+    "INFORME_BORRADOR_EXISTENTE" -> "Ya hay un borrador de una versión nueva. Recarga la evaluación."
+    "INFORME_VERSION_INVALIDA", "INFORME_REEMPLAZO_INVALIDO", "INFORME_NACE_BORRADOR" ->
+        "Otra persona cambió el informe al mismo tiempo. Recarga la evaluación."
     "TRATAMIENTO_CON_INFORME_EMITIDO" -> "Este tratamiento tiene un informe psicológico emitido: no se puede borrar."
     "NO_ES_EVALUACION_PSICOLOGICA" -> "Este tratamiento no es una evaluación psicológica."
     "TRATAMIENTO_NO_ENCONTRADO" -> "No se encontró el tratamiento (o es de otra clínica)."
@@ -923,6 +1115,6 @@ fun mensajeErrorPsico(status: Int, codigo: String?, error: String?): String = fr
  */
 fun fraseDeErrorBasePsico(mensaje: String?): String? {
     val m = mensaje ?: return null
-    return listOf("INFORME_EMITIDO_NO_SE_BORRA", "TRATAMIENTO_CON_INFORME_EMITIDO", "EVALUACION_CERRADA")
+    return listOf("INFORME_EMITIDO_NO_SE_BORRA", "TRATAMIENTO_CON_INFORME_EMITIDO", "EVALUACION_CERRADA", "INFORME_EMITIDO_CONGELADO")
         .firstOrNull { m.contains(it) }?.let { fraseDeCodigoPsico(it) }
 }

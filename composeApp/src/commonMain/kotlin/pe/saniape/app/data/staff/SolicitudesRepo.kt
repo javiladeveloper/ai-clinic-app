@@ -62,7 +62,15 @@ data class DocumentoFicha(
     val categoria: String? = null,
     /** Tratamiento al que se ancló al subirlo; null = General (sin tratamiento). */
     val tratamientoId: String? = null,
-)
+    /** `visible_paciente` (null = no se pudo leer). En un informe psicológico, false = versión reemplazada. */
+    val visiblePaciente: Boolean? = null,
+) {
+    /** 🔒 Protegido: el PDF del informe psicológico (solo lo ven el Admin y el tratante). */
+    val protegidoPsico: Boolean get() = categoria == CATEGORIA_INFORME_PSICOLOGICO || categoria == CATEGORIA_TEST_PSICOLOGICO
+
+    /** "· reemplazado": PDF de un informe psicológico del que se emitió una versión nueva (el paciente ya no lo ve). */
+    val informeReemplazado: Boolean get() = categoria == CATEGORIA_INFORME_PSICOLOGICO && visiblePaciente == false
+}
 
 /**
  * Tratamiento por defecto al subir un documento: el ACTIVO más reciente (por
@@ -157,14 +165,17 @@ object SolicitudesRepo {
 
     /** Documentos clínicos del paciente. */
     suspend fun documentosDe(pacienteId: String): List<DocumentoFicha> {
-        val filas = runCatching {
-            Supabase.client.postgrest["documentos_paciente"]
-                .select(Columns.list("id, nombre, archivo_url, tipo_archivo, categoria, tratamiento_id")) {
-                    filter { eq("paciente_id", pacienteId) }
-                    order("created_at", Order.DESCENDING)
-                }
-                .decodeList<JsonObject>()
-        }.getOrDefault(emptyList())
+        suspend fun leer(columnas: String) = Supabase.client.postgrest["documentos_paciente"]
+            .select(Columns.list(columnas)) {
+                filter { eq("paciente_id", pacienteId) }
+                order("created_at", Order.DESCENDING)
+            }
+            .decodeList<JsonObject>()
+        // `visible_paciente` marca los informes reemplazados; si la consulta con
+        // esa columna fallara, la lista sale igual sin la marca.
+        val filas = runCatching { leer("id, nombre, archivo_url, tipo_archivo, categoria, tratamiento_id, visible_paciente") }
+            .recoverCatching { leer("id, nombre, archivo_url, tipo_archivo, categoria, tratamiento_id") }
+            .getOrDefault(emptyList())
         return filas.mapNotNull { o ->
             // Las fotos evolutivas son de la galería del tratamiento, no de esta lista.
             if (o.str("categoria") == CATEGORIA_FOTO_EVOLUTIVA || o.str("categoria") == CATEGORIA_TEST_PSICOLOGICO) return@mapNotNull null
@@ -175,6 +186,7 @@ object SolicitudesRepo {
                 tipoArchivo = o.str("tipo_archivo"),
                 categoria = o.str("categoria"),
                 tratamientoId = o.str("tratamiento_id"),
+                visiblePaciente = when (o.str("visible_paciente")) { "true" -> true; "false" -> false; else -> null },
             )
         }
     }
