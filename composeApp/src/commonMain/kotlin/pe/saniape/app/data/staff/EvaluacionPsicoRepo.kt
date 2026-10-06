@@ -47,6 +47,8 @@ import pe.saniape.app.data.offline.nuevaIdemKey
 object EvaluacionPsicoRepo {
 
     private const val BASE = "/api/staff/evaluacion-psico"
+    /** Acción de "Descartar borrador" (fase 2; confirmar el nombre en el contrato §13). */
+    const val ACCION_DESCARTAR_BORRADOR = "descartar_borrador"
     private const val MSJ_SIN_RED = "Sin conexión. Revisa tu internet."
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val http = crearHttpClient()
@@ -331,6 +333,20 @@ object EvaluacionPsicoRepo {
      */
     suspend fun nuevaVersionInforme(evaluacionId: String): ResultadoEscritura =
         postJson("$BASE/informe", buildJsonObject { put("accion", "nueva_version"); put("evaluacionId", evaluacionId) })
+
+    /**
+     * "Descartar borrador" de una versión nueva creada por error (v >= 2). La web
+     * lo está agregando: el nombre de la acción vive en [ACCION_DESCARTAR_BORRADOR]
+     * (alinear con el contrato §13). Sin la acción → 400 DATOS_INVALIDOS.
+     */
+    suspend fun descartarBorradorInforme(informeId: String): ResultadoEscritura =
+        postJson("$BASE/informe", buildJsonObject { put("accion", ACCION_DESCARTAR_BORRADOR); put("informeId", informeId) })
+
+    /**
+     * "Generar PDF pendiente": `emitir` sobre un informe YA emitido completa lo
+     * que faltó (PDF, documento, reemplazo de las anteriores) sin duplicar nada.
+     */
+    suspend fun generarPdfPendiente(informeId: String): ResultadoEscritura = emitirInforme(informeId)
 
     /** "+ Agregar cita de evaluación": suma citas SIN cambiar el precio. `cuerpo.totalSesiones`. */
     suspend fun agregarCita(tratamientoId: String, cantidad: Int = 1): ResultadoEscritura =

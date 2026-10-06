@@ -34,6 +34,7 @@ import pe.saniape.app.data.staff.SugerenciaSesionesPsico
 import pe.saniape.app.data.staff.TestAplicadoPsico
 import pe.saniape.app.data.staff.TestCatalogoPsico
 import pe.saniape.app.data.staff.VersionInformePsico
+import pe.saniape.app.data.staff.mensajeErrorAccionFase2
 import pe.saniape.app.data.staff.mensajeErrorNuevaVersion
 import pe.saniape.app.data.staff.fotoDeRespuesta
 import pe.saniape.app.data.staff.informeDeRespuesta
@@ -495,6 +496,9 @@ class EvaluacionPsicoViewModel(
                 alTerminar(true)
             } else {
                 Toaster.error(r.mensajePsico())
+                // Si se congeló pero el PDF falló, la relectura lo muestra como
+                // "emitido · PDF pendiente" (con su botón), no como borrador.
+                if (r.codigo != "SIN_RED") refrescar()
                 alTerminar(false)
             }
         }
@@ -535,6 +539,48 @@ class EvaluacionPsicoViewModel(
                 Toaster.error(mensajeErrorNuevaVersion(rz?.status ?: 0, rz?.codigo, rz?.error))
                 alTerminar(false)
             }
+        }
+    }
+
+    /**
+     * "Descartar borrador" de una versión nueva creada por error (v >= 2): el
+     * vigente no cambia. Lo pendiente de escribir en ese borrador se descarta.
+     */
+    fun descartarBorrador(alTerminar: (Boolean) -> Unit) {
+        val i = informe ?: return
+        if (i.emitido || i.version < 2 || accionando != null) return
+        accionando = "descartar"
+        viewModelScope.launch {
+            temporizadorInforme?.cancel(); informePendiente = null
+            val r = conIndicador(Gestion.ELIMINANDO) { EvaluacionPsicoRepo.descartarBorradorInforme(i.id) }
+            accionando = null
+            if (r.registrada) {
+                Toaster.exito("Se descartó el borrador de la versión ${i.version}")
+                refrescar()
+                alTerminar(true)
+            } else {
+                val rz = r.rechazo
+                Toaster.error(mensajeErrorAccionFase2("Descartar el borrador", rz?.status ?: 0, rz?.codigo, rz?.error))
+                alTerminar(false)
+            }
+        }
+    }
+
+    /**
+     * "Generar PDF pendiente": la versión se congeló pero su PDF falló. `emitir`
+     * otra vez sobre el ya emitido completa lo que faltó (sin duplicar); recién
+     * entonces queda vigente y la anterior, reemplazada.
+     */
+    fun generarPdfPendiente(informeId: String) {
+        if (accionando != null) return
+        accionando = "pdf:$informeId"
+        viewModelScope.launch {
+            val r = conIndicador { EvaluacionPsicoRepo.generarPdfPendiente(informeId) }
+            accionando = null
+            if (r.registrada) {
+                Toaster.exito("PDF generado: el paciente ya ve esta versión")
+                refrescar()
+            } else Toaster.error(r.mensajePsico())
         }
     }
 

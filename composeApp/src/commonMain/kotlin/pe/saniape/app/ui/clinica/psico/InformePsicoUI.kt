@@ -31,6 +31,9 @@ import pe.saniape.app.data.staff.EvaluacionPsicoRepo
 import pe.saniape.app.data.staff.VersionInformePsico
 import pe.saniape.app.data.staff.estadoVersionInforme
 import pe.saniape.app.data.staff.fechaDmyPsico
+import pe.saniape.app.data.staff.idPdfDeInforme
+import pe.saniape.app.data.staff.pdfPendienteDeInforme
+import pe.saniape.app.data.staff.puedeDescartarBorrador
 import pe.saniape.app.data.staff.mostrarHistorialInforme
 import pe.saniape.app.data.staff.plantillaDelInforme
 import pe.saniape.app.data.staff.seccionesNumeradasInforme
@@ -64,6 +67,7 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
     var confirmarArmar by remember { mutableStateOf(false) }
     var confirmarEmitir by remember { mutableStateOf(false) }
     var confirmarVersion by remember { mutableStateOf(false) }
+    var confirmarDescartar by remember { mutableStateOf(false) }
 
     fun verHtml(informeId: String? = null) {
         scope.launch {
@@ -72,8 +76,8 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
             else acciones.abrirHtml(html, "Informe psicológico")
         }
     }
-    /** PDF por id (el vigente o el de una versión del historial): GET foto?documentoId=. */
-    fun verPdf(documentoId: String? = vm.informePdf?.id) {
+    /** PDF por id (el del informe mostrado o el de una versión del historial): GET foto?documentoId=. */
+    fun verPdf(documentoId: String?) {
         val id = documentoId ?: return
         scope.launch {
             when (val r = EvaluacionPsicoRepo.urlDeDocumento(id)) {
@@ -104,6 +108,10 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
     val plantilla = plantillaDelInforme(cont)
     val reemplazo = textoReemplazoInforme(cont.reemplazaA)
     val vigente = vm.informes.firstOrNull { it.vigente }
+    // El PDF del informe MOSTRADO, nunca `informePdf` (el vigente) por descarte:
+    // con un borrador v2 abierto o con el PDF de la vN pendiente, son otros.
+    val pdfPropio = idPdfDeInforme(informe, vm.informes)
+    val pdfPendiente = pdfPendienteDeInforme(informe, vm.informes)
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         AvisoPsico(
@@ -112,6 +120,12 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
             else "Borrador: revísalo y emítelo cuando esté listo.",
             if (emitido) c.ok else c.pend, if (emitido) c.okBg else c.pendBg, negrita = true,
         )
+        if (pdfPendiente) {
+            AvisoPsico("El PDF de esta versión no se llegó a generar: el paciente sigue viendo la versión anterior hasta generarlo.",
+                c.pend, c.pendBg)
+            BotonPsico(if (vm.accionando == "pdf:${informe.id}") "Generando…" else "📄 Generar PDF pendiente", color = c.ok, relleno = true,
+                habilitado = vm.accionando == null, modifier = Modifier.fillMaxWidth()) { vm.generarPdfPendiente(informe.id) }
+        }
         if (emitido) {
             Text("Un informe emitido no se edita (Código de Ética del CPsP, art. 18: sin enmendaduras). Para corregirlo, emite una nueva versión: esta queda en el historial.",
                 color = c.textoSuave, fontSize = 12.sp)
@@ -121,7 +135,7 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             BotonPsico(if (emitido) "🖨 Imprimir" else "🖨 Vista previa") { verHtml() }
-            if (emitido && vm.informePdf != null) BotonPsico("📎 Abrir PDF") { verPdf() }
+            if (pdfPropio != null) BotonPsico("📎 Abrir PDF") { verPdf(pdfPropio) }
             if (editable) {
                 BotonPsico(if (editando) "✓ Listo" else "✏ Editar texto", color = c.textoSuave) { editando = !editando }
                 BotonPsico("↻ Volver a armar", color = c.textoSuave, habilitado = vm.accionando == null) { confirmarArmar = true }
@@ -132,7 +146,11 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
                 if (vm.accionando == "emitir") "Emitiendo…" else if (esVersionNueva) "Emitir versión ${informe.version}" else "Emitir informe",
                 color = c.ok, relleno = true, habilitado = vm.accionando == null, modifier = Modifier.fillMaxWidth(),
             ) { confirmarEmitir = true }
-        } else {
+            if (puedeDescartarBorrador(informe)) {
+                BotonPsico(if (vm.accionando == "descartar") "Descartando…" else "🗑 Descartar borrador", color = c.textoSuave,
+                    habilitado = vm.accionando == null, modifier = Modifier.fillMaxWidth()) { confirmarDescartar = true }
+            }
+        } else if (!pdfPendiente) {
             BotonPsico(
                 if (vm.accionando == "version") "Creando…" else "✎ Emitir nueva versión",
                 habilitado = vm.accionando == null, modifier = Modifier.fillMaxWidth(),
@@ -187,10 +205,29 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
         }
 
         if (mostrarHistorialInforme(vm.informes)) {
-            HistorialVersionesInforme(vm.informes, onVer = { verHtml(it) }, onPdf = { verPdf(it) })
+            HistorialVersionesInforme(vm.informes, ocupado = vm.accionando != null, onVer = { verHtml(it) }, onPdf = { verPdf(it) },
+                onGenerarPdf = { vm.generarPdfPendiente(it) })
         }
     }
 
+    if (confirmarDescartar) {
+        AlertDialog(
+            onDismissRequest = { if (vm.accionando != "descartar") confirmarDescartar = false },
+            title = { Text("¿Descartar el borrador de la versión ${informe.version}?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text("Se borra este borrador y lo que corregiste en él. La versión vigente${vigente?.let { " (v${it.version})" } ?: ""} no cambia y el paciente la sigue viendo.",
+                    color = c.texto)
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.descartarBorrador { ok -> confirmarDescartar = false; if (ok) editando = false } },
+                    enabled = vm.accionando == null) {
+                    Text(if (vm.accionando == "descartar") "Descartando…" else "Descartar", color = c.error, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmarDescartar = false }, enabled = vm.accionando != "descartar") { Text("Cancelar", color = c.textoSuave) } },
+            containerColor = c.superficie,
+        )
+    }
     if (confirmarVersion) {
         AlertDialog(
             onDismissRequest = { if (vm.accionando != "version") confirmarVersion = false },
@@ -269,8 +306,10 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
 @Composable
 private fun HistorialVersionesInforme(
     versiones: List<VersionInformePsico>,
+    ocupado: Boolean,
     onVer: (String) -> Unit,
     onPdf: (String) -> Unit,
+    onGenerarPdf: (String) -> Unit,
 ) {
     val c = Sania.colors
     Column(
@@ -283,7 +322,7 @@ private fun HistorialVersionesInforme(
             val (estado, tono) = estadoVersionInforme(v)
             val (fg, bg) = when (tono) {
                 "vigente" -> c.ok to c.okBg
-                "borrador" -> c.pend to c.pendBg
+                "borrador", "pendiente" -> c.pend to c.pendBg
                 else -> c.textoSuave to c.fondo
             }
             FlowRow(
@@ -299,9 +338,13 @@ private fun HistorialVersionesInforme(
                 Text("🖨 Ver", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.clickable { onVer(v.id) })
                 // Material protegido: solo Admin y tratante (GET foto?documentoId=).
-                v.pdf?.let { pdf ->
+                v.idPdf?.let { id ->
                     Text("🔒 PDF", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clickable { onPdf(pdf.id) })
+                        modifier = Modifier.clickable { onPdf(id) })
+                }
+                if (v.pdfPendiente) {
+                    Text("📄 Generar PDF", color = if (ocupado) c.textoSuave else c.ok, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable(enabled = !ocupado) { onGenerarPdf(v.id) })
                 }
             }
         }

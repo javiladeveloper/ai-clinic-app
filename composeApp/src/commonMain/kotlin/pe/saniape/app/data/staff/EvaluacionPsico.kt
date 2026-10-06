@@ -412,7 +412,12 @@ data class VersionInformePsico(
     val vigente: Boolean = false,
     /** Su PDF (se ve por GET foto?documentoId=; solo Admin y tratante). */
     val pdf: DocumentoInformePsico? = null,
-)
+) {
+    val tienePdf: Boolean get() = pdf != null || documentoId != null
+    /** Emitido pero su PDF no se generó: se completa con "Generar PDF pendiente" (emitir de nuevo). */
+    val pdfPendiente: Boolean get() = estado == "emitido" && !tienePdf
+    val idPdf: String? get() = pdf?.id ?: documentoId
+}
 
 /** Lo que precarga el formulario de tratamiento de siempre ("Crear tratamiento con este plan"). */
 data class PrefillPlanPsico(
@@ -699,10 +704,13 @@ internal fun leerVersionInforme(o: JsonObject?): VersionInformePsico? {
         documentoId = o.txt("documento_id")?.ifBlank { null },
         reemplazadoPor = reemplazadoPor,
         reemplazadoPorVersion = o.entero("reemplazadoPorVersion"),
-        // Uno reemplazado nunca es el vigente, diga lo que diga el campo.
-        vigente = reemplazadoPor == null && o.si("vigente", false),
+        vigente = o.si("vigente", false),
         pdf = leerDocumentoInforme(o?.get("pdf").obj()),
-    )
+    ).let { v ->
+        // Vigente solo un emitido CON su PDF y sin reemplazar (si el PDF de la vN
+        // falló, el paciente sigue viendo la anterior): diga lo que diga el campo.
+        v.copy(vigente = v.vigente && v.estado == "emitido" && v.reemplazadoPor == null && v.tienePdf)
+    }
 }
 
 /**
@@ -1047,11 +1055,30 @@ fun textoReemplazoInforme(r: ReemplazaAPsico?): String {
 /** Estado de una fila del historial: (texto, tono) con tono 'vigente' | 'reemplazado' | 'borrador' | 'emitido'. */
 fun estadoVersionInforme(v: VersionInformePsico): Pair<String, String> = when {
     v.estado == "borrador" -> "Borrador" to "borrador"
+    v.pdfPendiente -> "PDF pendiente" to "pendiente"
     v.vigente -> "Vigente · lo ve el paciente" to "vigente"
     v.reemplazadoPorVersion != null -> "Reemplazado por v${v.reemplazadoPorVersion}" to "reemplazado"
     v.reemplazadoPor != null -> "Reemplazado" to "reemplazado"
     else -> "Emitido" to "emitido"
 }
+
+/**
+ * Id del PDF del informe que se está MOSTRANDO (no el vigente): con un borrador
+ * v2 abierto, `informePdf` es el de la v1 y no se mezcla. null = sin PDF propio
+ * (borrador, o emitido cuyo PDF falló → "Generar PDF pendiente").
+ */
+fun idPdfDeInforme(informe: InformePsico?, versiones: List<VersionInformePsico>): String? {
+    if (informe == null || !informe.emitido) return null
+    return informe.documentoId ?: versiones.firstOrNull { it.id == informe.id }?.idPdf
+}
+
+/** Emitido sin su PDF (falló al generarlo): se ofrece "Generar PDF pendiente". */
+fun pdfPendienteDeInforme(informe: InformePsico?, versiones: List<VersionInformePsico>): Boolean =
+    informe != null && informe.emitido && idPdfDeInforme(informe, versiones) == null
+
+/** "Descartar borrador": solo el de una versión nueva (v >= 2); la v1 se edita y emite. */
+fun puedeDescartarBorrador(informe: InformePsico?): Boolean =
+    informe != null && !informe.emitido && informe.version > 1
 
 /** El historial se muestra cuando hay más de una versión (como la web). */
 fun mostrarHistorialInforme(versiones: List<VersionInformePsico>): Boolean = versiones.size > 1
@@ -1061,8 +1088,12 @@ fun mostrarHistorialInforme(versiones: List<VersionInformePsico>): Boolean = ver
  * `400 DATOS_INVALIDOS` ("Acción no válida"): se dice que aún no está disponible.
  */
 fun mensajeErrorNuevaVersion(status: Int, codigo: String?, error: String?): String =
+    mensajeErrorAccionFase2("Emitir una nueva versión del informe", status, codigo, error)
+
+/** Igual, para una acción nueva de la fase 2 ("Descartar borrador"…) en un servidor que aún no la tiene. */
+fun mensajeErrorAccionFase2(que: String, status: Int, codigo: String?, error: String?): String =
     if (codigo == "DATOS_INVALIDOS" || (status == 404 && codigo == null))
-        "Emitir una nueva versión del informe aún no está disponible. Inténtalo más tarde."
+        "$que aún no está disponible. Inténtalo más tarde."
     else mensajeErrorPsico(status, codigo, error)
 
 /**

@@ -62,6 +62,50 @@ class EvaluacionPsicoFase2Test {
     }
 
     @Test
+    fun pdf_pendiente_no_es_vigente_y_no_se_mezcla_con_el_vigente() {
+        val e = assertNotNull(parsearEspacioPsico(obj("""
+            { "ok": true, "esEvaluacionPsico": true, "evaluacion": { "id": "e1", "estado": "cerrada" },
+              "informe": { "id": "i2", "version": 2, "estado": "emitido", "documento_id": null, "contenido": {} },
+              "informePdf": { "id": "doc1", "path": "protegido/v1.pdf", "nombre": "v1.pdf" },
+              "informes": [
+                { "id": "i2", "version": 2, "estado": "emitido", "documento_id": null, "vigente": true, "pdf": null },
+                { "id": "i1", "version": 1, "estado": "emitido", "documento_id": "doc1", "vigente": true, "reemplazado_por": null,
+                  "pdf": { "id": "doc1", "path": "protegido/v1.pdf", "nombre": "v1.pdf" } }
+              ] }
+        """)))
+        val (v2, v1) = e.informes
+        // La v2 se congeló pero su PDF falló: NO es vigente aunque el campo lo diga.
+        assertFalse(v2.vigente)
+        assertTrue(v2.pdfPendiente)
+        assertEquals("PDF pendiente" to "pendiente", estadoVersionInforme(v2))
+        assertTrue(v1.vigente)
+        // El PDF del informe mostrado (v2) no es el vigente (v1): no se mezcla.
+        assertNull(idPdfDeInforme(e.informe, e.informes))
+        assertTrue(pdfPendienteDeInforme(e.informe, e.informes))
+        assertEquals("doc1", e.informePdf?.id)
+
+        // Con su PDF: el propio, por la fila o por el documento_id del informe.
+        val conPdf = e.informe!!.copy(documentoId = "doc2")
+        assertEquals("doc2", idPdfDeInforme(conPdf, e.informes))
+        assertFalse(pdfPendienteDeInforme(conPdf, e.informes))
+        // Borrador v2 abierto: sin PDF propio (el vigente queda en el historial).
+        val borrador = InformePsico(id = "i3", version = 3, estado = "borrador")
+        assertNull(idPdfDeInforme(borrador, e.informes))
+        assertFalse(pdfPendienteDeInforme(borrador, e.informes))
+    }
+
+    @Test
+    fun descartar_borrador_solo_de_version_nueva() {
+        assertTrue(puedeDescartarBorrador(InformePsico(id = "i2", version = 2, estado = "borrador")))
+        assertFalse(puedeDescartarBorrador(InformePsico(id = "i1", version = 1, estado = "borrador")))
+        assertFalse(puedeDescartarBorrador(InformePsico(id = "i2", version = 2, estado = "emitido")))
+        assertFalse(puedeDescartarBorrador(null))
+        assertTrue(mensajeErrorAccionFase2("Descartar el borrador", 400, "DATOS_INVALIDOS", "Acción no válida").startsWith("Descartar el borrador aún no está disponible"))
+        assertEquals("Ya hay un borrador de una versión nueva. Recarga la evaluación.",
+            mensajeErrorAccionFase2("x", 409, "INFORME_BORRADOR_EXISTENTE", null))
+    }
+
+    @Test
     fun servidor_sin_fase_2_degrada() {
         // Sin `informes`, sin `plantilla`, sin `reemplazado_por`: lo de la fase 1 tal cual.
         val e = assertNotNull(parsearEspacioPsico(obj("""
