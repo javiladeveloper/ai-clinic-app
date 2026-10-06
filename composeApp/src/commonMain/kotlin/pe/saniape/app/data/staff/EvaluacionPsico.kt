@@ -288,6 +288,8 @@ data class TestRefPsico(
     val categoria: String = "",
     val tipoPuntaje: String = "",
     val generaImagen: Boolean = false,
+    /** Fase 3: null = catálogo global de Sania (solo esos se autocalculan). */
+    val clinicaId: String? = null,
 )
 
 data class TestAplicadoPsico(
@@ -311,6 +313,9 @@ data class TestAplicadoPsico(
     val estado: String = "aplicado",
     val enInforme: Boolean = true,
     val test: TestRefPsico? = null,
+    /** Fase 3: ítems respondidos y lo que calculó el servidor (null = puntuado a mano). */
+    val respuestas: RespuestasTestPsico? = null,
+    val createdAt: String? = null,
 ) {
     val nombreCorto: String get() = test?.nombreCorto?.ifBlank { null } ?: "Test"
 }
@@ -375,6 +380,23 @@ data class ContenidoInformePsico(
     val plantilla: PlantillaInformePsico? = null,
     /** Fase 2: a qué versión reemplaza (solo v ≥ 2). La pone el servidor. */
     val reemplazaA: ReemplazaAPsico? = null,
+    /**
+     * Fase 3: anexo "Perfil de puntajes". La app solo decide `incluir`; los
+     * perfiles los calcula el servidor (al guardar, armar y emitir). null = el
+     * contenido no lo trae (servidor sin fase 3 o nunca se tocó).
+     */
+    val anexoPerfiles: AnexoPerfilesPsico? = null,
+    /** Fase 3: secciones redactadas con IA y aceptadas (la marca solo crece). */
+    val asistidoIa: AsistidoIaPsico? = null,
+)
+
+data class AnexoPerfilesPsico(val incluir: Boolean, val perfiles: List<PerfilTestPsico> = emptyList())
+
+data class AsistidoIaPsico(
+    val secciones: List<String> = emptyList(),
+    val modelo: String = "",
+    val fecha: String = "",
+    val sinConsentimientoConfirmado: Boolean = false,
 )
 
 data class InformePsico(
@@ -617,8 +639,11 @@ internal fun leerTestAplicado(o: JsonObject?): TestAplicadoPsico? {
                 id = it.texto("id"), nombreCorto = it.texto("nombre_corto"), nombre = it.texto("nombre"),
                 categoria = it.texto("categoria"), tipoPuntaje = it.texto("tipo_puntaje"),
                 generaImagen = it.si("genera_imagen", false),
+                clinicaId = it.txt("clinica_id")?.ifBlank { null },
             )
         },
+        respuestas = leerRespuestasTest(o?.get("respuestas") as? JsonObject),
+        createdAt = o.txt("created_at"),
     )
 }
 
@@ -673,6 +698,12 @@ internal fun leerInforme(o: JsonObject?): InformePsico? {
             fecha = c.texto("fecha"),
             plantilla = (c?.get("plantilla") as? JsonObject)?.let { leerPlantillaInforme(it) },
             reemplazaA = leerReemplazaA(c?.get("reemplazaA").obj()),
+            anexoPerfiles = (c?.get("anexoPerfiles") as? JsonObject)?.let { a ->
+                AnexoPerfilesPsico(a.si("incluir", false), a.lista("perfiles").mapNotNull { leerPerfilTest(it as? JsonObject) })
+            },
+            asistidoIa = (c?.get("asistido_ia") as? JsonObject)?.let { a ->
+                AsistidoIaPsico(a.textos("secciones"), a.texto("modelo"), a.texto("fecha"), a.si("sinConsentimientoConfirmado", false))
+            }?.takeIf { it.secciones.isNotEmpty() },
         ),
         documentoId = o.txt("documento_id"),
         emitidoAt = o.txt("emitido_at"),
@@ -903,6 +934,17 @@ internal fun jsonContenidoInforme(c: ContenidoInformePsico): JsonObject = buildJ
     putJsonObject("secciones") { SECCIONES_INFORME.forEach { put(it.clave, c.secciones[it.clave].orEmpty()) } }
     put("lugar", c.lugar)
     put("fecha", c.fecha)
+    // Fase 3: solo `incluir` (los perfiles los calcula el servidor). Sin tocarlo no viaja.
+    c.anexoPerfiles?.let { a -> putJsonObject("anexoPerfiles") { put("incluir", a.incluir) } }
+    // La marca de IA solo crece: el servidor une la que llega con la guardada.
+    c.asistidoIa?.let { a ->
+        putJsonObject("asistido_ia") {
+            putJsonArray("secciones") { a.secciones.forEach { add(JsonPrimitive(it)) } }
+            put("modelo", a.modelo)
+            put("fecha", a.fecha)
+            put("sinConsentimientoConfirmado", a.sinConsentimientoConfirmado)
+        }
+    }
 }
 
 // ── Reglas de presentación (puras) ───────────────────────────────────────────
@@ -1125,6 +1167,16 @@ internal fun fraseDeCodigoPsico(codigo: String?): String? = when (codigo) {
     "TEST_DUPLICADO" -> "La clínica ya tiene un test propio con ese nombre corto."
     "TRATAMIENTO_CAMBIO" -> "Otra persona cambió las citas de esta evaluación al mismo tiempo. Recarga e inténtalo de nuevo."
     "TRATAMIENTO_DE_OTRO_PACIENTE" -> "Ese tratamiento es de otro paciente."
+    // Fase 3 (§14)
+    "INSTRUMENTO_DESCONOCIDO" -> "Ese instrumento no tiene autocálculo. Actualiza la app."
+    "INSTRUMENTO_NO_CORRESPONDE" -> "Ese instrumento no corresponde a este test (solo se autocalculan los del catálogo de Sania)."
+    "AUTOCALCULO_NO_DISPONIBLE" -> "Responder ítems aún no está disponible. Inténtalo más tarde."
+    "APLICACION_ANTERIOR_NO_ENCONTRADA" -> "No se encontró esa aplicación anterior (o no tienes acceso)."
+    "PLAN_SIN_IA" -> "El borrador con IA no está incluido en el plan de la clínica."
+    "SIN_SECCIONES_VACIAS" -> "No hay secciones vacías para proponer: la IA solo redacta las que están en blanco."
+    "IA_SIN_PROPUESTA" -> "La IA no devolvió una propuesta útil. Inténtalo de nuevo."
+    "DEMASIADAS_SOLICITUDES" -> "Demasiadas solicitudes seguidas. Espera un minuto e inténtalo de nuevo."
+    "INFORME_NO_ENCONTRADO" -> "No se encontró el informe. Recarga la evaluación."
     else -> null
 }
 

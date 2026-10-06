@@ -71,7 +71,7 @@ object EvaluacionPsicoRepo {
     private var procsCache: Triple<String, Long, Set<String>>? = null
     private const val VIGENCIA_PROCS_MS = 5L * 60 * 1000
 
-    fun limpiarCache() { procsCache = null; catalogoCache = null }
+    fun limpiarCache() { procsCache = null; catalogoCache = null; instrumentosCache = null }
 
     /**
      * Ids de los servicios marcados `tipo_clinico = 'evaluacion_psicologica'`.
@@ -222,6 +222,73 @@ object EvaluacionPsicoRepo {
         } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
     }
 
+    // ── Fase 3 (§14): instrumentos, retest ──────────────────────────────────
+
+    /** Resultado de pedir las definiciones de los instrumentos libres. */
+    sealed class Instrumentos {
+        data class Ok(val lista: List<InstrumentoPsico>) : Instrumentos()
+        /** El servidor aún no tiene la fase 3 (404/400): se ocultan las ayudas. */
+        data object NoDisponible : Instrumentos()
+        /** Sin red o error pasajero: se vuelve a intentar en la próxima carga. */
+        data object Fallo : Instrumentos()
+    }
+
+    /** (cuándo, resultado). Es estático en el servidor: 30 min (o 10 si no estaba disponible). */
+    private var instrumentosCache: Pair<Long, Instrumentos>? = null
+    private const val VIGENCIA_INSTRUMENTOS_MS = 30L * 60 * 1000
+    private const val VIGENCIA_SIN_FASE3_MS = 10L * 60 * 1000
+
+    /** GET /instrumentos (contrato §14.1). */
+    suspend fun instrumentos(): Instrumentos {
+        val ahora = Clock.System.now().toEpochMilliseconds()
+        instrumentosCache?.let { (t, r) ->
+            val vigencia = if (r is Instrumentos.Ok) VIGENCIA_INSTRUMENTOS_MS else VIGENCIA_SIN_FASE3_MS
+            if (ahora - t < vigencia) return r
+        }
+        val tk = token() ?: return Instrumentos.Fallo
+        val r = try {
+            val resp = http.get("${Supabase.SITE_URL}$BASE/instrumentos") { header("Authorization", "Bearer $tk") }
+            aInstrumentos(resp.status.value, runCatching { resp.bodyAsText() }.getOrNull())
+        } catch (e: CancellationException) { throw e } catch (_: Exception) { Instrumentos.Fallo }
+        if (r !is Instrumentos.Fallo) instrumentosCache = ahora to r
+        return r
+    }
+
+    internal fun aInstrumentos(status: Int, cuerpo: String?): Instrumentos = when {
+        status in 200..299 -> {
+            val o = cuerpo?.let { runCatching { json.parseToJsonElement(it).jsonObject }.getOrNull() }
+            if (o == null) Instrumentos.Fallo else Instrumentos.Ok(parsearInstrumentosPsico(o))
+        }
+        // La ruta no existe (404 de Next) o no se reconoce: servidor sin fase 3.
+        status == 404 || status == 400 || status == 405 -> Instrumentos.NoDisponible
+        else -> Instrumentos.Fallo
+    }
+
+    sealed class Retest {
+        data class Ok(val retest: RetestPsico) : Retest()
+        data class Error(val mensaje: String) : Retest()
+    }
+
+    /** GET /retest: aplicaciones anteriores del mismo test y paciente y la comparación (§14.3). */
+    suspend fun retest(testAplicadoId: String, anteriorId: String? = null): Retest {
+        val tk = token() ?: return Retest.Error("Tu sesión expiró. Vuelve a entrar.")
+        return try {
+            val resp = http.get("${Supabase.SITE_URL}$BASE/retest") {
+                header("Authorization", "Bearer $tk")
+                parameter("testAplicadoId", testAplicadoId)
+                if (anteriorId != null) parameter("anteriorId", anteriorId)
+            }
+            aRetest(resp.status.value, runCatching { resp.bodyAsText() }.getOrNull())
+        } catch (e: CancellationException) { throw e } catch (_: Exception) { Retest.Error(MSJ_SIN_RED) }
+    }
+
+    internal fun aRetest(status: Int, cuerpo: String?): Retest {
+        val r = AtencionRepo.resultadoDeRespuesta(status, cuerpo)
+        if (r.registrada) return Retest.Ok(parsearRetestPsico(r.cuerpo))
+        val rz = r.rechazo
+        return Retest.Error(mensajeErrorAccionFase2("Comparar con una aplicación anterior", status, rz?.codigo, rz?.error))
+    }
+
     sealed class Historia {
         data class Ok(val evaluaciones: List<EvalHistoriaPsico>) : Historia()
         data class Error(val mensaje: String) : Historia()
@@ -296,6 +363,24 @@ object EvaluacionPsicoRepo {
             put("accion", "editar")
             put("testAplicadoId", testAplicadoId)
             put("datos", datos)
+        })
+
+    /**
+     * Fase 3: "Responder ítems" de un instrumento libre. El SERVIDOR calcula
+     * (completo → llena puntajes y global; incompleto → guarda el avance).
+     * `cuerpo.test` = el test actualizado, `cuerpo.resultado` = lo calculado.
+     */
+    suspend fun responderTest(testAplicadoId: String, instrumento: String, valores: List<Int?>): ResultadoEscritura =
+        postJson("$BASE/test", jsonResponder(testAplicadoId, instrumento, valores))
+
+    /**
+     * Fase 3 (§14.4): propuestas de la IA para las secciones vacías. No guarda
+     * nada. 409 CONSENTIMIENTO_IA_FALTANTE → reintentar con [confirmarSinConsentimiento].
+     */
+    suspend fun redactarInformeIA(informeId: String, confirmarSinConsentimiento: Boolean): ResultadoEscritura =
+        postJson("$BASE/informe/ia", buildJsonObject {
+            put("informeId", informeId)
+            put("confirmarSinConsentimiento", confirmarSinConsentimiento)
         })
 
     suspend fun borrarTest(testAplicadoId: String): ResultadoEscritura =
