@@ -1,0 +1,14 @@
+# BORRADOR de las novedades de la próxima versión (aún sin número).
+# Al publicar, copiar a novedades/<versionName>.txt con el formato de siempre
+# (ver docs/ci-cd-despliegue.md → "Novedades de cada versión").
+El saldo a favor del paciente ya sirve para pagar: se usa como un medio de pago más en otro tratamiento, combinado con Yape, efectivo o el que sea. Y lo pagado de un tratamiento cancelado pasa a saldo a favor solo cuando el administrador lo decide.
+---
+Clínicas:
+• Pagar con saldo a favor: al registrar el pago de un tratamiento que debe algo, si el paciente tiene saldo a favor aparece "Usar saldo a favor (disponible S/ X)". Márcalo, ajusta cuánto va con saldo y cobra el resto con el medio de siempre (o con varios). La parte con saldo no entra a caja: ese dinero ya se había recibido. Necesita señal: sin conexión no se guarda para después.
+• Historial de pagos más claro: un pago con saldo se ve en una sola línea ("Saldo a favor S/ 205.97 + Yape S/ 284.03"), y en el tratamiento de donde salió el saldo se ve "Saldo aplicado a <tratamiento>". Los totales coinciden con la web.
+• Solo el administrador: borrar un pago con saldo borra el pago completo y devuelve el saldo al paciente. Si ese dinero ya pagó otro tratamiento, la app dice qué pago deshacer primero.
+• Tratamientos cancelados: si quedó dinero pagado y no atendido, se avisa. El administrador puede pasarlo a saldo a favor del paciente (con confirmación) y deshacerlo mientras no se haya usado.
+• Eliminar un tratamiento (solo el administrador): desde "⋯ Opciones del tratamiento". Si tiene pagos, eliges conservar el dinero en caja o revertirlo, y se avisa qué pasa con el saldo a favor.
+• El "A favor" de la ficha ahora es el saldo que de verdad se puede usar (incluye lo de los cancelados que el administrador pasó a saldo).
+Pacientes:
+• En "Mis pagos", un pago hecho con saldo a favor se ve con su detalle ("Saldo a favor S/ … + Yape S/ …"), y un tratamiento cancelado cuyo dinero la clínica pasó a saldo dice "a tu favor".
