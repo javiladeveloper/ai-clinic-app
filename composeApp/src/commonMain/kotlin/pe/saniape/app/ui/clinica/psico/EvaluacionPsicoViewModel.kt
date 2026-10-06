@@ -27,6 +27,12 @@ import pe.saniape.app.data.staff.EvaluacionPsicoRepo
 import pe.saniape.app.data.staff.FotoPsico
 import pe.saniape.app.data.staff.FuentePsico
 import pe.saniape.app.data.staff.InformePsico
+import pe.saniape.app.data.staff.InstrumentoPsico
+import pe.saniape.app.data.staff.PropuestasIaPsico
+import pe.saniape.app.data.staff.conAnexoPerfiles
+import pe.saniape.app.data.staff.parsearPropuestasIa
+import pe.saniape.app.data.staff.resultadoDeResponder
+import pe.saniape.app.data.staff.textoTrasResponder
 import pe.saniape.app.data.staff.ObservacionPsico
 import pe.saniape.app.data.staff.PlanPsico
 import pe.saniape.app.data.staff.PrefillPlanPsico
@@ -115,6 +121,13 @@ class EvaluacionPsicoViewModel(
     /** Acción explícita corriendo (subir foto, emitir, agregar cita…): evita el doble toque. */
     var accionando by mutableStateOf<String?>(null); private set
     var pestania by mutableStateOf("entrevista"); private set
+    /**
+     * Fase 3: definiciones de los instrumentos libres (GET /instrumentos). null =
+     * aún no llegaron o el servidor no tiene la fase 3 → sin "Responder ítems".
+     */
+    var instrumentos by mutableStateOf<List<InstrumentoPsico>?>(null); private set
+    /** El servidor tiene la fase 3 (respondió /instrumentos): retest y anexo de perfiles. */
+    var fase3 by mutableStateOf(false); private set
 
     val soloLectura: Boolean get() = espacio?.soloLectura == true || ev?.estado == "cerrada"
 
@@ -124,6 +137,7 @@ class EvaluacionPsicoViewModel(
 
     /** GET (y POST abrir la primera vez). También es el "Reintentar". */
     fun cargar() {
+        if (instrumentos == null) cargarInstrumentos()
         viewModelScope.launch {
             cargando = true
             error = null
@@ -182,6 +196,17 @@ class EvaluacionPsicoViewModel(
             if (!hayPendientes) {
                 ev = r.espacio.evaluacion
                 tests = r.espacio.tests
+            }
+        }
+    }
+
+    /** Las definiciones de la fase 3 (en paralelo a la carga; si fallan, las ayudas no aparecen). */
+    private fun cargarInstrumentos() {
+        viewModelScope.launch {
+            when (val r = EvaluacionPsicoRepo.instrumentos()) {
+                is EvaluacionPsicoRepo.Instrumentos.Ok -> { instrumentos = r.lista; fase3 = true }
+                EvaluacionPsicoRepo.Instrumentos.NoDisponible -> fase3 = false
+                EvaluacionPsicoRepo.Instrumentos.Fallo -> Unit
             }
         }
     }
@@ -327,6 +352,38 @@ class EvaluacionPsicoViewModel(
         }
     }
 
+    /**
+     * Fase 3 — "Responder ítems": manda los valores (uno por ítem, sin invertir)
+     * y el SERVIDOR calcula. Completo → llena puntajes y global y pasa a
+     * calificado; incompleto → guarda el avance. El test que vuelve reemplaza al
+     * local (lo editable sigue siendo editable). Lo pendiente de editar del test
+     * se manda ANTES, para que el cálculo no lo pise ni al revés.
+     */
+    fun responderItems(t: TestAplicadoPsico, ins: InstrumentoPsico, valores: List<Int?>, alTerminar: (Boolean) -> Unit) {
+        if (soloLectura || accionando != null) return
+        accionando = "responder:${t.id}"
+        viewModelScope.launch {
+            temporizadoresTest.remove(t.id)?.cancel()
+            if (testsPendientes.containsKey(t.id)) enviarTest(t.id)
+            val r = conIndicador { EvaluacionPsicoRepo.responderTest(t.id, ins.id, valores) }
+            accionando = null
+            val nuevo = testDeRespuesta(r.cuerpo)
+            if (r.registrada && nuevo != null) {
+                tests = tests.map { if (it.id == nuevo.id) nuevo else it }
+                Toaster.exito(textoTrasResponder(ins.corto, resultadoDeResponder(r.cuerpo) ?: nuevo.respuestas?.resultado))
+                refrescarEstados()
+                alTerminar(true)
+            } else {
+                val rz = r.rechazo
+                Toaster.error(
+                    if (r.registrada) "Se guardaron las respuestas, pero no se pudo leer el resultado. Recarga."
+                    else mensajeErrorAccionFase2("Responder ítems", rz?.status ?: 0, rz?.codigo, rz?.error)
+                )
+                if (r.registrada) { refrescar(); alTerminar(true) } else alTerminar(false)
+            }
+        }
+    }
+
     private fun flushTests() {
         val ids = testsPendientes.keys.toList()
         temporizadoresTest.values.forEach { it.cancel() }
@@ -464,6 +521,19 @@ class EvaluacionPsicoViewModel(
         informePendiente = null
         guardando++
         val r = try { EvaluacionPsicoRepo.guardarInforme(i.id, c) } finally { guardando-- }
+        if (r.registrada && informePendiente == null) {
+            // Fase 3: los perfiles del anexo (y la marca de IA unida) los pone el
+            // servidor; se toman de la respuesta sin pisar el texto escrito.
+            informeDeRespuesta(r.cuerpo)?.let { s ->
+                val actual = informe
+                if (actual != null && actual.id == s.id && !actual.emitido) {
+                    informe = actual.copy(contenido = actual.contenido.copy(
+                        anexoPerfiles = s.contenido.anexoPerfiles ?: actual.contenido.anexoPerfiles,
+                        asistidoIa = s.contenido.asistidoIa ?: actual.contenido.asistidoIa,
+                    ))
+                }
+            }
+        }
         if (!r.registrada) {
             if (r.codigo == "SIN_RED" && informePendiente == null) informePendiente = c
             Toaster.error(r.mensajePsico())
@@ -581,6 +651,51 @@ class EvaluacionPsicoViewModel(
                 Toaster.exito("PDF generado: el paciente ya ve esta versión")
                 refrescar()
             } else Toaster.error(r.mensajePsico())
+        }
+    }
+
+    /** Fase 3: casilla "Incluir anexo de perfiles" (los perfiles los calcula el servidor al guardar). */
+    fun incluirAnexoPerfiles(incluir: Boolean) {
+        val i = informe ?: return
+        if (i.emitido) return
+        editarInforme(conAnexoPerfiles(i.contenido, incluir))
+    }
+
+    /** Resultado de "✨ Redactar con IA". */
+    sealed class ResultadoIa {
+        data class Ok(val propuestas: PropuestasIaPsico, val sinConsentimientoConfirmado: Boolean) : ResultadoIa()
+        /** 409 CONSENTIMIENTO_IA_FALTANTE: pedir la confirmación explícita y reintentar. */
+        data object FaltaConsentimiento : ResultadoIa()
+        data object Error : ResultadoIa()
+    }
+
+    /**
+     * Fase 3 (§14.4, hoy apagada: solo con `can("ia")`): propuestas para las
+     * secciones vacías. Antes se guarda lo escrito (la IA lee lo guardado).
+     */
+    fun redactarIA(confirmarSinConsentimiento: Boolean, alTerminar: (ResultadoIa) -> Unit) {
+        val i = informe ?: return
+        if (i.emitido || accionando != null) return
+        accionando = "ia"
+        viewModelScope.launch {
+            temporizadorInforme?.cancel()
+            if (!enviarInforme()) { accionando = null; alTerminar(ResultadoIa.Error); return@launch }
+            val r = conIndicador { EvaluacionPsicoRepo.redactarInformeIA(i.id, confirmarSinConsentimiento) }
+            accionando = null
+            when {
+                r.registrada -> {
+                    val p = parsearPropuestasIa(r.cuerpo)
+                    if (p.propuestas.isEmpty()) {
+                        Toaster.error("La IA no devolvió propuestas. Inténtalo de nuevo.")
+                        alTerminar(ResultadoIa.Error)
+                    } else {
+                        Toaster.exito("Propuestas listas: revísalas y acepta las que sirvan, sección por sección")
+                        alTerminar(ResultadoIa.Ok(p, confirmarSinConsentimiento && !p.consentimientoIA))
+                    }
+                }
+                r.codigo == "CONSENTIMIENTO_IA_FALTANTE" -> alTerminar(ResultadoIa.FaltaConsentimiento)
+                else -> { Toaster.error(r.mensajePsico()); alTerminar(ResultadoIa.Error) }
+            }
         }
     }
 

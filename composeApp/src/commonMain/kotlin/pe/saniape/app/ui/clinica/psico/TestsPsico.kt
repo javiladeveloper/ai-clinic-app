@@ -47,6 +47,9 @@ import pe.saniape.app.data.staff.TestAplicadoPsico
 import pe.saniape.app.data.staff.TestCatalogoPsico
 import pe.saniape.app.data.staff.VALIDEZ_PSICO
 import pe.saniape.app.data.staff.agruparCatalogoPsico
+import pe.saniape.app.data.staff.alertas
+import pe.saniape.app.data.staff.instrumentosDeTest
+import pe.saniape.app.data.staff.perfilDeTest
 import pe.saniape.app.data.staff.fechaDmyPsico
 import pe.saniape.app.data.staff.mensajePsico
 import pe.saniape.app.data.staff.testCatalogoDeRespuesta
@@ -61,8 +64,11 @@ import pe.saniape.app.ui.clinica.pacientes.EtqForm
 import pe.saniape.app.ui.theme.Sania
 
 // Componente 4 — Aplicación de tests. La psicóloga INGRESA los puntajes (texto:
-// "T 65", "II+", "112"): el sistema no calcula nada (derechos de autor: no hay
-// ítems ni baremos). Las fotos de dibujos y hojas son material protegido.
+// "T 65", "II+", "112"): en los tests comerciales el sistema no calcula nada
+// (derechos de autor: no hay ítems ni baremos). Las fotos de dibujos y hojas son
+// material protegido. Fase 3: los instrumentos LIBRES (PHQ-9, GAD-7, AUDIT, SRQ,
+// Rosenberg, APGAR, ASRS, PSC-17) se pueden "Responder ítems" y los puntúa el
+// SERVIDOR; cada test muestra su perfil y se compara con una aplicación anterior.
 
 /** Color del seguimiento: aplicado → calificado → interpretado. */
 @Composable
@@ -116,6 +122,7 @@ internal fun SeccionTests(vm: EvaluacionPsicoViewModel, acciones: AccionesNativa
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TarjetaTest(
     vm: EvaluacionPsicoViewModel,
@@ -131,6 +138,13 @@ private fun TarjetaTest(
     val (fgE, bgE) = colorEstadoTest(t.estado)
     var elegirFecha by remember { mutableStateOf(false) }
     fun cambiar(nuevo: TestAplicadoPsico) = vm.cambiarTest(nuevo)
+    // Fase 3: autocálculo (solo instrumentos libres del catálogo global), perfil y retest.
+    val instrumentos = remember(t.test, vm.instrumentos) { instrumentosDeTest(t.test, vm.instrumentos) }
+    val perfil = remember(t, vm.instrumentos) { perfilDeTest(t, vm.instrumentos) }
+    val alertas = t.alertas
+    var respondiendo by remember { mutableStateOf(false) }
+    var verPerfil by remember { mutableStateOf(false) }
+    var comparando by remember { mutableStateOf(false) }
 
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.superficie)
@@ -148,6 +162,20 @@ private fun TarjetaTest(
                     if (!t.enInforme) Text("no va al informe", color = c.textoSuave, fontSize = 11.sp)
                     if (fotos.isNotEmpty()) Text("📷 ${fotos.size}", color = c.textoSuave, fontSize = 11.sp)
                 }
+                if (t.respuestas != null || alertas.isNotEmpty()) {
+                    Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (t.respuestas != null) {
+                            Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.chipBg).padding(horizontal = 8.dp, vertical = 2.dp)) {
+                                Text(if (t.respuestas.editado) "ítems · corregido a mano" else "ítems respondidos", color = c.navy, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        if (alertas.isNotEmpty()) {
+                            Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.errorBg).padding(horizontal = 8.dp, vertical = 2.dp)) {
+                                Text("⚠ Evaluar riesgo suicida", color = c.error, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
             }
             ChevronExpandible(abierto)
         }
@@ -155,6 +183,26 @@ private fun TarjetaTest(
         Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             t.test?.nombre?.takeIf { it.isNotBlank() && it != t.nombreCorto }?.let { Text(it, color = c.textoSuave, fontSize = 12.sp) }
+            AlertasTestPsico(alertas)
+
+            val conResponder = instrumentos.isNotEmpty() && !ro
+            if (conResponder || perfil != null || vm.fase3) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (conResponder) {
+                        BotonPsico(if (t.respuestas != null) "📝 Ver / cambiar respuestas" else "📝 Responder ítems",
+                            habilitado = vm.accionando == null) { respondiendo = true }
+                    }
+                    if (perfil != null) BotonPsico(if (verPerfil) "📊 Ocultar perfil" else "📊 Ver perfil", color = c.textoSuave) { verPerfil = !verPerfil }
+                    if (vm.fase3) BotonPsico("↔ Comparar con aplicación anterior", color = c.textoSuave) { comparando = true }
+                }
+            }
+            t.respuestas?.let { r -> ResultadoItemsPsico(r, instrumentos.firstOrNull { it.id == r.instrumento }?.corto ?: t.nombreCorto) }
+            if (verPerfil && perfil != null) {
+                Box(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)).padding(10.dp),
+                ) { GraficoPerfilPsico(perfil) }
+            }
 
             // Lo más usado en el celular primero: fotografiar la hoja o el dibujo.
             Column {
@@ -216,6 +264,14 @@ private fun TarjetaTest(
     if (elegirFecha) {
         DialogoFecha(onElegir = { f -> cambiar(t.copy(fecha = f)) }, onCerrar = { elegirFecha = false }, inicial = t.fecha.ifBlank { null })
     }
+    if (respondiendo && instrumentos.isNotEmpty()) {
+        DialogoResponderItems(
+            test = t, disponibles = instrumentos, guardando = vm.accionando == "responder:${t.id}",
+            onCerrar = { respondiendo = false },
+            onGuardar = { ins, valores -> vm.responderItems(t, ins, valores) { ok -> if (ok) respondiendo = false } },
+        )
+    }
+    if (comparando) DialogoRetest(t) { comparando = false }
 }
 
 /** Una escala: su nombre y los 4 puntajes en 2×2 (en el celular no entra la tabla de la web). */
