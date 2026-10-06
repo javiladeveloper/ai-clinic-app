@@ -27,6 +27,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import pe.saniape.app.data.staff.CAMPOS_FILIACION
+import pe.saniape.app.data.staff.SECCIONES_IA_PSICO
+import pe.saniape.app.data.staff.aceptarPropuestaIa
+import pe.saniape.app.data.staff.hoyClinicaIso
+import pe.saniape.app.data.staff.ofrecerAnexoPerfiles
+import pe.saniape.app.data.staff.seccionAsistidaIa
 import pe.saniape.app.data.staff.EvaluacionPsicoRepo
 import pe.saniape.app.data.staff.VersionInformePsico
 import pe.saniape.app.data.staff.estadoVersionInforme
@@ -52,10 +57,14 @@ import pe.saniape.app.ui.theme.Sania
  * para corregirlo, "✎ Emitir nueva versión" abre un borrador v+1 (aunque la
  * evaluación esté cerrada). El editor sigue la plantilla copiada en el
  * contenido (orden, títulos, numeración, ocultas) y muestra su encabezado y pie.
+ *
+ * Fase 3: casilla "Incluir anexo de perfiles" (los perfiles los calcula el
+ * servidor) y "✨ Redactar con IA" SOLO con [conIA] (`ctx.can("ia")`, hoy
+ * apagada en todos los planes): propuestas por sección, nunca se emite sin revisión.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNativas) {
+internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNativas, conIA: Boolean = false) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     val informe = vm.informe
@@ -68,6 +77,37 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
     var confirmarEmitir by remember { mutableStateOf(false) }
     var confirmarVersion by remember { mutableStateOf(false) }
     var confirmarDescartar by remember { mutableStateOf(false) }
+    // IA (fase 3): propuestas en pantalla (no se guardan hasta aceptarlas) y su consentimiento.
+    var propuestas by remember { mutableStateOf<Map<String, String>?>(null) }
+    var iaModelo by remember { mutableStateOf("") }
+    var iaSinConsentimiento by remember { mutableStateOf(false) }
+    var pedirConsentimiento by remember { mutableStateOf(false) }
+    var confirmoConsentimiento by remember { mutableStateOf(false) }
+    var reemplazarIa by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+    fun redactar(confirmar: Boolean) {
+        vm.redactarIA(confirmar) { r ->
+            when (r) {
+                is EvaluacionPsicoViewModel.ResultadoIa.Ok -> {
+                    pedirConsentimiento = false; confirmoConsentimiento = false
+                    iaModelo = r.propuestas.modelo
+                    iaSinConsentimiento = r.sinConsentimientoConfirmado
+                    propuestas = r.propuestas.propuestas
+                    editando = true
+                }
+                EvaluacionPsicoViewModel.ResultadoIa.FaltaConsentimiento -> pedirConsentimiento = true
+                EvaluacionPsicoViewModel.ResultadoIa.Error -> Unit
+            }
+        }
+    }
+    fun quitarPropuesta(clave: String) {
+        propuestas = propuestas?.minus(clave)?.ifEmpty { null }
+    }
+    fun aceptarIa(clave: String, texto: String, reemplazar: Boolean) {
+        val actual = vm.informe ?: return
+        vm.editarInforme(aceptarPropuestaIa(actual.contenido, clave, texto, iaModelo, hoyClinicaIso(), iaSinConsentimiento, reemplazar))
+        quitarPropuesta(clave)
+    }
 
     fun verHtml(informeId: String? = null) {
         scope.launch {
@@ -139,6 +179,9 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
             if (editable) {
                 BotonPsico(if (editando) "✓ Listo" else "✏ Editar texto", color = c.textoSuave) { editando = !editando }
                 BotonPsico("↻ Volver a armar", color = c.textoSuave, habilitado = vm.accionando == null) { confirmarArmar = true }
+                if (conIA) {
+                    BotonPsico(if (vm.accionando == "ia") "✨ Redactando…" else "✨ Redactar con IA", habilitado = vm.accionando == null) { redactar(false) }
+                }
             }
         }
         if (editable) {
@@ -179,16 +222,68 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
             }
         }
 
+        val secciones = seccionesNumeradasInforme(plantilla)
+        val props = propuestas
+        if (props != null && editable && conIA) {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.chipBg)
+                    .border(2.dp, c.navy, RoundedCornerShape(Sania.shape.sm.dp)).padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                SubtituloPsico("✨ Propuestas de la IA")
+                Text("Borrador de apoyo: revisa, corrige y acepta por sección. Nada se guarda ni se emite sin ti.", color = c.textoSuave, fontSize = 12.sp)
+                SECCIONES_IA_PSICO.filter { it in props }.forEach { clave ->
+                    val titulo = secciones.firstOrNull { it.clave == clave }?.let { "${it.numero}. ${it.titulo}" } ?: clave
+                    PropuestaIaPsico(titulo, props.getValue(clave),
+                        onDescartar = { quitarPropuesta(clave) },
+                        onAceptar = { texto ->
+                            if (vm.informe?.contenido?.secciones?.get(clave).isNullOrBlank()) aceptarIa(clave, texto, false)
+                            else reemplazarIa = clave to texto
+                        })
+                }
+                BotonPsico("Descartar todas", color = c.textoSuave, modifier = Modifier.fillMaxWidth()) { propuestas = null }
+            }
+        }
+
         // Las secciones de la plantilla del informe: su orden, sus títulos, su
         // numeración y SOLO las visibles (motivo y conclusiones nunca se ocultan).
-        seccionesNumeradasInforme(plantilla).forEach { s ->
+        secciones.forEach { s ->
             val valor = cont.secciones[s.clave].orEmpty()
+            val sello = if (seccionAsistidaIa(cont, s.clave)) "  ✨ asistido por IA" else ""
             if (editando && editable) {
-                TextoLargoPsico("${s.numero}. ${s.titulo}", valor, { v -> vm.editarInforme(vm.informe!!.contenido.let { it.copy(secciones = it.secciones + (s.clave to v)) }) }, false)
+                TextoLargoPsico("${s.numero}. ${s.titulo}$sello", valor, { v -> vm.editarInforme(vm.informe!!.contenido.let { it.copy(secciones = it.secciones + (s.clave to v)) }) }, false)
             } else {
                 Column {
-                    EtqForm("${s.numero}. ${s.titulo}")
+                    EtqForm("${s.numero}. ${s.titulo}$sello")
                     Text(valor.ifBlank { "—" }, color = if (valor.isBlank()) c.textoSuave else c.texto, fontSize = 14.sp)
+                }
+            }
+        }
+
+        // Fase 3: anexo "Perfil de puntajes" (gráficos de los tests que entran al informe).
+        if (ofrecerAnexoPerfiles(vm.fase3, cont)) {
+            val anexo = cont.anexoPerfiles
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                CasillaPsico("Incluir anexo de perfiles (gráficos de puntajes con bandas de corte)", anexo?.incluir == true, !editable) {
+                    vm.incluirAnexoPerfiles(it)
+                }
+                if (anexo?.incluir == true) {
+                    Text(
+                        (if (anexo.perfiles.isNotEmpty()) "${anexo.perfiles.size} gráfico(s): " else "") +
+                            "solo los tests que entran al informe y tienen puntajes numéricos. " +
+                            if (emitido) "Quedó fijo al emitir." else "Se actualiza al guardar y queda fijo al emitir.",
+                        color = c.textoSuave, fontSize = 12.sp,
+                    )
+                    anexo.perfiles.forEach { p ->
+                        Column(Modifier.padding(top = 6.dp)) {
+                            TituloPerfilPsico(listOf(p.titulo, fechaDmyPsico(p.fecha)).filter { it.isNotBlank() }.joinToString(" · "))
+                            GraficoPerfilPsico(p)
+                        }
+                    }
                 }
             }
         }
@@ -210,6 +305,41 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
         }
     }
 
+    reemplazarIa?.let { (clave, texto) ->
+        AlertDialog(
+            onDismissRequest = { reemplazarIa = null },
+            title = { Text("¿Reemplazar el texto?", fontWeight = FontWeight.Bold) },
+            text = { Text("Esa sección ya tiene texto. ¿Reemplazarlo por la propuesta?", color = c.texto) },
+            confirmButton = { TextButton(onClick = { reemplazarIa = null; aceptarIa(clave, texto, true) }) { Text("Reemplazar", color = c.navy, fontWeight = FontWeight.Bold) } },
+            dismissButton = { TextButton(onClick = { reemplazarIa = null }) { Text("Cancelar", color = c.textoSuave) } },
+            containerColor = c.superficie,
+        )
+    }
+    if (pedirConsentimiento) {
+        AlertDialog(
+            onDismissRequest = { if (vm.accionando != "ia") { pedirConsentimiento = false; confirmoConsentimiento = false } },
+            title = { Text("✨ Redactar con IA: consentimiento", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AvisoPsico("⚠ No consta un consentimiento firmado de este paciente que mencione el uso de inteligencia artificial. El Código de Ética del CPsP (art. 45) permite usarla solo como apoyo y con consentimiento.",
+                        c.pend, c.pendBg)
+                    Text("El modelo de “Consentimiento de evaluación psicológica” de Sania ya lo incluye. A la IA no se envían el nombre ni el DNI: solo edad, sexo y lo registrado en la evaluación.",
+                        color = c.textoSuave, fontSize = 12.sp)
+                    CasillaPsico("Confirmo que el paciente o su representante autorizó el uso de herramientas de IA como apoyo para redactar este informe.",
+                        confirmoConsentimiento, false) { confirmoConsentimiento = it }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { redactar(true) }, enabled = confirmoConsentimiento && vm.accionando == null) {
+                    Text(if (vm.accionando == "ia") "Redactando…" else "Continuar", color = c.navy, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pedirConsentimiento = false; confirmoConsentimiento = false }, enabled = vm.accionando != "ia") { Text("Cancelar", color = c.textoSuave) }
+            },
+            containerColor = c.superficie,
+        )
+    }
     if (confirmarDescartar) {
         AlertDialog(
             onDismissRequest = { if (vm.accionando != "descartar") confirmarDescartar = false },
@@ -295,6 +425,24 @@ internal fun SeccionInforme(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
             dismissButton = { TextButton(onClick = { confirmarEmitir = false }, enabled = vm.accionando != "emitir") { Text("Cancelar", color = c.textoSuave) } },
             containerColor = c.superficie,
         )
+    }
+}
+
+/** Una propuesta de la IA: texto editable, "Descartar" y "Aceptar en el informe". */
+@Composable
+private fun PropuestaIaPsico(titulo: String, texto: String, onDescartar: () -> Unit, onAceptar: (String) -> Unit) {
+    val c = Sania.colors
+    var v by remember(titulo, texto) { mutableStateOf(texto) }
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.superficie)
+            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)).padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        TextoLargoPsico(titulo, v, { v = it }, false)
+        androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            BotonPsico("Descartar", color = c.textoSuave, modifier = Modifier.weight(1f)) { onDescartar() }
+            BotonPsico("Aceptar en el informe", color = c.ok, relleno = true, habilitado = v.isNotBlank(), modifier = Modifier.weight(1.4f)) { onAceptar(v) }
+        }
     }
 }
 

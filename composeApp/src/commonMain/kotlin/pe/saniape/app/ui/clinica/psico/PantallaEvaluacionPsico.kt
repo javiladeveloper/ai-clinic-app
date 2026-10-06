@@ -169,7 +169,8 @@ fun PantallaEvaluacionPsico(
                                         }
                                     },
                                 )
-                                else -> SeccionInforme(vm, acciones)
+                                // La IA del informe solo con la feature `ia` del plan (hoy apagada en todos).
+                                else -> SeccionInforme(vm, acciones, conIA = ctx.can("ia"))
                             }
                         }
                         Spacer(Modifier.height(Sania.dim.xxl))
