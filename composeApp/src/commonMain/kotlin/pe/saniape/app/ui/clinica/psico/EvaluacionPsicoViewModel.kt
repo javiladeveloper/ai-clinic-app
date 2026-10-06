@@ -33,6 +33,8 @@ import pe.saniape.app.data.staff.PrefillPlanPsico
 import pe.saniape.app.data.staff.SugerenciaSesionesPsico
 import pe.saniape.app.data.staff.TestAplicadoPsico
 import pe.saniape.app.data.staff.TestCatalogoPsico
+import pe.saniape.app.data.staff.VersionInformePsico
+import pe.saniape.app.data.staff.mensajeErrorNuevaVersion
 import pe.saniape.app.data.staff.fotoDeRespuesta
 import pe.saniape.app.data.staff.informeDeRespuesta
 import pe.saniape.app.data.staff.jsonAnalisis
@@ -104,6 +106,8 @@ class EvaluacionPsicoViewModel(
     var fotos by mutableStateOf<List<FotoPsico>>(emptyList()); private set
     var informe by mutableStateOf<InformePsico?>(null); private set
     var informePdf by mutableStateOf<DocumentoInformePsico?>(null); private set
+    /** Fase 2: historial de versiones del informe (más nueva primero). */
+    var informes by mutableStateOf<List<VersionInformePsico>>(emptyList()); private set
     var totalCitas by mutableStateOf(0); private set
     /** Envíos en vuelo del autoguardado (el "Guardando…" discreto de la cabecera). */
     var guardando by mutableStateOf(0); private set
@@ -156,6 +160,7 @@ class EvaluacionPsicoViewModel(
         fotos = e.fotos
         informe = e.informe
         informePdf = e.informePdf
+        informes = e.informes
         totalCitas = e.tratamiento?.totalSesiones ?: 0
     }
 
@@ -168,8 +173,10 @@ class EvaluacionPsicoViewModel(
             estados = r.espacio.estados
             sugerencia = r.espacio.sugerenciaSesiones
             fotos = r.espacio.fotos
-            informe = r.espacio.informe
+            // Lo que se está escribiendo en el borrador no se pisa con la respuesta.
+            if (informePendiente == null || r.espacio.informe?.id != informe?.id) informe = r.espacio.informe
             informePdf = r.espacio.informePdf
+            informes = r.espacio.informes
             totalCitas = r.espacio.tratamiento?.totalSesiones ?: totalCitas
             if (!hayPendientes) {
                 ev = r.espacio.evaluacion
@@ -438,7 +445,9 @@ class EvaluacionPsicoViewModel(
 
     fun editarInforme(c: ContenidoInformePsico) {
         val i = informe ?: return
-        if (i.emitido || soloLectura) return
+        // Solo el emitido es intocable: con la evaluación cerrada, el borrador de
+        // una versión nueva SÍ se edita (contrato §13.1).
+        if (i.emitido) return
         informe = i.copy(contenido = c)
         informePendiente = c
         temporizadorInforme?.cancel()
@@ -478,7 +487,10 @@ class EvaluacionPsicoViewModel(
             val r = conIndicador { EvaluacionPsicoRepo.emitirInforme(i.id) }
             accionando = null
             if (r.registrada) {
-                Toaster.exito("Informe emitido: ya está en los documentos del paciente")
+                Toaster.exito(
+                    if (i.esVersionNueva) "Versión ${i.version} emitida: el paciente ya ve solo esta versión"
+                    else "Informe emitido: ya está en los documentos del paciente"
+                )
                 refrescar()
                 alTerminar(true)
             } else {
@@ -490,8 +502,40 @@ class EvaluacionPsicoViewModel(
 
     suspend fun htmlInforme(): String? {
         val i = informe ?: return null
-        if (informePendiente != null) { temporizadorInforme?.cancel(); enviarInforme() }
-        return conIndicador(Gestion.CARGANDO) { EvaluacionPsicoRepo.htmlInforme(i.id) }
+        return htmlDeInforme(i.id)
+    }
+
+    /** HTML imprimible de una versión cualquiera del historial (o del actual). */
+    suspend fun htmlDeInforme(informeId: String): String? {
+        if (informeId == informe?.id && informePendiente != null) { temporizadorInforme?.cancel(); enviarInforme() }
+        return conIndicador(Gestion.CARGANDO) { EvaluacionPsicoRepo.htmlInforme(informeId) }
+    }
+
+    /**
+     * "✎ Emitir nueva versión" (fase 2): crea o reabre el borrador v+1 con el
+     * contenido del vigente. El emitido no se toca: el paciente lo sigue viendo
+     * hasta emitir la nueva. Después se relee todo (informe = el borrador nuevo,
+     * informePdf = el vigente, historial).
+     */
+    fun nuevaVersionInforme(alTerminar: (Boolean) -> Unit) {
+        val evId = ev?.id ?: return
+        if (accionando != null) return
+        accionando = "version"
+        viewModelScope.launch {
+            val r = conIndicador { EvaluacionPsicoRepo.nuevaVersionInforme(evId) }
+            accionando = null
+            if (r.registrada) {
+                val nuevo = informeDeRespuesta(r.cuerpo)
+                if (nuevo != null) informe = nuevo
+                Toaster.exito(nuevo?.let { "Borrador de la versión ${it.version} listo para corregir" } ?: "Borrador de la nueva versión listo para corregir")
+                refrescar()
+                alTerminar(true)
+            } else {
+                val rz = r.rechazo
+                Toaster.error(mensajeErrorNuevaVersion(rz?.status ?: 0, rz?.codigo, rz?.error))
+                alTerminar(false)
+            }
+        }
     }
 
     // ── Plan → tratamiento ───────────────────────────────────────────────────

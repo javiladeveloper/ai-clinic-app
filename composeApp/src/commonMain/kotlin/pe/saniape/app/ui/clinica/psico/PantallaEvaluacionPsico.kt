@@ -140,7 +140,7 @@ fun PantallaEvaluacionPsico(
                             .padding(horizontal = Sania.dim.lg, vertical = Sania.dim.md),
                     ) {
                         if (vm.soloLectura) {
-                            AvisoPsico("Informe emitido: la evaluación está cerrada (solo lectura).", c.ok, c.okBg, negrita = true)
+                            AvisoPsico("Informe emitido: la evaluación está cerrada (solo lectura). Para corregir el informe, emite una nueva versión en 📄 Informe.", c.ok, c.okBg, negrita = true)
                             Spacer(Modifier.height(Sania.dim.sm))
                         }
                         val titulo = COMPONENTES_PSICO.find { it.clave == vm.pestania }?.let { "${it.icono} ${it.tituloLargo}" }
