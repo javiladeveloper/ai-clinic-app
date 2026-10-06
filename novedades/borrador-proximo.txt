@@ -1,8 +1,13 @@
 # BORRADOR de las novedades de la próxima versión (aún sin número).
 # Al publicar, copiar a novedades/<versionName>.txt con el formato de siempre
 # (ver docs/ci-cd-despliegue.md → "Novedades de cada versión").
-Las consultas y evaluaciones se pueden cobrar con más de un medio de pago a la vez, y la caja cuadra por método.
+Las consultas y evaluaciones se pueden cobrar con más de un medio de pago a la vez, y el informe psicológico se corrige emitiendo una nueva versión.
 ---
 Clínicas:
 • Cobro dividido: al cobrar una consulta o evaluación, marca "Pagó con más de un medio" y reparte el monto entre 2 y 4 medios (p. ej. S/ 20 en efectivo + S/ 20 por Yape). Verás en vivo cuánto falta o sobra; Cobrar se activa solo cuando suma exacto.
 • Funciona igual desde la agenda y desde el cierre de la consulta guiada, también al abonar el cobro al tratamiento. En caja entra un ingreso por cada medio, así el arqueo por método cuadra.
+• Informe psicológico: un informe emitido no se edita; para corregirlo toca "✎ Emitir nueva versión". La anterior queda en el historial ("Reemplazado por v2") y el paciente ve solo la vigente.
+• El informe sigue la plantilla de tu clínica (orden, nombres y secciones visibles, con su encabezado y pie), que se configura en la web.
+• Documentos del paciente: el PDF del informe lleva 🔒 (solo lo ven el Admin y el tratante) y las versiones anteriores se marcan "· reemplazado".
+Pacientes:
+• Mi salud: si tu psicólogo corrige tu informe, verás solo la versión vigente.
