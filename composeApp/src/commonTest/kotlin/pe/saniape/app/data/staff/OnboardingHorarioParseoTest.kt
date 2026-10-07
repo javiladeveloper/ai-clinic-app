@@ -99,6 +99,11 @@ class OnboardingHorarioParseoTest {
         val cruce = HorarioProfesionalRepo.interpretar(409, """{"error":"El bloque de horas se cruza con uno ya existente."}""")
         assertEquals(409, (cruce as HorarioProfesionalRepo.R.Error).status)
         assertEquals("No tienes acceso a este horario.", (HorarioProfesionalRepo.interpretar(403, "") as HorarioProfesionalRepo.R.Error).mensaje)
+        // Último bloque sin confirmar: la app pide confirmación y reintenta con vaciar:true.
+        val ultimo = HorarioProfesionalRepo.interpretar(400, """{"error":"Es el último bloque: para dejar al profesional sin horario, confírmalo (vaciar: true)."}""")
+        assertTrue(HorarioProfesionalRepo.pideVaciar(ultimo))
+        assertFalse(HorarioProfesionalRepo.pideVaciar(HorarioProfesionalRepo.interpretar(400, """{"error":"Hora inválida"}""")))
+        assertFalse(HorarioProfesionalRepo.pideVaciar(cruce))
     }
 
     @Test

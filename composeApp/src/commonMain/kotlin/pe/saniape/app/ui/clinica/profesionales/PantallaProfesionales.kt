@@ -140,6 +140,8 @@ fun PantallaHorarioProfesional(
     var guardando by remember { mutableStateOf(false) }
     var agregando by remember { mutableStateOf(false) }
     var confirmarVaciar by remember { mutableStateOf(false) }
+    // Bloque a quitar con vaciar:true (el servidor dijo que era el último); null = PUT vaciar.
+    var vaciarConBloque by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(terapeutaId, recarga) {
         when (val r = HorarioProfesionalRepo.cargar(terapeutaId)) {
@@ -165,16 +167,23 @@ fun PantallaHorarioProfesional(
     val h = horario
     if (confirmarVaciar && h != null) {
         AlertDialog(
-            onDismissRequest = { confirmarVaciar = false },
+            onDismissRequest = { confirmarVaciar = false; vaciarConBloque = null },
             title = { Text("¿Dejar a ${h.terapeuta.nombre.ifBlank { nombre }} sin horario?") },
             text = { Text("No aparecerá en la agenda ni en las horas libres para reservar hasta que le agregues un bloque.") },
             confirmButton = {
                 TextButton({
                     confirmarVaciar = false; guardando = true
-                    scope.launch { aplicar(HorarioProfesionalRepo.vaciar(terapeutaId), "Horario vaciado"); guardando = false }
+                    val bloque = vaciarConBloque
+                    vaciarConBloque = null
+                    scope.launch {
+                        val r = if (bloque != null) HorarioProfesionalRepo.quitar(terapeutaId, bloque, vaciar = true)
+                        else HorarioProfesionalRepo.vaciar(terapeutaId)
+                        aplicar(r, "Horario vaciado")
+                        guardando = false
+                    }
                 }) { Text("Dejar sin horario", color = c.error) }
             },
-            dismissButton = { TextButton({ confirmarVaciar = false }) { Text("Cancelar", color = c.textoSuave) } },
+            dismissButton = { TextButton({ confirmarVaciar = false; vaciarConBloque = null }) { Text("Cancelar", color = c.textoSuave) } },
         )
     }
 
@@ -220,7 +229,13 @@ fun PantallaHorarioProfesional(
                                     if (h.franjas.size <= 1) confirmarVaciar = true
                                     else {
                                         guardando = true
-                                        scope.launch { aplicar(HorarioProfesionalRepo.quitar(terapeutaId, id), "Bloque quitado"); guardando = false }
+                                        scope.launch {
+                                            val r = HorarioProfesionalRepo.quitar(terapeutaId, id)
+                                            // Era el último según el servidor (lo local estaba viejo): confirmar y reintentar.
+                                            if (HorarioProfesionalRepo.pideVaciar(r)) { vaciarConBloque = id; confirmarVaciar = true }
+                                            else aplicar(r, "Bloque quitado")
+                                            guardando = false
+                                        }
                                     }
                                 } }
                             }

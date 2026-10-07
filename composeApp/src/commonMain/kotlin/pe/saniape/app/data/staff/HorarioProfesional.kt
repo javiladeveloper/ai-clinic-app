@@ -153,9 +153,22 @@ object HorarioProfesionalRepo {
             if (sedeId != null) put("sedeId", sedeId)
         })
 
-    /** ✕ de un bloque (no el último: ese va por [vaciar], con confirmación). */
-    suspend fun quitar(terapeutaId: String, franjaId: String): R =
-        post(terapeutaId, buildJsonObject { put("accion", "quitar"); put("id", franjaId) })
+    /**
+     * ✕ de un bloque. Si es el ÚLTIMO, el servidor exige [vaciar]=true (si no,
+     * 400: ver [pideVaciar]) — la app confirma con la persona y reintenta.
+     */
+    suspend fun quitar(terapeutaId: String, franjaId: String, vaciar: Boolean = false): R =
+        post(terapeutaId, buildJsonObject {
+            put("accion", "quitar"); put("id", franjaId)
+            if (vaciar) put("vaciar", true)
+        })
+
+    /**
+     * ¿El servidor rechazó porque la escritura dejaría al profesional SIN horario
+     * y falta la confirmación (`vaciar: true`)? Se decide por la respuesta, no
+     * por el estado local (puede estar viejo: otro lo editó en la web).
+     */
+    fun pideVaciar(r: R): Boolean = r is R.Error && r.status == 400 && r.mensaje.contains("vaciar", ignoreCase = true)
 
     /**
      * Deja al profesional SIN horario: `PUT { franjas: [], vaciar: true }`
