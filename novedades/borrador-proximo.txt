@@ -1,0 +1,11 @@
+# BORRADOR de las novedades de la próxima versión (aún sin número).
+# Al publicar, copiar a novedades/<versionName>.txt con el formato de siempre
+# (ver docs/ci-cd-despliegue.md → "Novedades de cada versión").
+Nuevo: tutoriales "Hazlo conmigo" dentro de la app. Te señalan el botón real y avanzan cuando lo haces tú. Están en Más → "Ayuda y tutoriales" y en el "?" de cada pantalla. También: el horario semanal de tu equipo desde el celular, "Mi página" para compartir la web de tu clínica y, en clínicas nuevas, la guía de primeros pasos en el Inicio.
+---
+Clínicas:
+• Ayuda y tutoriales (Más → "Ayuda y tutoriales" o el "?" de arriba en Inicio, Agenda, Pacientes, Caja, Sesiones y Especialidades): busca lo que quieres hacer (sin preocuparte por las tildes), mira cómo funciona la pantalla y toca "Hazlo conmigo". Los que ya hiciste salen con ✓, en el celular y en la web.
+• "Hazlo conmigo": un resaltado con una mano te señala el botón de verdad y una tarjeta te dice qué hacer ("2 de 4"). Tú lo haces y avanza solo; nunca bloquea la pantalla. "Lo hago después" o "Saltar" cuando quieras. Si te vas a otra pantalla queda en pausa y lo retomas donde lo dejaste, aunque cierres la app.
+• Horario de tu equipo: Más → (tu personal) → elige a la persona y edita su horario semanal: agrega bloques por día, "Aplicar a todos" y la sede si tienes varias. Dejar a alguien sin horario pide confirmación. Quien atiende ve su propio horario en Más → "Mi horario" (solo lectura).
+• Más → "🌐 Mi página": abre, copia o comparte por WhatsApp la página pública de tu clínica.
+• Clínicas nuevas: la tarjeta "Primeros pasos" del Inicio muestra lo que falta para empezar (se marca sola), con "▶" para hacerlo con el tutorial, y permite borrar los datos de ejemplo. El paciente de ejemplo lleva la etiqueta "🧪 Ejemplo". Si el administrador aún no terminó el asistente de inicio, la app lo indica.

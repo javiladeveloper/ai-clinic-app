@@ -180,7 +180,7 @@ fun PantallaInicioStaff(
                 }
 
                 // ── PRIMEROS PASOS (solo clínicas nuevas y solo el Admin; DALU nunca) ──
-                if (ctx.esAdmin && ctx.primerosPasos != null) {
+                if (ctx.esAdmin && ctx.primerosPasosActivos) {
                     item { TarjetaPrimerosPasos(ctx, onIr) }
                 }
 
