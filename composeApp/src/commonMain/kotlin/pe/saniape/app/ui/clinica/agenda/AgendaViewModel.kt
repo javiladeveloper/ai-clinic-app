@@ -117,6 +117,16 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         cita.terapeutaId?.let { espsPorTerapeuta[it] },
     )
 
+    /**
+     * La especialidad de la cita para los chips (sugerir y aprender técnicas y
+     * diagnósticos): la de la cita → la del servicio → la del profesional si tiene
+     * UNA. La misma cadena que el filtro de la agenda ([especialidadIdDeCita]).
+     */
+    fun especialidadDeCita(cita: CitaStaff): String? = pe.saniape.app.data.staff.especialidadIdDeCita(
+        cita.especialidadId, cita.especialidadServicioId,
+        cita.terapeutaId?.let { espsPorTerapeuta[it] },
+    )
+
     /** ¿Esta cita es de fisioterapia? (EVA, mejorías, dictado al completar). Gemelo de `citaEsFisio`. */
     fun esFisio(cita: CitaStaff): Boolean = pe.saniape.app.data.staff.citaEsFisio(
         ctx.mapaFisio, cita.especialidadId, cita.especialidadServicioId,
@@ -815,10 +825,18 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                 AccionCita.Cancelar -> AgendaRepo.cancelar(cita.id)
             }
             if (ok) {
-                // Aprende el diagnóstico escrito (para sugerirlo luego, como las técnicas).
-                if (accion == AccionCita.Completar && !diagnostico.isNullOrBlank()) {
-                    runCatching {
-                        pe.saniape.app.data.staff.DiagnosticosRepo.registrar(diagnostico, cita.especialidadId)
+                // Aprende lo escrito para sugerirlo luego (RPC registrar_chips con la
+                // especialidad de la cita). En segundo plano: nunca demora ni hace fallar
+                // el cierre. Sin señal (quedó en la cola) se descarta: no se encola.
+                if (accion == AccionCita.Completar && !completadaEncolada) {
+                    val espChips = especialidadDeCita(cita)
+                    if (!diagnostico.isNullOrBlank()) {
+                        pe.saniape.app.data.staff.DiagnosticosRepo.registrar(diagnostico, espChips, cita.pacienteNombre)
+                    } else if (!observaciones.isNullOrBlank()) {
+                        // Fuera de la evaluación, lo escrito sale del campo de técnicas
+                        // ("Procedimientos realizados"): antes el cierre desde la agenda no
+                        // las aprendía (solo la ficha y Sesiones).
+                        pe.saniape.app.data.staff.TecnicasRepo.registrar(observaciones, espChips, cita.pacienteNombre)
                     }
                 }
                 val txt = when (accion) {

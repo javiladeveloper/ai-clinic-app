@@ -27,6 +27,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.DiagnosticosRepo
+import pe.saniape.app.data.staff.alternarChip
+import pe.saniape.app.data.staff.chipPuesto
+import pe.saniape.app.data.staff.claveChip
 import pe.saniape.app.ui.theme.Sania
 
 /**
@@ -39,7 +42,11 @@ import pe.saniape.app.ui.theme.Sania
  *    respetando lo que ya escribiste antes.
  *  - Chips debajo: tocar agrega/quita (atajo en móvil).
  *
- * [opciones] = patologías de la especialidad (chips) + lo que se quiera enriquecer.
+ * [opciones] = patologías de la especialidad (chips; las personalizadas mandan).
+ * [especialidadId] = la de la cita/tratamiento: trae los diagnósticos APRENDIDOS de
+ * esa especialidad y, detrás, los frecuentes del rubro (pool). UNA vez al abrir
+ * (caché en [pe.saniape.app.data.staff.ChipsRepo]); al escribir solo se filtra en memoria.
+ * [maxExtras] = chips extra (cortos) de esos frecuentes además de [opciones]. 0 = ninguno.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -47,21 +54,39 @@ fun DiagnosticoInput(
     value: String,
     onChange: (String) -> Unit,
     opciones: List<String>,
-    placeholder: String = "Ej. Lumbalgia mecánica, contractura…",
+    placeholder: String? = null,
+    especialidadId: String? = null,
+    maxExtras: Int = 6,
 ) {
     val c = Sania.colors
     var enfocado by remember { mutableStateOf(false) }
-    // Diagnósticos que la clínica ya escribió antes (se enriquece solo, como las técnicas).
+    // Diagnósticos que la clínica ya escribió antes + los del rubro (se enriquece solo).
     var aprendidos by remember { mutableStateOf<List<String>>(emptyList()) }
-    LaunchedEffect(Unit) {
-        aprendidos = runCatching { DiagnosticosRepo.sugerencias() }.getOrDefault(emptyList())
+    LaunchedEffect(especialidadId) {
+        aprendidos = runCatching { DiagnosticosRepo.sugerencias(especialidadId) }.getOrDefault(emptyList())
     }
 
-    fun normalizar(s: String) = s.lowercase().trim()
+    // Sin tildes ni mayúsculas (la clave plegada de los chips).
+    fun normalizar(s: String) = claveChip(s)
+
+    // Chips = los de la especialidad + unos pocos frecuentes CORTOS (los largos
+    // quedan solo en el typeahead), como la web.
+    val chips = remember(opciones, aprendidos, maxExtras) {
+        if (maxExtras <= 0) opciones
+        else {
+            val vistos = opciones.mapTo(HashSet()) { normalizar(it) }
+            opciones + aprendidos.filter { it.length <= 40 && normalizar(it) !in vistos }.take(maxExtras)
+        }
+    }
+
+    // El ejemplo sale de las opciones REALES de la especialidad (antes, cableado a
+    // fisioterapia, se leía "Lumbalgia" en una clínica dental).
+    val ejemplo = placeholder ?: opciones.filter { it.isNotBlank() }.take(2)
+        .takeIf { it.isNotEmpty() }?.let { "Ej. ${it.joinToString(", ")}…" } ?: "Escribe el diagnóstico…"
 
     // Para el typeahead: chips de la especialidad + los aprendidos, sin duplicar.
     val opcionesTypeahead = remember(opciones, aprendidos) {
-        val vistos = opciones.map { normalizar(it) }.toSet()
+        val vistos = opciones.mapTo(HashSet()) { normalizar(it) }
         opciones + aprendidos.filter { normalizar(it) !in vistos }
     }
 
@@ -84,25 +109,15 @@ fun DiagnosticoInput(
         onChange(antes + op)
     }
 
-    // Chip: si ya está lo quita; si no, lo agrega separado por coma.
-    fun toggleChip(chip: String) {
-        val puesto = normalizar(value).contains(normalizar(chip))
-        if (puesto) {
-            onChange(
-                value.split(",").map { it.trim() }
-                    .filterNot { it.equals(chip, ignoreCase = true) }
-                    .filter { it.isNotBlank() }.joinToString(", ")
-            )
-        } else {
-            onChange(if (value.isBlank()) chip else "${value.trim().trimEnd(',')}, $chip")
-        }
-    }
+    // Chip: si ya está (término COMPLETO) lo quita; si no, lo agrega con coma.
+    // Antes era una subcadena: quitar "Postural" dejaba "Alteración" suelto.
+    fun toggleChip(chip: String) = onChange(alternarChip(value, chip))
 
     Column {
         OutlinedTextField(
             value = value,
             onValueChange = { onChange(it); enfocado = true },
-            placeholder = { Text(placeholder, color = c.textoSuave) },
+            placeholder = { Text(ejemplo, color = c.textoSuave) },
             modifier = Modifier.fillMaxWidth(),
             minLines = 3,
             shape = RoundedCornerShape(Sania.shape.sm.dp),
@@ -127,15 +142,15 @@ fun DiagnosticoInput(
             }
         }
 
-        // Chips de atajo (patologías de la especialidad).
-        if (opciones.isNotEmpty()) {
+        // Chips de atajo (patologías de la especialidad + frecuentes).
+        if (chips.isNotEmpty()) {
             Spacer(Modifier.height(6.dp))
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                opciones.forEach { chip ->
-                    val puesto = value.contains(chip, ignoreCase = true)
+                chips.forEach { chip ->
+                    val puesto = chipPuesto(value, chip)
                     Box(
                         Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
                             .background(if (puesto) c.navy else c.chipBg)

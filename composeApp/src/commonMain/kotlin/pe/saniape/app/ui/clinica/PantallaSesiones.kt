@@ -330,6 +330,7 @@ fun PantallaSesiones(
             tratamientoId = sg.tratamientoId,
             esDental = esDental,
             esFisio = esFisio,
+            especialidadId = cc.especialidadId,
             onCancelar = { completar = null },
             onConfirmar = { tecnicas, mejorias, dejoRx, pago, piezas, eva ->
                 completar = null
@@ -349,7 +350,11 @@ fun PantallaSesiones(
                     )
                     if (r.registrada) {
                         if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Sesión #${cc.ses.numero} completada")
-                        tecnicas?.let { runCatching { pe.saniape.app.data.staff.TecnicasRepo.registrar(it) } }
+                        // Aprender las técnicas en la especialidad del tratamiento (segundo
+                        // plano; sin señal se descarta, no se encola).
+                        if (!r.encolada) tecnicas?.let {
+                            pe.saniape.app.data.staff.TecnicasRepo.registrar(it, cc.especialidadId, sg.pacienteNombre)
+                        }
                         val tratId = sg.tratamientoId
                         if (tratId != null) {
                             pe.saniape.app.ui.clinica.pacientes.fotosTrasCompletar(

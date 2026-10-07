@@ -1,63 +1,23 @@
 package pe.saniape.app.data.staff
 
-import io.github.jan.supabase.postgrest.postgrest
-import io.github.jan.supabase.postgrest.query.Columns
-import io.github.jan.supabase.postgrest.query.Order
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import pe.saniape.app.data.Supabase
-
 /**
- * Técnicas/procedimientos de la clínica (tabla tecnicas_sesion), para el
- * autocomplete al completar una sesión. RLS de staff filtra por clínica.
+ * Técnicas/procedimientos de la clínica para el autocompletado al completar una
+ * sesión. Desde 2026-10-07 van por [ChipsRepo] (contrato de chips por
+ * especialidad): lo propio de la clínica en ESA especialidad + las generales y,
+ * detrás, lo que usan las clínicas del mismo rubro (pool compartido).
  */
 object TecnicasRepo {
-    /** Nombres de técnicas más usadas (orden por usos desc). */
-    suspend fun sugerencias(): List<String> {
-        val filas = Supabase.client.postgrest["tecnicas_sesion"]
-            .select(Columns.list("nombre, usos")) {
-                order("usos", Order.DESCENDING)
-                limit(200)
-            }
-            .decodeList<JsonObject>()
-        return filas.mapNotNull { (it["nombre"] as? JsonPrimitive)?.content?.takeIf { n -> n != "null" } }
-    }
+    /** Más usadas primero (propias) y luego las del rubro. Una vez por apertura (caché). */
+    suspend fun sugerencias(especialidadId: String?): List<String> =
+        ChipsRepo.textos(CampoChip.TECNICA, especialidadId)
 
     /**
-     * Aprende las técnicas usadas para que se sugieran en próximas sesiones de la
-     * clínica: incrementa el contador de las existentes y crea las nuevas. Espeja
-     * registrarTecnicas() de la web. Llamar al completar la sesión (fire-and-forget).
-     * [texto] viene unido con " + " (mismo formato que sesiones.notas).
+     * Aprende las técnicas usadas (RPC registrar_chips, con la especialidad del
+     * tratamiento/cita). En segundo plano: vuelve al instante y nunca falla.
+     * [texto] viene unido con " + " (mismo formato que sesiones.notas); se parte
+     * con el normalizador, así "TENS+COMPRESA" no entra como UNA técnica
+     * (así se llenó DALU de frases enteras, Jonathan 2026-09-11).
      */
-    suspend fun registrar(texto: String) {
-        // Se parte con el normalizador y no por el separador a secas: si el
-        // texto trae "TENS+COMPRESA" escrito a mano, entraba al catálogo como
-        // UNA técnica con ese nombre. Así se llenó DALU de frases enteras
-        // (Jonathan, 2026-09-11).
-        val nombres = TecnicasNormalizar.partir(texto)
-        if (nombres.isEmpty()) return
-        fun norm(s: String) = s.lowercase().trim()
-        try {
-            val existentes = Supabase.client.postgrest["tecnicas_sesion"]
-                .select(Columns.list("id, nombre, usos"))
-                .decodeList<JsonObject>()
-            val porNombre = existentes.associateBy { norm((it["nombre"] as? JsonPrimitive)?.content ?: "") }
-            for (nombre in nombres) {
-                val previa = porNombre[norm(nombre)]
-                if (previa != null) {
-                    val id = (previa["id"] as? JsonPrimitive)?.content ?: continue
-                    val usos = (previa["usos"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 1
-                    Supabase.client.postgrest["tecnicas_sesion"]
-                        .update(buildJsonObject { put("usos", usos + 1) }) { filter { eq("id", id) } }
-                } else {
-                    Supabase.client.postgrest["tecnicas_sesion"]
-                        .insert(buildJsonObject { put("nombre", nombre) })
-                }
-            }
-        } catch (e: Exception) {
-            // silencioso: aprender técnicas no debe bloquear el completar la sesión
-        }
-    }
+    fun registrar(texto: String, especialidadId: String?, nombrePaciente: String? = null) =
+        ChipsRepo.registrarTecnicas(texto, especialidadId, nombrePaciente)
 }

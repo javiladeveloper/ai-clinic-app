@@ -764,7 +764,9 @@ fun TarjetaTratamiento(
                     // 1) Marca Completado + acumula la nota (server-side).
                     val okServicio = PacientesRepo.registrarServicio(t.id, nota)
                     // 2) Aprender las técnicas usadas (se sugieren en futuras atenciones).
-                    if (!nota.isNullOrBlank()) runCatching { pe.saniape.app.data.staff.TecnicasRepo.registrar(nota) }
+                    if (okServicio && !nota.isNullOrBlank()) {
+                        pe.saniape.app.data.staff.TecnicasRepo.registrar(nota, t.especialidadId)
+                    }
                     // 3) Cobro opcional (pago + kardex + recálculo, server-side).
                     var okCobro = true
                     if (cobrar && monto != null && monto > 0) {
@@ -810,7 +812,7 @@ private fun ModalRegistrarServicio(
                 Text("Qué se hizo / receta (opcional)", color = c.textoSuave, fontSize = Sania.txt.mini,
                     fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
                 pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
-                    value = nota, onChange = { nota = it },
+                    value = nota, onChange = { nota = it }, especialidadId = t.especialidadId,
                 )
                 // Cobro en el mismo paso (opcional) — SOLO con permiso de pagos.
                 if (puedePagos) {

@@ -720,6 +720,7 @@ fun PantallaAgenda(
                 fotosSesion = if (conFotos) fotosSesion else null,
                 dejarEjercicios = if (ofreceEjercicios) dejarEjercicios else null,
                 cita = cita, especialidades = vm.especialidades, flujo = flujoCita,
+                especialidadId = vm.especialidadDeCita(cita),
                 esDental = vm.esDental(cita),
                 esFisio = vm.esFisio(cita),
                 bloqueEvaluacionFisio = if (conEvalFisio) { diag ->

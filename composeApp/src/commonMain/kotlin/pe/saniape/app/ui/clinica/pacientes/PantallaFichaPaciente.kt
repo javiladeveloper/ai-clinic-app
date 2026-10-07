@@ -1061,6 +1061,7 @@ fun PantallaFichaPaciente(
             tratamientoId = req.trat.id,
             esDental = tratEsDental(req.trat),
             esFisio = tratEsFisio(req.trat),
+            especialidadId = req.trat.especialidadId,
             citaId = hitos?.citaPorSesion?.get(ses.id),
             dejarEjercicios = if (ofreceEjercicios) dejarEjercicios else null,
             onCancelar = { completarSesion = null },
@@ -1099,8 +1100,9 @@ fun PantallaFichaPaciente(
                             cobroFallido = CobroFallido(req.trat.id, ses.id, ses.numero, pago.first, pago.second, rPago.rechazo?.error)
                         }
                     }
-                    // Aprender las técnicas para sugerirlas la próxima vez (fire-and-forget).
-                    tecnicas?.let { TecnicasRepo.registrar(it) }
+                    // Aprender las técnicas para sugerirlas la próxima vez, en la especialidad
+                    // del tratamiento (en segundo plano; sin señal se descarta).
+                    if (ok && !r.encolada) tecnicas?.let { TecnicasRepo.registrar(it, req.trat.especialidadId, paciente.nombre) }
                     // "Dejarle ejercicios de apoyo": a la pestaña 🏠 con ESTA sesión elegida (o
                     // "al terminar" si con ella el tratamiento quedó terminado). La biblioteca no
                     // se abre sola: abajo puede salir "¿Agendar la siguiente?" y dos diálogos se tapan.
@@ -1266,6 +1268,8 @@ internal fun ModalCompletarSesion(
      * null = no se ofrece (el modal queda como antes).
      */
     dejarEjercicios: androidx.compose.runtime.MutableState<Boolean>? = null,
+    /** Especialidad del tratamiento: filtra las técnicas sugeridas (+ las del rubro). */
+    especialidadId: String? = null,
     onCancelar: () -> Unit,
     // pago = (monto, método) si activó "¿pagó esta sesión?" — el cobro sale en el
     // MISMO paso que el completar, como la web (antes eran 2 viajes: ✓ y luego 💳).
@@ -1405,7 +1409,7 @@ internal fun ModalCompletarSesion(
 
         TarjetaForm(titulo = "Procedimientos realizados", icono = "🩹") {
             pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
-                value = tecnicas, onChange = { tecnicas = it },
+                value = tecnicas, onChange = { tecnicas = it }, especialidadId = especialidadId,
             )
             // Fisioterapia: dictar las técnicas ("TENS y compresa caliente") → chips para revisar.
             if (dictado != null && dictado.disponible) {

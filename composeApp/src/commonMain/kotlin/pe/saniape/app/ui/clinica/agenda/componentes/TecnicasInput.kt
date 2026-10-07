@@ -31,33 +31,39 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.TecnicasNormalizar
 import pe.saniape.app.data.staff.TecnicasRepo
+import pe.saniape.app.data.staff.filtrarChips
 import pe.saniape.app.ui.theme.Sania
 
 private const val SEPARADOR = " + "
 
 /**
  * Entrada de técnicas/procedimientos con chips + autocomplete (igual que la web).
- * Las técnicas ya usadas en la clínica se sugieren solas (tabla tecnicas_sesion).
+ * Sugiere lo que la clínica ya usó en ESA especialidad (más las generales) y,
+ * detrás, lo que usan las clínicas del mismo rubro (pool compartido). Se pide
+ * UNA vez al abrir ([pe.saniape.app.data.staff.ChipsRepo], con caché); al
+ * escribir solo se filtra en memoria.
  * El valor es un string "Tec1 + Tec2 + Tec3".
+ *
+ * [especialidadId]: la del tratamiento o la cita (null = todas las activas).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun TecnicasInput(value: String, onChange: (String) -> Unit) {
+fun TecnicasInput(value: String, onChange: (String) -> Unit, especialidadId: String? = null) {
     val c = Sania.colors
     var texto by remember { mutableStateOf("") }
     var sugerencias by remember { mutableStateOf<List<String>>(emptyList()) }
 
     val chips = remember(value) { value.split(SEPARADOR).map { it.trim() }.filter { it.isNotEmpty() } }
 
-    LaunchedEffect(Unit) {
-        sugerencias = runCatching { TecnicasRepo.sugerencias() }.getOrDefault(emptyList())
+    LaunchedEffect(especialidadId) {
+        sugerencias = runCatching { TecnicasRepo.sugerencias(especialidadId) }.getOrDefault(emptyList())
     }
 
-    fun normalizar(s: String) = s.lowercase().trim()
-    val filtradas = sugerencias
-        .filter { s -> chips.none { normalizar(it) == normalizar(s) } }
-        .filter { s -> texto.isBlank() || normalizar(s).contains(normalizar(texto)) }
-        .take(6)
+    // Sin tildes ni mayúsculas: "Liberacion" encuentra "Liberación".
+    fun normalizar(s: String) = TecnicasNormalizar.clave(s)
+    val filtradas = remember(sugerencias, chips, texto) {
+        filtrarChips(sugerencias, texto, excluir = chips, max = 8)
+    }
 
     fun agregar(nombre: String) {
         // Lo que llega puede traer VARIAS técnicas dentro ("TENS+COMPRESA", o
@@ -114,7 +120,7 @@ fun TecnicasInput(value: String, onChange: (String) -> Unit) {
         if (filtradas.isNotEmpty()) {
             Spacer(Modifier.padding(top = 6.dp))
             // Rótulo: sin él, los chips grises no se leían como "tócame" (reporte 2.15.0).
-            Text(if (texto.isBlank()) "Frecuentes en tu clínica · toca para agregar" else "Coinciden · toca para agregar",
+            Text(if (texto.isBlank()) "Frecuentes · toca para agregar" else "Coinciden · toca para agregar",
                 color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(bottom = 4.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 filtradas.forEach { sug ->

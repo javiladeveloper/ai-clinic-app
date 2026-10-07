@@ -41,6 +41,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.data.staff.CitaStaff
 import pe.saniape.app.data.staff.EspecialidadRef
+import pe.saniape.app.data.staff.aChips
 import pe.saniape.app.ui.clinica.agenda.AccionCita
 import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.theme.Sania
@@ -114,6 +115,12 @@ fun ModalCompletar(
      * ficha del paciente en la pestaña 🏠.
      */
     dejarEjercicios: androidx.compose.runtime.MutableState<Boolean>? = null,
+    /**
+     * Especialidad de la cita para los chips (cita → servicio → profesional; ver
+     * AgendaViewModel.especialidadDeCita): filtra técnicas y diagnósticos
+     * sugeridos a esa especialidad + su rubro. null = la de la cita, si tiene.
+     */
+    especialidadId: String? = cita.especialidadId,
 ) {
     val c = Sania.colors
     var terapeutaElegido by remember { mutableStateOf<String?>(null) }
@@ -213,11 +220,17 @@ fun ModalCompletar(
                         fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
                     // Campo con TYPEAHEAD + chips, igual que la web: al escribir sugiere las
                     // patologías de la especialidad que coinciden; tocar una la completa.
-                    val espNombre = especialidades.find { it.id == cita.especialidadId }?.nombre
-                        ?: especialidades.singleOrNull()?.nombre
-                    val chips = pe.saniape.app.ui.clinica.chipsDeEspecialidad(espNombre).tipos
+                    // Los chips PERSONALIZADOS de la especialidad (/especialidades) mandan
+                    // sobre los del código; sin especialidad, la unión de las activas (web).
+                    val esp = especialidades.find { it.id == especialidadId }
+                        ?: especialidades.singleOrNull()
+                    val chips = remember(esp, especialidades) {
+                        if (esp != null) pe.saniape.app.ui.clinica.chipsDeEspecialidad(esp.aChips()).tipos
+                        else pe.saniape.app.ui.clinica.chipsDeClinica(especialidades.map { it.aChips() }).tipos
+                    }
                     pe.saniape.app.ui.clinica.agenda.componentes.DiagnosticoInput(
                         value = texto, onChange = { texto = it }, opciones = chips,
+                        especialidadId = esp?.id ?: especialidadId,
                     )
                     Text("Se guardará en la ficha del paciente.", color = c.textoSuave,
                         fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
@@ -241,7 +254,7 @@ fun ModalCompletar(
                     Text("Procedimientos realizados", color = c.textoSuave, fontSize = Sania.txt.mini,
                         fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
                     pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
-                        value = texto, onChange = { texto = it },
+                        value = texto, onChange = { texto = it }, especialidadId = especialidadId,
                     )
                     // Fisioterapia: volver a lo de la sesión anterior o al plan del
                     // tratamiento en un toque (`puedeRepetirTecnicas` de la web).
