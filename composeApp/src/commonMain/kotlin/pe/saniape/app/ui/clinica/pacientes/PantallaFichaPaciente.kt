@@ -1953,9 +1953,24 @@ private fun ModalEditarPaciente(
         )
         Spacer(Modifier.height(12.dp))
         TarjetaForm(titulo = "Síntomas / patologías", icono = "🩹") {
+            // Chips: los de las especialidades activas (los personalizados mandan) +
+            // unos pocos del rubro (pool), como el formulario de la web.
+            val chipsPac = pe.saniape.app.ui.clinica.rememberChipsPaciente(activo = true)
             CampoFicha("Síntomas (separa con comas)", patologias, multilinea = true) { patologias = it }
+            pe.saniape.app.ui.clinica.FilaChipsSugeridos(
+                chipsPac.sintomas,
+                puesto = { pe.saniape.app.data.staff.chipPuesto(patologias, it) },
+                onToca = { patologias = pe.saniape.app.data.staff.alternarChip(patologias, it) },
+            )
             Spacer(Modifier.height(8.dp))
             CampoFicha("Tipo / rubro (opcional)", tipoPatologia) { tipoPatologia = it }
+            pe.saniape.app.ui.clinica.FilaChipsSugeridos(
+                chipsPac.tipos,
+                puesto = { pe.saniape.app.data.staff.claveChip(it) == pe.saniape.app.data.staff.claveChip(tipoPatologia) },
+                onToca = { t ->
+                    tipoPatologia = if (pe.saniape.app.data.staff.claveChip(t) == pe.saniape.app.data.staff.claveChip(tipoPatologia)) "" else t
+                },
+            )
         }
     }
 }

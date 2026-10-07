@@ -249,7 +249,11 @@ data class PlantillaRef(
 )
 
 /** Una especialidad de la clínica. */
-data class EspecialidadClinica(val id: String, val nombre: String, val usaSesiones: Boolean)
+data class EspecialidadClinica(
+    val id: String, val nombre: String, val usaSesiones: Boolean,
+    /** Chips de patología personalizados en /especialidades (null = los del código). */
+    val chipsTipos: List<String>? = null,
+)
 
 /** Detalle de una cita-hito (Consulta/Evaluación) para el tooltip de la bolita. */
 data class CitaHito(
@@ -1321,7 +1325,7 @@ object PacientesRepo {
     /** Especialidades activas de la clínica (para elegir antes que profesional). */
     suspend fun especialidadesClinica(): List<EspecialidadClinica> {
         val filas = Supabase.client.postgrest["especialidades"]
-            .select(Columns.list("id, nombre, usa_sesiones")) {
+            .select(Columns.list("id, nombre, usa_sesiones, chips_tipos")) {
                 filter { eq("estado", "Activa") }
                 order("nombre", Order.ASCENDING)
             }
@@ -1331,6 +1335,9 @@ object PacientesRepo {
                 id = o.str("id") ?: return@mapNotNull null,
                 nombre = o.str("nombre") ?: "Especialidad",
                 usaSesiones = (o["usa_sesiones"] as? JsonPrimitive)?.content?.let { it != "false" } ?: true,
+                chipsTipos = (o["chips_tipos"] as? kotlinx.serialization.json.JsonArray)
+                    ?.mapNotNull { (it as? JsonPrimitive)?.content?.trim()?.takeIf { s -> s.isNotEmpty() } }
+                    ?.takeIf { it.isNotEmpty() },
             )
         }
     }

@@ -60,6 +60,7 @@ import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.data.staff.AgendaRepo
+import pe.saniape.app.data.staff.aChips
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.EspecialidadRef
 import pe.saniape.app.data.staff.EstadoProfesional
@@ -675,6 +676,23 @@ fun PantallaCrearCita(
                         value = diagnostico, onValueChange = { diagnostico = it },
                         placeholder = { Text("Se puede completar luego", color = c.textoSuave) },
                         modifier = Modifier.fillMaxWidth(), minLines = 2,
+                    )
+                    // Síntomas de la especialidad (los personalizados mandan) + unos pocos
+                    // del rubro (pool), como la web. Sin especialidad concreta, ninguno:
+                    // la unión llenaba una cita dental de síntomas de fisio.
+                    val espMotivo = especialidad
+                        ?: terapeuta?.especialidadIds?.firstOrNull()?.let { id -> especialidadesClinica.find { it.id == id } }
+                        ?: especialidadesClinica.singleOrNull()
+                    val baseMotivo = remember(espMotivo) {
+                        espMotivo?.let { pe.saniape.app.ui.clinica.chipsDeEspecialidad(it.aChips()).sintomas }.orEmpty()
+                    }
+                    val chipsMotivo = pe.saniape.app.ui.clinica.rememberChipsConPool(
+                        pe.saniape.app.data.staff.CampoChip.SINTOMA, espMotivo?.id, baseMotivo, activo = espMotivo != null,
+                    )
+                    pe.saniape.app.ui.clinica.FilaChipsSugeridos(
+                        if (espMotivo != null) chipsMotivo else emptyList(),
+                        puesto = { pe.saniape.app.data.staff.chipPuesto(diagnostico, it) },
+                        onToca = { diagnostico = pe.saniape.app.data.staff.alternarChip(diagnostico, it) },
                     )
                 }
 

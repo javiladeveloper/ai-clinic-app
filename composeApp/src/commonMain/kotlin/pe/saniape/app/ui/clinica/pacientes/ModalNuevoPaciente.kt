@@ -473,6 +473,9 @@ fun ModalNuevoPaciente(
                 fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Text(if (verAntecedentes) "▲" else "▼", color = c.textoSuave, fontSize = 12.sp)
         }
+        // Chips de patología y síntomas: los de las especialidades activas (los
+        // personalizados mandan) + unos pocos del rubro (pool). Se piden al abrir.
+        val chipsPac = pe.saniape.app.ui.clinica.rememberChipsPaciente(verAntecedentes)
         if (verAntecedentes) {
             Spacer(Modifier.height(8.dp))
             TarjetaForm(titulo = "Antecedentes clínicos", icono = "🩺") {
@@ -480,6 +483,13 @@ fun ModalNuevoPaciente(
                 OutlinedTextField(colors = coloresCampoForm(), value = tipoPatologia, onValueChange = { tipoPatologia = it },
                     placeholder = { Text("Ej. Traumatológica, Neurológica…", color = c.textoSuave) },
                     singleLine = true, modifier = Modifier.fillMaxWidth())
+                pe.saniape.app.ui.clinica.FilaChipsSugeridos(
+                    chipsPac.tipos,
+                    puesto = { pe.saniape.app.data.staff.claveChip(it) == pe.saniape.app.data.staff.claveChip(tipoPatologia) },
+                    onToca = { t ->
+                        tipoPatologia = if (pe.saniape.app.data.staff.claveChip(t) == pe.saniape.app.data.staff.claveChip(tipoPatologia)) "" else t
+                    },
+                )
                 Spacer(Modifier.height(10.dp))
                 EtqForm("Antecedentes médicos")
                 OutlinedTextField(colors = coloresCampoForm(), value = antecedentes, onValueChange = { antecedentes = it },
@@ -490,6 +500,11 @@ fun ModalNuevoPaciente(
                 OutlinedTextField(colors = coloresCampoForm(), value = sintomas, onValueChange = { sintomas = it },
                     placeholder = { Text("Dolor lumbar, cervicalgia…", color = c.textoSuave) },
                     singleLine = true, modifier = Modifier.fillMaxWidth())
+                pe.saniape.app.ui.clinica.FilaChipsSugeridos(
+                    chipsPac.sintomas,
+                    puesto = { pe.saniape.app.data.staff.chipPuesto(sintomas, it) },
+                    onToca = { sintomas = pe.saniape.app.data.staff.alternarChip(sintomas, it) },
+                )
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Column(Modifier.weight(1f)) {

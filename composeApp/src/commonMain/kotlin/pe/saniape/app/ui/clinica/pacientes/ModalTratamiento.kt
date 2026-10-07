@@ -293,6 +293,13 @@ fun ModalCrearTratamiento(
     // Crear: la misma acción desde el pie y desde la cabecera (con teclado).
     fun crear() {
                             val p = proc ?: return
+                            // Aprender el diagnóstico (sugerencias por especialidad) solo si es
+                            // nuevo o cambió: el precargado de la evaluación ya se aprendió ahí.
+                            val dxNuevo = diagnostico.trim()
+                            if (dxNuevo.isNotEmpty() && pe.saniape.app.data.staff.claveChip(dxNuevo) !=
+                                pe.saniape.app.data.staff.claveChip(diagnosticoPrevio.orEmpty())) {
+                                pe.saniape.app.data.staff.DiagnosticosRepo.registrar(dxNuevo, p.especialidadId)
+                            }
                             // Unidades: si no se negoció un acordado, el total = cantidad × precio.
                             val totalUnidades = (cantidadUnidades.toIntOrNull() ?: 0) * (precioUnitario.toDoubleOrNull() ?: 0.0)
                             onGuardar(
@@ -409,9 +416,22 @@ fun ModalCrearTratamiento(
                     }
 
                     Etq("Diagnóstico")
-                    OutlinedTextField(colors = coloresCampoForm(), value = diagnostico, onValueChange = { diagnostico = it },
-                        placeholder = { Text("Diagnóstico que motiva este tratamiento", color = c.textoSuave) },
-                        minLines = 2, modifier = Modifier.fillMaxWidth())
+                    // Typeahead + chips como la web (TratamientoForm): las patologías de la
+                    // especialidad del servicio (las personalizadas mandan) y lo aprendido
+                    // en esa especialidad + su rubro. Sin servicio elegido, sin chips.
+                    val espDx = proc?.especialidadId?.let { id -> especialidades.find { it.id == id } }
+                    val chipsDx = remember(espDx) {
+                        espDx?.let {
+                            pe.saniape.app.ui.clinica.chipsDeEspecialidad(
+                                pe.saniape.app.ui.clinica.EspecialidadChips(it.nombre, chipsTipos = it.chipsTipos),
+                            ).tipos
+                        }.orEmpty()
+                    }
+                    pe.saniape.app.ui.clinica.agenda.componentes.DiagnosticoInput(
+                        value = diagnostico, onChange = { diagnostico = it }, opciones = chipsDx,
+                        placeholder = "Diagnóstico que motiva este tratamiento",
+                        especialidadId = proc?.especialidadId,
+                    )
                     if (!diagnosticoPrevio.isNullOrBlank() || evaluacion != null) {
                         Text("🔍 Tomado de la evaluación — puedes ajustarlo", color = c.textoSuave, fontSize = 10.sp,
                             modifier = Modifier.padding(top = 2.dp))
@@ -1137,6 +1157,11 @@ fun ModalEditarConsulta(
                 Box(
                     Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
                         .clickable {
+                            // El diagnóstico de la consulta también enseña (si cambió).
+                            if (diagnostico.isNotBlank() && pe.saniape.app.data.staff.claveChip(diagnostico) !=
+                                pe.saniape.app.data.staff.claveChip(t.diagnostico.orEmpty())) {
+                                pe.saniape.app.data.staff.DiagnosticosRepo.registrar(diagnostico, t.especialidadId)
+                            }
                             onGuardar(EdicionConsulta(
                                 fecha = fecha.trim(), hora = hora.trim(),
                                 diagnostico = diagnostico.trim(), medicacion = medicacion.trim(),
