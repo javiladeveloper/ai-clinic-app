@@ -440,7 +440,7 @@ fun ModalCrearTratamiento(
                     Spacer(Modifier.height(10.dp))
 
                     Etq("Servicio")
-                    Box(Modifier.tourAncla("tratamiento_form.servicio", valor = proc?.nombre ?: "")) {
+                    Column(Modifier.tourAncla("tratamiento_form.servicio", valor = proc?.nombre ?: "")) {
                         SelectorLista(procsVisibles, proc, { it.nombre },
                             if (especialidad == null && terId == null) "Elige especialidad o profesional" else "Seleccionar…") { proc = it }
                     }

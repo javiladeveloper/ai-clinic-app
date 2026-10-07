@@ -172,7 +172,7 @@ fun ModalCobrarCita(
             }
             if (dividido) {
                 // Tutoriales: "cobro.medios" se cumple al escribir algún monto.
-                Box(Modifier.tourAncla("cobro.medios", valor = filas.joinToString("") { it.monto.trim() })) {
+                Column(Modifier.tourAncla("cobro.medios", valor = filas.joinToString("") { it.monto.trim() })) {
                     PagoDividido(total = total, metodos = metodos, filas = filas, onCambiar = { filas = it }, deshabilitado = guardando)
                 }
             }

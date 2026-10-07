@@ -71,7 +71,9 @@ private const val WHATSAPP_SOPORTE = "https://wa.me/51916884168"
 fun CentroAyuda() {
     val abierta = MotorTutoriales.ayudaAbierta
     val reducir = Movimiento.reducido
-    ManejarAtras(activo = abierta) { MotorTutoriales.cerrarAyuda() }
+    // Se compone SOLO abierto: así su "Atrás" se registra después que el de la
+    // pantalla de abajo (Profesionales, Horario, Especialidades…) y gana él.
+    if (abierta) ManejarAtras(activo = true) { MotorTutoriales.cerrarAyuda() }
     AnimatedVisibility(abierta, enter = fadeIn(tween(if (reducir) 0 else 200)), exit = fadeOut(tween(if (reducir) 0 else 200))) {
         Box(
             Modifier.fillMaxSize().background(Color(0x660F1437))

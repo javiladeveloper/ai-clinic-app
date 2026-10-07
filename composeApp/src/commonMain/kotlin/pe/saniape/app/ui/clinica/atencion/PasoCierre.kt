@@ -185,7 +185,7 @@ internal fun PasoCierre(
                         primario = true, habilitado = !vm.guardando && vm.sucio,
                     ) { vm.lanzar { vm.guardar() } }
                 } else {
-                    Box(Modifier.tourAncla("consulta.terminar")) {
+                    Column(Modifier.tourAncla("consulta.terminar")) {
                         BotonAncho(
                             when { vm.terminando -> "Terminando…"; preparando -> "Guardando…"; else -> "✓ Terminar atención" },
                             primario = true, habilitado = !vm.terminando && vm.accionando == null && !vm.guardando,

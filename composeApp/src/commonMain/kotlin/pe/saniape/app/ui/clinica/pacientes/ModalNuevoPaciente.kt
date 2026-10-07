@@ -244,7 +244,6 @@ fun ModalNuevoPaciente(
                 guardando = false
                 if (creado != null) {
                     pe.saniape.app.ui.Toaster.exito("Paciente registrado")
-                    pe.saniape.app.tutoriales.MotorTutoriales.tarea("paciente_creado")
                     onCreado(creado)
                 }
                 else error = "No se pudo crear. Revisa tu conexión."

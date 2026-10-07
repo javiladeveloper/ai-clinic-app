@@ -247,7 +247,7 @@ fun OdontogramaVista(
         } }
 
         // ── La boca: arcada superior sobre la inferior ────────────────────
-        Box(Modifier.tourAncla("odontograma")) {
+        Column(Modifier.tourAncla("odontograma")) {
             Boca(cuadrantes = cuadrantes, porDiente = porDiente, catalogo = catalogo, onTocar = onTocar)
         }
 

@@ -173,7 +173,7 @@ private fun BloqueReceta(
     Bloque {
         Row(verticalAlignment = Alignment.CenterVertically) {
             TituloBloque("💊 Receta", Modifier.weight(1f))
-            if (!soloLectura) Box(Modifier.tourAncla("consulta.receta")) {
+            if (!soloLectura) Column(Modifier.tourAncla("consulta.receta")) {
                 BotonChico(
                     if (vm.accionando == "receta") "Guardando…" else "📝 Emitir receta", c.sobreNavy, c.navy,
                     habilitado = vm.accionando == null,

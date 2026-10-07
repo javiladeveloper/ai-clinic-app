@@ -256,7 +256,7 @@ fun TarjetaCita(
                             AccionTarjeta.Atender -> "agenda.atender"
                             else -> null
                         }
-                        Box(if (ancla != null) Modifier.tourAncla(ancla) else Modifier) {
+                        Column(if (ancla != null) Modifier.tourAncla(ancla) else Modifier) {
                             BotonAccion(label, color, !accionando) { onAccion(accion) }
                         }
                     }

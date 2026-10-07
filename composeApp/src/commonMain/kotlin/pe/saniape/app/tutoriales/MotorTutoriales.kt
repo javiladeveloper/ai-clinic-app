@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -44,7 +45,12 @@ object Movimiento {
  */
 object MotorTutoriales {
 
-    private val scope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Main) }
+    // Un error del motor (red, estado) se registra y NUNCA cierra la app.
+    private val scope by lazy {
+        CoroutineScope(SupervisorJob() + Dispatchers.Main + CoroutineExceptionHandler { _, e ->
+            println("SaniaTutoriales: error ignorado: ${e.message}")
+        })
+    }
 
     // ── Clínica / usuario ──────────────────────────────────────────────────
     private var clinicaId: String? = null
@@ -316,6 +322,7 @@ object MotorTutoriales {
     }
 
     fun limpiar() {
+        navegador = null; navegables = emptySet()
         clinicaId = null; userId = null
         catalogo = null; progreso = emptyMap(); marcasSesion.clear()
         estado = INACTIVO; objetivo = null; rectObjetivo = null
@@ -335,6 +342,16 @@ object MotorTutoriales {
             if (clinica != clinicaId) return@launch // cambió de clínica mientras tanto
             when (r) {
                 is TutorialesRepo.Resultado.Ok -> {
+                    // El tutorial en curso ya no existe o cambió de pasos (otro rol,
+                    // plan, rubro…): se cierra limpio en vez de quedar atascado.
+                    val enCurso = estado.takeIf { it.fase != Fase.INACTIVO }
+                    val antes = catalogo?.tutorial(enCurso?.tourId)
+                    val despues = r.catalogo.tutorial(enCurso?.tourId)
+                    if (enCurso != null && (despues == null || (antes != null && antes.pasos != despues.pasos))) {
+                        estado = INACTIVO; objetivo = null; rectObjetivo = null
+                        restaurado = true
+                        persistir()
+                    }
                     catalogo = r.catalogo
                     catalogoEn = ahora()
                     progreso = r.catalogo.progreso + marcasSesion

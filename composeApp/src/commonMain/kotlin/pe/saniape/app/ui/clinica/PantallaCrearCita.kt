@@ -579,7 +579,7 @@ fun PantallaCrearCita(
                 // Paciente — con BUSCADOR (escribir nombre filtra), no scroll uno por uno.
                 Etiqueta("Paciente")
                 // Tutoriales: "cita_form.paciente" mientras se busca; "…paciente_elegido" ya elegido.
-                Box(Modifier.tourAncla(if (paciente != null) "cita_form.paciente_elegido" else "cita_form.paciente")) {
+                Column(Modifier.tourAncla(if (paciente != null) "cita_form.paciente_elegido" else "cita_form.paciente")) {
                     SelectorPacienteBuscable(
                         items = pacientes, elegido = paciente,
                         onElegir = { paciente = it; terapeuta = null; tratamiento = null; terapeutaAMano = false; precargado = null },

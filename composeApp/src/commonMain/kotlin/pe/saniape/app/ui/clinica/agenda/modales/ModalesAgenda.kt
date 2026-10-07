@@ -310,7 +310,7 @@ fun ModalCompletar(
                 }
                 if (cobro != null && !esEvaluacion && cita.tipo == "Sesión") {
                     Spacer(Modifier.height(Sania.dim.lg))
-                    Box(Modifier.tourAncla("cierre_sesion.pago")) {
+                    Column(Modifier.tourAncla("cierre_sesion.pago")) {
                         pe.saniape.app.ui.clinica.pacientes.BloqueCobroSesion(
                             cobrar = cobro.cobrar, onCobrar = { cobro.cobrar = it },
                             monto = cobro.monto, onMonto = { cobro.monto = it },

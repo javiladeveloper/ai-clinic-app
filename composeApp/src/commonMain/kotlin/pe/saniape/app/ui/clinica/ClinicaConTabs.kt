@@ -246,7 +246,12 @@ fun ClinicaConTabs(
         if (contexto.puede("equipo")) { add("Especialidades"); add("Profesionales") }
     }
     LaunchedEffect(pe.saniape.app.ui.Reanudacion.contador) { motor.alVolverAlFrente() }
-    LaunchedEffect(contexto.clinicaId) {
+    // "Mi página": el slug se pide recién al abrir Más (una vez por clínica):
+    // al arrancar la app no se consulta nada nuevo.
+    var slugPedidoDe by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(contexto.clinicaId, tab == TabClinica.Mas) {
+        if (tab != TabClinica.Mas || slugPedidoDe == contexto.clinicaId) return@LaunchedEffect
+        slugPedidoDe = contexto.clinicaId
         urlPagina = pe.saniape.app.data.staff.OnboardingRepo.slugClinica(contexto.clinicaId)
             ?.let { pe.saniape.app.data.staff.urlPaginaClinica(it) }
     }

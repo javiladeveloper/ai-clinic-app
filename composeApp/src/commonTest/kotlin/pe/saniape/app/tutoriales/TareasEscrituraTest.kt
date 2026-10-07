@@ -14,7 +14,8 @@ class TareasEscrituraTest {
     @Test
     fun citasPacientesYSesiones() {
         assertEquals(listOf("cita_creada"), TareasEscritura.de("/api/staff/cita/crear", vacio, null))
-        assertEquals(listOf("paciente_creado"), TareasEscritura.de("/api/staff/paciente/crear", vacio, null))
+        // El alta de paciente la emite PacientesRepo (no pasa por aquí): sin doble emisión.
+        assertEquals(emptyList(), TareasEscritura.de("/api/staff/paciente/crear", vacio, null))
         assertEquals(listOf("sesion_completada"), TareasEscritura.de("/api/staff/cita/completar", vacio, null))
         assertEquals(listOf("sesion_completada"), TareasEscritura.de("/api/staff/sesion/estado", o("""{"estado":"Completada"}"""), null))
         // Reprogramar / no asistió no completan nada.

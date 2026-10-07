@@ -666,6 +666,8 @@ object PacientesRepo {
             runCatching { crearPacienteEnServidor(cuerpo, idemKey) }.getOrNull()
         }
         if (idReal != null) {
+            // Tutoriales: único punto que emite paciente_creado (con señal).
+            pe.saniape.app.tutoriales.MotorTutoriales.tarea("paciente_creado")
             // El endpoint de alta puede no conocer aún las columnas del apoderado
             // (lista blanca): se escriben aparte, directo con la RLS del staff.
             if (apoderado.tieneAlgo) guardarApoderado(idReal, apoderado)
@@ -690,6 +692,8 @@ object PacientesRepo {
             idemKey = idemKey,
         )
         Toaster.exito("Paciente guardado — se registrará al volver la señal")
+        // Tutoriales: encolado con éxito local también cuenta (contrato §1.4).
+        pe.saniape.app.tutoriales.MotorTutoriales.tarea("paciente_creado")
         Sincronizador.disparar()
         return PacienteStaff(
             id = idTmp,

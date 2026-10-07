@@ -192,7 +192,7 @@ fun EvaluacionFisioForm(
 
         // ── Dolor: EVA + mapa corporal ──
         if (Bloque.DOLOR in visibles) SeccionEval("Dolor (EVA 0–10) y localización", { toggleBloque(Bloque.DOLOR) }) {
-            Box(Modifier.tourAncla("eval_fisio_form.eva")) { EvaEscala("Dolor (EVA)", datos.eva) { set(datos.copy(eva = it)) } }
+            Column(Modifier.tourAncla("eval_fisio_form.eva")) { EvaEscala("Dolor (EVA)", datos.eva) { set(datos.copy(eva = it)) } }
             Spacer(Modifier.height(10.dp))
             MapaCorporal(datos.zonas, onChange = { set(datos.copy(zonas = it)) }, ancho = 140.dp)
             Spacer(Modifier.height(8.dp))

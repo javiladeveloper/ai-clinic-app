@@ -23,7 +23,8 @@ object TareasEscritura {
         val ruta = endpoint.substringBefore('?').trimEnd('/')
         return when {
             ruta.endsWith("/api/staff/cita/crear") -> listOf("cita_creada")
-            ruta.endsWith("/api/staff/paciente/crear") -> listOf("paciente_creado")
+            // paciente_creado NO va aquí: el alta no pasa por enviarOEncolar y lo
+            // emite PacientesRepo.crearPaciente (una sola vez, con o sin señal).
             ruta.endsWith("/api/staff/cita/completar") -> listOf("sesion_completada")
             ruta.endsWith("/api/staff/sesion/estado") ->
                 if (cuerpo.texto("estado") == "Completada") listOf("sesion_completada") else emptyList()
@@ -54,7 +55,10 @@ object TareasEscritura {
 
     /** Avisa al motor (no hace nada si no hay tutorial en curso). */
     fun emitir(endpoint: String, cuerpo: JsonObject, respuesta: JsonObject?) {
-        if (!MotorTutoriales.estado.enCurso) return
-        de(endpoint, cuerpo, respuesta).forEach { MotorTutoriales.tarea(it) }
+        // Nunca puede afectar la escritura (resultado, clave de idempotencia, cola).
+        runCatching {
+            if (!MotorTutoriales.estado.enCurso) return
+            de(endpoint, cuerpo, respuesta).forEach { MotorTutoriales.tarea(it) }
+        }
     }
 }

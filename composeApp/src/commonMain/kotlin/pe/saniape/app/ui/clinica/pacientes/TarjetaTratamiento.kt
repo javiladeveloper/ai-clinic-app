@@ -322,7 +322,7 @@ fun TarjetaTratamiento(
         }
 
         // 🧠 Evaluación psicológica: el espacio de trabajo y "+ Agregar cita de evaluación".
-        bloqueEvaluacionPsico?.let { bloque -> Box(Modifier.tourAncla("ficha.evaluacion_psico")) { bloque() } }
+        bloqueEvaluacionPsico?.let { bloque -> Column(Modifier.tourAncla("ficha.evaluacion_psico")) { bloque() } }
 
         // Fisio (M3): al paquete le quedan 1–2 sesiones → ofrecer renovar.
         if (esFisio) {
@@ -1231,7 +1231,7 @@ fun SeccionPagos(
     if (soloLectura) {
         Text("Paciente dado de baja: no se registran pagos nuevos.", color = c.textoSuave, fontSize = 11.sp)
     } else if (!agregando) {
-        Box(Modifier.tourAncla("ficha.pago_registrar")) {
+        Column(Modifier.tourAncla("ficha.pago_registrar")) {
             MiniBtn(if (saldo > 0.005) "+ Registrar pago" else "+ Pago adicional", c.navy, !guardando) {
                 // Precarga el monto con el SALDO pendiente: registrar el pago completo = 1 confirmación.
                 monto = if (saldo > 0.005) formato2(saldo) else ""
@@ -1253,7 +1253,7 @@ fun SeccionPagos(
         // debe algo. Sin saldo, el formulario es el de siempre.
         if (puedeUsarSaldo) {
             Spacer(Modifier.height(6.dp))
-            Box(Modifier.tourAncla("pago_form.usar_saldo")) { OpcionSaldoAFavor(
+            Column(Modifier.tourAncla("pago_form.usar_saldo")) { OpcionSaldoAFavor(
                 usable = usableSaldo, total = totalForm,
                 usar = usarSaldo,
                 onUsar = { on ->
@@ -1287,7 +1287,7 @@ fun SeccionPagos(
         )
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.tourAncla("pago_form.confirmar")) { MiniBtn("Guardar pago", c.ok, !guardando && validacionSaldo !is pe.saniape.app.data.staff.ValidacionPartes.Error) {
+            Column(Modifier.tourAncla("pago_form.confirmar")) { MiniBtn("Guardar pago", c.ok, !guardando && validacionSaldo !is pe.saniape.app.data.staff.ValidacionPartes.Error) {
                 val m = monto.toDoubleOrNull()
                 if (m == null || m <= 0 || guardando) return@MiniBtn
                 if (usarSaldo && puedeUsarSaldo) {

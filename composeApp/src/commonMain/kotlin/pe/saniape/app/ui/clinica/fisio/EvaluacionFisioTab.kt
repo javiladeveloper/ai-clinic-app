@@ -164,7 +164,7 @@ fun EvaluacionFisioTab(
         Text("📏 Evaluación fisioterapéutica", color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         if (puedeEditar) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(Modifier.tourAncla("eval_fisio.nueva")) {
+                Column(Modifier.tourAncla("eval_fisio.nueva")) {
                     BotonTab("＋ ${if (evaluaciones.isNotEmpty()) "Nueva reevaluación" else "Evaluación inicial"}", lleno = true) {
                         abrir = AbrirEval(if (evaluaciones.isNotEmpty()) "reevaluacion" else "inicial", tratamientoDefecto)
                     }
