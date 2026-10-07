@@ -1,0 +1,12 @@
+# BORRADOR de las novedades de la próxima versión (aún sin número).
+# Al publicar, copiar a novedades/<versionName>.txt con el formato de siempre
+# (ver docs/ci-cd-despliegue.md → "Novedades de cada versión").
+Nuevo: sugerencias clínicas por especialidad. Técnicas, diagnósticos, síntomas y tipo de patología se sugieren según la especialidad de la cita o del tratamiento, con lo que usa tu clínica primero y, detrás, lo más usado por clínicas de tu mismo rubro. Respeta los chips que personalizaste en Especialidades. Suma Ginecología y Obstetricia.
+---
+Clínicas:
+• Completar sesión (agenda, ficha y Sesiones): las técnicas sugeridas son las de esa especialidad (fisio ve las de fisio, odontología las suyas) y, detrás, las más usadas por clínicas como la tuya. Escribir "liberacion" encuentra "Liberación".
+• Cerrar una sesión desde la Agenda ahora también aprende las técnicas que pusiste (antes solo la ficha lo hacía).
+• Diagnóstico de la evaluación y del tratamiento: escribes y te sugiere los diagnósticos frecuentes de esa especialidad; los chips de patología son los que personalizaste en Especialidades (o los de siempre). Tocar un chip ya puesto lo quita sin romper el resto del texto.
+• Nuevo paciente y editar paciente: chips de tipo de patología y síntomas de tus especialidades activas, para llenarlos con un toque.
+• Agendar una evaluación: chips de síntomas de la especialidad elegida para el motivo.
+• Ginecología, Obstetricia, Fertilidad y Psiquiatría tienen sus propios chips; Estética ya no muestra los genéricos; "Ortopedia" ya no muestra los de ortodoncia.
