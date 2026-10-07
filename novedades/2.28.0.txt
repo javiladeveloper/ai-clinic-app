@@ -1,6 +1,5 @@
-# BORRADOR de las novedades de la próxima versión (aún sin número).
-# Al publicar, copiar a novedades/<versionName>.txt con el formato de siempre
-# (ver docs/ci-cd-despliegue.md → "Novedades de cada versión").
+# Novedades de la 2.28.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
 Nuevo: sugerencias clínicas por especialidad. Técnicas, diagnósticos, síntomas y tipo de patología se sugieren según la especialidad de la cita o del tratamiento, con lo que usa tu clínica primero y, detrás, lo más usado por clínicas de tu mismo rubro. Respeta los chips que personalizaste en Especialidades. Suma Ginecología y Obstetricia.
 ---
 Clínicas:
