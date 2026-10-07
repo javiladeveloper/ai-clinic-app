@@ -56,6 +56,8 @@ fun HeaderMarcaClinica(
     onCambiarClinica: (() -> Unit)? = null,
     // Muestra el rol a la derecha (ej. "Recepción", "Fisioterapeuta").
     mostrarRol: Boolean = true,
+    // Pantalla de la guía (vocabulario de tutoriales): muestra el "?" del centro de ayuda.
+    pantallaAyuda: String? = null,
 ) {
     val c = Sania.colors
     val multiClinica = ctx.clinicas.size > 1
@@ -118,6 +120,10 @@ fun HeaderMarcaClinica(
                         fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.width(6.dp))
+            }
+            if (pantallaAyuda != null) {
+                pe.saniape.app.ui.tutoriales.BotonAyuda(pantallaAyuda)
+                Spacer(Modifier.width(4.dp))
             }
             if (onBuscar != null) {
                 Text("🔍", fontSize = 18.sp,

@@ -19,6 +19,11 @@ interface AccionesNativas {
     fun abrirHtml(html: String, titulo: String)
     /** Copia texto al portapapeles del sistema (p.ej. el resumen clínico IA o un enlace). */
     fun copiarTexto(texto: String, etiqueta: String = "Texto")
+    /**
+     * Comparte texto con la hoja nativa del sistema (WhatsApp, correo…).
+     * Por defecto lo copia (plataformas sin hoja de compartir todavía).
+     */
+    fun compartirTexto(texto: String, titulo: String = "Compartir") = copiarTexto(texto, titulo)
 }
 
 @Composable

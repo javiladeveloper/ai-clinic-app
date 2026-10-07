@@ -66,7 +66,9 @@ fun PantallaInicioStaff(
     onIrPacientes: () -> Unit = {},
     onAbrirCaja: (() -> Unit)? = null,
     onBuscar: (() -> Unit)? = null,
-) {
+    // Navegar a otra pantalla de la app (Primeros pasos: "Profesionales", "Agenda"…).
+    onIr: (String) -> Unit = {},
+) = pe.saniape.app.tutoriales.PantallaTutorial("Inicio") {
     val c = Sania.colors
     // Muestra al instante lo último cargado (sobrevive al cambio de tab) y refresca en
     // segundo plano. Spinner de pantalla completa SOLO la primera vez (sin caché).
@@ -138,6 +140,7 @@ fun PantallaInicioStaff(
                 ctx = ctx,
                 onBuscar = onBuscar,
                 onCaja = onAbrirCaja,
+                pantallaAyuda = "Inicio",
             )
 
             if (cargando) {
@@ -174,6 +177,11 @@ fun PantallaInicioStaff(
                         )
                         Text(fechaHumanaHoy(), color = c.textoSuave, fontSize = Sania.txt.pequeno)
                     }
+                }
+
+                // ── PRIMEROS PASOS (solo clínicas nuevas y solo el Admin; DALU nunca) ──
+                if (ctx.esAdmin && ctx.primerosPasos != null) {
+                    item { TarjetaPrimerosPasos(ctx, onIr) }
                 }
 
                 // ── MI META ──

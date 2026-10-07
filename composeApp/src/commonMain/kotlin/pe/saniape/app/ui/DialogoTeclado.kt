@@ -73,10 +73,14 @@ fun DialogoConTeclado(onDismissRequest: () -> Unit, contenido: @Composable BoxSc
     Dialog(onDismissRequest = onDismissRequest, properties = propiedadesDialogoTeclado()) {
         val m = margenesDialogoTeclado()
         androidx.compose.runtime.CompositionLocalProvider(LocalTecladoEnDialogo provides m.teclado) {
-            Box(
-                Modifier.fillMaxSize().padding(top = m.arriba + 12.dp, bottom = m.abajo + 12.dp),
-                contentAlignment = Alignment.Center, content = contenido,
-            )
+            // El diálogo es otra ventana: el tutorial en curso se dibuja aquí adentro
+            // (si no, quedaría debajo del velo del diálogo).
+            pe.saniape.app.ui.tutoriales.CapaTutorialDialogo {
+                Box(
+                    Modifier.fillMaxSize().padding(top = m.arriba + 12.dp, bottom = m.abajo + 12.dp),
+                    contentAlignment = Alignment.Center, content = contenido,
+                )
+            }
         }
     }
 }

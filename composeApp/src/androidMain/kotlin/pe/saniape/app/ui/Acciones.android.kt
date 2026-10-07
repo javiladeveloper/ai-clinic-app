@@ -50,6 +50,13 @@ private class AccionesAndroid(private val context: Context) : AccionesNativas {
             cm.setPrimaryClip(android.content.ClipData.newPlainText(etiqueta, texto))
         } catch (_: Exception) { /* sin portapapeles */ }
     }
+
+    override fun compartirTexto(texto: String, titulo: String) {
+        try {
+            val envio = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, texto)
+            context.startActivity(Intent.createChooser(envio, titulo).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: Exception) { copiarTexto(texto, titulo) }
+    }
 }
 
 @Composable

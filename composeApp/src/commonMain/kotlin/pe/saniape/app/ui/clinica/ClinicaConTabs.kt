@@ -47,6 +47,11 @@ import pe.saniape.app.data.staff.StaffContextoRepo
 import pe.saniape.app.ui.ManejarAtras
 import pe.saniape.app.ui.clinica.pacientes.PantallaPacientesStaff
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.tutoriales.tourAncla
+import pe.saniape.app.ui.tutoriales.CentroAyuda
+import pe.saniape.app.ui.tutoriales.HostTutorial
+import pe.saniape.app.ui.tutoriales.PildoraPrimeraVez
+import io.github.jan.supabase.auth.auth
 
 private enum class TabClinica(val titulo: String, val icono: ImageVector) {
     Inicio("Inicio", Icons.Filled.Home),
@@ -92,6 +97,13 @@ fun ClinicaConTabs(
     var verEspecialidades by remember { mutableStateOf(false) }
     var verPacientesPeriodo by remember { mutableStateOf(false) }
     var verPacientesNuevos by remember { mutableStateOf(false) }
+    // Profesionales (lista + horario) y el horario propio en solo lectura.
+    var verProfesionales by remember { mutableStateOf(false) }
+    var horarioDe by remember { mutableStateOf<Pair<String, String>?>(null) }   // (terapeutaId, nombre)
+    var horarioVolver by remember { mutableStateOf("← Más") }
+    // Más → "🌐 Mi página" (slug leído de la clínica; null = no tiene página).
+    var urlPagina by remember { mutableStateOf<String?>(null) }
+    var verMiPagina by remember { mutableStateOf(false) }
     // Buscador global de paciente (desde el header) + ficha que abre.
     var verBuscador by remember { mutableStateOf(false) }
     var fichaBuscada by remember { mutableStateOf<pe.saniape.app.data.staff.PacienteStaff?>(null) }
@@ -109,6 +121,14 @@ fun ClinicaConTabs(
                 pe.saniape.app.data.staff.SedesAgendaRepo.limpiarCache()
                 pe.saniape.app.data.staff.SedeActiva.iniciar(r.contexto)
                 ctx = r.contexto
+                // Tutoriales: solo pide el catálogo si la clínica tiene Primeros pasos
+                // (las nuevas) o hay uno en pausa guardado. DALU no paga nada.
+                pe.saniape.app.tutoriales.MotorTutoriales.configurar(
+                    clinica = r.contexto.clinicaId,
+                    usuario = pe.saniape.app.data.Supabase.client.auth.currentSessionOrNull()?.user?.id,
+                    primerosPasos = r.contexto.primerosPasosActivos,
+                    admin = r.contexto.esAdmin,
+                )
                 // Recordar la marca de la clínica activa para que la intro al REABRIR la app
                 // muestre su logo (no el de Sania) antes de cargar el contexto.
                 pe.saniape.app.data.Preferencias.setLogoClinica(r.contexto.logoUrl)
@@ -127,8 +147,10 @@ fun ClinicaConTabs(
 
     // Con un flujo a pantalla completa abierto, el "atrás" es de ese flujo (tiene
     // su propio ManejarAtras, con la confirmación de salir sin guardar).
-    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || tab != TabClinica.Inicio)) {
+    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verProfesionales || horarioDe != null || tab != TabClinica.Inicio)) {
         when {
+            horarioDe != null -> horarioDe = null
+            verProfesionales -> verProfesionales = false
             verSesiones -> verSesiones = false
             verCaja -> verCaja = false
             verEspecialidades -> verEspecialidades = false
@@ -165,6 +187,22 @@ fun ClinicaConTabs(
         return
     }
 
+    // La clínica no terminó el asistente de inicio (onboarding v2): el Admin lo
+    // termina en la web; el resto espera (como la web). Las de antes → siempre true.
+    if (!contexto.onboardingCompleto) {
+        PantallaOnboardingPendiente(
+            esAdmin = contexto.esAdmin,
+            clinicaNombre = contexto.clinicaNombre,
+            onReintentar = { intento++ },
+            onCerrarSesion = {
+                StaffContextoRepo.limpiar()
+                pe.saniape.app.data.Preferencias.setModoActivo(null)
+                onCerrarSesion()
+            },
+        )
+        return
+    }
+
     // Multisede sin sede elegida todavía: primero la pregunta, y recién después
     // las pantallas. Así no se carga nada "de todas las sedes" para quien no
     // puede verlo, ni se carga dos veces. Sin multisede esto nunca aplica.
@@ -179,6 +217,40 @@ fun ClinicaConTabs(
     // Tabs visibles según permisos (Inicio y Más siempre).
     val verAgenda = contexto.puede("citas")
     val verPacientes = contexto.puede("pacientes") || contexto.modoClinico
+
+    fun cerrarOverlays() {
+        verSesiones = false; verCaja = false; verEspecialidades = false; verPacientesPeriodo = false
+        verPacientesNuevos = false; verProfesionales = false; horarioDe = null
+    }
+    // "Llévame" / "Retomar" de los tutoriales y los botones de Primeros pasos.
+    fun irA(pantalla: String) {
+        when (pantalla) {
+            "Inicio" -> { cerrarOverlays(); tab = TabClinica.Inicio }
+            "Agenda" -> if (verAgenda) { cerrarOverlays(); tab = TabClinica.Agenda }
+            "Pacientes" -> if (verPacientes) { cerrarOverlays(); tab = TabClinica.Pacientes }
+            "Mas" -> { cerrarOverlays(); tab = TabClinica.Mas }
+            "Caja" -> if (contexto.puede("pagos")) { cerrarOverlays(); verCaja = true }
+            "Sesiones" -> if (contexto.puede("sesiones")) { cerrarOverlays(); verSesiones = true }
+            "Especialidades" -> if (contexto.puede("equipo")) { cerrarOverlays(); verEspecialidades = true }
+            "Profesionales" -> if (contexto.puede("equipo")) { cerrarOverlays(); verProfesionales = true }
+        }
+    }
+    val motor = pe.saniape.app.tutoriales.MotorTutoriales
+    motor.navegador = { irA(it) }
+    motor.navegables = buildSet {
+        add("Inicio"); add("Mas")
+        if (verAgenda) add("Agenda")
+        if (verPacientes) add("Pacientes")
+        if (contexto.puede("pagos")) add("Caja")
+        if (contexto.puede("sesiones")) add("Sesiones")
+        if (contexto.puede("equipo")) { add("Especialidades"); add("Profesionales") }
+    }
+    LaunchedEffect(pe.saniape.app.ui.Reanudacion.contador) { motor.alVolverAlFrente() }
+    LaunchedEffect(contexto.clinicaId) {
+        urlPagina = pe.saniape.app.data.staff.OnboardingRepo.slugClinica(contexto.clinicaId)
+            ?.let { pe.saniape.app.data.staff.urlPaginaClinica(it) }
+    }
+    val hayOverlay = verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verProfesionales || horarioDe != null
     val tabs = buildList {
         add(TabClinica.Inicio)
         if (verAgenda) add(TabClinica.Agenda)
@@ -186,16 +258,25 @@ fun ClinicaConTabs(
         add(TabClinica.Mas)
     }
 
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         bottomBar = {
             if (!pantallaCompleta) NavigationBar(containerColor = c.superficie) {
                 tabs.forEach { t ->
                     NavigationBarItem(
                         // Un tab está "activo" solo si NO hay un overlay (Sesiones/Caja) encima.
-                        selected = tab == t && !verSesiones && !verCaja && !verEspecialidades && !verPacientesPeriodo && !verPacientesNuevos,
+                        selected = tab == t && !hayOverlay,
+                        modifier = Modifier.tourAncla(
+                            when (t) {
+                                TabClinica.Inicio -> "nav.inicio"
+                                TabClinica.Agenda -> "nav.agenda"
+                                TabClinica.Pacientes -> "nav.pacientes"
+                                TabClinica.Mas -> "nav.mas"
+                            },
+                        ),
                         // Al tocar un tab hay que CERRAR los overlays sin tab propio; si no,
                         // Caja/Sesiones quedaba tapando el contenido y no redirigía (bug conocido).
-                        onClick = { verSesiones = false; verCaja = false; verEspecialidades = false; verPacientesPeriodo = false; verPacientesNuevos = false; tab = t },
+                        onClick = { cerrarOverlays(); tab = t },
                         icon = { Icon(t.icono, contentDescription = t.titulo) },
                         label = { Text(t.titulo, fontSize = 11.sp) },
                         colors = NavigationBarItemDefaults.colors(
@@ -227,6 +308,7 @@ fun ClinicaConTabs(
                         onIrPacientes = { tab = TabClinica.Pacientes },
                         onAbrirCaja = if (contexto.puede("pagos")) ({ verCaja = true }) else null,
                         onBuscar = if (verPacientes) ({ verBuscador = true }) else null,
+                        onIr = { irA(it) },
                     )
                     TabClinica.Agenda -> PantallaAgenda(
                         ctx = contexto,
@@ -251,6 +333,13 @@ fun ClinicaConTabs(
                         onAbrirPacientesPeriodo = if (contexto.puede("reportes")) ({ verPacientesPeriodo = true }) else null,
                         // Nativo. Mismo permiso que /api/staff/pacientes-nuevos (el plan lo valida el servidor).
                         onAbrirPacientesNuevos = if (contexto.puede("reportes")) ({ verPacientesNuevos = true }) else null,
+                        // (nombre del personal) → lista + horario: solo con permiso "equipo" (como la web).
+                        onAbrirProfesionales = if (contexto.puede("equipo")) ({ verProfesionales = true }) else null,
+                        // El propio profesional ve SU horario en solo lectura.
+                        onAbrirMiHorario = contexto.miTerapeutaId?.takeIf { !contexto.puede("equipo") }?.let { id ->
+                            { horarioVolver = "← Más"; horarioDe = id to (contexto.nombre ?: "Mi horario") }
+                        },
+                        onAbrirMiPagina = urlPagina?.let { { verMiPagina = true } },
                     )
                 }
             }
@@ -308,6 +397,28 @@ fun ClinicaConTabs(
                     )
                 }
             }
+            AnimatedVisibility(
+                visible = verProfesionales && contexto.puede("equipo"),
+                enter = entrarDetalle(), exit = salirDetalle(),
+            ) {
+                Box(Modifier.fillMaxSize().background(c.fondo)) {
+                    pe.saniape.app.ui.clinica.profesionales.PantallaProfesionales(
+                        ctx = contexto,
+                        onSalir = { verProfesionales = false },
+                        onAbrir = { p -> horarioVolver = "← ${pe.saniape.app.tutoriales.pluralPersonal(contexto.terminologiaProfesional)}"; horarioDe = p.id to p.nombre },
+                    )
+                }
+            }
+            AnimatedVisibility(visible = horarioDe != null, enter = entrarDetalle(), exit = salirDetalle()) {
+                val sel = remember(horarioDe) { horarioDe }
+                sel?.let { (id, nombre) ->
+                    Box(Modifier.fillMaxSize().background(c.fondo)) {
+                        pe.saniape.app.ui.clinica.profesionales.PantallaHorarioProfesional(
+                            terapeutaId = id, nombre = nombre, volver = horarioVolver, onSalir = { horarioDe = null },
+                        )
+                    }
+                }
+            }
             // Multisede: "¿En qué sede trabajas hoy?" (obligatorio si aún no eligió,
             // o a pedido desde el chip). Sin multisede no pinta nada.
             DialogoSede()
@@ -335,4 +446,11 @@ fun ClinicaConTabs(
             }
         }
     }
+    // Tutoriales (encima de todo, sin bloquear): píldora "¿Primera vez aquí?",
+    // la capa del tutorial en curso y el centro de ayuda.
+    PildoraPrimeraVez()
+    HostTutorial(capa = 0, principal = true)
+    CentroAyuda()
+    }
+    urlPagina?.let { url -> if (verMiPagina) DialogoMiPagina(url) { verMiPagina = false } }
 }

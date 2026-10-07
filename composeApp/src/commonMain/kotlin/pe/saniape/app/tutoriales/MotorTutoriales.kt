@@ -307,6 +307,9 @@ object MotorTutoriales {
         if (primerosPasos || pausaGuardada() != null) cargarCatalogo()
     }
 
+    /** La tarjeta de Primeros pasos se minimizó/descartó/volvió: las píldoras siguen ese estado. */
+    fun actualizarPrimerosPasos(activos: Boolean) { primerosPasosActivos = activos }
+
     /** Al volver al frente: refresca el catálogo si ya se usaba y está viejo. */
     fun alVolverAlFrente() {
         if (catalogo != null) cargarCatalogo(maxEdadMs = 300_000)

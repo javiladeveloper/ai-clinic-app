@@ -38,6 +38,7 @@ import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.ModoRepo
 import pe.saniape.app.data.staff.StaffContextoRepo
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.tutoriales.tourAncla
 
 /**
  * Tab Más del staff: datos de la clínica/rol, selector de clínica (si multi-clínica),
@@ -61,7 +62,13 @@ fun PantallaMasClinica(
     onAbrirPacientesPeriodo: (() -> Unit)? = null,
     // 🌱 Pacientes nuevos nativo (solo con permiso "reportes"; null = no se muestra).
     onAbrirPacientesNuevos: (() -> Unit)? = null,
-) {
+    // 🩺 (nombre del personal): lista + horario semanal (solo con permiso "equipo").
+    onAbrirProfesionales: (() -> Unit)? = null,
+    // 🕒 Mi horario (el profesional vinculado, solo lectura).
+    onAbrirMiHorario: (() -> Unit)? = null,
+    // 🌐 Mi página (solo si la clínica tiene página pública).
+    onAbrirMiPagina: (() -> Unit)? = null,
+) = pe.saniape.app.tutoriales.PantallaTutorial("Mas") {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     // El contexto viene del padre; el ✓ y el header se leen de ÉL (no de una copia
@@ -104,7 +111,7 @@ fun PantallaMasClinica(
                 Spacer(Modifier.height(Sania.dim.lg))
 
                 // Módulos clínicos sin tab propio (Sesiones, Caja…)
-                if (onAbrirSesiones != null || onAbrirCaja != null) {
+                if (onAbrirSesiones != null || onAbrirCaja != null || onAbrirMiHorario != null) {
                     Text("MÓDULOS", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(Sania.dim.sm))
                     if (onAbrirSesiones != null) {
@@ -123,7 +130,7 @@ fun PantallaMasClinica(
                     // 💰 Caja de hoy (con permiso de pagos): cuánto entró y por qué método.
                     if (onAbrirCaja != null) {
                         Row(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                            Modifier.fillMaxWidth().tourAncla("mas.caja").clip(RoundedCornerShape(Sania.shape.sm.dp))
                                 .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
                                 .clickable { onAbrirCaja() }.padding(Sania.dim.lg),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -133,6 +140,9 @@ fun PantallaMasClinica(
                             Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
                         }
                         Spacer(Modifier.height(Sania.dim.sm))
+                    }
+                    if (onAbrirMiHorario != null) {
+                        FilaMas("🕒  Mi horario", onClick = onAbrirMiHorario)
                     }
                     Spacer(Modifier.height(Sania.dim.md))
                 }
@@ -178,7 +188,7 @@ fun PantallaMasClinica(
                 // veía NINGUNA opción de administración en la app; ahora las ve con los
                 // MISMOS permisos que el menú de la web y se abren en la web.
                 val modulosAdmin = modulosAdministracion(ctx)
-                if (modulosAdmin.isNotEmpty() || onAbrirEspecialidades != null) {
+                if (modulosAdmin.isNotEmpty() || onAbrirEspecialidades != null || onAbrirProfesionales != null) {
                     val acciones = pe.saniape.app.ui.recordarAcciones()
                     Text("ADMINISTRACIÓN", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(Sania.dim.sm))
@@ -197,6 +207,10 @@ fun PantallaMasClinica(
                             Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
                         }
                     }
+                    // Nativo: la lista del personal y su horario semanal.
+                    if (onAbrirProfesionales != null) {
+                        FilaMas("🩺  ${pe.saniape.app.tutoriales.pluralPersonal(ctx.terminologiaProfesional)}", ancla = "mas.profesionales", onClick = onAbrirProfesionales)
+                    }
                     if (modulosAdmin.isNotEmpty()) {
                         Text("Se abren en la web (inicia sesión con tu misma cuenta).", color = c.textoSuave, fontSize = 11.sp)
                         Spacer(Modifier.height(Sania.dim.sm))
@@ -214,6 +228,17 @@ fun PantallaMasClinica(
                             Text(etq, color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
                             Text("↗", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
                         }
+                    }
+                    Spacer(Modifier.height(Sania.dim.md))
+                }
+
+                // Tu clínica en internet y la ayuda.
+                if (onAbrirMiPagina != null || !pe.saniape.app.tutoriales.MotorTutoriales.noDisponible) {
+                    Text("TU CLÍNICA Y AYUDA", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(Sania.dim.sm))
+                    if (onAbrirMiPagina != null) FilaMas("🌐  Mi página", ancla = "mas.pagina", onClick = onAbrirMiPagina)
+                    if (!pe.saniape.app.tutoriales.MotorTutoriales.noDisponible) {
+                        FilaMas("🎓  Ayuda y tutoriales", ancla = "mas.ayuda") { pe.saniape.app.tutoriales.MotorTutoriales.abrirAyuda("Mas") }
                     }
                     Spacer(Modifier.height(Sania.dim.md))
                 }
@@ -340,6 +365,24 @@ fun PantallaMasClinica(
         }
     }
 }
+/** Fila de "Más" (opcionalmente con su ancla de tutorial). */
+@Composable
+private fun FilaMas(texto: String, ancla: String? = null, onClick: () -> Unit) {
+    val c = Sania.colors
+    Row(
+        Modifier.fillMaxWidth().padding(bottom = Sania.dim.sm)
+            .then(if (ancla != null) Modifier.tourAncla(ancla) else Modifier)
+            .clip(RoundedCornerShape(Sania.shape.sm.dp))
+            .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+            .clickable(onClick = onClick).padding(Sania.dim.lg),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(texto, color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
+        Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+    }
+}
+
 /**
  * Módulos de gestión que viven en la web, con los MISMOS permisos que su menú
  * (components/layout/Sidebar.tsx). (etiqueta, ruta). El plan lo resuelve la web

@@ -76,6 +76,10 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         pe.saniape.app.ui.Reanudacion.volvioAlFrente()
+        // "Quitar animaciones" del sistema (escala en 0): los tutoriales no rebotan ni pulsan.
+        pe.saniape.app.tutoriales.Movimiento.reducido = runCatching {
+            android.provider.Settings.Global.getFloat(contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+        }.getOrDefault(false)
         // La descarga pudo terminar con la app en segundo plano: se pregunta
         // de nuevo para no dejar una actualización lista sin ofrecer.
         if (::actualizador.isInitialized) actualizador.alVolverAPrimerPlano()
