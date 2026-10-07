@@ -232,5 +232,7 @@ object StaffContextoRepo {
         SedeActiva.limpiar()
         SedesAgendaRepo.limpiarCache()
         FotosRepo.limpiarCache()
+        // Chips clínicos: lo de una clínica nunca se sirve a la siguiente sesión.
+        ChipsRepo.limpiar()
     }
 }

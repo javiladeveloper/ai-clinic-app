@@ -12,8 +12,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
@@ -41,12 +39,34 @@ import pe.saniape.app.data.crearHttpClient
 object ChipsRepo {
     private val http = crearHttpClient()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val mutex = Mutex()
-    private val cache = HashMap<String, List<ChipSugerido>>()
+
+    /**
+     * Copia inmutable que se reemplaza entera (lectura sin candado, también desde
+     * la UI para pintar sin parpadeo). La clave lleva la CLÍNICA: lo de una nunca
+     * se sirve en otra, y [limpiar] la vacía al salir o al cambiar de clínica.
+     */
+    @kotlin.concurrent.Volatile
+    private var cache: Map<String, List<ChipSugerido>> = emptyMap()
 
     private const val LIMITE = 250
 
-    private fun clave(campo: String, especialidadId: String?) = "$campo|${especialidadId.orEmpty()}"
+    private fun clinicaActual(): String = StaffContextoRepo.actual?.clinicaId.orEmpty()
+
+    private fun clave(campo: String, especialidadId: String?) =
+        "${clinicaActual()}|$campo|${especialidadId.orEmpty()}"
+
+    /** Al cerrar sesión o cambiar de clínica (StaffContextoRepo.limpiar, onCambioClinica). */
+    fun limpiar() { cache = emptyMap() }
+
+    /** Lo ya cargado para (campo, especialidad) en esta clínica, sin viaje (null = aún no). */
+    fun enCache(campo: String, especialidadId: String?): List<ChipSugerido>? = cache[clave(campo, especialidadId)]
+
+    /** Resultado del endpoint: los chips, el servidor respondió otra cosa, o no hubo red. */
+    private sealed interface Respuesta {
+        data class Ok(val chips: List<ChipSugerido>) : Respuesta
+        data object Rechazo : Respuesta
+        data object SinRed : Respuesta
+    }
 
     /**
      * Chips de un campo para una especialidad (null = las activas de la clínica).
@@ -54,14 +74,18 @@ object ChipsRepo {
      */
     suspend fun cargar(campo: String, especialidadId: String?): List<ChipSugerido> {
         val k = clave(campo, especialidadId)
-        mutex.withLock { cache[k] }?.let { return it }
-        val delServidor = viaEndpoint(campo, especialidadId)
-        if (delServidor != null) {
-            mutex.withLock { cache[k] = delServidor }
-            return delServidor
-        }
-        // Fallback (no se guarda en caché: la próxima apertura vuelve a probar el endpoint).
-        return runCatching { propiasLegacy(campo, especialidadId) }.getOrDefault(emptyList())
+        cache[k]?.let { return it }
+        val r = when (val resp = viaEndpoint(campo, especialidadId)) {
+            is Respuesta.Ok -> resp.chips
+            // El servidor contestó (401/404/5xx, o una forma que no es la del
+            // contrato): lo de siempre, y se guarda para no pagar dos viajes en
+            // cada apertura durante esta sesión.
+            Respuesta.Rechazo -> runCatching { propiasLegacy(campo, especialidadId) }.getOrNull()
+            // Sin red: lo que se pueda, sin guardar (la próxima apertura vuelve a probar).
+            Respuesta.SinRed -> return runCatching { propiasLegacy(campo, especialidadId) }.getOrDefault(emptyList())
+        } ?: return emptyList()
+        cache = cache + (k to r)
+        return r
     }
 
     /** Solo los textos, en orden (técnicas y diagnóstico). */
@@ -69,12 +93,14 @@ object ChipsRepo {
         cargar(campo, especialidadId).map { it.texto }
 
     /** Lo registrado hace un momento: la próxima apertura del formulario lo trae. */
-    suspend fun invalidar(campo: String) {
-        mutex.withLock { cache.keys.removeAll { it.startsWith("$campo|") } }
+    fun invalidar(campo: String) {
+        val marca = "|$campo|"
+        cache = cache.filterKeys { marca !in it }
     }
 
-    private suspend fun viaEndpoint(campo: String, especialidadId: String?): List<ChipSugerido>? {
-        val tk = runCatching { Supabase.client.auth.currentSessionOrNull()?.accessToken }.getOrNull() ?: return null
+    private suspend fun viaEndpoint(campo: String, especialidadId: String?): Respuesta {
+        val tk = runCatching { Supabase.client.auth.currentSessionOrNull()?.accessToken }.getOrNull()
+            ?: return Respuesta.Rechazo
         return try {
             val resp = http.get("${Supabase.SITE_URL}/api/staff/chips") {
                 header("Authorization", "Bearer $tk")
@@ -82,11 +108,12 @@ object ChipsRepo {
                 if (!especialidadId.isNullOrBlank()) parameter("especialidadId", especialidadId)
                 parameter("limite", LIMITE)
             }
-            if (resp.status.value !in 200..299) null else parsearChipsEndpoint(resp.bodyAsText())
+            if (resp.status.value !in 200..299) Respuesta.Rechazo
+            else parsearChipsEndpoint(resp.bodyAsText())?.let { Respuesta.Ok(it) } ?: Respuesta.Rechazo
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (e: Exception) {
-            null
+            Respuesta.SinRed
         }
     }
 
@@ -112,28 +139,34 @@ object ChipsRepo {
 
     /**
      * Suma un uso a cada texto (o lo crea) en lo propio de la clínica, con la
-     * especialidad. En segundo plano: vuelve al instante y nunca lanza.
-     * [textos] ya partidos (TecnicasNormalizar.partir / trocearDiagnostico).
+     * especialidad. TODO en segundo plano (partir, filtrar y la RPC): vuelve al
+     * instante, no ocupa el hilo de quien llama y nunca lanza.
+     * [partir] produce los textos (TecnicasNormalizar.partir / trocearDiagnostico).
      */
-    fun registrar(campo: String, textos: List<String>, especialidadId: String?, nombrePaciente: String? = null) {
-        val limpios = textosARegistrar(textos, campo, nombrePaciente)
-        if (limpios.isEmpty()) return
+    private fun registrarEnSegundoPlano(
+        campo: String, especialidadId: String?, nombrePaciente: String?, partir: () -> List<String>,
+    ) {
         scope.launch {
-            runCatching { registrarAhora(campo, limpios, especialidadId, nombrePaciente) }
-            invalidar(campo)
+            runCatching {
+                val limpios = textosARegistrar(partir(), campo, nombrePaciente)
+                if (limpios.isNotEmpty()) {
+                    registrarAhora(campo, limpios, especialidadId, nombrePaciente)
+                    invalidar(campo)
+                }
+            }
         }
     }
 
     /** Técnicas tal como quedan en la sesión ("TENS + Compresa"): se parten con el normalizador. */
     fun registrarTecnicas(texto: String?, especialidadId: String?, nombrePaciente: String? = null) {
         if (texto.isNullOrBlank()) return
-        registrar(CampoChip.TECNICA, TecnicasNormalizar.partir(texto), especialidadId, nombrePaciente)
+        registrarEnSegundoPlano(CampoChip.TECNICA, especialidadId, nombrePaciente) { TecnicasNormalizar.partir(texto) }
     }
 
     /** Diagnóstico libre ("Lumbalgia, contractura"): se trocea por coma / ; / salto. */
     fun registrarDiagnostico(texto: String?, especialidadId: String?, nombrePaciente: String? = null) {
         if (texto.isNullOrBlank()) return
-        registrar(CampoChip.DIAGNOSTICO, trocearDiagnostico(texto), especialidadId, nombrePaciente)
+        registrarEnSegundoPlano(CampoChip.DIAGNOSTICO, especialidadId, nombrePaciente) { trocearDiagnostico(texto) }
     }
 
     private suspend fun registrarAhora(campo: String, textos: List<String>, especialidadId: String?, nombrePaciente: String?) {
