@@ -120,6 +120,14 @@ fun chipsConBase(chips: List<ChipSugerido>, base: List<String>, extras: Int = 4)
     ).map { it.texto }
 
 /**
+ * Igual que [chipsConBase] pero con la BASE que mandó el servidor (`fuente: "base"`):
+ * la de la especialidad pedida o, sin especialidad, la unión de las activas con
+ * sus chips personalizados. Propias → base → pool, cortado en base + [extras].
+ */
+fun chipsConBaseDelServidor(chips: List<ChipSugerido>, extras: Int = 4): List<String> =
+    chipsConBase(chips, chips.filter { it.fuente == FuenteChip.BASE }.map { it.texto }, extras)
+
+/**
  * Filtra en memoria al escribir (cero viajes por tecla): fuera lo ya puesto y,
  * si hay consulta, solo lo que la contiene (sin tildes ni mayúsculas).
  */

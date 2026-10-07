@@ -1336,7 +1336,7 @@ object PacientesRepo {
                 nombre = o.str("nombre") ?: "Especialidad",
                 usaSesiones = (o["usa_sesiones"] as? JsonPrimitive)?.content?.let { it != "false" } ?: true,
                 chipsTipos = (o["chips_tipos"] as? kotlinx.serialization.json.JsonArray)
-                    ?.mapNotNull { (it as? JsonPrimitive)?.content?.trim()?.takeIf { s -> s.isNotEmpty() } }
+                    ?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p !is kotlinx.serialization.json.JsonNull }?.content?.trim()?.takeIf { s -> s.isNotEmpty() } }
                     ?.takeIf { it.isNotEmpty() },
             )
         }

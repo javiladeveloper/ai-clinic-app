@@ -21,19 +21,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import pe.saniape.app.data.staff.AgendaRepo
-import pe.saniape.app.data.staff.ChipSugerido
 import pe.saniape.app.data.staff.ChipsRepo
-import pe.saniape.app.data.staff.EspecialidadRef
-import pe.saniape.app.data.staff.aChips
 import pe.saniape.app.data.staff.chipsConBase
+import pe.saniape.app.data.staff.chipsConBaseDelServidor
 import pe.saniape.app.ui.theme.Sania
 
 /**
  * Los chips de siempre ([base]: los de la especialidad, personalizados o del
  * código) + unos pocos del pool del rubro detrás (gemelo de `useChipsConPool`).
  * Mientras carga, o sin pool, devuelve la base tal cual: nada cambia de lugar.
- * UN viaje por (campo, especialidad) en toda la sesión ([ChipsRepo] cachea).
+ * UN viaje por (campo, especialidad) en toda la sesión ([ChipsRepo] cachea; si
+ * ya está en caché se pinta en el primer cuadro).
  */
 @Composable
 fun rememberChipsConPool(
@@ -43,40 +41,43 @@ fun rememberChipsConPool(
     activo: Boolean = true,
     extras: Int = 4,
 ): List<String> {
-    var crudos by remember(campo, especialidadId) { mutableStateOf<List<ChipSugerido>>(emptyList()) }
+    var crudos by remember(campo, especialidadId) { mutableStateOf(ChipsRepo.enCache(campo, especialidadId)) }
     LaunchedEffect(campo, especialidadId, activo) {
-        if (activo) crudos = runCatching { ChipsRepo.cargar(campo, especialidadId) }.getOrDefault(emptyList())
+        if (activo && crudos == null) crudos = runCatching { ChipsRepo.cargar(campo, especialidadId) }.getOrNull()
     }
-    return remember(crudos, base, extras) { if (crudos.isEmpty()) base else chipsConBase(crudos, base, extras) }
+    return remember(crudos, base, extras) {
+        val c = crudos
+        if (c.isNullOrEmpty()) base else chipsConBase(c, base, extras)
+    }
 }
 
 /**
- * Especialidades ACTIVAS de la clínica con sus chips, para los formularios del
- * paciente (patología y síntomas = la unión de las activas, como la web).
- * Se piden solo cuando [activo] (p. ej. al abrir "Antecedentes clínicos").
+ * Chips cuya BASE la arma el servidor (`fuente: "base"`): con especialidad null,
+ * la unión de las especialidades activas respetando chips_tipos/chips_sintomas.
+ * Así el formulario no pide además las especialidades (un viaje por campo la
+ * primera vez, cero después) y no parpadea de los genéricos a los de la clínica:
+ * hasta tener la respuesta (o la caché) no muestra nada.
  */
 @Composable
-fun rememberEspecialidadesConChips(activo: Boolean = true): List<EspecialidadRef> {
-    var esps by remember { mutableStateOf<List<EspecialidadRef>>(emptyList()) }
-    var cargadas by remember { mutableStateOf(false) }
-    LaunchedEffect(activo) {
-        if (activo && !cargadas) {
-            esps = runCatching { AgendaRepo.especialidades() }.getOrDefault(emptyList())
-            cargadas = true
-        }
+fun rememberChipsDelServidor(
+    campo: String,
+    especialidadId: String? = null,
+    activo: Boolean = true,
+    extras: Int = 4,
+): List<String> {
+    var crudos by remember(campo, especialidadId) { mutableStateOf(ChipsRepo.enCache(campo, especialidadId)) }
+    LaunchedEffect(campo, especialidadId, activo) {
+        if (activo && crudos == null) crudos = runCatching { ChipsRepo.cargar(campo, especialidadId) }.getOrNull()
     }
-    return esps
+    return remember(crudos, extras) { crudos?.let { chipsConBaseDelServidor(it, extras) }.orEmpty() }
 }
 
 /** Patología y síntomas sugeridos para el paciente: base de las especialidades activas + pool. */
 @Composable
-fun rememberChipsPaciente(activo: Boolean): ChipsEspecialidad {
-    val esps = rememberEspecialidadesConChips(activo)
-    val base = remember(esps) { chipsDeClinica(esps.map { it.aChips() }) }
-    val tipos = rememberChipsConPool(pe.saniape.app.data.staff.CampoChip.PATOLOGIA, null, base.tipos, activo)
-    val sintomas = rememberChipsConPool(pe.saniape.app.data.staff.CampoChip.SINTOMA, null, base.sintomas, activo)
-    return ChipsEspecialidad(tipos, sintomas)
-}
+fun rememberChipsPaciente(activo: Boolean): ChipsEspecialidad = ChipsEspecialidad(
+    tipos = rememberChipsDelServidor(pe.saniape.app.data.staff.CampoChip.PATOLOGIA, null, activo),
+    sintomas = rememberChipsDelServidor(pe.saniape.app.data.staff.CampoChip.SINTOMA, null, activo),
+)
 
 /**
  * Fila de chips tocables (agrega/quita). Muestra [maxVisibles] y un "+N más"

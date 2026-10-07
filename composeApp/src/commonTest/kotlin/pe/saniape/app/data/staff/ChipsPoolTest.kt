@@ -81,6 +81,21 @@ class ChipsPoolTest {
         assertEquals(listOf("Dolor lumbar", "Hinchazón", "Ardor", "Rigidez"), r)
     }
 
+    @Test fun chipsConBaseDelServidorUsaLaBaseQueMandoElServidor() {
+        val delServidor = listOf(
+            ChipSugerido("Lumbalgia", FuenteChip.PROPIA),
+            ChipSugerido("Hinchazón", FuenteChip.BASE),
+            ChipSugerido("Ardor", FuenteChip.BASE),
+            ChipSugerido("Rigidez", FuenteChip.POOL),
+            ChipSugerido("Calambre", FuenteChip.POOL),
+        )
+        assertEquals(listOf("Lumbalgia", "Hinchazón", "Ardor", "Rigidez"), chipsConBaseDelServidor(delServidor, extras = 2))
+        // Sin base (fallback de las tablas): solo lo propio y el pool, hasta `extras`.
+        assertEquals(listOf("Lumbalgia", "Rigidez"),
+            chipsConBaseDelServidor(delServidor.filter { it.fuente != FuenteChip.BASE }, extras = 2))
+        assertEquals(emptyList(), chipsConBaseDelServidor(emptyList()))
+    }
+
     @Test fun filtrarEnMemoriaSinTildesYSinLoPuesto() {
         val textos = listOf("Liberación miofascial", "TENS", "Liberación articular", "Compresa")
         assertEquals(listOf("Liberación miofascial", "Liberación articular"), filtrarChips(textos, "liberacion"))
@@ -207,6 +222,14 @@ class ChipsPoolTest {
         ))
         assertEquals(listOf("Dolor", "Rigidez", "Fiebre", "Mareo", "Náuseas", "Tos"), u.sintomas)
         assertEquals(CHIPS_DEFAULT, chipsDeClinica(emptyList()))
+    }
+
+    @Test fun unionDeLaClinicaDeduplicaPorClavePlegada() {
+        val u = chipsDeClinica(listOf(
+            EspecialidadChips("Fisioterapia", chipsSintomas = listOf("Inflamacion", "DOLOR")),
+            EspecialidadChips("Medicina general", chipsSintomas = listOf("Inflamación", "Dolor", "Tos")),
+        ))
+        assertEquals(listOf("Inflamacion", "DOLOR", "Tos"), u.sintomas)
     }
 
     @Test fun faltaFuncionReconoceBaseSinMigracion() {

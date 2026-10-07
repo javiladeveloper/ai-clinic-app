@@ -347,7 +347,7 @@ object AgendaRepo {
 
     /** Un text[] de la base ("chips_tipos") → lista, o null si no hay. */
     private fun listaTextos(e: kotlinx.serialization.json.JsonElement?): List<String>? =
-        (e as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content?.trim()?.takeIf { s -> s.isNotEmpty() } }
+        (e as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p !is kotlinx.serialization.json.JsonNull }?.content?.trim()?.takeIf { s -> s.isNotEmpty() } }
             ?.takeIf { it.isNotEmpty() }
 
     // ── Datos para el formulario de crear cita (lectura directa, RLS de staff) ──

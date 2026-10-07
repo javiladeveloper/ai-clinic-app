@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica
 
+import pe.saniape.app.data.staff.claveChip
 import pe.saniape.app.data.staff.plegarTildes
 
 /**
@@ -137,10 +138,13 @@ fun chipsDeClinica(especialidades: List<EspecialidadChips>): ChipsEspecialidad {
     if (especialidades.isEmpty()) return CHIPS_DEFAULT
     val tipos = ArrayList<String>()
     val sintomas = ArrayList<String>()
+    // Sin repetir por clave plegada: "Inflamacion" (personalizado) = "Inflamación".
+    val vistosT = HashSet<String>()
+    val vistosS = HashSet<String>()
     for (esp in especialidades) {
         val ch = chipsDeEspecialidad(esp)
-        ch.tipos.forEach { if (it !in tipos) tipos.add(it) }
-        ch.sintomas.forEach { if (it !in sintomas) sintomas.add(it) }
+        ch.tipos.forEach { if (vistosT.add(claveChip(it))) tipos.add(it) }
+        ch.sintomas.forEach { if (vistosS.add(claveChip(it))) sintomas.add(it) }
     }
     return ChipsEspecialidad(tipos, sintomas)
 }
