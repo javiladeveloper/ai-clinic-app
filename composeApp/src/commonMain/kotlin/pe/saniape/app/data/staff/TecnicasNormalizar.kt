@@ -87,11 +87,12 @@ object TecnicasNormalizar {
     private val SIGLAS = Regex("""^(tens|fnp|us|pold|ecom|hans pro|tecar)$""", RegexOption.IGNORE_CASE)
     private val CORTAS = Regex("""^(de|del|la|el|en|y|o|con|por|para|al|a)$""", RegexOption.IGNORE_CASE)
 
-    /** Para comparar: sin tildes, sin puntuación de más, en minúscula. */
-    fun clave(s: String): String = s
-        .replace('á', 'a').replace('é', 'e').replace('í', 'i')
-        .replace('ó', 'o').replace('ú', 'u').replace('Á', 'a')
-        .replace('É', 'e').replace('Í', 'i').replace('Ó', 'o').replace('Ú', 'u')
+    /**
+     * Para comparar: sin tildes (también ñ→n y ü→u, como el `normalize('NFD')`
+     * de la web y la `chip_clave()` de la base), sin puntuación de más, en minúscula.
+     * Antes solo plegaba las cinco vocales: "Señal" y "Senal" eran dos técnicas.
+     */
+    fun clave(s: String): String = plegarTildes(s)
         .lowercase()
         .replace(Regex("""[.,;:]+$"""), "")
         .replace(Regex("""\s+"""), " ")

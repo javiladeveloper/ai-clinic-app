@@ -329,7 +329,7 @@ object AgendaRepo {
      */
     suspend fun especialidades(): List<EspecialidadRef> {
         val filas = Supabase.client.postgrest["especialidades"]
-            .select(Columns.list("id, nombre, flujo_preset, color, icono")) {
+            .select(Columns.list("id, nombre, flujo_preset, color, icono, chips_tipos, chips_sintomas")) {
                 filter { eq("estado", "Activa") }
                 order("nombre", Order.ASCENDING)
             }
@@ -339,9 +339,16 @@ object AgendaRepo {
             EspecialidadRef(
                 id, it.str("nombre") ?: "", it["flujo_preset"] as? JsonObject,
                 color = it.str("color"), icono = it.str("icono"),
+                chipsTipos = listaTextos(it["chips_tipos"]),
+                chipsSintomas = listaTextos(it["chips_sintomas"]),
             )
         }
     }
+
+    /** Un text[] de la base ("chips_tipos") → lista, o null si no hay. */
+    private fun listaTextos(e: kotlinx.serialization.json.JsonElement?): List<String>? =
+        (e as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content?.trim()?.takeIf { s -> s.isNotEmpty() } }
+            ?.takeIf { it.isNotEmpty() }
 
     // ── Datos para el formulario de crear cita (lectura directa, RLS de staff) ──
 
@@ -705,7 +712,12 @@ data class EspecialidadRef(
     val id: String, val nombre: String, val flujoPreset: JsonObject? = null,
     /** Color e ícono que eligió la clínica (chips del filtro de la agenda). */
     val color: String? = null, val icono: String? = null,
+    /** Chips personalizados en /especialidades (null = los del código). */
+    val chipsTipos: List<String>? = null, val chipsSintomas: List<String>? = null,
 )
+
+/** Para [pe.saniape.app.ui.clinica.chipsDeEspecialidad]: los personalizados mandan sobre los del código. */
+fun EspecialidadRef.aChips() = pe.saniape.app.ui.clinica.EspecialidadChips(nombre, chipsTipos, chipsSintomas)
 /**
  * [dni] solo lo trae el selector de pacientes (buscar por documento). [sedeId]:
  * la sede del paciente, solo con "pacientes por sede" (fuerza la sede de la cita).
