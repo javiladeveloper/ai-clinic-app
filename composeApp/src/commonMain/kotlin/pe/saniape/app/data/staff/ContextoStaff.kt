@@ -147,6 +147,15 @@ data class ContextoStaff(
      * rubro). Un backend sin el campo → todo apagado: la app se ve como siempre.
      */
     val modulosClinicos: ModulosClinicos = ModulosClinicos(),
+    /**
+     * false = el Admin no terminó el asistente de inicio (onboarding v2). Un
+     * backend sin el campo → true (como siempre).
+     */
+    val onboardingCompleto: Boolean = true,
+    /** 'visible' | 'minimizado' | 'descartado' | null (clínica de antes: DALU). */
+    val primerosPasos: String? = null,
+    /** Visible o minimizado: solo entonces hay tarjeta y píldoras. */
+    val primerosPasosActivos: Boolean = false,
 ) {
     /** Permiso granular (mismo significado que puede() en la web). */
     fun puede(key: String): Boolean = when (key) {

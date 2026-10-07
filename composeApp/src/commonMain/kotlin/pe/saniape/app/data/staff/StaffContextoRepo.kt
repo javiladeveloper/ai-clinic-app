@@ -144,7 +144,7 @@ object StaffContextoRepo {
         return Resultado.Ok(ctx)
     }
 
-    private fun parsear(o: JsonObject): ContextoStaff {
+    internal fun parsear(o: JsonObject): ContextoStaff {
         val plan = o.obj("planEstado")
         return ContextoStaff(
             clinicaId = o.str("clinicaId") ?: "",
@@ -216,6 +216,10 @@ object StaffContextoRepo {
                 ?.mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } }
                 ?.takeIf { it.isNotEmpty() },
             modulosClinicos = modulos(o.obj("modulosClinicos")),
+            // Onboarding v2 (aditivo): sin los campos todo queda como antes.
+            onboardingCompleto = o.boolOrNull("onboardingCompleto") ?: true,
+            primerosPasos = o.str("primerosPasos"),
+            primerosPasosActivos = o.bool("primerosPasosActivos"),
         )
     }
 
@@ -224,6 +228,7 @@ object StaffContextoRepo {
         // siguiente que entre no debe poder arrancar con la clínica del anterior.
         claveCache()?.let { CacheLectura.borrar(it) }
         actual = null
+        pe.saniape.app.tutoriales.MotorTutoriales.limpiar()
         SedeActiva.limpiar()
         SedesAgendaRepo.limpiarCache()
         FotosRepo.limpiarCache()
