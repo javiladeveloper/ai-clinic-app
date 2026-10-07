@@ -20,11 +20,11 @@ fun PantallaPacientesStaff(ctx: ContextoStaff) {
 
     val seleccionado = fichaDe
     if (seleccionado != null) {
-        PantallaFichaPaciente(
+        pe.saniape.app.tutoriales.PantallaTutorial("Ficha") { PantallaFichaPaciente(
             ctx = ctx,
             pacienteInicial = seleccionado,
             onCerrar = { fichaDe = null; recargarLista++ },   // fuerza refresco de la lista
-        )
+        ) }
     } else {
         PantallaPacientes(ctx = ctx, onAbrirFicha = { fichaDe = it }, recargarTick = recargarLista)
     }

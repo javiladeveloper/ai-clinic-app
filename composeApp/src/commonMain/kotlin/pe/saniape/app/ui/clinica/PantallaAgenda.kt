@@ -62,6 +62,7 @@ import kotlinx.coroutines.launch
 import pe.saniape.app.ui.CargandoLista
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.data.staff.FlujoClinica
+import pe.saniape.app.tutoriales.tourAncla
 
 /**
  * Una apertura de "▶ Atender". [apertura] hace única cada vez que se abre la
@@ -350,7 +351,7 @@ fun PantallaAgenda(
                 // que solo atiende ve su agenda pero no agenda.
                 if (ctx.puede("agendar")) {
                     Box(
-                        Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+                        Modifier.tourAncla("agenda.nueva_cita").clip(RoundedCornerShape(Sania.shape.pill.dp))
                             .background(c.sobreNavy.copy(alpha = 0.15f))
                             .clickable { creandoCita = true }
                             .padding(horizontal = 14.dp, vertical = 7.dp),
@@ -592,26 +593,26 @@ fun PantallaAgenda(
     // odontograma que abre desde adentro se dibujan sobre ella con los mismos
     // modales de la agenda.
     atendiendo?.let { a ->
-        pe.saniape.app.ui.clinica.atencion.PantallaAtencion(
+        pe.saniape.app.tutoriales.PantallaTutorial("Consulta") { pe.saniape.app.ui.clinica.atencion.PantallaAtencion(
             ctx = ctx, citaId = a.citaId, apertura = a.apertura, acciones = acciones,
             onSalir = { atendiendo = null; vm.refrescar() },
             onVerFicha = { resumenPacienteId = it },
             onOdontograma = { id -> vm.citas.firstOrNull { it.id == id }?.let { odontogramaCita = it } },
-        )
+        ) }
     }
 
     // 🧠 Evaluación psicológica de la cita (su tratamiento), a pantalla completa.
     evalPsico?.let { (cita, apertura) ->
         // Por la CITA (GET ?citaId=): quien la atiende puede no ver el tratamiento.
         run {
-            pe.saniape.app.ui.clinica.psico.PantallaEvaluacionPsico(
+            pe.saniape.app.tutoriales.PantallaTutorial("EvaluacionPsico") { pe.saniape.app.ui.clinica.psico.PantallaEvaluacionPsico(
                 ctx = ctx, tratamientoId = null, citaId = cita.id, apertura = apertura, acciones = acciones,
                 onSalir = { evalPsico = null; vm.refrescar() },
                 onCrearTratamiento = if (ctx.puede("sesiones") && cita.pacienteId != null) { evId, prefill ->
                     evalPsico = null
                     planPsico = Triple(cita, evId, prefill)
                 } else null,
-            )
+            ) }
         }
     }
     planPsico?.let { (cita, evId, prefill) ->
@@ -1040,11 +1041,11 @@ fun PantallaAgenda(
 
     fichaPaciente?.let { pac ->
         Box(Modifier.fillMaxSize().background(c.fondo)) {
-            PantallaFichaPaciente(
+            pe.saniape.app.tutoriales.PantallaTutorial("Ficha") { PantallaFichaPaciente(
                 ctx = ctx, pacienteInicial = pac,
                 onCerrar = { fichaPaciente = null; fichaEjercicios = null },
                 ejerciciosAlAbrir = fichaEjercicios,
-            )
+            ) }
         }
     }
 }

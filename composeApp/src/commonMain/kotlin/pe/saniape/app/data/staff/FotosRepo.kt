@@ -117,7 +117,7 @@ object FotosRepo {
             put("visible_paciente", visiblePaciente)
         })
         true
-    } catch (e: Exception) { false }
+    } catch (e: Exception) { false }.also { if (it) pe.saniape.app.tutoriales.MotorTutoriales.tarea("fotos_subidas") }
 
     /** Alterna si el paciente ve la foto en su portal. */
     suspend fun cambiarVisible(fotoId: String, visible: Boolean): Boolean = try {

@@ -498,7 +498,9 @@ object EvaluacionPsicoRepo {
                 contentType(ContentType.Application.Json)
                 setBody(cuerpo.toString())
             }
-            AtencionRepo.resultadoDeRespuesta(resp.status.value, runCatching { resp.bodyAsText() }.getOrNull())
+            AtencionRepo.resultadoDeRespuesta(resp.status.value, runCatching { resp.bodyAsText() }.getOrNull()).also { r ->
+                if (r.registrada) pe.saniape.app.tutoriales.TareasEscritura.emitir(endpoint, cuerpo, r.cuerpo)
+            }
         } catch (e: CancellationException) { throw e } catch (_: Exception) { sinRed }
     }
 }

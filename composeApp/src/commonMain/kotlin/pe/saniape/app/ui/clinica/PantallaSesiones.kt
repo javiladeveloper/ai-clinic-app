@@ -424,11 +424,11 @@ fun PantallaSesiones(
     // Encima de la lista, como la ficha que abre la agenda; al cerrarla se vuelve a Sesiones.
     fichaEjercicios?.let { (pac, indicar) ->
         Box(Modifier.fillMaxSize().background(c.fondo)) {
-            pe.saniape.app.ui.clinica.pacientes.PantallaFichaPaciente(
+            pe.saniape.app.tutoriales.PantallaTutorial("Ficha") { pe.saniape.app.ui.clinica.pacientes.PantallaFichaPaciente(
                 ctx = ctx, pacienteInicial = pac,
                 onCerrar = { fichaEjercicios = null; recargar() },
                 ejerciciosAlAbrir = indicar,
-            )
+            ) }
         }
     }
 }

@@ -45,6 +45,7 @@ import pe.saniape.app.ui.clinica.agenda.AccionCita
 import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.data.staff.FlujoClinica
+import pe.saniape.app.tutoriales.tourAncla
 
 /**
  * Modal de completar Evaluación/Sesión (como la web):
@@ -175,7 +176,7 @@ fun ModalCompletar(
         },
         text = {
             // El cuerpo se desplaza siempre: con el teclado abierto se achica.
-            Column(Modifier.verticalScroll(rememberScrollState())) {
+            Column(Modifier.tourAncla("cierre_sesion").verticalScroll(rememberScrollState())) {
                 // Referencia: qué se hizo la sesión anterior (como la web).
                 cierre?.anterior?.let { ant ->
                     Column(
@@ -309,11 +310,13 @@ fun ModalCompletar(
                 }
                 if (cobro != null && !esEvaluacion && cita.tipo == "Sesión") {
                     Spacer(Modifier.height(Sania.dim.lg))
-                    pe.saniape.app.ui.clinica.pacientes.BloqueCobroSesion(
-                        cobrar = cobro.cobrar, onCobrar = { cobro.cobrar = it },
-                        monto = cobro.monto, onMonto = { cobro.monto = it },
-                        metodo = cobro.metodo.value, onMetodo = { cobro.metodo.value = it },
-                    )
+                    Box(Modifier.tourAncla("cierre_sesion.pago")) {
+                        pe.saniape.app.ui.clinica.pacientes.BloqueCobroSesion(
+                            cobrar = cobro.cobrar, onCobrar = { cobro.cobrar = it },
+                            monto = cobro.monto, onMonto = { cobro.monto = it },
+                            metodo = cobro.metodo.value, onMetodo = { cobro.metodo.value = it },
+                        )
+                    }
                 }
                 if (esEvaluacion && especialidades.size > 1) {
                     Spacer(Modifier.height(Sania.dim.lg))
@@ -366,7 +369,7 @@ fun ModalCompletar(
             val preparandoFotos = (fotosSesion?.preparando ?: 0) > 0
             val bloqueado = faltaProfesional || faltaMonto || preparandoFotos
             Box(
-                Modifier.clip(RoundedCornerShape(Sania.shape.md.dp))
+                Modifier.tourAncla("cierre_sesion.guardar").clip(RoundedCornerShape(Sania.shape.md.dp))
                     .background(if (bloqueado) c.borde else c.navy)
                     .clickable(enabled = !bloqueado) {
                         if (esEvaluacion && texto.isBlank() && !avisoSinDiagnostico) {

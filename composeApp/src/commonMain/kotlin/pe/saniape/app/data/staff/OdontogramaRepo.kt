@@ -232,7 +232,7 @@ object OdontogramaRepo {
             if (!notas.isNullOrBlank()) put("notas", notas)
         })
         true
-    } catch (_: Exception) { false }.also { generacion++ }
+    } catch (_: Exception) { false }.also { generacion++; if (it) pe.saniape.app.tutoriales.MotorTutoriales.tarea("odontograma_guardado") }
 
     /** Lo que se marca de una vez (dictado). */
     data class NuevoHallazgo(val diente: String, val hallazgoId: String, val superficies: List<String>?)
@@ -257,7 +257,7 @@ object OdontogramaRepo {
                 }
             })
             true
-        } catch (_: Exception) { false }.also { generacion++ }
+        } catch (_: Exception) { false }.also { generacion++; if (it) pe.saniape.app.tutoriales.MotorTutoriales.tarea("odontograma_guardado") }
     }
 
     /**

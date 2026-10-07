@@ -271,7 +271,9 @@ object AtencionRepo {
                 contentType(ContentType.Application.Json)
                 setBody(cuerpo.toString())
             }
-            aResultado(resp)
+            aResultado(resp).also { r ->
+                if (r.registrada) pe.saniape.app.tutoriales.TareasEscritura.emitir(endpoint, cuerpo, r.cuerpo)
+            }
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (e: Exception) {

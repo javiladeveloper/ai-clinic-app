@@ -301,11 +301,11 @@ fun PantallaPacientesNuevos(ctx: ContextoStaff, onSalir: () -> Unit) {
             }
             ficha?.let { pac ->
                 Box(Modifier.fillMaxSize().background(c.fondo)) {
-                    pe.saniape.app.ui.clinica.pacientes.PantallaFichaPaciente(
+                    pe.saniape.app.tutoriales.PantallaTutorial("Ficha") { pe.saniape.app.ui.clinica.pacientes.PantallaFichaPaciente(
                         ctx = ctx, pacienteInicial = pac,
                         // Al volver, el reporte se recarga: lo hecho en la ficha (agendar, cobrar) cuenta.
                         onCerrar = { ficha = null; intento++ },
-                    )
+                    ) }
                 }
             }
         }

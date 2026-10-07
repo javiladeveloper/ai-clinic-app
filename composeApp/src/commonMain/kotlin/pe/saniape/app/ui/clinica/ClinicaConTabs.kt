@@ -310,13 +310,13 @@ fun ClinicaConTabs(
                         onBuscar = if (verPacientes) ({ verBuscador = true }) else null,
                         onIr = { irA(it) },
                     )
-                    TabClinica.Agenda -> PantallaAgenda(
+                    TabClinica.Agenda -> pe.saniape.app.tutoriales.PantallaTutorial("Agenda") { PantallaAgenda(
                         ctx = contexto,
                         fechaInicial = fechaDeAviso,
                         onFechaConsumida = { fechaDeAviso = null },
                         onPantallaCompleta = { pantallaCompleta = it },
-                    )
-                    TabClinica.Pacientes -> PantallaPacientesStaff(contexto)
+                    ) }
+                    TabClinica.Pacientes -> pe.saniape.app.tutoriales.PantallaTutorial("Pacientes") { PantallaPacientesStaff(contexto) }
                     TabClinica.Mas -> PantallaMasClinica(
                         contexto = contexto,
                         puedeIrAPortal = puedeIrAPortal,
@@ -353,7 +353,7 @@ fun ClinicaConTabs(
                 enter = entrarDetalle(), exit = salirDetalle(),
             ) {
                 Box(Modifier.fillMaxSize().background(c.fondo)) {
-                    PantallaSesiones(ctx = contexto)
+                    pe.saniape.app.tutoriales.PantallaTutorial("Sesiones") { PantallaSesiones(ctx = contexto) }
                 }
             }
             AnimatedVisibility(
@@ -361,7 +361,7 @@ fun ClinicaConTabs(
                 enter = entrarDetalle(), exit = salirDetalle(),
             ) {
                 Box(Modifier.fillMaxSize().background(c.fondo)) {
-                    PantallaCajaHoy(ctx = contexto)
+                    pe.saniape.app.tutoriales.PantallaTutorial("Caja") { PantallaCajaHoy(ctx = contexto) }
                 }
             }
             AnimatedVisibility(
@@ -369,10 +369,10 @@ fun ClinicaConTabs(
                 enter = entrarDetalle(), exit = salirDetalle(),
             ) {
                 Box(Modifier.fillMaxSize().background(c.fondo)) {
-                    pe.saniape.app.ui.clinica.especialidades.PantallaEspecialidades(
+                    pe.saniape.app.tutoriales.PantallaTutorial("Especialidades") { pe.saniape.app.ui.clinica.especialidades.PantallaEspecialidades(
                         ctx = contexto,
                         onSalir = { verEspecialidades = false },
-                    )
+                    ) }
                 }
             }
             AnimatedVisibility(
@@ -438,9 +438,9 @@ fun ClinicaConTabs(
                 val pac = remember(fichaBuscada) { fichaBuscada }
                 pac?.let {
                     Box(Modifier.fillMaxSize().background(c.fondo)) {
-                        pe.saniape.app.ui.clinica.pacientes.PantallaFichaPaciente(
+                        pe.saniape.app.tutoriales.PantallaTutorial("Ficha") { pe.saniape.app.ui.clinica.pacientes.PantallaFichaPaciente(
                             ctx = contexto, pacienteInicial = it, onCerrar = { fichaBuscada = null },
-                        )
+                        ) }
                     }
                 }
             }

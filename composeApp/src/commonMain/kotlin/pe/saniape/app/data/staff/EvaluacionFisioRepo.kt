@@ -156,6 +156,8 @@ object EvaluacionFisioRepo {
             }
             if (nuevos.isNotEmpty()) Supabase.client.postgrest["objetivos_tratamiento"].insert(nuevos)
         }
+        // Tutoriales: evaluación fisio (EVA) guardada.
+        pe.saniape.app.tutoriales.MotorTutoriales.tarea("eva_registrada")
         return id
     }
 

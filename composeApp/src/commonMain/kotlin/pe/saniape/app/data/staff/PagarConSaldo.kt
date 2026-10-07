@@ -473,10 +473,14 @@ object PagarConSaldoRepo {
         val incierto = res == ResultadoEnvio.SIN_RED || (res == ResultadoEnvio.RECHAZADO && rechazoIncierto(rechazo))
         mutexClaves.withLock { if (incierto) clavesInciertas[firma] = clave else clavesInciertas.remove(firma) }
         return when (res) {
-            ResultadoEnvio.OK -> ResultadoPagoSaldo.Ok(
-                saldoAplicado = respuesta?.numero("saldoAplicado") ?: 0.0,
-                estadoPago = respuesta?.texto("estadoPago"),
-            )
+            ResultadoEnvio.OK -> {
+                // Tutoriales: cobro registrado (+ pago con saldo si lo usó).
+                pe.saniape.app.tutoriales.TareasEscritura.emitir("/api/staff/pago/registrar", cuerpo, respuesta)
+                ResultadoPagoSaldo.Ok(
+                    saldoAplicado = respuesta?.numero("saldoAplicado") ?: 0.0,
+                    estadoPago = respuesta?.texto("estadoPago"),
+                )
+            }
             ResultadoEnvio.SIN_RED -> ResultadoPagoSaldo.SinRed
             ResultadoEnvio.RECHAZADO -> {
                 val r = rechazo ?: RechazoServidor("Error del servidor", status = 500)

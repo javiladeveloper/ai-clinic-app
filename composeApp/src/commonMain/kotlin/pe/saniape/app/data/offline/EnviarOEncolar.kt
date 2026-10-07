@@ -127,7 +127,11 @@ private suspend fun enviarOEncolarInterno(
         val (resultado, rechazo, respuesta) = runCatching { Sincronizador.enviarAhoraCompleto(endpoint, cuerpo, idemKey) }
             .getOrDefault(Triple(ResultadoEnvio.SIN_RED, null, null))
         when (resultado) {
-            ResultadoEnvio.OK -> return ResultadoEscritura(registrada = true, cuerpo = respuesta)
+            ResultadoEnvio.OK -> {
+                // Tutoriales: la acción real terminó (cita creada, cobro, sesión completada…).
+                pe.saniape.app.tutoriales.TareasEscritura.emitir(endpoint, cuerpo, respuesta)
+                return ResultadoEscritura(registrada = true, cuerpo = respuesta)
+            }
             // RECHAZO del servidor (400/403/409 de negocio…): NO encolar. Reintentarlo
             // daría el mismo error una y otra vez, y decirle al usuario "se registrará
             // al volver la señal" sería mentirle: el problema no es la conexión.
@@ -145,6 +149,8 @@ private suspend fun enviarOEncolarInterno(
             idTemporal = idTemporal, dependeDe = dependeDe, idemKey = idemKey,
         )
         Toaster.exito("Guardado — se registrará al volver la señal")
+        // Encolada con éxito local también cuenta como hecha (contrato §1.4).
+        pe.saniape.app.tutoriales.TareasEscritura.emitir(endpoint, cuerpo, null)
         Sincronizador.disparar()
         ResultadoEscritura(registrada = true, encolada = true)
     }.getOrDefault(ResultadoEscritura(registrada = false))

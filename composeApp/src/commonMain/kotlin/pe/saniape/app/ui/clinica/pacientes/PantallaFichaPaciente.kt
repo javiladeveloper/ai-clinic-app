@@ -271,7 +271,7 @@ fun PantallaFichaPaciente(
 
     // 🧠 Evaluación psicológica a pantalla completa (encima de la ficha).
     evalPsicoAbierta?.let { (tId, apertura) ->
-        pe.saniape.app.ui.clinica.psico.PantallaEvaluacionPsico(
+        pe.saniape.app.tutoriales.PantallaTutorial("EvaluacionPsico") { pe.saniape.app.ui.clinica.psico.PantallaEvaluacionPsico(
             ctx = ctx, tratamientoId = tId, apertura = apertura, acciones = acciones,
             onSalir = { evalPsicoAbierta = null; recargar() },
             // "Crear tratamiento con este plan": el formulario de SIEMPRE, pre-llenado.
@@ -279,7 +279,7 @@ fun PantallaFichaPaciente(
                 evalPsicoAbierta = null
                 planPsico = evId to prefill
             } else null,
-        )
+        ) }
         return
     }
 

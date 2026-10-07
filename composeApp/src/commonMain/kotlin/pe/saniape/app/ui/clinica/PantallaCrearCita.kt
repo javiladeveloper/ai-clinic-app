@@ -73,6 +73,7 @@ import pe.saniape.app.data.staff.horaInicialNuevaCita
 import pe.saniape.app.data.staff.hoyClinicaIso
 import pe.saniape.app.ui.ManejarAtras
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.tutoriales.tourAncla
 
 private val TIPOS = listOf("Consulta", "Evaluación", "Sesión")
 
@@ -475,7 +476,7 @@ fun PantallaCrearCita(
     // ventana), así se puede desplazar hasta el final con el teclado abierto.
     val tecladoAbierto = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().imePadding()) {
+        Column(Modifier.fillMaxSize().tourAncla("cita_form").imePadding()) {
             // Sin flecha "←": en táctil el gesto/botón ATRÁS del sistema ya cancela
             // (ManejarAtras arriba). Dibujarla era redundante.
             Row(
@@ -577,10 +578,13 @@ fun PantallaCrearCita(
 
                 // Paciente — con BUSCADOR (escribir nombre filtra), no scroll uno por uno.
                 Etiqueta("Paciente")
-                SelectorPacienteBuscable(
-                    items = pacientes, elegido = paciente,
-                    onElegir = { paciente = it; terapeuta = null; tratamiento = null; terapeutaAMano = false; precargado = null },
-                )
+                // Tutoriales: "cita_form.paciente" mientras se busca; "…paciente_elegido" ya elegido.
+                Box(Modifier.tourAncla(if (paciente != null) "cita_form.paciente_elegido" else "cita_form.paciente")) {
+                    SelectorPacienteBuscable(
+                        items = pacientes, elegido = paciente,
+                        onElegir = { paciente = it; terapeuta = null; tratamiento = null; terapeutaAMano = false; precargado = null },
+                    )
+                }
 
                 // Tratamiento (solo Sesión)
                 if (tipo == "Sesión" && tratamientos.isNotEmpty()) {
@@ -715,7 +719,7 @@ fun PantallaCrearCita(
                     enabled = !guardando,
                     shape = RoundedCornerShape(Sania.shape.md.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = c.navy, contentColor = c.sobreNavy),
-                    modifier = Modifier.fillMaxWidth().height(Sania.dim.boton),
+                    modifier = Modifier.fillMaxWidth().tourAncla("cita_form.guardar").height(Sania.dim.boton),
                 ) {
                     if (guardando) CircularProgressIndicator(color = c.sobreNavy, strokeWidth = 2.dp,
                         modifier = Modifier.height(20.dp).padding(end = 8.dp))

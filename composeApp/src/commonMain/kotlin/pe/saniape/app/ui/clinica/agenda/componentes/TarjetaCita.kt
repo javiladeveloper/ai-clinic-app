@@ -39,6 +39,7 @@ import pe.saniape.app.ui.recordarAcciones
 import pe.saniape.app.ui.theme.EstadosColor
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.ui.nombreDeSaludo
+import pe.saniape.app.tutoriales.tourAncla
 
 /**
  * Tarjeta de una cita en la agenda. Muestra (como la web): color por tipo, hora,
@@ -247,7 +248,17 @@ fun TarjetaCita(
                 Spacer(Modifier.height(Sania.dim.md))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     acc.forEach { (label, accion, color) ->
-                        BotonAccion(label, color, !accionando) { onAccion(accion) }
+                        // Anclas de los tutoriales (se señala la primera visible de la agenda).
+                        val ancla = when (accion) {
+                            AccionTarjeta.Completar -> "agenda.completar"
+                            AccionTarjeta.Cobrar -> "agenda.cobrar"
+                            AccionTarjeta.Triaje -> "agenda.triaje"
+                            AccionTarjeta.Atender -> "agenda.atender"
+                            else -> null
+                        }
+                        Box(if (ancla != null) Modifier.tourAncla(ancla) else Modifier) {
+                            BotonAccion(label, color, !accionando) { onAccion(accion) }
+                        }
                     }
                 }
             }
