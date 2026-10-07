@@ -68,6 +68,8 @@ fun TarjetaTratamiento(
     esAdmin: Boolean,
     puedeSesiones: Boolean,
     pacienteId: String = "",
+    /** Para no aprender técnicas que contengan su nombre (registrar_chips). */
+    pacienteNombre: String? = null,
     puedeFotos: Boolean = false,   // feature fotosEvolutivas (Premium)
     puedeIA: Boolean = false,      // feature ia (Plus): sugerencia de sesión
     esDental: Boolean = false,     // tratamiento dental: "Piezas del plan" (solo odontología)
@@ -765,7 +767,7 @@ fun TarjetaTratamiento(
                     val okServicio = PacientesRepo.registrarServicio(t.id, nota)
                     // 2) Aprender las técnicas usadas (se sugieren en futuras atenciones).
                     if (okServicio && !nota.isNullOrBlank()) {
-                        pe.saniape.app.data.staff.TecnicasRepo.registrar(nota, t.especialidadId)
+                        pe.saniape.app.data.staff.TecnicasRepo.registrar(nota, t.especialidadId, pacienteNombre)
                     }
                     // 3) Cobro opcional (pago + kardex + recálculo, server-side).
                     var okCobro = true

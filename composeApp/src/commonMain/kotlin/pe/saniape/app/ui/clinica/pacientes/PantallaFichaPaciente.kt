@@ -803,6 +803,7 @@ fun PantallaFichaPaciente(
                         primeraFecha = nuevo.primeraFecha, primeraHora = nuevo.primeraHora,
                     )
                     if (ok) pe.saniape.app.ui.Toaster.exito(if (nuevo.primeraFecha != null) "Tratamiento creado con su primera sesión" else "Tratamiento creado") else pe.saniape.app.ui.Toaster.error("No se pudo crear el tratamiento")
+                    if (ok) aprenderDiagnosticoDe(nuevo, paciente.nombre)
                     // Si se usó una plantilla, contar el uso (ordena "más usadas primero").
                     nuevo.plantillaId?.let { PacientesRepo.contarUsoPlantilla(it) }
                     recargar()
@@ -823,7 +824,7 @@ fun PantallaFichaPaciente(
             onGuardar = { nuevo ->
                 planPsico = null
                 scope.launch {
-                    crearTratamientoDelPlan(paciente.id, nuevo, evId)
+                    crearTratamientoDelPlan(paciente.id, nuevo, evId, paciente.nombre)
                     recargar()
                 }
             },
@@ -939,6 +940,11 @@ fun PantallaFichaPaciente(
                     // Clínico + costo en el tratamiento; fecha/hora/notas en la cita (si hay).
                     val ok = PacientesRepo.editarTratamiento(t.id, null, null, null, e.costo,
                         e.diagnostico, e.medicacion, e.proximoControl)
+                    // Aprende el diagnóstico de la consulta (si cambió) DESPUÉS de guardarlo.
+                    if (ok && e.diagnostico.isNotBlank() && pe.saniape.app.data.staff.claveChip(e.diagnostico) !=
+                        pe.saniape.app.data.staff.claveChip(t.diagnostico.orEmpty())) {
+                        pe.saniape.app.data.staff.DiagnosticosRepo.registrar(e.diagnostico, t.especialidadId, paciente.nombre)
+                    }
                     citaConsulta?.let { ci ->
                         if (e.fecha.isNotBlank()) PacientesRepo.editarCitaHito(ci.id, e.fecha, e.hora, ci.notas)
                     }
@@ -2112,7 +2118,7 @@ private fun ContenidoAtenciones(
         TarjetaTratamiento(
             t = t, flujo = flujoDe(t), verPagos = ctx.puede("pagos"), esAdmin = ctx.esAdmin,
             puedeSesiones = ctx.puede("sesiones"),
-            pacienteId = paciente.id, puedeFotos = ctx.can("fotosEvolutivas"),
+            pacienteId = paciente.id, pacienteNombre = paciente.nombre, puedeFotos = ctx.can("fotosEvolutivas"),
             puedeIA = ctx.can("ia"),
             esDental = tratEsDental(t),
             esFisio = tratEsFisio(t),

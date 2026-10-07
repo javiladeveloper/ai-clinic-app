@@ -681,7 +681,7 @@ fun PantallaCrearCita(
                     // del rubro (pool), como la web. Sin especialidad concreta, ninguno:
                     // la unión llenaba una cita dental de síntomas de fisio.
                     val espMotivo = especialidad
-                        ?: terapeuta?.especialidadIds?.firstOrNull()?.let { id -> especialidadesClinica.find { it.id == id } }
+                        ?: terapeuta?.especialidadIds?.singleOrNull()?.let { id -> especialidadesClinica.find { it.id == id } }
                         ?: especialidadesClinica.singleOrNull()
                     val baseMotivo = remember(espMotivo) {
                         espMotivo?.let { pe.saniape.app.ui.clinica.chipsDeEspecialidad(it.aChips()).sintomas }.orEmpty()

@@ -57,13 +57,16 @@ fun DiagnosticoInput(
     placeholder: String? = null,
     especialidadId: String? = null,
     maxExtras: Int = 6,
+    /** false = no pide sugerencias ni muestra extras (p. ej. sin servicio elegido). */
+    activo: Boolean = true,
 ) {
     val c = Sania.colors
     var enfocado by remember { mutableStateOf(false) }
     // Diagnósticos que la clínica ya escribió antes + los del rubro (se enriquece solo).
     var aprendidos by remember { mutableStateOf<List<String>>(emptyList()) }
-    LaunchedEffect(especialidadId) {
-        aprendidos = runCatching { DiagnosticosRepo.sugerencias(especialidadId) }.getOrDefault(emptyList())
+    LaunchedEffect(especialidadId, activo) {
+        aprendidos = if (!activo) emptyList()
+        else runCatching { DiagnosticosRepo.sugerencias(especialidadId) }.getOrDefault(emptyList())
     }
 
     // Sin tildes ni mayúsculas (la clave plegada de los chips).

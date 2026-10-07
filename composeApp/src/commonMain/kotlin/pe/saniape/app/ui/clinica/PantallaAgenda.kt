@@ -629,7 +629,7 @@ fun PantallaAgenda(
                 onGuardar = { nuevo ->
                     planPsico = null
                     scope.launch {
-                        pe.saniape.app.ui.clinica.pacientes.crearTratamientoDelPlan(pid, nuevo, evId)
+                        pe.saniape.app.ui.clinica.pacientes.crearTratamientoDelPlan(pid, nuevo, evId, cita.pacienteNombre)
                         vm.refrescar()
                     }
                 },
@@ -1033,7 +1033,7 @@ fun PantallaAgenda(
             onGuardar = { nuevo ->
                 cerrarTratamiento()
                 scope.launch {
-                    val ok = pe.saniape.app.ui.clinica.pacientes.guardarTratamientoNuevo(pidTrat, nuevo)
+                    val ok = pe.saniape.app.ui.clinica.pacientes.guardarTratamientoNuevo(pidTrat, nuevo, citaTrat.pacienteNombre)
                     if (ok) pe.saniape.app.ui.Toaster.exito("Tratamiento creado")
                     else pe.saniape.app.ui.Toaster.error("No se pudo crear el tratamiento")
                     vm.refrescar()

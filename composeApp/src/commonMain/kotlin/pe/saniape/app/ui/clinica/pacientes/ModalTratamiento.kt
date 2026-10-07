@@ -76,7 +76,21 @@ data class TratamientoNuevo(
     // Primera sesión en el mismo paso (opcional, 28/09/2026). null = no se agenda.
     val primeraFecha: String? = null,
     val primeraHora: String? = null,
+    /**
+     * Diagnóstico a APRENDER (sugerencias por especialidad) y su especialidad: solo
+     * si es nuevo o cambió respecto del precargado. Se registra DESPUÉS de crear
+     * ([aprenderDiagnosticoDe]); null = nada que aprender.
+     */
+    val diagnosticoAprender: String? = null,
+    val especialidadDiagnostico: String? = null,
 )
+
+/** Tras crear el tratamiento con éxito: aprende su diagnóstico (en segundo plano, una vez). */
+fun aprenderDiagnosticoDe(nuevo: TratamientoNuevo, nombrePaciente: String?) {
+    nuevo.diagnosticoAprender?.let {
+        pe.saniape.app.data.staff.DiagnosticosRepo.registrar(it, nuevo.especialidadDiagnostico, nombrePaciente)
+    }
+}
 
 /**
  * Modal de crear tratamiento (igual que TratamientoForm web): servicio → especialidad
@@ -291,14 +305,18 @@ fun ModalCrearTratamiento(
     if (mostrarHoraPrimera) DialogoHora(horaPrimera, onElegir = { horaPrimera = it }, onCerrar = { mostrarHoraPrimera = false })
 
     // Crear: la misma acción desde el pie y desde la cabecera (con teclado).
+    var enviado by remember { mutableStateOf(false) }
     fun crear() {
                             val p = proc ?: return
-                            // Aprender el diagnóstico (sugerencias por especialidad) solo si es
-                            // nuevo o cambió: el precargado de la evaluación ya se aprendió ahí.
+                            // Un solo envío: un doble toque no crea (ni aprende) dos veces.
+                            if (enviado) return
+                            enviado = true
+                            // Diagnóstico a aprender solo si es nuevo o cambió (el precargado de la
+                            // evaluación ya se aprendió ahí). Se registra tras crear, no ahora.
                             val dxNuevo = diagnostico.trim()
-                            if (dxNuevo.isNotEmpty() && pe.saniape.app.data.staff.claveChip(dxNuevo) !=
-                                pe.saniape.app.data.staff.claveChip(diagnosticoPrevio.orEmpty())) {
-                                pe.saniape.app.data.staff.DiagnosticosRepo.registrar(dxNuevo, p.especialidadId)
+                            val dxAprender = dxNuevo.takeIf {
+                                it.isNotEmpty() && pe.saniape.app.data.staff.claveChip(it) !=
+                                    pe.saniape.app.data.staff.claveChip(diagnosticoPrevio.orEmpty())
                             }
                             // Unidades: si no se negoció un acordado, el total = cantidad × precio.
                             val totalUnidades = (cantidadUnidades.toIntOrNull() ?: 0) * (precioUnitario.toDoubleOrNull() ?: 0.0)
@@ -335,6 +353,8 @@ fun ModalCrearTratamiento(
                                     motivoPrecio = motivoPrecio.trim().ifBlank { null },
                                     primeraFecha = if (usaSesiones && conPrimera) fechaPrimera else null,
                                     primeraHora = if (usaSesiones && conPrimera) horaPrimera else null,
+                                    diagnosticoAprender = dxAprender,
+                                    especialidadDiagnostico = p.especialidadId,
                                     fechaInicio = if (esUnidades) null else fechaInicio,
                                 )
                             )
@@ -427,10 +447,12 @@ fun ModalCrearTratamiento(
                             ).tipos
                         }.orEmpty()
                     }
+                    // Sin servicio elegido: ni chips ni viaje (maxExtras = 0 no pide nada).
                     pe.saniape.app.ui.clinica.agenda.componentes.DiagnosticoInput(
                         value = diagnostico, onChange = { diagnostico = it }, opciones = chipsDx,
                         placeholder = "Diagnóstico que motiva este tratamiento",
                         especialidadId = proc?.especialidadId,
+                        activo = proc != null,
                     )
                     if (!diagnosticoPrevio.isNullOrBlank() || evaluacion != null) {
                         Text("🔍 Tomado de la evaluación — puedes ajustarlo", color = c.textoSuave, fontSize = 10.sp,
@@ -720,7 +742,7 @@ fun ModalCrearTratamiento(
  * Guarda el tratamiento del form (mismo endpoint y campos que la ficha). Para los
  * otros lugares que lo crean (agenda); cuenta el uso de la plantilla si hubo.
  */
-suspend fun guardarTratamientoNuevo(pacienteId: String, nuevo: TratamientoNuevo): Boolean {
+suspend fun guardarTratamientoNuevo(pacienteId: String, nuevo: TratamientoNuevo, nombrePaciente: String? = null): Boolean {
     val ok = PacientesRepo.crearTratamiento(
         pacienteId = pacienteId, procedimientoId = nuevo.procedimientoId,
         terapeutaId = nuevo.terapeutaId, modalidad = nuevo.modalidad,
@@ -735,6 +757,7 @@ suspend fun guardarTratamientoNuevo(pacienteId: String, nuevo: TratamientoNuevo)
         primeraFecha = nuevo.primeraFecha, primeraHora = nuevo.primeraHora,
     )
     if (ok) nuevo.plantillaId?.let { runCatching { PacientesRepo.contarUsoPlantilla(it) } }
+    if (ok) aprenderDiagnosticoDe(nuevo, nombrePaciente)
     return ok
 }
 
@@ -745,7 +768,9 @@ suspend fun guardarTratamientoNuevo(pacienteId: String, nuevo: TratamientoNuevo)
  * creado" y los objetivos a objetivos_tratamiento). Sin señal no se crea (no
  * habría id que atar). Devuelve true si el tratamiento quedó creado.
  */
-suspend fun crearTratamientoDelPlan(pacienteId: String, nuevo: TratamientoNuevo, evaluacionId: String): Boolean {
+suspend fun crearTratamientoDelPlan(
+    pacienteId: String, nuevo: TratamientoNuevo, evaluacionId: String, nombrePaciente: String? = null,
+): Boolean {
     val cuerpo = PacientesRepo.cuerpoCrearTratamiento(
         pacienteId = pacienteId, procedimientoId = nuevo.procedimientoId,
         terapeutaId = nuevo.terapeutaId, modalidad = nuevo.modalidad,
@@ -765,6 +790,7 @@ suspend fun crearTratamientoDelPlan(pacienteId: String, nuevo: TratamientoNuevo,
         return false
     }
     nuevo.plantillaId?.let { runCatching { PacientesRepo.contarUsoPlantilla(it) } }
+    aprenderDiagnosticoDe(nuevo, nombrePaciente)
     val id = pe.saniape.app.data.staff.idDeRespuesta(r.cuerpo)
     val atado = id != null && pe.saniape.app.data.staff.EvaluacionPsicoRepo.vincularPlan(evaluacionId, id).registrada
     if (atado) pe.saniape.app.ui.Toaster.exito("Tratamiento creado con el plan de la evaluación")
@@ -1046,6 +1072,7 @@ fun ModalEditarConsulta(
     var mostrarFechaCita by remember { mutableStateOf(false) }
     var mostrarHoraCita by remember { mutableStateOf(false) }
     var mostrarProxControl by remember { mutableStateOf(false) }
+    var enviadoConsulta by remember { mutableStateOf(false) }
 
     fun msISO(ms: Long): String {
         val d = kotlinx.datetime.Instant.fromEpochMilliseconds(ms).toLocalDateTime(kotlinx.datetime.TimeZone.UTC).date
@@ -1157,11 +1184,9 @@ fun ModalEditarConsulta(
                 Box(
                     Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
                         .clickable {
-                            // El diagnóstico de la consulta también enseña (si cambió).
-                            if (diagnostico.isNotBlank() && pe.saniape.app.data.staff.claveChip(diagnostico) !=
-                                pe.saniape.app.data.staff.claveChip(t.diagnostico.orEmpty())) {
-                                pe.saniape.app.data.staff.DiagnosticosRepo.registrar(diagnostico, t.especialidadId)
-                            }
+                            // Un solo envío: un doble toque no guarda (ni aprende) dos veces.
+                            if (enviadoConsulta) return@clickable
+                            enviadoConsulta = true
                             onGuardar(EdicionConsulta(
                                 fecha = fecha.trim(), hora = hora.trim(),
                                 diagnostico = diagnostico.trim(), medicacion = medicacion.trim(),
