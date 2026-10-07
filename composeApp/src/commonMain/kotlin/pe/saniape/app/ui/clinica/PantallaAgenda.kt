@@ -349,7 +349,9 @@ fun PantallaAgenda(
                 }
                 // Agendar (crear cita) solo con permiso 'agendar' (recepción/admin). El profesional
                 // que solo atiende ve su agenda pero no agenda.
+                pe.saniape.app.ui.tutoriales.BotonAyuda("Agenda")
                 if (ctx.puede("agendar")) {
+                    Spacer(Modifier.width(8.dp))
                     Box(
                         Modifier.tourAncla("agenda.nueva_cita").clip(RoundedCornerShape(Sania.shape.pill.dp))
                             .background(c.sobreNavy.copy(alpha = 0.15f))

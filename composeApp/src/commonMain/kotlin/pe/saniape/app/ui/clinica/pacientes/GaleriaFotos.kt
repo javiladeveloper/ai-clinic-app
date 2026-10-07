@@ -49,6 +49,7 @@ import pe.saniape.app.ui.comprimirImagen
 import pe.saniape.app.ui.recordarCamaraFoto
 import pe.saniape.app.ui.recordarSelectorArchivo
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.tutoriales.tourAncla
 
 private val MOMENTOS = listOf("Antes", "Durante", "Despues")
 private fun momentoLabel(m: String?): String = when (m) {
@@ -115,10 +116,10 @@ fun GaleriaFotos(
     val fotoDespues = delTratamiento.filter { it.momento == "Despues" }.maxByOrNull { it.createdAt ?: "" }
     val puedeComparar = fotoAntes != null && fotoDespues != null
 
-    Column(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+    Column(Modifier.fillMaxWidth().tourAncla("fotos").padding(top = 12.dp)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
         Spacer(Modifier.height(10.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+        Row(Modifier.fillMaxWidth().tourAncla("ficha.fotos"), horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically) {
             Text("📷 FOTOS / EVOLUCIÓN", color = c.textoSuave, fontSize = 11.sp,
                 fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
@@ -135,7 +136,7 @@ fun GaleriaFotos(
                         })
                 }
                 Text("📸 Tomar foto", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable(enabled = !subiendo) { abrirCamara() })
+                    modifier = Modifier.tourAncla("fotos.subir").clickable(enabled = !subiendo) { abrirCamara() })
                 Text("🖼 Galería", color = c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.clickable(enabled = !subiendo) { pedirArchivo = true })
             }

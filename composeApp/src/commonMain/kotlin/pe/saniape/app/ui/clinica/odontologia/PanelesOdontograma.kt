@@ -102,6 +102,7 @@ internal fun PanelDiente(
     val nombreEditando = editando?.let { porId[it.hallazgoId]?.nombre }
     DialogoForm(
         titulo = "Pieza $diente",
+        ancla = "odontograma.diente_panel",
         subtitulo = if (caras.isEmpty()) "Diente entero" else "Cara " + ordenarCaras(caras).joinToString(", ") { nombreCara(it) },
         textoAccion = editando?.let { "✓ Actualizar $nombreEditando" + (if (caras.isEmpty()) "" else " (${ordenarCaras(caras).joinToString("")})") } ?: "Listo",
         onCancelar = onCerrar,

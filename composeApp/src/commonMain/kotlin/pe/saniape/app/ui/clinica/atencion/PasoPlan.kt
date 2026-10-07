@@ -75,6 +75,7 @@ import pe.saniape.app.ui.clinica.pacientes.coloresCampoForm
 import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.recordarSelectorArchivo
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.tutoriales.tourAncla
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PASO "PLAN" de la consulta guiada (gemelo de PlanAtencion.tsx): desde el MISMO
@@ -172,7 +173,7 @@ private fun BloqueReceta(
     Bloque {
         Row(verticalAlignment = Alignment.CenterVertically) {
             TituloBloque("💊 Receta", Modifier.weight(1f))
-            if (!soloLectura) {
+            if (!soloLectura) Box(Modifier.tourAncla("consulta.receta")) {
                 BotonChico(
                     if (vm.accionando == "receta") "Guardando…" else "📝 Emitir receta", c.sobreNavy, c.navy,
                     habilitado = vm.accionando == null,

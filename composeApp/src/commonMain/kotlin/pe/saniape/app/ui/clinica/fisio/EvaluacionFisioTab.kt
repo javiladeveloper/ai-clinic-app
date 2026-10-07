@@ -72,6 +72,7 @@ import pe.saniape.app.ui.clinica.pacientes.DialogoForm
 import pe.saniape.app.ui.clinica.pacientes.EtqForm
 import pe.saniape.app.ui.clinica.pacientes.CajaSelectorForm
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.tutoriales.tourAncla
 
 /**
  * Pestaña 📏 Evaluación de la ficha (solo FISIOTERAPIA). Gemelo de
@@ -163,8 +164,10 @@ fun EvaluacionFisioTab(
         Text("📏 Evaluación fisioterapéutica", color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         if (puedeEditar) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                BotonTab("＋ ${if (evaluaciones.isNotEmpty()) "Nueva reevaluación" else "Evaluación inicial"}", lleno = true) {
-                    abrir = AbrirEval(if (evaluaciones.isNotEmpty()) "reevaluacion" else "inicial", tratamientoDefecto)
+                Box(Modifier.tourAncla("eval_fisio.nueva")) {
+                    BotonTab("＋ ${if (evaluaciones.isNotEmpty()) "Nueva reevaluación" else "Evaluación inicial"}", lleno = true) {
+                        abrir = AbrirEval(if (evaluaciones.isNotEmpty()) "reevaluacion" else "inicial", tratamientoDefecto)
+                    }
                 }
                 if (evaluaciones.isNotEmpty()) BotonTab("De alta", lleno = false) { abrir = AbrirEval("alta", tratamientoDefecto) }
             }
@@ -565,6 +568,8 @@ private fun ModalEvaluacionFisio(
         subtitulo = null,
         textoAccion = if (guardando) "Guardando…" else "Guardar",
         accionHabilitada = !guardando,
+        ancla = "eval_fisio_form",
+        anclaAccion = "eval_fisio_form.guardar",
         onCancelar = { if (!guardando) onCerrar() },
         onAccion = { guardar() },
     ) {

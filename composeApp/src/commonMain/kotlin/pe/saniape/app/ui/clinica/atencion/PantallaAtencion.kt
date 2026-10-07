@@ -63,6 +63,7 @@ import pe.saniape.app.ui.ManejarAtras
 import pe.saniape.app.ui.Toaster
 import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.tutoriales.tourAncla
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSULTA GUIADA — la atención médica de UNA cita (gemela de ConsultaGuiada.tsx):
@@ -463,7 +464,7 @@ private fun BarraPasos(vm: AtencionViewModel) {
     val c = Sania.colors
     val estado = rememberLazyListState()
     LaunchedEffect(vm.paso) { if (vm.pasos.isNotEmpty()) estado.animateScrollToItem(vm.paso) }
-    LazyRow(state = estado, horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(end = 8.dp)) {
+    LazyRow(state = estado, modifier = Modifier.tourAncla("consulta.pasos"), horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(end = 8.dp)) {
         itemsIndexed(vm.pasos, key = { _, p -> p.clave }) { i, p ->
             val actual = i == vm.paso
             val hecho = i < vm.paso

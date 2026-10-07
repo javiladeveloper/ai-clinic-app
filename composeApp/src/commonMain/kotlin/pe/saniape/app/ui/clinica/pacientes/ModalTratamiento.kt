@@ -48,6 +48,7 @@ import pe.saniape.app.data.staff.ProcedimientoRef
 import pe.saniape.app.data.staff.TarifarioRef
 import pe.saniape.app.data.staff.TerapeutaConEsp
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.tutoriales.tourAncla
 
 /** Resultado del form de tratamiento (lo que se envía al endpoint crear). */
 data class TratamientoNuevo(
@@ -336,7 +337,7 @@ fun ModalCrearTratamiento(
     // vista: ver DialogoConTeclado (29/09/2026).
     pe.saniape.app.ui.DialogoConTeclado(onCancelar) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(max = 720.dp)
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(max = 720.dp).tourAncla("tratamiento_form")
                 .clip(RoundedCornerShape(Sania.shape.lg.dp)).background(c.fondo),
         ) {
             // ── Header navy (el "negro" de la marca) ──────────────────────
@@ -439,8 +440,10 @@ fun ModalCrearTratamiento(
                     Spacer(Modifier.height(10.dp))
 
                     Etq("Servicio")
-                    SelectorLista(procsVisibles, proc, { it.nombre },
-                        if (especialidad == null && terId == null) "Elige especialidad o profesional" else "Seleccionar…") { proc = it }
+                    Box(Modifier.tourAncla("tratamiento_form.servicio", valor = proc?.nombre ?: "")) {
+                        SelectorLista(procsVisibles, proc, { it.nombre },
+                            if (especialidad == null && terId == null) "Elige especialidad o profesional" else "Seleccionar…") { proc = it }
+                    }
                 }
 
                 // ⚡ Promoción vigente (campañas): aplicar con un toque, como la web.
@@ -679,7 +682,7 @@ fun ModalCrearTratamiento(
                 ) {
                     TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave, fontWeight = FontWeight.Bold) }
                     Box(
-                        Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.md.dp))
+                        Modifier.weight(1f).tourAncla("tratamiento_form.guardar").clip(RoundedCornerShape(Sania.shape.md.dp))
                             .background(if (puedeCrear) c.navy else c.borde)
                             .clickable(enabled = puedeCrear) { crear() }.padding(vertical = 13.dp),
                         contentAlignment = Alignment.Center,

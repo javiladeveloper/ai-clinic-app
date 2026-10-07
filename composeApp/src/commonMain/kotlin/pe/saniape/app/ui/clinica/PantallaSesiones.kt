@@ -185,6 +185,7 @@ fun PantallaSesiones(
             // Header navy
             Box(Modifier.fillMaxWidth().background(c.navyDark)
                 .padding(horizontal = Sania.dim.xl, vertical = Sania.dim.lg)) {
+                pe.saniape.app.ui.tutoriales.BotonAyuda("Sesiones", modifier = Modifier.align(Alignment.TopEnd))
                 Column {
                     Text("Sesiones", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
                     Text("${sesiones.size} sesiones registradas", color = c.sobreNavy.copy(alpha = 0.7f),

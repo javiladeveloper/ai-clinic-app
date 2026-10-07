@@ -45,6 +45,7 @@ import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.theme.EstadosColor
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.data.staff.FlujoClinica
+import pe.saniape.app.tutoriales.tourAncla
 
 /** Estado de sesión que se puede fijar desde el menú ⋯ (igual que la web). */
 private val ESTADOS_SESION = pe.saniape.app.data.staff.ESTADOS_MENU_SESION
@@ -321,7 +322,7 @@ fun TarjetaTratamiento(
         }
 
         // 🧠 Evaluación psicológica: el espacio de trabajo y "+ Agregar cita de evaluación".
-        bloqueEvaluacionPsico?.invoke()
+        bloqueEvaluacionPsico?.let { bloque -> Box(Modifier.tourAncla("ficha.evaluacion_psico")) { bloque() } }
 
         // Fisio (M3): al paquete le quedan 1–2 sesiones → ofrecer renovar.
         if (esFisio) {
@@ -1230,11 +1231,13 @@ fun SeccionPagos(
     if (soloLectura) {
         Text("Paciente dado de baja: no se registran pagos nuevos.", color = c.textoSuave, fontSize = 11.sp)
     } else if (!agregando) {
-        MiniBtn(if (saldo > 0.005) "+ Registrar pago" else "+ Pago adicional", c.navy, !guardando) {
-            // Precarga el monto con el SALDO pendiente: registrar el pago completo = 1 confirmación.
-            monto = if (saldo > 0.005) formato2(saldo) else ""
-            limpiarSaldo()
-            agregando = true
+        Box(Modifier.tourAncla("ficha.pago_registrar")) {
+            MiniBtn(if (saldo > 0.005) "+ Registrar pago" else "+ Pago adicional", c.navy, !guardando) {
+                // Precarga el monto con el SALDO pendiente: registrar el pago completo = 1 confirmación.
+                monto = if (saldo > 0.005) formato2(saldo) else ""
+                limpiarSaldo()
+                agregando = true
+            }
         }
     } else {
         androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(), 
@@ -1243,14 +1246,14 @@ fun SeccionPagos(
             singleLine = true,
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                 keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().tourAncla("pago_form"),
         )
         val metodosClinica = rememberMetodosPago()
         // PAGAR CON SALDO A FAVOR: solo si el paciente tiene saldo y este tratamiento
         // debe algo. Sin saldo, el formulario es el de siempre.
         if (puedeUsarSaldo) {
             Spacer(Modifier.height(6.dp))
-            OpcionSaldoAFavor(
+            Box(Modifier.tourAncla("pago_form.usar_saldo")) { OpcionSaldoAFavor(
                 usable = usableSaldo, total = totalForm,
                 usar = usarSaldo,
                 onUsar = { on ->
@@ -1264,7 +1267,7 @@ fun SeccionPagos(
                 metodos = metodosClinica, metodoResto = metodo, onMetodoResto = { metodo = it },
                 filasResto = filasResto, onFilasResto = { filasResto = it },
                 validacion = validacionSaldo, deshabilitado = guardando,
-            )
+            ) }
         } else if (consultaSaldo == pe.saniape.app.data.staff.ConsultaSaldo.SinRed) {
             Spacer(Modifier.height(4.dp))
             Text("Sin conexión: no se pudo consultar el saldo a favor del paciente.", color = c.textoSuave, fontSize = 10.sp)
@@ -1284,7 +1287,7 @@ fun SeccionPagos(
         )
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MiniBtn("Guardar pago", c.ok, !guardando && validacionSaldo !is pe.saniape.app.data.staff.ValidacionPartes.Error) {
+            Box(Modifier.tourAncla("pago_form.confirmar")) { MiniBtn("Guardar pago", c.ok, !guardando && validacionSaldo !is pe.saniape.app.data.staff.ValidacionPartes.Error) {
                 val m = monto.toDoubleOrNull()
                 if (m == null || m <= 0 || guardando) return@MiniBtn
                 if (usarSaldo && puedeUsarSaldo) {
@@ -1330,7 +1333,7 @@ fun SeccionPagos(
                         onCambio()
                     } else pe.saniape.app.ui.Toaster.error("No se pudo registrar el pago")
                 }
-            }
+            } }
             MiniBtn("Cancelar", c.textoSuave, !guardando) { agregando = false; monto = ""; notaPago = ""; limpiarSaldo() }
         }
     }

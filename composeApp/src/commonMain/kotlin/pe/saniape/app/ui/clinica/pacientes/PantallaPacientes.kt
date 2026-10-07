@@ -46,6 +46,7 @@ import pe.saniape.app.data.staff.PacienteStaff
 import pe.saniape.app.ui.theme.EstadosColor
 import pe.saniape.app.ui.CargandoLista
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.tutoriales.tourAncla
 
 private val ESTADOS = listOf("Nuevo", "Consultado", "Evaluado", "En tratamiento", "Alta")
 
@@ -92,9 +93,11 @@ fun PantallaPacientes(
                 Spacer(Modifier.width(10.dp))
                 Text("Pacientes", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f))
+                pe.saniape.app.ui.tutoriales.BotonAyuda("Pacientes")
+                Spacer(Modifier.width(8.dp))
                 if (ctx.puede("pacientes")) {
                     Box(
-                        Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.teal)
+                        Modifier.tourAncla("pacientes.nuevo").clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.teal)
                             .clickable { nuevoAbierto = true }
                             .padding(horizontal = 12.dp, vertical = 6.dp),
                     ) {
@@ -214,7 +217,10 @@ fun PantallaPacientes(
                     else -> items(vm.filtrados, key = { it.id }) { p ->
                         // Al buscar o filtrar, las tarjetas se reacomodan con movimiento
                         // en vez de parpadear a otra lista distinta.
-                        Box(Modifier.animateItem().padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm / 2)) {
+                        // Tutoriales: la PRIMERA fila de la lista es "pacientes.fila".
+                        val primera = vm.filtrados.firstOrNull()?.id == p.id
+                        Box(Modifier.animateItem().padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm / 2)
+                            .then(if (primera) Modifier.tourAncla("pacientes.fila") else Modifier)) {
                             TarjetaPaciente(p, verContacto = vm.verContacto) { onAbrirFicha(p) }
                         }
                     }
@@ -238,6 +244,15 @@ fun PantallaPacientes(
                 if (!pe.saniape.app.data.offline.esTemporal(p.id)) onAbrirFicha(p)
             },
         )
+    }
+}
+
+/** "🧪 Ejemplo": el paciente de prueba del asistente de inicio (se borra desde Primeros pasos). */
+@Composable
+internal fun BadgeEjemplo(modifier: Modifier = Modifier) {
+    val c = Sania.colors
+    Box(modifier.clip(RoundedCornerShape(50)).background(c.purpleBg).padding(horizontal = 7.dp, vertical = 2.dp)) {
+        Text("🧪 Ejemplo", color = c.purple, fontSize = 10.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -271,6 +286,10 @@ private fun TarjetaPaciente(p: PacienteStaff, verContacto: Boolean, onClick: () 
                 p.badgeApoderado?.let {
                     Spacer(Modifier.width(6.dp))
                     BadgeApoderado(it)
+                }
+                if (p.esEjemplo) {
+                    Spacer(Modifier.width(6.dp))
+                    BadgeEjemplo()
                 }
             }
             // Línea: motivo / procedimiento del tratamiento activo

@@ -49,6 +49,7 @@ import pe.saniape.app.ui.clinica.pacientes.DialogoForm
 import pe.saniape.app.ui.clinica.pacientes.EtqForm
 import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.tutoriales.tourAncla
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PASO "CIERRE" de la consulta guiada (sección de cierre de ConsultaGuiada.tsx):
@@ -184,10 +185,12 @@ internal fun PasoCierre(
                         primario = true, habilitado = !vm.guardando && vm.sucio,
                     ) { vm.lanzar { vm.guardar() } }
                 } else {
-                    BotonAncho(
-                        when { vm.terminando -> "Terminando…"; preparando -> "Guardando…"; else -> "✓ Terminar atención" },
-                        primario = true, habilitado = !vm.terminando && vm.accionando == null && !vm.guardando,
-                    ) { intentarTerminar() }
+                    Box(Modifier.tourAncla("consulta.terminar")) {
+                        BotonAncho(
+                            when { vm.terminando -> "Terminando…"; preparando -> "Guardando…"; else -> "✓ Terminar atención" },
+                            primario = true, habilitado = !vm.terminando && vm.accionando == null && !vm.guardando,
+                        ) { intentarTerminar() }
+                    }
                 }
             }
             if (vm.paso > 0) {

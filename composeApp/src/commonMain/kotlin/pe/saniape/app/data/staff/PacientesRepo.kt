@@ -335,6 +335,8 @@ data class PacienteStaff(
     val apoderadoParentesco: String? = null,
     val apoderadoTelefono: String? = null,
     val apoderadoRecibeAvisos: Boolean = false,
+    /** "Paciente de ejemplo" del asistente de inicio (pacientes.es_ejemplo): se marca "Ejemplo". */
+    val esEjemplo: Boolean = false,
 ) {
     /** Menor de edad (fecha de nacimiento o, si no hay, la edad guardada). */
     val esMenor: Boolean
@@ -437,7 +439,7 @@ object PacientesRepo {
      * (2026-07-31). La ficha sigue usando el completo, que ahí sí hace falta.
      */
     private const val SELECT_LISTA = """
-        id, nombre, dni, edad, fecha_nacimiento, requiere_apoderado, telefono, email, diagnostico, estado, flag,
+        id, nombre, dni, edad, fecha_nacimiento, requiere_apoderado, telefono, email, diagnostico, estado, flag, es_ejemplo,
         tratamientos:tratamientos(
             id, estado, terapeuta_id,
             procedimiento:procedimientos(nombre)
@@ -449,7 +451,7 @@ object PacientesRepo {
         talla, peso, fecha_ingreso, alergias, medicacion_actual, antecedentes, observaciones, patologias, tipo_patologia,
         resumen_ia, resumen_ia_fecha, resumen_ia_estado, campos_custom,
         fecha_nacimiento, requiere_apoderado, apoderado_nombre, apoderado_dni, apoderado_parentesco,
-        apoderado_telefono, apoderado_recibe_avisos,
+        apoderado_telefono, apoderado_recibe_avisos, es_ejemplo,
         tratamientos:tratamientos(
             id, modalidad, estado, estado_pago, total_sesiones, sesiones_completadas,
             precio_paquete, precio_por_sesion, precio_acordado, terapeuta_id,
@@ -1597,6 +1599,7 @@ object PacientesRepo {
             apoderadoParentesco = o.str("apoderado_parentesco"),
             apoderadoTelefono = o.str("apoderado_telefono"),
             apoderadoRecibeAvisos = o.bool("apoderado_recibe_avisos") == true,
+            esEjemplo = o.bool("es_ejemplo") == true,
         )
     }
 

@@ -32,6 +32,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.tutoriales.tourAncla
 
 /**
  * Esquema ESTÁNDAR de los popups de la ficha (igual que Nuevo/Editar tratamiento):
@@ -48,14 +49,20 @@ fun DialogoForm(
     onAccion: () -> Unit,
     /** Texto del botón de salir. Casi siempre "Cancelar"; ver RevisionPrevia. */
     textoCancelar: String = "Cancelar",
+    /** Ancla de tutorial del formulario entero ("cobro", "paciente_form"…). */
+    ancla: String? = null,
+    /** Ancla de tutorial del botón de la acción ("cobro.confirmar"…). */
+    anclaAccion: String? = null,
     contenido: @Composable ColumnScope.() -> Unit,
 ) {
+    val modAncla = if (ancla != null) Modifier.tourAncla(ancla) else Modifier
+    val modAccion = if (anclaAccion != null) Modifier.tourAncla(anclaAccion) else Modifier
     val c = Sania.colors
     // Con el teclado abierto el cuerpo se achica y el pie (Cancelar/Guardar)
     // queda a la vista: ver DialogoConTeclado (29/09/2026).
     pe.saniape.app.ui.DialogoConTeclado(onCancelar) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(max = 720.dp)
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(max = 720.dp).then(modAncla)
                 .clip(RoundedCornerShape(Sania.shape.lg.dp)).background(c.fondo),
         ) {
             // Header navy. Con el teclado abierto lleva también el botón de la
@@ -70,7 +77,7 @@ fun DialogoForm(
                 }
                 if (pe.saniape.app.ui.LocalTecladoEnDialogo.current) {
                     Box(
-                        Modifier.clip(RoundedCornerShape(Sania.shape.md.dp))
+                        modAccion.clip(RoundedCornerShape(Sania.shape.md.dp))
                             .background(if (accionHabilitada) c.sobreNavy else c.sobreNavy.copy(alpha = 0.35f))
                             .clickable(enabled = accionHabilitada) { onAccion() }
                             .padding(horizontal = 14.dp, vertical = 9.dp),
@@ -94,7 +101,7 @@ fun DialogoForm(
                 ) {
                     TextButton(onClick = onCancelar) { Text(textoCancelar, color = c.textoSuave, fontWeight = FontWeight.Bold) }
                     Box(
-                        Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.md.dp))
+                        Modifier.weight(1f).then(modAccion).clip(RoundedCornerShape(Sania.shape.md.dp))
                             .background(if (accionHabilitada) c.navy else c.borde)
                             .clickable(enabled = accionHabilitada) { onAccion() }.padding(vertical = 13.dp),
                         contentAlignment = Alignment.Center,

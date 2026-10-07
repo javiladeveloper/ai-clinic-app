@@ -48,6 +48,7 @@ import pe.saniape.app.ui.ManejarAtras
 import pe.saniape.app.ui.clinica.EstadoVacio
 import pe.saniape.app.ui.clinica.atencion.LocalDictadoActivo
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.tutoriales.tourAncla
 
 /** Clave de la pestaña del informe (los 6 componentes usan las suyas). */
 internal const val PESTANIA_INFORME = "informe"
@@ -148,7 +149,7 @@ fun PantallaEvaluacionPsico(
                         Text(titulo, color = c.texto, fontSize = Sania.txt.seccion, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(Sania.dim.sm))
                         Column(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
+                            Modifier.fillMaxWidth().tourAncla("evaluacion_psico.contenido").clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
                                 .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(Sania.dim.tarjeta),
                         ) {
                             when (vm.pestania) {
@@ -216,7 +217,7 @@ private fun Cabecera(vm: EvaluacionPsicoViewModel, ctx: ContextoStaff, onVolver:
         }
         if (vm.ev != null) {
             Spacer(Modifier.height(Sania.dim.md))
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth().tourAncla("evaluacion_psico.componentes").horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 COMPONENTES_PSICO.forEach { comp ->
                     ChipComponente("${marcaChip(vm.estados.de(comp.clave))} ${comp.icono} ${comp.titulo}",
                         tonoChip(vm.estados.de(comp.clave)), vm.pestania == comp.clave) { vm.irA(comp.clave) }

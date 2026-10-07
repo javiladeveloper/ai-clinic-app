@@ -115,6 +115,8 @@ fun PantallaEspecialidades(ctx: ContextoStaff, onSalir: () -> Unit) {
                     Spacer(Modifier.height(2.dp))
                     Text("Especialidades", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
                 }
+                pe.saniape.app.ui.tutoriales.BotonAyuda("Especialidades")
+                Spacer(Modifier.width(8.dp))
                 Box(
                     Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.navy)
                         .clickable { creando = true }

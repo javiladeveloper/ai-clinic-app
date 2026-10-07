@@ -48,6 +48,7 @@ import pe.saniape.app.ui.clinica.pacientes.rememberMetodoPagoInicial
 import pe.saniape.app.ui.clinica.pacientes.rememberMetodosPago
 import pe.saniape.app.ui.fechaDMA
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.tutoriales.tourAncla
 
 /**
  * "💵 Registrar cobro" de una Consulta/Evaluación (gemelo del modal de /citas web).
@@ -115,6 +116,8 @@ fun ModalCobrarCita(
             else -> "Cobrar $monto"
         },
         accionHabilitada = !guardando && (!conDivision || reparto != null),
+        ancla = "cobro",
+        anclaAccion = "cobro.confirmar",
         onCancelar = { if (!guardando) onCancelar() },
         onAccion = {
             if (conDivision) reparto?.let { onConfirmar(metodo, modo, fecha, it) }
@@ -151,7 +154,7 @@ fun ModalCobrarCita(
             if (!dividido) ChipsMetodoPago(metodo) { metodo = it }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.clickable(enabled = !guardando) {
+                modifier = Modifier.tourAncla("cobro.dividir").clickable(enabled = !guardando) {
                     dividido = !dividido
                     if (dividido && filas.isEmpty()) filas = filasIniciales(metodos, metodo)
                 },
@@ -168,7 +171,10 @@ fun ModalCobrarCita(
                 Text("Pagó con más de un medio", color = c.texto, fontSize = 13.sp)
             }
             if (dividido) {
-                PagoDividido(total = total, metodos = metodos, filas = filas, onCambiar = { filas = it }, deshabilitado = guardando)
+                // Tutoriales: "cobro.medios" se cumple al escribir algún monto.
+                Box(Modifier.tourAncla("cobro.medios", valor = filas.joinToString("") { it.monto.trim() })) {
+                    PagoDividido(total = total, metodos = metodos, filas = filas, onCambiar = { filas = it }, deshabilitado = guardando)
+                }
             }
 
             Spacer(Modifier.height(14.dp))

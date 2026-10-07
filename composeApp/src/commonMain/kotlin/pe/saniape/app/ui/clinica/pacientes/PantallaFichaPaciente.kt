@@ -63,6 +63,7 @@ import pe.saniape.app.ui.theme.EstadosColor
 import pe.saniape.app.ui.CargandoFicha
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.data.staff.FlujoClinica
+import pe.saniape.app.tutoriales.tourAncla
 
 /** Petición de subir un archivo: documento suelto o resultado de una solicitud. */
 data class SubidaDoc(val categoria: String, val solicitudId: String?, val tratamientoId: String? = null)
@@ -435,6 +436,10 @@ fun PantallaFichaPaciente(
                             Spacer(Modifier.width(6.dp))
                             BadgeApoderado(it)
                         }
+                        if (paciente.esEjemplo) {
+                            Spacer(Modifier.width(6.dp))
+                            BadgeEjemplo()
+                        }
                     }
                     Spacer(Modifier.width(6.dp))
                     Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(estado.bg)
@@ -590,8 +595,14 @@ fun PantallaFichaPaciente(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     tabs.forEach { (key, label) ->
                         val activo = tab == key
+                        val anclaTab = when (key) {
+                            "odontograma" -> "ficha.tab_odontograma"
+                            "evaluacion" -> "ficha.tab_evaluacion"
+                            else -> null
+                        }
                         Box(
-                            Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+                            (if (anclaTab != null) Modifier.tourAncla(anclaTab) else Modifier)
+                                .clip(RoundedCornerShape(Sania.shape.pill.dp))
                                 .background(if (activo) c.navy else c.superficie)
                                 .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
                                 .clickable { tab = key; if (key != "ejercicios") indicarEjercicios = null }
@@ -2127,7 +2138,7 @@ private fun ContenidoAtenciones(
         // web: abajo de todo quedaba escondido tras las tarjetas y el médico no lo veía.
         if ((ctx.puede("sesiones") || ctx.puede("pacientes")) && !soloLectura) {
             Box(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+                Modifier.fillMaxWidth().tourAncla("ficha.nuevo_tratamiento").clip(RoundedCornerShape(Sania.shape.md.dp))
                     .background(c.navy).clickable { onNuevoTratamiento() }.padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center,
             ) { Text("➕ Nuevo tratamiento", color = c.sobreNavy, fontWeight = FontWeight.Bold) }

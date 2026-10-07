@@ -74,6 +74,7 @@ import pe.saniape.app.data.staff.pintarDiente
 import pe.saniape.app.data.staff.zonaEn
 import pe.saniape.app.ui.Toaster
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.tutoriales.tourAncla
 
 /**
  * El odontograma de un paciente: 32 piezas (o 20 de leche) con sus 5 caras
@@ -246,7 +247,9 @@ fun OdontogramaVista(
         } }
 
         // ── La boca: arcada superior sobre la inferior ────────────────────
-        Boca(cuadrantes = cuadrantes, porDiente = porDiente, catalogo = catalogo, onTocar = onTocar)
+        Box(Modifier.tourAncla("odontograma")) {
+            Boca(cuadrantes = cuadrantes, porDiente = porDiente, catalogo = catalogo, onTocar = onTocar)
+        }
 
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {

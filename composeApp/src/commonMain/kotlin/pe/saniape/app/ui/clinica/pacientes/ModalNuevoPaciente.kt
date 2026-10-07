@@ -48,6 +48,7 @@ import pe.saniape.app.data.staff.textoFichaDeBaja
 import pe.saniape.app.data.staff.PacienteStaff
 import pe.saniape.app.data.staff.PacientesRepo
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.tutoriales.tourAncla
 
 /**
  * Alta de paciente desde la app — PARIDAD con PacienteForm de la web (2026-09-02: la
@@ -180,6 +181,8 @@ fun ModalNuevoPaciente(
             else -> "Crear paciente"
         },
         accionHabilitada = nombre.isNotBlank() && !guardando && existente == null,
+        ancla = "paciente_form",
+        anclaAccion = "paciente_form.guardar",
         onCancelar = { if (!guardando) onCancelar() },
         onAccion = {
             if (nombre.isBlank() || guardando) return@DialogoForm
@@ -239,7 +242,11 @@ fun ModalNuevoPaciente(
                     apoderado = apoderado,
                 )
                 guardando = false
-                if (creado != null) { pe.saniape.app.ui.Toaster.exito("Paciente registrado"); onCreado(creado) }
+                if (creado != null) {
+                    pe.saniape.app.ui.Toaster.exito("Paciente registrado")
+                    pe.saniape.app.tutoriales.MotorTutoriales.tarea("paciente_creado")
+                    onCreado(creado)
+                }
                 else error = "No se pudo crear. Revisa tu conexión."
             }
         },
@@ -265,7 +272,7 @@ fun ModalNuevoPaciente(
             }
             if (!sinDocumento) {
                 Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.tourAncla("paciente_form.dni", valor = dni), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(colors = coloresCampoForm(),
                         value = dni,
                         onValueChange = {

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,6 +37,7 @@ import pe.saniape.app.data.staff.CajaRepo
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.MovimientoCaja
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.tutoriales.tourAncla
 
 /**
  * 💰 Caja de HOY (esencial móvil): cuánto entró hoy y por qué método, + egresos y neto,
@@ -87,6 +89,8 @@ fun PantallaCajaHoy(ctx: ContextoStaff) {
                     // Multisede: la caja es POR SEDE (cada local cuenta su cajón).
                     ChipSede(Modifier.padding(top = 2.dp))
                 }
+                pe.saniape.app.ui.tutoriales.BotonAyuda("Caja")
+                Spacer(Modifier.width(8.dp))
                 Box(
                     Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.navy)
                         .clickable { registrando = true }
@@ -128,7 +132,7 @@ fun PantallaCajaHoy(ctx: ContextoStaff) {
                         if (porMetodo.isNotEmpty()) {
                             item {
                                 Column(
-                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+                                    Modifier.fillMaxWidth().tourAncla("caja.por_metodo").clip(RoundedCornerShape(Sania.shape.md.dp))
                                         .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp))
                                         .padding(14.dp),
                                 ) {
@@ -183,7 +187,7 @@ fun PantallaCajaHoy(ctx: ContextoStaff) {
                         item {
                             Text("El kardex completo y el cierre de caja están en la web (Finanzas).",
                                 color = c.textoSuave, fontSize = 10.sp,
-                                modifier = Modifier.padding(vertical = 8.dp))
+                                modifier = Modifier.tourAncla("caja.cierre_web").padding(vertical = 8.dp))
                         }
                         item { Spacer(Modifier.height(Sania.dim.xxl)) }
                     }
