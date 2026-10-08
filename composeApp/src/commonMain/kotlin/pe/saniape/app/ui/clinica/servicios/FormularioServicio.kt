@@ -183,7 +183,7 @@ fun FormularioServicio(
         EtqForm("Nombre del servicio *")
         OutlinedTextField(
             value = f.nombre, onValueChange = { f = f.copy(nombre = it) },
-            placeholder = { Text("Ej. Consulta general, Limpieza dental…") }, singleLine = true,
+            placeholder = { Text("Ej. Consulta general, Limpieza dental…", color = Sania.colors.textoSuave) }, singleLine = true,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             colors = coloresCampoForm(), modifier = Modifier.fillMaxWidth(),
         )
@@ -191,7 +191,7 @@ fun FormularioServicio(
         EtqForm("Descripción")
         OutlinedTextField(
             value = f.descripcion, onValueChange = { f = f.copy(descripcion = it) },
-            placeholder = { Text("Breve descripción del servicio…") }, minLines = 2,
+            placeholder = { Text("Breve descripción del servicio…", color = Sania.colors.textoSuave) }, minLines = 2,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             colors = coloresCampoForm(), modifier = Modifier.fillMaxWidth(),
         )
@@ -365,7 +365,7 @@ fun FormularioServicio(
                 EtqForm("Nombre de la unidad")
                 OutlinedTextField(
                     value = f.unidadLabel, onValueChange = { f = f.copy(unidadLabel = it) },
-                    placeholder = { Text("Ej. folículos, unidades, piezas") }, singleLine = true,
+                    placeholder = { Text("Ej. folículos, unidades, piezas", color = Sania.colors.textoSuave) }, singleLine = true,
                     colors = coloresCampoForm(), modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(8.dp))
@@ -524,7 +524,7 @@ private fun CampoNumero(valor: String, placeholder: String, decimal: Boolean = t
     OutlinedTextField(
         value = valor,
         onValueChange = { v -> onCambio(if (decimal) v.filter { it.isDigit() || it == '.' || it == ',' }.replace(',', '.') else v) },
-        placeholder = { Text(placeholder, fontSize = 13.sp) }, singleLine = true,
+        placeholder = { Text(placeholder, fontSize = 13.sp, color = Sania.colors.textoSuave) }, singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = if (decimal) KeyboardType.Decimal else KeyboardType.Number),
         colors = coloresCampoForm(), modifier = Modifier.fillMaxWidth(),
     )
@@ -565,7 +565,7 @@ private fun SelectorServicio(servicios: List<ServicioApp>, onElegir: (ServicioAp
         text = {
             Column {
                 OutlinedTextField(
-                    value = q, onValueChange = { q = it }, placeholder = { Text("Buscar…") }, singleLine = true,
+                    value = q, onValueChange = { q = it }, placeholder = { Text("Buscar…", color = Sania.colors.textoSuave) }, singleLine = true,
                     colors = coloresCampoForm(), modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(8.dp))

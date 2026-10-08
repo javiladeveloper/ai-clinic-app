@@ -154,7 +154,7 @@ fun GraficoMensual(
 
             // Columna tocada: un fondo suave detrás.
             sel?.let { i ->
-                drawRect(p.grilla.copy(alpha = 0.55f), topLeft = Offset(izq + slot * i, arriba), size = Size(slot, alto))
+                drawRect(c.texto.copy(alpha = 0.07f), topLeft = Offset(izq + slot * i, arriba), size = Size(slot, alto))
             }
 
             val atenuar = { i: Int -> if (sel != null && sel != i) 0.45f else 1f }

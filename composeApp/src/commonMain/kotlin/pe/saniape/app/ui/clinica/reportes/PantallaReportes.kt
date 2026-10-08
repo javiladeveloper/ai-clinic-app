@@ -355,7 +355,7 @@ private fun TarjetaMetrica(titulo: String, icono: String, serie: List<PuntoMes>,
         modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
             .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(12.dp),
     ) {
-        Text(icono, fontSize = 34.sp, modifier = Modifier.align(Alignment.BottomEnd).alpha(0.15f))
+        Text(icono, fontSize = 22.sp, modifier = Modifier.align(Alignment.TopEnd).alpha(0.08f))
         Column {
             Text(titulo.uppercase(), color = c.lav, fontSize = 10.sp, fontWeight = FontWeight.Bold,
                 letterSpacing = 0.6.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)

@@ -50,6 +50,23 @@ data class RangoFechas(val desde: String?, val hasta: String?)
 
 object Finanzas {
 
+    /**
+     * Porcentajes enteros de cada monto sobre su suma, por el método del mayor
+     * resto: cada uno se redondea hacia abajo y los puntos que faltan para 100
+     * van a los de mayor parte decimal. Así lo mostrado siempre suma 100%.
+     */
+    fun porcentajesRepartidos(montos: List<Double>): List<Int> {
+        val total = montos.sumOf { it }
+        if (montos.isEmpty() || total <= 0.0) return montos.map { 0 }
+        val exactos = montos.map { it / total * 100.0 }
+        val base = exactos.map { kotlin.math.floor(it).toInt() }.toMutableList()
+        var faltan = 100 - base.sum()
+        exactos.indices.sortedByDescending { exactos[it] - base[it] }.forEach { i ->
+            if (faltan > 0) { base[i] += 1; faltan-- }
+        }
+        return base
+    }
+
     /** Tope de movimientos (en páginas de 1000, lo máximo de PostgREST; solo muerde con "Total"). */
     const val TOPE_MOVIMIENTOS = 20000
     const val PAGINA_MOVIMIENTOS = 1000

@@ -152,4 +152,15 @@ class FinanzasTest {
         assertEquals("c1", FinanzasRepo.citaIdDeComprobante("cita:c1"))
         assertNull(FinanzasRepo.citaIdDeComprobante("pago:c1"))
     }
+
+    @Test
+    fun porcentajesRepartidosSumanCien() {
+        // 29.8 / 40.1 / 30.1 truncados darian 29+40+30 = 99; repartidos suman 100.
+        val p = Finanzas.porcentajesRepartidos(listOf(298.0, 401.0, 301.0))
+        assertEquals(100, p.sum())
+        assertEquals(listOf(30, 40, 30), p)
+        assertEquals(listOf(34, 33, 33), Finanzas.porcentajesRepartidos(listOf(1.0, 1.0, 1.0)))
+        assertEquals(listOf(0, 0), Finanzas.porcentajesRepartidos(listOf(0.0, 0.0)))
+        assertEquals(emptyList(), Finanzas.porcentajesRepartidos(emptyList()))
+    }
 }

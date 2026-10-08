@@ -189,10 +189,11 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
                 if (resumen.porMetodo.isNotEmpty()) item {
                     TarjetaFin(Modifier.tourAncla("finanzas.por_metodo")) {
                         RotuloFin("Ingresos por método", modifier = Modifier.padding(bottom = 8.dp))
-                        resumen.porMetodo.forEach { (met, monto) ->
+                        val pcts = Finanzas.porcentajesRepartidos(resumen.porMetodo.map { it.second })
+                        resumen.porMetodo.forEachIndexed { idx, (met, monto) ->
                             Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text("${iconoMetodoFin(met)}  $met", color = c.texto, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                                if (resumen.ingresos > 0) Text("${(monto / resumen.ingresos * 100).toInt()}%  ", color = c.textoSuave, fontSize = 11.sp)
+                                if (resumen.ingresos > 0) Text("${pcts[idx]}%  ", color = c.textoSuave, fontSize = 11.sp)
                                 Text(soles(monto), color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
                         }
@@ -259,7 +260,8 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
                             "${listaVista.size} ${if (listaVista.size == 1) "movimiento" else "movimientos"}" + (verMetodo?.let { " en $it" } ?: ""),
                             color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.weight(1f),
                         )
-                        Text((if (neto < 0) "− " else "+ ") + soles(kotlin.math.abs(neto)), color = if (neto < 0) c.error else c.ok,
+                        val cero = kotlin.math.abs(neto) < 0.005
+                        Text((if (cero) "" else if (neto < 0) "− " else "+ ") + soles(kotlin.math.abs(neto)), color = if (cero) c.textoSuave else if (neto < 0) c.error else c.ok,
                             fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
                 }
