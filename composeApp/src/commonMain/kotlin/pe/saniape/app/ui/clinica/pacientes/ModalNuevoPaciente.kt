@@ -73,6 +73,8 @@ fun ModalNuevoPaciente(
     var edad by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var ocupacion by remember { mutableStateOf("") }
+    // Fecha de ingreso (DALU 2026-10-07): hoy por defecto, corregible.
+    var fechaIngreso by remember { mutableStateOf(pe.saniape.app.data.staff.hoyClinicaIso()) }
     var talla by remember { mutableStateOf("") }
     var peso by remember { mutableStateOf("") }
     var motivo by remember { mutableStateOf("") }
@@ -130,6 +132,7 @@ fun ModalNuevoPaciente(
     fun descartarReactivacion() {
         fichaBaja = null; reactivando = false
         dni = ""; nombre = ""; telefono = ""; edad = ""; email = ""; ocupacion = ""
+        fechaIngreso = pe.saniape.app.data.staff.hoyClinicaIso()
         talla = ""; peso = ""; motivo = ""; observaciones = ""; flag = "verde"
         tipoPatologia = ""; antecedentes = ""; sintomas = ""; alergias = ""; medicacion = ""
         apoderado = DatosApoderado()
@@ -234,6 +237,7 @@ fun ModalNuevoPaciente(
                     talla = talla.toIntOrNull(), peso = peso.toDoubleOrNull(),
                     observaciones = observaciones.trim().ifBlank { null },
                     flag = flag,
+                    fechaIngreso = fechaIngreso.takeIf { fechaIngresoValida(it) },
                     antecedentes = antecedentes.trim().ifBlank { null },
                     alergias = alergias.trim().ifBlank { null },
                     medicacionActual = medicacion.trim().ifBlank { null },
@@ -410,6 +414,12 @@ fun ModalNuevoPaciente(
                         singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth())
                 }
+            }
+
+            // Solo al CREAR: una ficha de baja que se reactiva conserva su ingreso.
+            if (!reactivando) {
+                Spacer(Modifier.height(10.dp))
+                CampoFechaIngreso(fecha = fechaIngreso, onCambio = { fechaIngreso = it }, habilitado = !guardando)
             }
 
             Spacer(Modifier.height(10.dp))

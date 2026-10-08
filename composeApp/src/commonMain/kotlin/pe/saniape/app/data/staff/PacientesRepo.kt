@@ -626,6 +626,8 @@ object PacientesRepo {
         tipoPatologia: String? = null,
         /** Apoderado (menores / adultos con representante). Vacío = no se envía. */
         apoderado: DatosApoderado = DatosApoderado(),
+        /** YYYY-MM-DD. Se manda siempre: un alta sin señal que sincroniza mañana ingresó HOY. */
+        fechaIngreso: String? = null,
     ): PacienteStaff? {
         // Se ENCOLA contra /api/staff/paciente/crear (que hace dedup por DNI e
         // idempotencia) en vez de insertar directo: así no se pierde sin señal ni
@@ -650,6 +652,7 @@ object PacientesRepo {
             textoOpc("alergias", alergias)
             textoOpc("medicacion_actual", medicacionActual)
             textoOpc("tipo_patologia", tipoPatologia)
+            textoOpc("fecha_ingreso", fechaIngreso)
             // Pacientes por sede: el paciente nace en la sede activa (la web hace lo mismo).
             val sedeNueva = SedeActiva.estado.value.let { sedeParaPacienteNuevo(it.pacientesPorSede, it.filtro?.sedeId) }
             if (sedeNueva != null) put("sede_id", sedeNueva)
@@ -722,6 +725,8 @@ object PacientesRepo {
         tocarExtra: Boolean = false,
         /** null = no se toca el apoderado. */
         apoderado: DatosApoderado? = null,
+        /** YYYY-MM-DD; null = no se toca (DALU 2026-10-07: corregir el ingreso). */
+        fechaIngreso: String? = null,
     ): Boolean = try {
         Supabase.client.postgrest["pacientes"].update({
             set("nombre", nombre)
@@ -740,6 +745,7 @@ object PacientesRepo {
                 set("observaciones", observaciones?.trim()?.ifBlank { null })
             }
             if (apoderado != null) setApoderado(apoderado)
+            if (fechaIngreso != null) set("fecha_ingreso", fechaIngreso)
         }) { filter { eq("id", id) } }
         true
     } catch (_: Exception) { false }

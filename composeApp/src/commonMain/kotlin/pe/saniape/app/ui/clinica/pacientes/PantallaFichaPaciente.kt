@@ -1037,7 +1037,7 @@ fun PantallaFichaPaciente(
                         paciente.id, e.nombre, e.telefono, e.ocupacion, e.edad, e.flag, e.diagnostico,
                         dni = e.dni, email = e.email, patologias = e.patologias, tipoPatologia = e.tipoPatologia,
                         talla = e.talla, peso = e.peso, observaciones = e.observaciones,
-                        tocarExtra = true, apoderado = e.apoderado)
+                        tocarExtra = true, apoderado = e.apoderado, fechaIngreso = e.fechaIngreso)
                     if (ok) pe.saniape.app.ui.Toaster.exito("Paciente actualizado") else pe.saniape.app.ui.Toaster.error("No se pudo guardar")
                     recargar()
                 }
@@ -1889,6 +1889,9 @@ private fun ModalEditarPaciente(
     var tipoPatologia by remember { mutableStateOf(paciente.tipoPatologia ?: "") }
     var flag by remember { mutableStateOf(paciente.flag ?: "verde") }
     var apoderado by remember { mutableStateOf(paciente.datosApoderado) }
+    // Fecha de ingreso (DALU 2026-10-07): corregible para quien llegó antes de Sania.
+    val ingresoOriginal = paciente.fechaIngreso?.take(10) ?: ""
+    var fechaIngreso by remember { mutableStateOf(ingresoOriginal) }
 
     DialogoForm(
         titulo = "Editar paciente",
@@ -1908,6 +1911,8 @@ private fun ModalEditarPaciente(
                 talla = talla.toIntOrNull(), peso = peso.toDoubleOrNull(),
                 observaciones = observaciones.trim().ifBlank { null },
                 apoderado = apoderado,
+                // Solo si se cambió: no se reescribe lo que ya estaba.
+                fechaIngreso = fechaIngreso.takeIf { it != ingresoOriginal && fechaIngresoValida(it) },
             ))
         },
     ) {
@@ -1923,6 +1928,8 @@ private fun ModalEditarPaciente(
             CampoFicha("Email", email) { email = it }
             Spacer(Modifier.height(8.dp))
             CampoFicha("Ocupación", ocupacion) { ocupacion = it }
+            Spacer(Modifier.height(8.dp))
+            CampoFechaIngreso(fecha = fechaIngreso, onCambio = { fechaIngreso = it })
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) { CampoFicha("Edad", edad, soloNumero = true) { edad = it.take(3) } }
@@ -1990,6 +1997,8 @@ private data class EdicionPaciente(
     val patologias: List<String>, val tipoPatologia: String?,
     val talla: Int?, val peso: Double?, val observaciones: String?,
     val apoderado: pe.saniape.app.data.staff.DatosApoderado,
+    /** null = no se tocó. */
+    val fechaIngreso: String? = null,
 )
 
 @Composable
