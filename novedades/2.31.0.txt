@@ -1,0 +1,11 @@
+# Novedades de la 2.31.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Toda tu clínica desde el celular: Comisiones, Retención de pacientes, Campañas, Actividad del equipo, Mi plan y Ajustes de la clínica ahora se abren dentro de la app. Paga comisiones, recupera pacientes que no vuelven, crea promociones y configura tu clínica sin ir a la web.
+---
+Clínicas (en "Más"):
+• Comisiones: esquemas por metas o por porcentaje, pagar y anular, detalle por paciente e histórico de pagos.
+• Retención: a quién llamar, quién no volvió, controles pendientes y quién nunca empezó; llama o escribe por WhatsApp desde la lista.
+• Campañas: crea y edita promociones con vigencia, actívalas y avisa a tus pacientes.
+• Actividad del equipo: qué se registró y quién lo hizo, por fechas y por persona.
+• Mi plan: tu plan, lo que incluye, tus límites y su uso.
+• Ajustes de la clínica: marca, página pública, horarios, métodos de pago, flujo de atención, sedes, consentimientos y más.
