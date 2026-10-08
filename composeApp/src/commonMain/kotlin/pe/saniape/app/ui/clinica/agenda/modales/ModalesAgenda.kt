@@ -518,7 +518,7 @@ fun ConfirmacionAccion(cita: CitaStaff, accion: AccionCita, onCancelar: () -> Un
         text = {
             Text(
                 if (esCancelar) {
-                    if (cita.tipo == "Sesión") "Se eliminará la sesión vinculada." else "La cita quedará como cancelada."
+                    if (cita.tipo == "Sesión") "Se eliminará la sesión vinculada." else "La cita quedará como cancelada y, si estaba cobrada, el cobro se anula."
                 // "Cobrar ≠ atender": revertir ya NO toca el cobro (servidor, 2026-10-08).
                 } else "Volverá a confirmada para poder completarla. El cobro no se toca.",
                 color = c.texto, fontSize = Sania.txt.cuerpo,

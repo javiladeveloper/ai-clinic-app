@@ -1,0 +1,8 @@
+# Novedades de la 2.29.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Arreglo importante: al completar una sesión desde la Agenda y marcar "¿El paciente pagó esta sesión?", el cobro ahora sí queda registrado en la caja y en el tratamiento (antes se perdía en podología, odontología, estética y otras especialidades). Nuevo: fecha de ingreso del paciente al registrarlo y al editarlo.
+---
+Clínicas:
+• Completar sesión desde la Agenda: el cobro que marcas ("¿El paciente pagó esta sesión?") y las fotos de la sesión ya se guardan siempre, en todas las especialidades. Antes, fuera de fisioterapia, el cobro no llegaba a la caja.
+• Nuevo paciente: fecha de ingreso (hoy por defecto) y la puedes corregir en "Editar paciente".
+• Cancelar una cita: el aviso te recuerda que, si estaba cobrada, el cobro se anula.

@@ -268,7 +268,7 @@ android {
         //       crear cita ofrecía SIEMPRE los tres tipos con los nombres
         //       internos — RENOVA veía una "Consulta" que no hace.
         versionCode = 89
-        versionName = "2.28.0"
+        versionName = "2.29.0"
     }
     signingConfigs {
         create("release") {
