@@ -76,6 +76,8 @@ fun PantallaMasClinica(
     onAbrirFinanzas: (() -> Unit)? = null,
     // 👥 Equipo y accesos nativo (solo con permiso "equipo"; null = se abre en la web).
     onAbrirEquipo: (() -> Unit)? = null,
+    // ⚙️ Ajustes de la clínica nativo (solo con permiso "ajustes"; null = se abre en la web).
+    onAbrirAjustes: (() -> Unit)? = null,
 ) = pe.saniape.app.tutoriales.PantallaTutorial("Mas") {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -197,8 +199,8 @@ fun PantallaMasClinica(
                 // (finanzas, comisiones, equipo, servicios, ajustes…). Antes un Admin no
                 // veía NINGUNA opción de administración en la app; ahora las ve con los
                 // MISMOS permisos que el menú de la web y se abren en la web.
-                val modulosAdmin = modulosAdministracion(ctx, equipoNativo = onAbrirEquipo != null)
-                if (modulosAdmin.isNotEmpty() || onAbrirEspecialidades != null || onAbrirProfesionales != null || onAbrirServicios != null || onAbrirFinanzas != null || onAbrirEquipo != null) {
+                val modulosAdmin = modulosAdministracion(ctx, equipoNativo = onAbrirEquipo != null, ajustesNativo = onAbrirAjustes != null)
+                if (modulosAdmin.isNotEmpty() || onAbrirEspecialidades != null || onAbrirProfesionales != null || onAbrirServicios != null || onAbrirFinanzas != null || onAbrirEquipo != null || onAbrirAjustes != null) {
                     val acciones = pe.saniape.app.ui.recordarAcciones()
                     Text("ADMINISTRACIÓN", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(Sania.dim.sm))
@@ -227,6 +229,8 @@ fun PantallaMasClinica(
                     if (onAbrirServicios != null) FilaMas("💊  Servicios", onClick = onAbrirServicios)
                     // Nativo: miembros, permisos, sedes, invitar (también por enlace/QR).
                     if (onAbrirEquipo != null) FilaMas("👥  Equipo y accesos", ancla = "mas.equipo", onClick = onAbrirEquipo)
+                    // Nativo: marca, página pública, mensajes y cobros, cómo trabajamos.
+                    if (onAbrirAjustes != null) FilaMas("⚙️  Ajustes de la clínica", onClick = onAbrirAjustes)
                     if (modulosAdmin.isNotEmpty()) {
                         Text("Se abren en la web (inicia sesión con tu misma cuenta).", color = c.textoSuave, fontSize = 11.sp)
                         Spacer(Modifier.height(Sania.dim.sm))
@@ -404,7 +408,7 @@ private fun FilaMas(texto: String, ancla: String? = null, onClick: () -> Unit) {
  * (components/layout/Sidebar.tsx). (etiqueta, ruta). El plan lo resuelve la web
  * al abrir (candado de plan), no se duplica acá.
  */
-internal fun modulosAdministracion(ctx: ContextoStaff, equipoNativo: Boolean = false): List<Pair<String, String>> = buildList {
+internal fun modulosAdministracion(ctx: ContextoStaff, equipoNativo: Boolean = false, ajustesNativo: Boolean = false): List<Pair<String, String>> = buildList {
     if (ctx.puede("comisiones")) add("💰  Comisiones" to "/comisiones")
     if (ctx.puede("pacientes")) add("🔄  Retención" to "/seguimiento")
     if (ctx.esAdmin) add("📈  Actividad del equipo" to "/actividad")
@@ -415,6 +419,6 @@ internal fun modulosAdministracion(ctx: ContextoStaff, equipoNativo: Boolean = f
     }
     if (ctx.puede("ajustes")) {
         add("💎  Mi plan" to "/suscripcion")
-        add("⚙️  Ajustes de la clínica" to "/configuracion")
+        if (!ajustesNativo) add("⚙️  Ajustes de la clínica" to "/configuracion")
     }
 }
