@@ -87,6 +87,9 @@ object CatalogosCobroRepo {
     private var cacheMetodos: List<MetodoPago>? = null
     private var cacheCampanias: List<CampaniaApp>? = null
 
+    /** Olvida los métodos en caché (tras editarlos en Ajustes: el próximo cobro los relee). */
+    fun limpiar() { cacheMetodos = null }
+
     /** Métodos ACTIVOS configurados por la clínica; los de siempre si no hay ninguno. */
     suspend fun metodosPago(): List<MetodoPago> {
         cacheMetodos?.let { return it }

@@ -12,7 +12,7 @@ import java.io.ByteArrayOutputStream
  * EXIF (las fotos de cámara vienen "acostadas" por metadata que se pierde al re-codificar),
  * escala al lado máximo y re-codifica a JPEG. Si algo falla o no reduce, devuelve el original.
  */
-actual fun comprimirImagen(archivo: ArchivoSeleccionado, maxLado: Int, calidad: Int): ArchivoSeleccionado {
+actual fun comprimirImagen(archivo: ArchivoSeleccionado, maxLado: Int, calidad: Int, conservarTransparencia: Boolean): ArchivoSeleccionado {
     val mime = archivo.mime ?: ""
     if (!mime.startsWith("image/")) return archivo
     if (mime == "image/gif") return archivo   // animados: canvas los rompería
@@ -54,16 +54,18 @@ actual fun comprimirImagen(archivo: ArchivoSeleccionado, maxLado: Int, calidad: 
                 (bmp.height * escala).toInt().coerceAtLeast(1), true)
         }
 
-        // 4) JPEG con la calidad pedida. Si no reduce, quedarse con el original.
+        // 4) JPEG con la calidad pedida (o PNG sin pérdida si hay que conservar la
+        // transparencia: un logo en JPEG sale con fondo negro). Si no reduce, el original.
+        val png = conservarTransparencia && (mime == "image/png" || mime == "image/webp") && bmp.hasAlpha()
         val out = ByteArrayOutputStream()
-        bmp.compress(Bitmap.CompressFormat.JPEG, calidad.coerceIn(1, 100), out)
+        bmp.compress(if (png) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG, calidad.coerceIn(1, 100), out)
         val comprimido = out.toByteArray()
         if (comprimido.isEmpty() || comprimido.size >= archivo.bytes.size) return archivo
 
         ArchivoSeleccionado(
-            nombre = archivo.nombre.substringBeforeLast('.', archivo.nombre) + ".jpg",
+            nombre = archivo.nombre.substringBeforeLast('.', archivo.nombre) + if (png) ".png" else ".jpg",
             bytes = comprimido,
-            mime = "image/jpeg",
+            mime = if (png) "image/png" else "image/jpeg",
         )
     } catch (_: Exception) {
         archivo   // nunca romper la subida por la compresión

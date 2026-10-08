@@ -9,4 +9,14 @@ package pe.saniape.app.ui
  * expect/actual: en Android usa Bitmap + corrección de rotación EXIF (las fotos de cámara
  * suelen venir rotadas por metadata).
  */
-expect fun comprimirImagen(archivo: ArchivoSeleccionado, maxLado: Int = 1600, calidad: Int = 70): ArchivoSeleccionado
+expect fun comprimirImagen(
+    archivo: ArchivoSeleccionado,
+    maxLado: Int = 1600,
+    calidad: Int = 70,
+    /**
+     * true = una imagen con transparencia (logo PNG/WebP) se re-codifica en PNG y
+     * conserva el alfa, como la web (lib/comprimir-imagen.ts, formato 'auto').
+     * En JPEG el fondo transparente sale negro.
+     */
+    conservarTransparencia: Boolean = false,
+): ArchivoSeleccionado

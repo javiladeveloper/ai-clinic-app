@@ -15,4 +15,8 @@ data class ArchivoSeleccionado(
  * expect/actual: en Android usa ActivityResultContracts.GetContent.
  */
 @Composable
-expect fun recordarSelectorArchivo(onElegido: (ArchivoSeleccionado) -> Unit): () -> Unit
+expect fun recordarSelectorArchivo(
+    /** Tipos que ofrece el selector: por defecto todo (PDF e imágenes); "image/…" (cualquier imagen) = solo imágenes. */
+    mime: String = "*/*",
+    onElegido: (ArchivoSeleccionado) -> Unit,
+): () -> Unit

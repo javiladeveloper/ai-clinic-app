@@ -13,6 +13,7 @@ import platform.UIKit.UIGraphicsEndImageContext
 import platform.UIKit.UIGraphicsGetImageFromCurrentImageContext
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageJPEGRepresentation
+import platform.UIKit.UIImagePNGRepresentation
 import platform.posix.memcpy
 
 /**
@@ -21,7 +22,7 @@ import platform.posix.memcpy
  * a mano (a diferencia de Android). Si algo falla o no reduce, devuelve el original.
  */
 @OptIn(ExperimentalForeignApi::class)
-actual fun comprimirImagen(archivo: ArchivoSeleccionado, maxLado: Int, calidad: Int): ArchivoSeleccionado {
+actual fun comprimirImagen(archivo: ArchivoSeleccionado, maxLado: Int, calidad: Int, conservarTransparencia: Boolean): ArchivoSeleccionado {
     return try {
         val data = archivo.bytes.toNSData()
         val original = UIImage.imageWithData(data) ?: return archivo
@@ -39,12 +40,14 @@ actual fun comprimirImagen(archivo: ArchivoSeleccionado, maxLado: Int, calidad: 
         UIGraphicsEndImageContext()
         redimensionada ?: return archivo
 
-        val jpeg = UIImageJPEGRepresentation(redimensionada, calidad / 100.0) ?: return archivo
-        val bytes = jpeg.toByteArray()
+        // Un logo PNG/WebP conserva la transparencia en PNG (en JPEG sale con fondo negro).
+        val png = conservarTransparencia && (archivo.mime == "image/png" || archivo.mime == "image/webp")
+        val datos = (if (png) UIImagePNGRepresentation(redimensionada) else UIImageJPEGRepresentation(redimensionada, calidad / 100.0)) ?: return archivo
+        val bytes = datos.toByteArray()
         if (bytes.isEmpty() || bytes.size >= archivo.bytes.size) return archivo
 
-        val nombre = archivo.nombre.substringBeforeLast('.', archivo.nombre) + ".jpg"
-        ArchivoSeleccionado(nombre = nombre, bytes = bytes, mime = "image/jpeg")
+        val nombre = archivo.nombre.substringBeforeLast('.', archivo.nombre) + if (png) ".png" else ".jpg"
+        ArchivoSeleccionado(nombre = nombre, bytes = bytes, mime = if (png) "image/png" else "image/jpeg")
     } catch (_: Throwable) {
         archivo
     }
