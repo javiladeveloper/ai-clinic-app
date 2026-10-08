@@ -1,0 +1,6 @@
+# Novedades de la 2.29.1 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Arreglo: abrir un tratamiento que tiene fotos de sesión ya no cierra la app. Ahora ves sus sesiones, pagos y fotos sin problema.
+---
+Arreglos:
+• Ficha del paciente: tocar "Ver sesiones y pagos" en un tratamiento con fotos de sesión cerraba la app. Ya no pasa.
