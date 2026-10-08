@@ -1,0 +1,9 @@
+# Novedades de la 2.30.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Nuevo: administra tu clínica completa desde el celular. Reportes, Servicios, Finanzas y caja, y Equipo y accesos ahora se abren dentro de la app, sin ir a la web: mira tus números, edita precios y servicios, registra gastos y cierra caja, e invita a tu equipo o ajusta sus permisos.
+---
+Clínicas (en "Más"):
+• Reportes: tus números del período, con gráficos, dentro de la app.
+• Servicios: crea, edita y desactiva servicios y sus precios por especialidad.
+• Finanzas y caja: movimientos del día, cierre de caja, lo que está por cobrar y gastos fijos.
+• Equipo y accesos: añade miembros (por correo o con enlace/QR), cambia su rol y sus permisos, reenvía credenciales o revoca el acceso.
