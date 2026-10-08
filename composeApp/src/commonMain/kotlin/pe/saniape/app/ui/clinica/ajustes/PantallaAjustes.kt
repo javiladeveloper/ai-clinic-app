@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -57,6 +58,8 @@ fun PantallaAjustes(ctx: ContextoStaff, onSalir: () -> Unit, onHuboCambios: () -
     var error by remember { mutableStateOf<String?>(null) }
     var recarga by remember { mutableIntStateOf(0) }
     var seccion by remember { mutableStateOf<String?>(null) }
+    // Vive acá (no en la lista): al volver de una sección, la lista sigue donde estaba.
+    val scrollLista = rememberScrollState()
 
     LaunchedEffect(ctx.clinicaId, recarga) {
         val (d, e) = AjustesRepo.cargar()
@@ -123,7 +126,7 @@ fun PantallaAjustes(ctx: ContextoStaff, onSalir: () -> Unit, onHuboCambios: () -
                     }
                 }
                 d == null -> CargandoLista()
-                else -> ListaSecciones(d, ctx) { seccion = it }
+                else -> ListaSecciones(d, ctx, scrollLista) { seccion = it }
             }
         }
     }
@@ -133,7 +136,7 @@ fun PantallaAjustes(ctx: ContextoStaff, onSalir: () -> Unit, onHuboCambios: () -
 private data class FilaSeccion(val clave: String, val titulo: String, val detalle: String? = null)
 
 @Composable
-private fun ListaSecciones(d: JsonObject, ctx: ContextoStaff, abrir: (String) -> Unit) {
+private fun ListaSecciones(d: JsonObject, ctx: ContextoStaff, scroll: ScrollState, abrir: (String) -> Unit) {
     val c = Sania.colors
     val cl = d.o("clinica") ?: JsonObject(emptyMap())
     val plan = d.o("plan") ?: JsonObject(emptyMap())
@@ -186,7 +189,7 @@ private fun ListaSecciones(d: JsonObject, ctx: ContextoStaff, abrir: (String) ->
     )
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Sania.dim.lg),
+        Modifier.fillMaxSize().verticalScroll(scroll).padding(Sania.dim.lg),
         verticalArrangement = Arrangement.spacedBy(Sania.dim.sm),
     ) {
         if (!ctx.esAdmin) {
