@@ -155,6 +155,7 @@ object StaffContextoRepo {
             logoUrl = o.str("logoUrl"),
             colorPrincipal = o.str("colorPrincipal"),
             terminologiaProfesional = o.str("terminologiaProfesional") ?: "Profesional",
+            terminologiaPaciente = TerminologiaPaciente.de(o.str("terminologiaPaciente"), o.str("terminologiaPacientePlural")),
             rol = o.str("rol"),
             nombre = o.str("nombre"),
             permisos = permisos(o.obj("permisos")),

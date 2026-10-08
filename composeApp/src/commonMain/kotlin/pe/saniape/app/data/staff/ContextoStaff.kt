@@ -93,6 +93,8 @@ data class ContextoStaff(
     val logoUrl: String?,
     val colorPrincipal: String?,
     val terminologiaProfesional: String,
+    /** Cómo llama la clínica a sus pacientes (servidor viejo / sin configurar → Paciente). */
+    val terminologiaPaciente: TerminologiaPaciente = TerminologiaPaciente(),
     val rol: String?,
     val nombre: String?,
     val permisos: Permisos,

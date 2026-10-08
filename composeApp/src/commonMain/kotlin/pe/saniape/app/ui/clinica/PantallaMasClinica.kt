@@ -181,7 +181,7 @@ fun PantallaMasClinica(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text("📊  Pacientes del período", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
+                            Text("📊  ${contexto.terminologiaPaciente.Pacientes} del período", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
                             Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
                         }
                         Spacer(Modifier.height(Sania.dim.sm))
@@ -196,7 +196,7 @@ fun PantallaMasClinica(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text("🌱  Pacientes nuevos", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
+                            Text("🌱  ${contexto.terminologiaPaciente.Pacientes} nuevos", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
                             Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
                         }
                     }

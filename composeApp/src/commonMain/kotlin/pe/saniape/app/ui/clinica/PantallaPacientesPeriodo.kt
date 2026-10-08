@@ -88,7 +88,7 @@ fun PantallaPacientesPeriodo(ctx: ContextoStaff, onSalir: () -> Unit) {
                             .clickable { onSalir() }.padding(vertical = 2.dp),
                     )
                     Spacer(Modifier.height(2.dp))
-                    Text("📊 Pacientes del período", color = c.sobreNavy,
+                    Text("📊 ${ctx.terminologiaPaciente.Pacientes} del período", color = c.sobreNavy,
                         fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
                     ChipSede(Modifier.padding(top = 4.dp))
                 }
@@ -137,9 +137,9 @@ fun PantallaPacientesPeriodo(ctx: ContextoStaff, onSalir: () -> Unit) {
                             )
                             e.atendidos == 0 -> MensajeReporte(
                                 emoji = "🗓",
-                                texto = "No hubo pacientes atendidos" + (etiqueta?.let { " en $it" } ?: " en este período") + ".",
+                                texto = "No hubo ${ctx.terminologiaPaciente.pacientes} atendidos" + (etiqueta?.let { " en $it" } ?: " en este período") + ".",
                             )
-                            else -> TarjetaEmbudo(e, etiqueta)
+                            else -> TarjetaEmbudo(e, etiqueta, ctx.terminologiaPaciente.pacientes)
                         }
                     }
                 }
@@ -150,7 +150,7 @@ fun PantallaPacientesPeriodo(ctx: ContextoStaff, onSalir: () -> Unit) {
 }
 
 @Composable
-private fun TarjetaEmbudo(e: EmbudoPacientes, etiqueta: String?) {
+private fun TarjetaEmbudo(e: EmbudoPacientes, etiqueta: String?, pacientes: String) {
     val c = Sania.colors
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
@@ -166,7 +166,7 @@ private fun TarjetaEmbudo(e: EmbudoPacientes, etiqueta: String?) {
             Text("${e.atendidos}", color = c.texto, fontSize = 34.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(10.dp))
             Text(
-                "pacientes atendidos · ${e.evaluados} vinieron a evaluación",
+                "$pacientes atendidos · ${e.evaluados} vinieron a evaluación",
                 color = c.textoSuave, fontSize = Sania.txt.pequeno,
                 modifier = Modifier.padding(bottom = 6.dp),
             )

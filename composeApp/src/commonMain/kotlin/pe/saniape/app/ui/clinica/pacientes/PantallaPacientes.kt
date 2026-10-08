@@ -91,7 +91,7 @@ fun PantallaPacientes(
             ) {
                 pe.saniape.app.ui.clinica.LogoMarcaChica(ctx)
                 Spacer(Modifier.width(10.dp))
-                Text("Pacientes", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold,
+                Text(ctx.terminologiaPaciente.Pacientes, color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f))
                 pe.saniape.app.ui.tutoriales.BotonAyuda("Pacientes")
                 Spacer(Modifier.width(8.dp))
@@ -110,7 +110,7 @@ fun PantallaPacientes(
             Column(Modifier.fillMaxWidth().padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm)) {
                 OutlinedTextField(colors = coloresCampoForm(), 
                     value = vm.busqueda, onValueChange = { vm.cambiarBusqueda(it) },
-                    placeholder = { Text("🔍 Buscar paciente…", color = c.textoSuave) },
+                    placeholder = { Text("🔍 Buscar ${ctx.terminologiaPaciente.paciente}…", color = c.textoSuave) },
                     singleLine = true, modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(Sania.dim.sm))
@@ -129,7 +129,7 @@ fun PantallaPacientes(
                     val nombre = sedeEstado.sedes.find { it.id == sedeId }?.nombre ?: "esta sede"
                     Spacer(Modifier.height(Sania.dim.sm))
                     Text(
-                        "🏢 Mostrando pacientes de $nombre",
+                        "🏢 Mostrando ${ctx.terminologiaPaciente.pacientes} de $nombre",
                         color = c.textoSuave, fontSize = Sania.txt.mini,
                     )
                 }
@@ -192,7 +192,7 @@ fun PantallaPacientes(
                                 // Con una sede elegida, vacío = esta sede aún no tiene pacientes.
                                 pe.saniape.app.ui.clinica.EstadoVacio(
                                     emoji = "🏢",
-                                    titulo = "Esta sede aún no tiene pacientes",
+                                    titulo = "Esta sede aún no tiene ${ctx.terminologiaPaciente.pacientes}",
                                     subtitulo = "Para ver los de todas las sedes, elige \"Todas las sedes\".",
                                     textoAccion = if (ctx.puede("pacientes")) "+ Registrar paciente" else null,
                                     onAccion = { nuevoAbierto = true },
@@ -200,7 +200,7 @@ fun PantallaPacientes(
                             } else if (vm.pacientes.isEmpty()) {
                                 pe.saniape.app.ui.clinica.EstadoVacio(
                                     emoji = "👥",
-                                    titulo = "Aún no hay pacientes",
+                                    titulo = "Aún no hay ${ctx.terminologiaPaciente.pacientes}",
                                     subtitulo = if (ctx.puede("pacientes")) "Registra el primero para empezar." else null,
                                     textoAccion = if (ctx.puede("pacientes")) "+ Registrar paciente" else null,
                                     onAccion = { nuevoAbierto = true },
@@ -209,7 +209,7 @@ fun PantallaPacientes(
                                 pe.saniape.app.ui.clinica.EstadoVacio(
                                     emoji = "🔍",
                                     titulo = "Sin resultados",
-                                    subtitulo = "No hay pacientes con esos filtros.",
+                                    subtitulo = "No hay ${ctx.terminologiaPaciente.pacientes} con esos filtros.",
                                 )
                             }
                         }

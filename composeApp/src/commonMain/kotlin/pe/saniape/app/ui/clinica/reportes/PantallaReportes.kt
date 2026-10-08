@@ -197,8 +197,8 @@ fun PantallaReportes(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     ChipFiltro("📈 Mes a mes", activo = true) {}
-                    onAbrirPacientesPeriodo?.let { ChipFiltro("🎯 Pacientes del período", activo = false, onClick = it) }
-                    onAbrirPacientesNuevos?.let { ChipFiltro("🌱 Pacientes nuevos", activo = false, onClick = it) }
+                    onAbrirPacientesPeriodo?.let { ChipFiltro("🎯 ${ctx.terminologiaPaciente.Pacientes} del período", activo = false, onClick = it) }
+                    onAbrirPacientesNuevos?.let { ChipFiltro("🌱 ${ctx.terminologiaPaciente.Pacientes} nuevos", activo = false, onClick = it) }
                 }
                 Spacer(Modifier.height(Sania.dim.md))
 
@@ -287,7 +287,7 @@ private fun ContenidoSeries(
     val c = Sania.colors
     // Titulares del mes en curso (2 por fila a 360 dp).
     val tarjetas = buildList {
-        add(Triple("Pacientes nuevos", "👥", s.pacientes) to false)
+        add(Triple("${ctx.terminologiaPaciente.Pacientes} nuevos", "👥", s.pacientes) to false)
         add(Triple("Citas atendidas", "📅", s.citas) to false)
         if (ctx.usaSesiones) add(Triple("Sesiones", "🏃", s.sesiones) to false)
         // El dinero solo con permiso de finanzas (como los gráficos de ingresos/egresos).
@@ -305,10 +305,10 @@ private fun ContenidoSeries(
     Spacer(Modifier.height(Sania.dim.sm))
 
     TarjetaGrafico(
-        "👥 Pacientes nuevos por mes",
-        "Cuándo entró cada paciente a la clínica. El mes en curso va en gris: todavía no termina.",
+        "👥 ${ctx.terminologiaPaciente.Pacientes} nuevos por mes",
+        "Cuándo entró cada ${ctx.terminologiaPaciente.paciente} a la clínica. El mes en curso va en gris: todavía no termina.",
     ) {
-        GraficoMensual(s.pacientes, forma = FormaGrafico.LINEA, serie = 1, hitos = s.hitos, unidad = "pacientes")
+        GraficoMensual(s.pacientes, forma = FormaGrafico.LINEA, serie = 1, hitos = s.hitos, unidad = ctx.terminologiaPaciente.pacientes)
     }
     TarjetaGrafico("📅 Citas atendidas", "Solo las completadas.") {
         GraficoMensual(s.citas, serie = 1, hitos = s.hitos, unidad = "citas")

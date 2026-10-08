@@ -314,7 +314,7 @@ fun ClinicaConTabs(
                         // Caja/Sesiones quedaba tapando el contenido y no redirigía (bug conocido).
                         onClick = { cerrarOverlays(); tab = t },
                         icon = { Icon(t.icono, contentDescription = t.titulo) },
-                        label = { Text(t.titulo, fontSize = 11.sp) },
+                        label = { Text(if (t == TabClinica.Pacientes) contexto.terminologiaPaciente.Pacientes else t.titulo, fontSize = 11.sp) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = c.navy,
                             selectedTextColor = c.navy,

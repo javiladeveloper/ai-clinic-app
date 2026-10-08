@@ -346,7 +346,7 @@ fun PantallaFichaPaciente(
             ) {
                 // Sin flecha "←": en táctil el gesto/botón ATRÁS del sistema ya cierra la ficha
                 // (ManejarAtras arriba). Dibujarla era redundante y comía espacio del header.
-                Text("Ficha del paciente", color = c.sobreNavy, fontSize = Sania.txt.subtitulo,
+                Text("Ficha del ${ctx.terminologiaPaciente.paciente}", color = c.sobreNavy, fontSize = Sania.txt.subtitulo,
                     fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 // Editar paciente + menú (dar de baja/reactivar): solo gestor.
                 if (ctx.puede("pacientes")) {
@@ -398,7 +398,7 @@ fun PantallaFichaPaciente(
 
                     val inactivo = paciente.estado == "Inactivo"
                     Text(
-                        if (inactivo) "↻ Reactivar paciente" else "Dar de baja al paciente",
+                        if (inactivo) "↻ Reactivar ${ctx.terminologiaPaciente.paciente}" else "Dar de baja al ${ctx.terminologiaPaciente.paciente}",
                         color = if (inactivo) c.ok else c.error, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Medium,
                         modifier = Modifier.fillMaxWidth().clickable {
                             menuPaciente = false

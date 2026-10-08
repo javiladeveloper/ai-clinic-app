@@ -208,7 +208,7 @@ fun PantallaRetencion(ctx: ContextoStaff, onSalir: () -> Unit) {
     }
     val visible = if (pestanas.any { it.first == vista }) vista else VistaRet.LLAMAR
     val porRecontactar = resumen?.let { it.noVuelven + it.controles }
-    val term = ctx.terminologiaPaciente()
+    val term = ctx.terminologiaPaciente.pacientes
 
     // La lista queda compuesta DEBAJO de la ficha / "agendar": al volver conserva
     // filtros, página y posición.
@@ -240,8 +240,8 @@ fun PantallaRetencion(ctx: ContextoStaff, onSalir: () -> Unit) {
             when {
                 !tieneAcceso -> MensajeCentro("🔒", "No tienes acceso a Retención", "Pídele acceso al administrador de la clínica.")
                 !planOk -> MensajeCentro(
-                    "💎", "Retención de pacientes",
-                    "Detecta pacientes por abandonar, controles vencidos y a quién llamar hoy — y mide cuántos recuperas. Disponible en el plan Plus.",
+                    "💎", "Retención de ${ctx.terminologiaPaciente.pacientes}",
+                    "Detecta ${ctx.terminologiaPaciente.pacientes} por abandonar, controles vencidos y a quién llamar hoy — y mide cuántos recuperas. Disponible en el plan Plus.",
                 )
                 else -> {
                     // Pestañas
@@ -341,8 +341,6 @@ private fun KpisRetencion(r: ResumenRetencion?, cargando: Boolean) {
 
 private const val DIAS_PROBABLE_ABANDONO_TXT = pe.saniape.app.data.staff.DIAS_PROBABLE_ABANDONO
 
-/** Términos del rubro para "paciente(s)" en el título. */
-private fun ContextoStaff.terminologiaPaciente(): String = "pacientes"
 
 @Composable
 internal fun CampoBusqueda(valor: String, onCambio: (String) -> Unit, placeholder: String) {

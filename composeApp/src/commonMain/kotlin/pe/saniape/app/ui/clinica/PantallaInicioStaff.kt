@@ -224,7 +224,7 @@ fun PantallaInicioStaff(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Column(Modifier.weight(1f)) {
-                                    Text("SIGUIENTE PACIENTE", color = c.sobreNavy.copy(alpha = 0.7f),
+                                    Text("SIGUIENTE ${ctx.terminologiaPaciente.Paciente.uppercase()}", color = c.sobreNavy.copy(alpha = 0.7f),
                                         fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp)
                                     Spacer(Modifier.height(2.dp))
                                     Text(proxima.paciente, color = c.sobreNavy, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -244,7 +244,7 @@ fun PantallaInicioStaff(
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 if (s.citasSinConfirmar > 0) {
                                     AvisoInicio("❓", "${s.citasSinConfirmar} cita(s) sin confirmar",
-                                        "Confírmalas o el paciente puede no llegar", c.pend, c.pendBg) { onIrAgenda() }
+                                        "Confírmalas o el ${ctx.terminologiaPaciente.paciente} puede no llegar", c.pend, c.pendBg) { onIrAgenda() }
                                 }
                                 if (s.citasSinProfesional > 0) {
                                     AvisoInicio("🧑‍⚕️", "${s.citasSinProfesional} cita(s) sin profesional",
@@ -266,7 +266,7 @@ fun PantallaInicioStaff(
                                     StatCard("Pendientes", s.misCitasPendientes.toString(), "⏳", Modifier.weight(1f), onIrAgenda)
                                 }
                                 Row(horizontalArrangement = Arrangement.spacedBy(Sania.dim.md)) {
-                                    StatCard("Mis pacientes", s.totalPacientes.toString(), "👥", Modifier.weight(1f), onIrPacientes)
+                                    StatCard("Mis ${ctx.terminologiaPaciente.pacientes}", s.totalPacientes.toString(), "👥", Modifier.weight(1f), onIrPacientes)
                                     // "Sesiones" es un acumulado histórico, no una
                                     // lista: no hay pantalla a la que llevar, así
                                     // que se queda sin toque en vez de fingir uno.
@@ -274,7 +274,7 @@ fun PantallaInicioStaff(
                                 }
                             } else {
                                 Row(horizontalArrangement = Arrangement.spacedBy(Sania.dim.md)) {
-                                    StatCard("Total pacientes", s.totalPacientes.toString(), "👥", Modifier.weight(1f), onIrPacientes)
+                                    StatCard("Total ${ctx.terminologiaPaciente.pacientes}", s.totalPacientes.toString(), "👥", Modifier.weight(1f), onIrPacientes)
                                     StatCard("Citas hoy", s.citasHoy.toString(), "📅", Modifier.weight(1f), onIrAgenda)
                                 }
                             }
@@ -285,7 +285,7 @@ fun PantallaInicioStaff(
                     item {
                         Row(horizontalArrangement = Arrangement.spacedBy(Sania.dim.md)) {
                             AccesoRapido("📅", "Agenda", Modifier.weight(1f)) { onIrAgenda() }
-                            AccesoRapido("👤", "Pacientes", Modifier.weight(1f)) { onIrPacientes() }
+                            AccesoRapido("👤", ctx.terminologiaPaciente.Pacientes, Modifier.weight(1f)) { onIrPacientes() }
                             if (onAbrirCaja != null) {
                                 AccesoRapido("💰", "Caja", Modifier.weight(1f)) { onAbrirCaja() }
                             }

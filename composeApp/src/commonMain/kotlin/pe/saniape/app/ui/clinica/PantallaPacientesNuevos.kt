@@ -162,7 +162,7 @@ fun PantallaPacientesNuevos(ctx: ContextoStaff, onSalir: () -> Unit) {
                                 .clickable { onSalir() }.padding(vertical = 2.dp),
                         )
                         Spacer(Modifier.height(2.dp))
-                        Text("🌱 Pacientes nuevos", color = c.sobreNavy,
+                        Text("🌱 ${ctx.terminologiaPaciente.Pacientes} nuevos", color = c.sobreNavy,
                             fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
                         ChipSede(Modifier.padding(top = 4.dp))
                     }
@@ -236,7 +236,7 @@ fun PantallaPacientesNuevos(ctx: ContextoStaff, onSalir: () -> Unit) {
                                     item(key = "vacio") {
                                         MensajeNuevos(
                                             emoji = "🌱",
-                                            texto = "No se registraron pacientes nuevos" +
+                                            texto = "No se registraron ${ctx.terminologiaPaciente.pacientes} nuevos" +
                                                 (rep.periodo.etiqueta.takeIf { it.isNotBlank() }?.let { " en $it" } ?: " este mes") + ".",
                                         )
                                     }
@@ -257,7 +257,7 @@ fun PantallaPacientesNuevos(ctx: ContextoStaff, onSalir: () -> Unit) {
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
                                             Text(
-                                                (etapa?.let { textoFiltro(it) } ?: "Todos los pacientes") + " · ${visibles.size}",
+                                                (etapa?.let { textoFiltro(it) } ?: "Todos los ${ctx.terminologiaPaciente.pacientes}") + " · ${visibles.size}",
                                                 color = c.textoSuave, fontSize = Sania.txt.pequeno,
                                                 fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f),
                                             )

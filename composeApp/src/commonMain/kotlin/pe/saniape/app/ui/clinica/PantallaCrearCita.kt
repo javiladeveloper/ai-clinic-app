@@ -404,7 +404,7 @@ fun PantallaCrearCita(
     fun guardar() {
         if (guardando) return
         mensaje = null
-        val p = paciente ?: run { mensaje = "Elige un paciente"; return }
+        val p = paciente ?: run { mensaje = "Elige un ${ctx.terminologiaPaciente.paciente}"; return }
         if (tipo == "Sesión" && tratamiento == null && tratamientos.isNotEmpty()) {
             mensaje = "Elige el tratamiento"; return
         }
@@ -578,10 +578,11 @@ fun PantallaCrearCita(
                 Spacer(Modifier.height(Sania.dim.md))
 
                 // Paciente — con BUSCADOR (escribir nombre filtra), no scroll uno por uno.
-                Etiqueta("Paciente")
+                Etiqueta(ctx.terminologiaPaciente.Paciente)
                 // Tutoriales: "cita_form.paciente" mientras se busca; "…paciente_elegido" ya elegido.
                 Column(Modifier.tourAncla(if (paciente != null) "cita_form.paciente_elegido" else "cita_form.paciente")) {
                     SelectorPacienteBuscable(
+                        termino = ctx.terminologiaPaciente.paciente,
                         items = pacientes, elegido = paciente,
                         onElegir = { paciente = it; terapeuta = null; tratamiento = null; terapeutaAMano = false; precargado = null },
                     )
@@ -828,14 +829,14 @@ private fun <T> SelectorLista(
  */
 @Composable
 private fun SelectorPacienteBuscable(
-    items: List<RefNombre>, elegido: RefNombre?, onElegir: (RefNombre) -> Unit,
+    items: List<RefNombre>, elegido: RefNombre?, onElegir: (RefNombre) -> Unit, termino: String = "paciente",
 ) {
     val c = Sania.colors
     var abierto by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
 
     Column {
-        SelectorBoton(elegido?.nombre ?: "Buscar paciente por nombre o DNI…") {
+        SelectorBoton(elegido?.nombre ?: "Buscar $termino por nombre o DNI…") {
             abierto = !abierto
             if (abierto) query = ""
         }
