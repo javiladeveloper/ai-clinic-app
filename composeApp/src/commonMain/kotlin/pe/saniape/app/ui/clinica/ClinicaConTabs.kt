@@ -237,6 +237,8 @@ fun ClinicaConTabs(
         return
     }
 
+    // La palabra de la clínica para "paciente" llega a todos los diálogos y pantallas de abajo.
+    androidx.compose.runtime.CompositionLocalProvider(pe.saniape.app.data.staff.LocalTerminologiaPaciente provides contexto.terminologiaPaciente) {
     // Tabs visibles según permisos (Inicio y Más siempre).
     val verAgenda = contexto.puede("citas")
     val verPacientes = contexto.puede("pacientes") || contexto.modoClinico
@@ -601,4 +603,5 @@ fun ClinicaConTabs(
     CentroAyuda()
     }
     urlPagina?.let { url -> if (verMiPagina) DialogoMiPagina(url) { verMiPagina = false } }
+    }
 }

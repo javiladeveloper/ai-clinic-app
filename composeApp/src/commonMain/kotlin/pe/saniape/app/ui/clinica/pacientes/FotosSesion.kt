@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.pacientes
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -169,7 +170,7 @@ fun BloqueFotosSesion(estado: FotosSesionPendientes) {
                     if (estado.visiblePaciente) Text("✓", color = c.sobreNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.width(8.dp))
-                Text("Mostrarlas al paciente en su app", color = c.texto, fontSize = 12.sp)
+                Text("Mostrarlas al ${LocalTerminologiaPaciente.current.paciente} en su app", color = c.texto, fontSize = 12.sp)
             }
             Text("Se suben al completar la sesión y quedan en la galería del tratamiento.",
                 color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))

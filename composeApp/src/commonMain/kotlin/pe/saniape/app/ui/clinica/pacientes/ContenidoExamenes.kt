@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.pacientes
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -133,7 +134,7 @@ fun ContenidoExamenes(
         // ── Documentos del paciente (TODOS los planes; Básico con tope de espacio) ──
         // Que el paciente los vea en su app sigue siendo Plus (lo filtra el servidor).
         SeccionExamenes(
-            titulo = "📎 Documentos del paciente",
+            titulo = "📎 Documentos del ${LocalTerminologiaPaciente.current.paciente}",
             subtitulo = "Resultados de laboratorio, informes, radiografías, recetas escaneadas. PDF o imagen.",
             habilitado = true, botonTexto = "+ Subir",
             onNuevo = {
@@ -145,8 +146,8 @@ fun ContenidoExamenes(
             textoBloqueado = "",
             cabecera = {
                 Text(
-                    if (puedeExamenes) "👁 El paciente también los ve en su app."
-                    else "🔒 Solo los ve tu equipo. Con el plan Plus, el paciente también los ve en su app.",
+                    if (puedeExamenes) "👁 El ${LocalTerminologiaPaciente.current.paciente} también los ve en su app."
+                    else "🔒 Solo los ve tu equipo. Con el plan Plus, el ${LocalTerminologiaPaciente.current.paciente} también los ve en su app.",
                     color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(bottom = 6.dp),
                 )
                 val usado = espacioUsado
@@ -442,7 +443,7 @@ private fun ModalSolicitarExamen(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OpcionLugar("🏥 En la clínica", "Se cobra como atención", lugar == "Interno",
                     Modifier.weight(1f)) { lugar = "Interno" }
-                OpcionLugar("📤 Externo", "El paciente lo trae", lugar == "Externo",
+                OpcionLugar("📤 Externo", "El ${LocalTerminologiaPaciente.current.paciente} lo trae", lugar == "Externo",
                     Modifier.weight(1f)) { lugar = "Externo"; areaId = null }
             }
 

@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.agenda.modales
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -232,7 +233,7 @@ fun ModalCompletar(
                         value = texto, onChange = { texto = it }, opciones = chips,
                         especialidadId = esp?.id ?: especialidadId,
                     )
-                    Text("Se guardará en la ficha del paciente.", color = c.textoSuave,
+                    Text("Se guardará en la ficha del ${LocalTerminologiaPaciente.current.paciente}.", color = c.textoSuave,
                         fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
                     // Fisioterapia: evaluación estructurada, plegada y opcional (M5).
                     bloqueEvaluacionFisio?.let { bloque ->
@@ -462,10 +463,10 @@ fun ModalNoAsistio(
     var motivo by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = { if (!guardando) onCancelar() },
-        title = { Text("🚫 ¿El paciente no vino?", fontWeight = FontWeight.Bold) },
+        title = { Text("🚫 ¿El ${LocalTerminologiaPaciente.current.paciente} no vino?", fontWeight = FontWeight.Bold) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                Text("${cita.pacienteNombre ?: "Paciente"} · ${flujo.nombreTipo(cita.tipo)} del ${cita.fecha} ${hora12(cita.hora)}",
+                Text("${cita.pacienteNombre ?: "${LocalTerminologiaPaciente.current.Paciente}"} · ${flujo.nombreTipo(cita.tipo)} del ${cita.fecha} ${hora12(cita.hora)}",
                     color = c.textoSuave, fontSize = Sania.txt.pequeno)
                 Spacer(Modifier.height(Sania.dim.sm))
                 Text(
@@ -596,7 +597,7 @@ fun ModalEditarCita(
         title = { Text(if (esSesion) "📅 Reprogramar sesión" else "✏ Editar cita") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                Text("Cita de ${cita.pacienteNombre ?: "paciente"} · ${flujo.nombreTipo(cita.tipo)}",
+                Text("Cita de ${cita.pacienteNombre ?: "${LocalTerminologiaPaciente.current.paciente}"} · ${flujo.nombreTipo(cita.tipo)}",
                     color = c.textoSuave, fontSize = Sania.txt.pequeno)
                 if (esSesion) {
                     Text("La sesión vinculada también se mueve y queda como Reprogramada.",
@@ -617,7 +618,7 @@ fun ModalEditarCita(
                     Text("Motivo (opcional)", color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     OutlinedTextField(
                         value = motivo, onValueChange = { motivo = it },
-                        placeholder = { Text("Ej. El paciente pidió cambiar la fecha…", color = c.textoSuave) },
+                        placeholder = { Text("Ej. El ${LocalTerminologiaPaciente.current.paciente} pidió cambiar la fecha…", color = c.textoSuave) },
                         modifier = Modifier.fillMaxWidth(), minLines = 2,
                     )
                 }
@@ -655,7 +656,7 @@ fun ModalElegirProfesional(
         title = { Text("👤 ¿Quién atendió?", fontWeight = FontWeight.Bold) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                Text("Esta cita de ${cita.pacienteNombre ?: "el paciente"} no tiene profesional asignado. " +
+                Text("Esta cita de ${cita.pacienteNombre ?: "el ${LocalTerminologiaPaciente.current.paciente}"} no tiene profesional asignado. " +
                     "Indica quién la atendió para completarla.", color = c.textoSuave, fontSize = 12.sp)
                 Spacer(Modifier.height(Sania.dim.md))
                 if (profesionales.isEmpty()) {
@@ -737,7 +738,7 @@ fun ModalPasarEvaluacion(cita: CitaStaff, onCancelar: () -> Unit, onElegir: (fec
             Column {
                 Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
                     .background(c.errorBg).padding(Sania.dim.md)) {
-                    Text("⚠ El horario ${cita.fecha} ${hora12(cita.hora)} ya está separado para la consulta de ${cita.pacienteNombre ?: "el paciente"}.",
+                    Text("⚠ El horario ${cita.fecha} ${hora12(cita.hora)} ya está separado para la consulta de ${cita.pacienteNombre ?: "el ${LocalTerminologiaPaciente.current.paciente}"}.",
                         color = c.error, fontSize = 12.sp)
                 }
                 Spacer(Modifier.height(Sania.dim.md))

@@ -22,3 +22,9 @@ data class TerminologiaPaciente(
         private fun cap(t: String) = t.replaceFirstChar { it.uppercase() }
     }
 }
+
+/**
+ * La terminología vigente para los composables del panel de clínica (se provee en
+ * `ClinicaConTabs`). Evita pasar el contexto por cada diálogo; default "Paciente".
+ */
+val LocalTerminologiaPaciente = androidx.compose.runtime.staticCompositionLocalOf { TerminologiaPaciente() }

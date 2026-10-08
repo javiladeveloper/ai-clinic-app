@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.especialidades
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -209,7 +210,7 @@ fun DialogoNuevaEspecialidad(
             }
         }
         Text(
-            "Aparecen como botones rápidos al registrar un paciente. " +
+            "Aparecen como botones rápidos al registrar un ${LocalTerminologiaPaciente.current.paciente}. " +
                 if (chipsTocados) "Personalizadas por tu clínica." else "Sugeridas por el sistema.",
             color = c.textoSuave, fontSize = Sania.txt.mini,
             modifier = Modifier.padding(bottom = 6.dp),

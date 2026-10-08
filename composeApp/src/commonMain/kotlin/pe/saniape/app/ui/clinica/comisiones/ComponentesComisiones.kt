@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.comisiones
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -131,7 +132,7 @@ internal fun DetallePiramide(plantillaId: String, terapeutaId: String, periodo: 
                 r.pacientes.isEmpty() -> Text("Ningún paquete cuenta en este período.", color = c.textoSuave, fontSize = 12.sp)
                 else -> {
                     Text(
-                        "${r.pacientes.size} ${if (r.pacientes.size == 1) "paciente" else "pacientes"} · del ${fechaCortaFin(r.desde)} al ${fechaCortaFin(ReglasComisiones.diaAnterior(r.hasta))}".uppercase(),
+                        "${r.pacientes.size} ${if (r.pacientes.size == 1) LocalTerminologiaPaciente.current.paciente else LocalTerminologiaPaciente.current.pacientes} · del ${fechaCortaFin(r.desde)} al ${fechaCortaFin(ReglasComisiones.diaAnterior(r.hasta))}".uppercase(),
                         color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(bottom = 4.dp),
                     )
                     r.pacientes.forEach { p -> FilaPacienteDetalle(p) }

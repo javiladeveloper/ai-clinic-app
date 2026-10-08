@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.finanzas
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -441,7 +442,7 @@ private fun DialogoMovimiento(
                     ) { Text(etq, color = if (activo) col else c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                 }
             }
-            if (tipo == "Ingreso") Text("💡 Los pagos de pacientes se registran solos (ficha y sesiones). Usa esto para otros ingresos.",
+            if (tipo == "Ingreso") Text("💡 Los pagos de ${LocalTerminologiaPaciente.current.pacientes} se registran solos (ficha y sesiones). Usa esto para otros ingresos.",
                 color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
             Spacer(Modifier.height(10.dp))
             EtqForm("Categoría *")

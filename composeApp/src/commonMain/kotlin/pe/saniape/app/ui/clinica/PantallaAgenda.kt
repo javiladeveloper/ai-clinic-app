@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
@@ -485,7 +486,7 @@ fun PantallaAgenda(
                             when {
                                 vm.mirandoHoy && vm.soloEspera -> pe.saniape.app.ui.clinica.EstadoVacio(
                                     emoji = "🪑", titulo = "Nadie en sala de espera ahora",
-                                    subtitulo = "Marca \"🔔 Llegó\" cuando el paciente llegue.",
+                                    subtitulo = "Marca \"🔔 Llegó\" cuando el ${LocalTerminologiaPaciente.current.paciente} llegue.",
                                 )
                                 vm.citas.isEmpty() && vm.verHistorial -> pe.saniape.app.ui.clinica.EstadoVacio(
                                     emoji = "🗂", titulo = "Historial vacío",
@@ -867,7 +868,7 @@ fun PantallaAgenda(
             title = { Text("📅 ¿Agendar la siguiente sesión?", fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    "${os.cita.pacienteNombre ?: "El paciente"}: quedan ${os.oferta.quedan} sesión(es). Se propone el " +
+                    "${os.cita.pacienteNombre ?: "El ${LocalTerminologiaPaciente.current.paciente}"}: quedan ${os.oferta.quedan} sesión(es). Se propone el " +
                         "${pe.saniape.app.data.staff.fechaLegibleCorta(os.oferta.fecha)} a las ${hora12(horaSig)}" +
                         (os.cita.terapeutaNombre?.let { " con $it" } ?: "") + "; puedes ajustarlo antes de guardar.",
                     color = c.textoSuave, fontSize = 13.sp,
@@ -908,7 +909,7 @@ fun PantallaAgenda(
             title = { Text("↺ ¿Anular este cobro?", fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    "${cita.pacienteNombre ?: "El paciente"} pagó ${pe.saniape.app.ui.clinica.agenda.modales.textoSoles(cita.costo ?: 0.0)}" +
+                    "${cita.pacienteNombre ?: "El ${LocalTerminologiaPaciente.current.paciente}"} pagó ${pe.saniape.app.ui.clinica.agenda.modales.textoSoles(cita.costo ?: 0.0)}" +
                         (medios?.let { " con $it" } ?: "") + ". Se borrarán de caja TODAS sus partes y la cita volverá a " +
                         "\"por cobrar\" para cobrarla de nuevo. La atención, el diagnóstico y el historial no cambian.",
                     color = c.textoSuave, fontSize = 13.sp,
@@ -987,7 +988,7 @@ fun PantallaAgenda(
         if (activos.isNotEmpty()) {
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = { cerrarTratamiento() },
-                title = { Text("Tratamiento del paciente", fontWeight = FontWeight.Bold) },
+                title = { Text("Tratamiento del ${LocalTerminologiaPaciente.current.paciente}", fontWeight = FontWeight.Bold) },
                 text = {
                     Column {
                         Text(
@@ -1109,7 +1110,7 @@ private fun BannerSinProfesional(citas: List<CitaStaff>, flujoDe: (CitaStaff) ->
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("${hora12(cita.hora)} · ${cita.pacienteNombre ?: "Paciente"} · ${flujoDe(cita).nombreTipo(cita.tipo)}",
+                Text("${hora12(cita.hora)} · ${cita.pacienteNombre ?: "${LocalTerminologiaPaciente.current.Paciente}"} · ${flujoDe(cita).nombreTipo(cita.tipo)}",
                     color = c.texto, fontSize = 12.sp, modifier = Modifier.weight(1f))
                 Box(
                     Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.pend)

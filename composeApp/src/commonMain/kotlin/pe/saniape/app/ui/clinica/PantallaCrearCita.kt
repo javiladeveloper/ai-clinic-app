@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -81,7 +82,7 @@ private val TIPOS = listOf("Consulta", "Evaluación", "Sesión")
 /** Info visual de cada tipo de cita (icono + descripción), como las tarjetas de la web. */
 private data class TipoInfo(val valor: String, val icono: String, val desc: String)
 private val TIPOS_INFO = listOf(
-    TipoInfo("Consulta", "💬", "El paciente explica su caso"),
+    TipoInfo("Consulta", "💬", "El @ explica su caso"),
     TipoInfo("Evaluación", "🔍", "Se evalúa y diagnostica"),
     TipoInfo("Sesión", "🏃", "Sesión de tratamiento"),
 )
@@ -532,7 +533,7 @@ fun PantallaCrearCita(
                         SelectorBoton("🏢 " + (sedeEstado.sedes.find { it.id == sedeId }?.nombre ?: "Sede"), bloqueado = true) {}
                         if (sedeForzada != null) {
                             Text(
-                                "Es la sede del paciente: sus citas se agendan ahí. Para atenderlo en otra, cambia su sede desde la ficha.",
+                                "Es la sede del ${LocalTerminologiaPaciente.current.paciente}: sus citas se agendan ahí. Para atenderlo en otra, cambia su sede desde la ficha.",
                                 color = c.textoSuave, fontSize = 11.sp,
                                 modifier = Modifier.padding(top = 4.dp),
                             )
@@ -774,7 +775,7 @@ private fun TarjetaTipo(info: TipoInfo, activo: Boolean, etiqueta: String = info
         Text(info.icono, fontSize = 22.sp)
         Spacer(Modifier.height(4.dp))
         Text(etiqueta, color = if (activo) acento else c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-        Text(info.desc, color = c.textoSuave, fontSize = 9.sp,
+        Text(info.desc.replace("@", LocalTerminologiaPaciente.current.paciente), color = c.textoSuave, fontSize = 9.sp,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier.padding(top = 2.dp))
     }

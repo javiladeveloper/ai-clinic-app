@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
@@ -302,7 +303,7 @@ fun TarjetaPrimerosPasos(ctx: ContextoStaff, onIr: (String) -> Unit) {
                     }
                     if (d.tieneEjemplo) {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp)) {
-                            Text("🧪 Tienes un paciente de ejemplo para probar.", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            Text("🧪 Tienes un ${LocalTerminologiaPaciente.current.paciente} de ejemplo para probar.", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.weight(1f))
                             Text(
                                 if (borrando) "Borrando…" else "Borrar datos de ejemplo", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                                 modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(enabled = !borrando) {
@@ -376,7 +377,7 @@ fun DialogoMiPagina(url: String, onCerrar: () -> Unit) {
         title = { Text("🌐 Mi página") },
         text = {
             Column {
-                Text("Tu web con tus servicios y reservas. Compártela con tus pacientes.", color = c.textoSuave, fontSize = 13.sp)
+                Text("Tu web con tus servicios y reservas. Compártela con tus ${LocalTerminologiaPaciente.current.pacientes}.", color = c.textoSuave, fontSize = 13.sp)
                 Spacer(Modifier.height(10.dp))
                 Text(
                     url, color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,

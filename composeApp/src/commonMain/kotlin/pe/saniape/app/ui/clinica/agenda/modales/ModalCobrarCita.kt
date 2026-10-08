@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.agenda.modales
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -130,7 +131,7 @@ fun ModalCobrarCita(
                 .border(1.dp, c.ok, RoundedCornerShape(Sania.shape.md.dp))
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
-            Text("$nombreTipo · ${cita.pacienteNombre ?: "Paciente"}", color = c.textoSuave, fontSize = 12.sp)
+            Text("$nombreTipo · ${cita.pacienteNombre ?: "${LocalTerminologiaPaciente.current.Paciente}"}", color = c.textoSuave, fontSize = 12.sp)
             Text(monto, color = c.texto, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         }
 
@@ -141,7 +142,7 @@ fun ModalCobrarCita(
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf(
                 Triple("cobrar", "Cobrar normal", "Entra a caja como pago de la $tipoMin"),
-                Triple("abonar", "Cobrar y abonar al tratamiento", "El monto se descuenta de la deuda del tratamiento del paciente"),
+                Triple("abonar", "Cobrar y abonar al tratamiento", "El monto se descuenta de la deuda del tratamiento del ${LocalTerminologiaPaciente.current.paciente}"),
                 Triple("gratis", "No cobrar", "Sigue a tratamiento: la $tipoMin queda en S/ 0"),
             ).forEach { (valor, titulo, detalle) ->
                 OpcionModo(titulo, detalle, activo = modo == valor) { if (!guardando) modo = valor }
@@ -190,7 +191,7 @@ fun ModalCobrarCita(
                 Text("▾", color = c.navy)
             }
             Text(
-                "Por defecto, el día de la cita. Cámbiala si el paciente pagó otro día (p. ej. pagó hoy una evaluación de mañana).",
+                "Por defecto, el día de la cita. Cámbiala si el ${LocalTerminologiaPaciente.current.paciente} pagó otro día (p. ej. pagó hoy una evaluación de mañana).",
                 color = c.textoSuave, fontSize = 11.sp, lineHeight = 14.sp, modifier = Modifier.padding(top = 4.dp),
             )
         }
@@ -199,9 +200,9 @@ fun ModalCobrarCita(
         Text(
             when (modo) {
                 "gratis" -> "No entra dinero a caja: la $tipoMin queda saldada con S/ 0."
-                "abonar" -> "Entra a caja como pago del tratamiento: lo verás sumado en la ficha del paciente."
+                "abonar" -> "Entra a caja como pago del tratamiento: lo verás sumado en la ficha del ${LocalTerminologiaPaciente.current.paciente}."
                 else -> if (conDivision) "Entra a caja un ingreso por cada medio, en la fecha del pago (el arqueo por método cuadra)."
-                    else "Entra a caja en la fecha del pago, con este método. Si el paciente aún no paga, puedes atenderlo igual y cobrarle después."
+                    else "Entra a caja en la fecha del pago, con este método. Si el ${LocalTerminologiaPaciente.current.paciente} aún no paga, puedes atenderlo igual y cobrarle después."
             },
             color = c.textoSuave, fontSize = 12.sp, lineHeight = 16.sp,
         )

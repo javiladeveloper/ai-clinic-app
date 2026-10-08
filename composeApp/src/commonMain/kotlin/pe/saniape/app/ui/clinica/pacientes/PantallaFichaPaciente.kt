@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.pacientes
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
 import pe.saniape.app.ui.theme.aparecer
@@ -85,6 +86,7 @@ fun PantallaFichaPaciente(
      */
     ejerciciosAlAbrir: pe.saniape.app.ui.clinica.fisio.IndicarEjercicios? = null,
 ) {
+    val tpl = LocalTerminologiaPaciente.current
     val c = Sania.colors
     val acciones = recordarAcciones()
     ManejarAtras(activo = true, onAtras = onCerrar)
@@ -408,11 +410,11 @@ fun PantallaFichaPaciente(
                                     // estado de vuelta lo decide el servidor por su historia
                                     // (antes era siempre 'Nuevo', aunque tuviera un plan en curso).
                                     val r = pe.saniape.app.data.staff.ReactivarRepo.reactivar(paciente.id)
-                                    if (r.ok) pe.saniape.app.ui.Toaster.exito("Paciente reactivado" + (r.estado?.let { " · $it" } ?: ""))
+                                    if (r.ok) pe.saniape.app.ui.Toaster.exito("${tpl.Paciente} reactivado" + (r.estado?.let { " · $it" } ?: ""))
                                     else pe.saniape.app.ui.Toaster.error(r.error ?: "No se pudo reactivar")
                                 } else {
                                     val ok = PacientesRepo.cambiarEstadoPaciente(paciente.id, "Inactivo")
-                                    if (ok) pe.saniape.app.ui.Toaster.exito("Paciente dado de baja")
+                                    if (ok) pe.saniape.app.ui.Toaster.exito("${tpl.Paciente} dado de baja")
                                     else pe.saniape.app.ui.Toaster.error("No se pudo actualizar")
                                 }
                                 recargar()
@@ -1038,7 +1040,7 @@ fun PantallaFichaPaciente(
                         dni = e.dni, email = e.email, patologias = e.patologias, tipoPatologia = e.tipoPatologia,
                         talla = e.talla, peso = e.peso, observaciones = e.observaciones,
                         tocarExtra = true, apoderado = e.apoderado, fechaIngreso = e.fechaIngreso)
-                    if (ok) pe.saniape.app.ui.Toaster.exito("Paciente actualizado") else pe.saniape.app.ui.Toaster.error("No se pudo guardar")
+                    if (ok) pe.saniape.app.ui.Toaster.exito("${tpl.Paciente} actualizado") else pe.saniape.app.ui.Toaster.error("No se pudo guardar")
                     recargar()
                 }
             },
@@ -1363,7 +1365,7 @@ internal fun ModalCompletarSesion(
                 Text("⚕️", fontSize = 18.sp)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Este paciente dejaba RX", color = c.pend, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text("Este ${LocalTerminologiaPaciente.current.paciente} dejaba RX", color = c.pend, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     Text("Quedó pendiente en la sesión #${anterior.numero}. Recuérdaselo.",
                         color = c.texto, fontSize = 11.sp, modifier = Modifier.padding(top = 1.dp))
                 }
@@ -1496,7 +1498,7 @@ internal fun ModalCompletarSesion(
             ) { if (dejoRx) Text("✓", color = c.sobreNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text("El paciente dejó RX", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text("El ${LocalTerminologiaPaciente.current.paciente} dejó RX", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 Text("Se le avisará al abrir su próxima sesión", color = c.textoSuave, fontSize = 11.sp,
                     modifier = Modifier.padding(top = 1.dp))
             }
@@ -1726,7 +1728,7 @@ private fun ModalCrearSesion(
                 ) { if (cobrar) Text("✓", color = c.sobreNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("¿El paciente pagó esta sesión?", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text("¿El ${LocalTerminologiaPaciente.current.paciente} pagó esta sesión?", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     Text(if (esPaquete) "Entra como abono del paquete" else "Se registra junto con la sesión",
                         color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 1.dp))
                 }
@@ -1894,7 +1896,7 @@ private fun ModalEditarPaciente(
     var fechaIngreso by remember { mutableStateOf(ingresoOriginal) }
 
     DialogoForm(
-        titulo = "Editar paciente",
+        titulo = "Editar ${LocalTerminologiaPaciente.current.paciente}",
         subtitulo = paciente.nombre,
         textoAccion = "Guardar",
         accionHabilitada = nombre.isNotBlank(),
@@ -1916,7 +1918,7 @@ private fun ModalEditarPaciente(
             ))
         },
     ) {
-        TarjetaForm(titulo = "Datos del paciente", icono = "👤") {
+        TarjetaForm(titulo = "Datos del ${LocalTerminologiaPaciente.current.paciente}", icono = "👤") {
             CampoFicha("Nombre", nombre) { nombre = it }
             Spacer(Modifier.height(8.dp))
             // "soloNumero" filtraba letras y guiones: un RUT chileno o pasaporte
@@ -2453,7 +2455,7 @@ private fun ContenidoResumen(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
                 .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(14.dp),
         ) {
-            Etiqueta("Datos del paciente")
+            Etiqueta("Datos del ${LocalTerminologiaPaciente.current.paciente}")
             val imcTxt = paciente.imc?.let { "${formatoMonto(it)}" }
             val datos = listOfNotNull(
                 paciente.dni?.let { "DNI" to it },
@@ -2724,7 +2726,7 @@ private fun ModalNotaRecepcion(
         TarjetaForm(titulo = "Nota", icono = "📌") {
             androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(), 
                 value = texto, onValueChange = { texto = it },
-                placeholder = { Text("Ej. El paciente debe traer su receta / pagó la mitad…", color = c.textoSuave) },
+                placeholder = { Text("Ej. El ${LocalTerminologiaPaciente.current.paciente} debe traer su receta / pagó la mitad…", color = c.textoSuave) },
                 modifier = Modifier.fillMaxWidth(), minLines = 2,
             )
             Text("Se muestra como recordatorio en la ficha. Déjalo vacío para quitarlo.",

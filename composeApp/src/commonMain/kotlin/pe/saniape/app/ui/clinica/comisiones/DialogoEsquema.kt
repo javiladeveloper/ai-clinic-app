@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.comisiones
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -171,8 +172,8 @@ internal fun DialogoEsquema(
                 Checkbox(checked = f.soloNuevos, onCheckedChange = { f = f.copy(soloNuevos = it) },
                     colors = CheckboxDefaults.colors(checkedColor = c.navy))
                 Column(Modifier.weight(1f)) {
-                    Text("Solo pacientes nuevos", color = c.texto, fontSize = 14.sp)
-                    Text("Las renovaciones no cuentan: si el paciente ya había pagado un paquete antes, el siguiente no suma.",
+                    Text("Solo ${LocalTerminologiaPaciente.current.pacientes} nuevos", color = c.texto, fontSize = 14.sp)
+                    Text("Las renovaciones no cuentan: si el ${LocalTerminologiaPaciente.current.paciente} ya había pagado un paquete antes, el siguiente no suma.",
                         color = c.textoSuave, fontSize = 11.sp)
                 }
             }
@@ -205,7 +206,7 @@ internal fun DialogoEsquema(
                 modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable { f = f.copy(tramos = f.tramos + TramoForm()) }.padding(vertical = 6.dp))
             Ayuda(
                 "Se paga el nivel más alto alcanzado: " +
-                    (if (f.porEvaluaciones) "con 56 pacientes evaluados se cobra el bono del nivel de 50, no cero." else "con 14 paquetes se cobra el bono del nivel de 12, no cero.") +
+                    (if (f.porEvaluaciones) "con 56 ${LocalTerminologiaPaciente.current.pacientes} evaluados se cobra el bono del nivel de 50, no cero." else "con 14 paquetes se cobra el bono del nivel de 12, no cero.") +
                     " Los bonos no se suman entre niveles.",
             )
         }
@@ -288,7 +289,7 @@ internal fun DialogoEsquema(
 
         Spacer(Modifier.height(Sania.dim.md))
         Text(
-            if (f.porEvaluaciones) "Cuenta cada paciente distinto con una Evaluación o Consulta atendida en el mes. Se paga desde aquí al cerrar el mes y sale como egreso de la caja."
+            if (f.porEvaluaciones) "Cuenta cada ${LocalTerminologiaPaciente.current.paciente} distinto con una Evaluación o Consulta atendida en el mes. Se paga desde aquí al cerrar el mes y sale como egreso de la caja."
             else "Un paquete cuenta cuando está pagado y se le asignó a esa persona. El profesional ve su nivel y cuánto le falta, pero no el monto.",
             color = c.textoSuave, fontSize = 12.sp,
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(c.chipBg).padding(10.dp),

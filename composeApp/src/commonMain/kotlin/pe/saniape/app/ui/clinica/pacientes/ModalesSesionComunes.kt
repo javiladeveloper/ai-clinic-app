@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.pacientes
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -95,7 +96,7 @@ fun ModalEstadoSesion(
             OutlinedTextField(
                 colors = coloresCampoForm(),
                 value = motivo, onValueChange = { motivo = it },
-                placeholder = { Text("Ej: El paciente avisó que no podía venir…", color = c.textoSuave) },
+                placeholder = { Text("Ej: El ${LocalTerminologiaPaciente.current.paciente} avisó que no podía venir…", color = c.textoSuave) },
                 modifier = Modifier.fillMaxWidth(), minLines = 2,
             )
         }
@@ -231,7 +232,7 @@ fun AvisoFichaInactiva(puedeReactivar: Boolean) {
         Text("🚫", fontSize = 16.sp)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text("Paciente dado de baja", color = c.error, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text("${LocalTerminologiaPaciente.current.Paciente} dado de baja", color = c.error, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Text(
                 "Su historial se puede consultar, pero la ficha no acepta sesiones, citas ni pagos nuevos." +
                     if (puedeReactivar) " Para volver a atenderlo, reactívalo desde ⋯." else "",
@@ -274,7 +275,7 @@ fun BloqueCobroSesion(
         ) { if (cobrar) Text("✓", color = c.sobreNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text("¿El paciente pagó esta sesión?", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text("¿El ${LocalTerminologiaPaciente.current.paciente} pagó esta sesión?", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             Text("El cobro se registra junto con el completar", color = c.textoSuave, fontSize = 11.sp,
                 modifier = Modifier.padding(top = 1.dp))
         }

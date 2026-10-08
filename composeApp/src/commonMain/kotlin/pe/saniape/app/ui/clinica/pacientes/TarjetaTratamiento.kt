@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.pacientes
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -52,7 +53,7 @@ import pe.saniape.app.tutoriales.tourAncla
 private val ESTADOS_SESION = pe.saniape.app.data.staff.ESTADOS_MENU_SESION
 
 /** Aviso cuando se intenta registrar algo en la ficha de un paciente dado de baja. */
-private const val AVISO_BAJA = "Paciente dado de baja: reactívalo para registrar sesiones, citas o pagos."
+private fun avisoBaja(t: pe.saniape.app.data.staff.TerminologiaPaciente) = "${t.Paciente} dado de baja: reactívalo para registrar sesiones, citas o pagos."
 
 /**
  * Tarjeta de un tratamiento en la ficha: cabecera (procedimiento/estado/progreso/pago)
@@ -114,6 +115,7 @@ fun TarjetaTratamiento(
     esEvaluacionPsico: Boolean = false,
     bloqueEvaluacionPsico: (@Composable () -> Unit)? = null,
 ) {
+    val tpl = LocalTerminologiaPaciente.current
     // Permisos EFECTIVOS: el rol decide (puede()), y la baja del paciente los apaga.
     val puedeSesionesEf = puedeSesiones && !soloLectura
     val puedeCobrarEf = verPagos && !soloLectura
@@ -293,15 +295,15 @@ fun TarjetaTratamiento(
                 onToggleSesiones = { expandido = !expandido },
                 onColapsarTarjeta = { expandido = false },
                 onAgendarControl = {
-                    if (soloLectura) pe.saniape.app.ui.Toaster.error(AVISO_BAJA) else onAgendarControl(t)
+                    if (soloLectura) pe.saniape.app.ui.Toaster.error(avisoBaja(tpl)) else onAgendarControl(t)
                 },
                 // Servicio único: abre el modal local (nota + cobro). Consulta médica: el de siempre.
                 onRegistrarAtencion = {
-                    if (soloLectura) pe.saniape.app.ui.Toaster.error(AVISO_BAJA)
+                    if (soloLectura) pe.saniape.app.ui.Toaster.error(avisoBaja(tpl))
                     else if (t.esServicioUnico) registrarServicioAbierto = true else onRegistrarAtencion(t)
                 },
                 onRevertirServicio = {
-                    if (soloLectura) { pe.saniape.app.ui.Toaster.error(AVISO_BAJA); return@BarraRecorrido }
+                    if (soloLectura) { pe.saniape.app.ui.Toaster.error(avisoBaja(tpl)); return@BarraRecorrido }
                     if (accionando) return@BarraRecorrido
                     accionando = true
                     scope.launch {
@@ -311,7 +313,7 @@ fun TarjetaTratamiento(
                     }
                 },
                 onDarAlta = {
-                    if (soloLectura) { pe.saniape.app.ui.Toaster.error(AVISO_BAJA); return@BarraRecorrido }
+                    if (soloLectura) { pe.saniape.app.ui.Toaster.error(avisoBaja(tpl)); return@BarraRecorrido }
                     if (!accionando) confirmarAlta = true
                 },
             )
@@ -832,7 +834,7 @@ private fun ModalRegistrarServicio(
                         modifier = Modifier.fillMaxWidth().clickable { cobrar = !cobrar }) {
                         Text(if (cobrar) "☑" else "☐", fontSize = 18.sp, color = if (cobrar) c.teal else c.textoSuave)
                         Spacer(Modifier.width(8.dp))
-                        Text("💳 ¿El paciente pagó el servicio?", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("💳 ¿El ${LocalTerminologiaPaciente.current.paciente} pagó el servicio?", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                     if (cobrar) {
                         Spacer(Modifier.height(8.dp))
@@ -1242,7 +1244,7 @@ fun SeccionPagos(
     // Registrar pago (no en una ficha dada de baja: el historial se ve, no se escribe).
     Spacer(Modifier.height(8.dp))
     if (soloLectura) {
-        Text("Paciente dado de baja: no se registran pagos nuevos.", color = c.textoSuave, fontSize = 11.sp)
+        Text("${LocalTerminologiaPaciente.current.Paciente} dado de baja: no se registran pagos nuevos.", color = c.textoSuave, fontSize = 11.sp)
     } else if (!agregando) {
         Column(Modifier.tourAncla("ficha.pago_registrar")) {
             MiniBtn(if (saldo > 0.005) "+ Registrar pago" else "+ Pago adicional", c.navy, !guardando) {
@@ -1283,7 +1285,7 @@ fun SeccionPagos(
             ) }
         } else if (consultaSaldo == pe.saniape.app.data.staff.ConsultaSaldo.SinRed) {
             Spacer(Modifier.height(4.dp))
-            Text("Sin conexión: no se pudo consultar el saldo a favor del paciente.", color = c.textoSuave, fontSize = 10.sp)
+            Text("Sin conexión: no se pudo consultar el saldo a favor del ${LocalTerminologiaPaciente.current.paciente}.", color = c.textoSuave, fontSize = 10.sp)
         }
         if (!(usarSaldo && puedeUsarSaldo)) {
             Spacer(Modifier.height(6.dp))
@@ -1599,7 +1601,7 @@ private fun ModalCobrar(ses: SesionFicha, pacienteId: String? = null, onCancelar
                 }
                 Spacer(Modifier.height(8.dp))
                 CampoTexto("Observación (opcional)", obs, multilinea = true) { obs = it }
-                Text("La verá quien cobre la próxima vez (ej. compromiso del paciente).",
+                Text("La verá quien cobre la próxima vez (ej. compromiso del ${LocalTerminologiaPaciente.current.paciente}).",
                     color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
             }
         },

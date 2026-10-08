@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.retencion
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -353,7 +354,7 @@ internal fun TabLlamar(
             error && data == null -> item { ErrorCarga { reintento++ } }
             cargando && data == null -> item { Cargando() }
             filas.isEmpty() -> item {
-                EstadoVacio("🔎", "Ningún paciente coincide con estos filtros", null,
+                EstadoVacio("🔎", "Ningún ${LocalTerminologiaPaciente.current.paciente} coincide con estos filtros", null,
                     if (hayFiltrosRet(f)) "Limpiar filtros" else null, if (hayFiltrosRet(f)) ({ limpiar() }) else null)
             }
             else -> {
@@ -458,16 +459,16 @@ internal fun TabNoVuelven(acc: AccionesRet, resumen: ResumenRetencion?, kpis: @C
         when {
             error && data == null -> item { ErrorCarga { reintento++ } }
             data == null -> item { Cargando() }
-            data!!.isEmpty() -> item { EstadoVacio("🎉", "No hay pacientes pendientes de recontactar") }
+            data!!.isEmpty() -> item { EstadoVacio("🎉", "No hay ${LocalTerminologiaPaciente.current.pacientes} pendientes de recontactar") }
             else -> {
                 item {
-                    CampoBusqueda(busqueda, { busqueda = it }, "🔍 Buscar paciente…")
+                    CampoBusqueda(busqueda, { busqueda = it }, "🔍 Buscar ${LocalTerminologiaPaciente.current.paciente}…")
                     ChipsFila("Pago", listOf("todos" to "Todos los pagos", "debe" to "Con saldo pendiente", "parcial" to "Pago parcial", "pago_todo" to "Pagó todo"), filtroPago) { filtroPago = it }
                     val profs = resumen?.opciones?.profesionales.orEmpty()
                     if (!acc.soloMios && profs.size > 1) ChipsFila("Profesional", listOf("" to "Todos") + profs.map { it.id to it.nombre }, filtroProf) { filtroProf = it }
-                    Text("${lista.size} ${if (lista.size != 1) "pacientes" else "paciente"}", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                    Text("${lista.size} ${if (lista.size != 1) LocalTerminologiaPaciente.current.pacientes else LocalTerminologiaPaciente.current.paciente}", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
                 }
-                if (lista.isEmpty()) item { Text("Ningún paciente coincide con los filtros.", color = c.textoSuave, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
+                if (lista.isEmpty()) item { Text("Ningún ${LocalTerminologiaPaciente.current.paciente} coincide con los filtros.", color = c.textoSuave, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(16.dp)) }
                 items(lista, key = { it.fila.tratamientoId }) { a ->
                     val r = a.fila
                     val nivel = nivelAbandono(r)
@@ -628,7 +629,7 @@ internal fun TabNuncaEmpezaron(acc: AccionesRet, kpis: @Composable () -> Unit, p
             acc.acciones.abrirHtml(
                 "<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Nunca empezaron</title>" +
                     "<style>body{font-family:Arial,sans-serif;color:#1e2d5e;font-size:12px}table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #dde1f0;padding:5px;text-align:left}</style></head><body>" +
-                    "<h2>Pacientes que nunca empezaron — ${esc(acc.ctx.clinicaNombre)}</h2><p>${filtrados.size} pacientes · generado $hoy</p>" +
+                    "<h2>${acc.ctx.terminologiaPaciente.Pacientes} que nunca empezaron — ${esc(acc.ctx.clinicaNombre)}</h2><p>${filtrados.size} ${acc.ctx.terminologiaPaciente.pacientes} · generado $hoy</p>" +
                     "<table><tr><th>Nombre</th><th>Teléfono</th><th>Ingreso</th><th>Días</th><th>Estado</th><th>Motivo</th></tr>$filas</table></body></html>",
                 "Nunca empezaron",
             )
@@ -676,7 +677,7 @@ internal fun TabNuncaEmpezaron(acc: AccionesRet, kpis: @Composable () -> Unit, p
                         "todos" to "Todos (${activos.size})", "sin_nada" to "Registrado sin nada ($nSinNada)", "no_siguio" to "Hizo cita, no siguió ($nNoSiguio)",
                     ), embudo) { embudo = it }
                     Spacer(Modifier.height(6.dp))
-                    CampoBusqueda(busqueda, { busqueda = it }, "🔍 Buscar paciente…")
+                    CampoBusqueda(busqueda, { busqueda = it }, "🔍 Buscar ${LocalTerminologiaPaciente.current.paciente}…")
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Column(Modifier.weight(1f)) { EtqForm("Registrado desde"); CajaSelectorForm(desde.ifEmpty { "Elegir…" }) { eligiendoFecha = "desde" } }
@@ -689,14 +690,14 @@ internal fun TabNuncaEmpezaron(acc: AccionesRet, kpis: @Composable () -> Unit, p
                     }
                     Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ChipFiltro((if (verDescartados) "☑" else "☐") + " Ver descartados" + if (nDescartados > 0) " ($nDescartados)" else "", verDescartados) { verDescartados = !verDescartados }
-                        Text("${filtrados.size} ${if (filtrados.size != 1) "pacientes" else "paciente"}", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                        Text("${filtrados.size} ${if (filtrados.size != 1) LocalTerminologiaPaciente.current.pacientes else LocalTerminologiaPaciente.current.paciente}", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
                     }
                     if (acc.ctx.esGestor) Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         BotonContorno("⬇️ Excel", filtrados.isNotEmpty()) { exportar(false) }
                         BotonContorno("🖨️ PDF", filtrados.isNotEmpty()) { exportar(true) }
                     }
                 }
-                if (filtrados.isEmpty()) item { EstadoVacio("🎉", "No hay pacientes en esta lista con los filtros aplicados.") }
+                if (filtrados.isEmpty()) item { EstadoVacio("🎉", "No hay ${LocalTerminologiaPaciente.current.pacientes} en esta lista con los filtros aplicados.") }
                 items(filtrados, key = { it.id }) { p ->
                     TarjetaRet(Modifier.alpha(if (p.descartado) 0.6f else 1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -765,7 +766,7 @@ internal fun TabPresupuestos(acc: AccionesRet, kpis: @Composable () -> Unit, pie
                 Text("🦷 Presupuestos sin aceptar", color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 if (total > 0) Text("${soles(total)} por cerrar", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
-            Text("Pacientes con piezas por tratar en el odontograma que todavía no tienen tratamiento. Llámalos o escríbeles para retomar.", color = c.textoSuave, fontSize = 12.sp)
+            Text("${LocalTerminologiaPaciente.current.Pacientes} con piezas por tratar en el odontograma que todavía no tienen tratamiento. Llámalos o escríbeles para retomar.", color = c.textoSuave, fontSize = 12.sp)
         }
         when {
             error && data == null -> item { ErrorCarga { reintento++ } }
@@ -793,7 +794,7 @@ internal fun TabPresupuestos(acc: AccionesRet, kpis: @Composable () -> Unit, pie
             }
         }
         if (aceptados.isNotEmpty()) {
-            item { Text("✓ Aceptados por el paciente · falta crear el tratamiento", color = c.ok, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp)) }
+            item { Text("✓ Aceptados por el ${LocalTerminologiaPaciente.current.paciente} · falta crear el tratamiento", color = c.ok, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp)) }
             items(aceptados, key = { "a-" + it.pacienteId }) { a ->
                 TarjetaRet(Modifier.clickable { acc.onFicha(a.pacienteId) }) {
                     Text(a.nombre, color = c.navy, fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -832,7 +833,7 @@ internal fun TabCuotas(acc: AccionesRet, kpis: @Composable () -> Unit, pie: @Com
                 Text("📅 Cuotas por cobrar", color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 if (atrasado > 0) Text("${soles(atrasado)} atrasado", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
-            Text("Cuotas atrasadas y las que vencen en los próximos 7 días. Escríbele al paciente para recordarle.", color = c.textoSuave, fontSize = 12.sp)
+            Text("Cuotas atrasadas y las que vencen en los próximos 7 días. Escríbele al ${LocalTerminologiaPaciente.current.paciente} para recordarle.", color = c.textoSuave, fontSize = 12.sp)
         }
         when {
             error && data == null -> item { ErrorCarga { reintento++ } }
@@ -941,7 +942,7 @@ internal fun DialogoRedactarIA(p: PedidoIA, acciones: pe.saniape.app.ui.Acciones
                 BotonContorno("Copiar") { acciones.copiarTexto(texto, "Mensaje") }
                 BotonContorno("↻ Otra versión") { reintento++ }
             }
-            Text("Revisa el mensaje antes de enviarlo: la IA solo redacta, no contacta al paciente.", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+            Text("Revisa el mensaje antes de enviarlo: la IA solo redacta, no contacta al ${LocalTerminologiaPaciente.current.paciente}.", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
         }
     }
 }

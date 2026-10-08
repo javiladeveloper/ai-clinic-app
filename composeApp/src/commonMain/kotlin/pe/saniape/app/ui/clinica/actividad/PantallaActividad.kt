@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.actividad
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -194,7 +195,7 @@ fun PantallaActividad(ctx: ContextoStaff, onSalir: () -> Unit) {
                                     sub = if (d.creados.total > 0) "${d.creados.citas} citas · ${d.creados.sesiones} sesiones" else null,
                                 ) { tipoSel = if (tipoSel == TipoActividad.CREADOS) null else TipoActividad.CREADOS }
                                 TarjetaResumen(
-                                    "🧑", if (d.creados.pacientes == 1) "Paciente nuevo" else "Pacientes nuevos", d.creados.pacientes,
+                                    "🧑", if (d.creados.pacientes == 1) "${LocalTerminologiaPaciente.current.Paciente} nuevo" else "${LocalTerminologiaPaciente.current.Pacientes} nuevos", d.creados.pacientes,
                                     Modifier.weight(1f), tipoSel == TipoActividad.PACIENTES, c.info,
                                 ) { tipoSel = if (tipoSel == TipoActividad.PACIENTES) null else TipoActividad.PACIENTES }
                             }
@@ -237,7 +238,7 @@ fun PantallaActividad(ctx: ContextoStaff, onSalir: () -> Unit) {
                                 )
                                 OutlinedTextField(
                                     value = busqueda, onValueChange = { busqueda = it }, singleLine = true,
-                                    placeholder = { Text("🔍 Buscar paciente o DNI…") }, colors = coloresCampoForm(),
+                                    placeholder = { Text("🔍 Buscar ${LocalTerminologiaPaciente.current.paciente} o DNI…") }, colors = coloresCampoForm(),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 if (hayFiltro) {

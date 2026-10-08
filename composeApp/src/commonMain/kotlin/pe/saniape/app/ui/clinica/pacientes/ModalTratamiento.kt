@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.pacientes
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -669,7 +670,7 @@ fun ModalCrearTratamiento(
                     Tarjeta(titulo = "¿Por qué este precio?", icono = "💬") {
                         OutlinedTextField(colors = coloresCampoForm(), value = motivoPrecio,
                             onValueChange = { motivoPrecio = it.take(200) },
-                            placeholder = { Text("Ej. Promoción acordada, paciente frecuente…", color = c.textoSuave) },
+                            placeholder = { Text("Ej. Promoción acordada, ${LocalTerminologiaPaciente.current.paciente} frecuente…", color = c.textoSuave) },
                             singleLine = true, modifier = Modifier.fillMaxWidth())
                         Text("Queda registrado: S/ ${formatoNum(referencia)} → S/ ${formatoNum(acordadoNum)}",
                             color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))

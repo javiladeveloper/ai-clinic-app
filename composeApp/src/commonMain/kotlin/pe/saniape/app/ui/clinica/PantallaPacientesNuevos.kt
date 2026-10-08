@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -277,7 +278,7 @@ fun PantallaPacientesNuevos(ctx: ContextoStaff, onSalir: () -> Unit) {
                                                         val p = runCatching { PacientesRepo.porId(f.pacienteId) }.getOrNull()
                                                         cargandoFicha = false
                                                         if (p != null) ficha = p
-                                                        else pe.saniape.app.ui.Toaster.error("No se pudo abrir la ficha del paciente.")
+                                                        else pe.saniape.app.ui.Toaster.error("No se pudo abrir la ficha del ${ctx.terminologiaPaciente.paciente}.")
                                                     }
                                                 }
                                             },
@@ -394,7 +395,7 @@ private fun TarjetaPacienteNuevo(f: FilaPacienteNuevo, onAbrir: () -> Unit, onWh
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(f.nombre.ifBlank { "Paciente" }, color = c.texto, fontSize = Sania.txt.cuerpo,
+                Text(f.nombre.ifBlank { LocalTerminologiaPaciente.current.Paciente }, color = c.texto, fontSize = Sania.txt.cuerpo,
                     fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (f.fechaRegistro.isNotBlank()) {
                     Text("Registrado ${fechaLegibleCorta(f.fechaRegistro)}", color = c.textoSuave, fontSize = Sania.txt.mini)

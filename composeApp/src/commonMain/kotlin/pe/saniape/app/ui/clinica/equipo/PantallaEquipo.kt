@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.equipo
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -224,7 +225,7 @@ private fun FilaRol(r: RolEquipo, d: EquipoDatos) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(r.nombre, color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f, fill = false))
             Spacer(Modifier.width(8.dp))
-            if (r.atiendePacientes) { Pastilla("🩺 atiende pacientes", c.teal, c.tealBg); Spacer(Modifier.width(8.dp)) }
+            if (r.atiendePacientes) { Pastilla("🩺 atiende ${LocalTerminologiaPaciente.current.pacientes}", c.teal, c.tealBg); Spacer(Modifier.width(8.dp)) }
             Text(if (r.miembros == 0) "Sin miembros" else if (r.miembros == 1) "1 miembro" else "${r.miembros} miembros",
                 color = c.textoSuave, fontSize = Sania.txt.mini)
         }

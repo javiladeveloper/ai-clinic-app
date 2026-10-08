@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.atencion
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -238,7 +239,7 @@ internal fun PasoProcedimiento(vm: AtencionViewModel, d: DatosConsultaApp, soloL
             if (cis.any { it.estado == "Pendiente" }) {
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "Imprímelo, que lo firmen el paciente (con huella) y el profesional, y regístralo aquí antes de " +
+                    "Imprímelo, que lo firmen el ${LocalTerminologiaPaciente.current.paciente} (con huella) y el profesional, y regístralo aquí antes de " +
                         "realizar el procedimiento. La foto del papel firmado se adjunta desde la ficha.",
                     color = c.pend, fontSize = 12.sp,
                 )

@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.equipo
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -83,7 +84,7 @@ private fun SelectorRol(
     roles.forEach { r ->
         OpcionElegible(
             r.nombre,
-            detalle = listOfNotNull(r.descripcion?.takeIf { it.isNotBlank() }, if (r.atiendePacientes) "🩺 atiende pacientes" else null)
+            detalle = listOfNotNull(r.descripcion?.takeIf { it.isNotBlank() }, if (r.atiendePacientes) "🩺 atiende ${LocalTerminologiaPaciente.current.pacientes}" else null)
                 .joinToString(" · ").ifBlank { null },
             elegida = elegido == r.id,
         ) { onElegir(r.id) }

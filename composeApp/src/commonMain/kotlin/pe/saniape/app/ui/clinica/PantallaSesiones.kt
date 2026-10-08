@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -232,7 +233,7 @@ fun PantallaSesiones(
                 item {
                     OutlinedTextField(
                         value = busqueda, onValueChange = { busqueda = it },
-                        placeholder = { Text("Buscar por paciente o profesional…", color = c.textoSuave) },
+                        placeholder = { Text("Buscar por ${LocalTerminologiaPaciente.current.paciente} o profesional…", color = c.textoSuave) },
                         leadingIcon = { Text("🔍") },
                         modifier = Modifier.fillMaxWidth(), singleLine = true,
                     )

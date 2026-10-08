@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.agenda.componentes
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -78,7 +79,7 @@ fun FiltrosAgenda(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = busqueda, onValueChange = onBusqueda,
-                placeholder = { Text("🔍 Buscar paciente…", color = c.textoSuave) },
+                placeholder = { Text("🔍 Buscar ${LocalTerminologiaPaciente.current.paciente}…", color = c.textoSuave) },
                 singleLine = true,
                 modifier = Modifier.weight(1f),
             )

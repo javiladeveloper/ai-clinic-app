@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.servicios
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -267,7 +268,7 @@ fun FormularioServicio(
                     Spacer(Modifier.height(8.dp))
                     EtqForm("Citas estimadas")
                     CampoNumero(f.citasEstimadas, "4", decimal = false) { f = f.copy(citasEstimadas = it.filter(Char::isDigit).take(2)) }
-                    Ayuda("Depende de cada paciente: en la ficha se pueden agregar citas sin cambiar el precio.")
+                    Ayuda("Depende de cada ${LocalTerminologiaPaciente.current.paciente}: en la ficha se pueden agregar citas sin cambiar el precio.")
                     Spacer(Modifier.height(8.dp))
                     EtqForm("Devolución de resultados")
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.pacientes
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -218,6 +219,7 @@ fun FilaPagoAgrupado(
     soloLectura: Boolean,
     onCambio: () -> Unit,
 ) {
+    val tpl = LocalTerminologiaPaciente.current
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     var confirmarBorrar by remember(g.clave) { mutableStateOf(false) }
@@ -320,7 +322,7 @@ fun FilaPagoAgrupado(
             ) {
                 Text(
                     "¿Borrar el pago completo de ${soles(g.monto)}?" +
-                        (if (uso != null) " El saldo a favor vuelve al paciente." else "") +
+                        (if (uso != null) " El saldo a favor vuelve al ${LocalTerminologiaPaciente.current.paciente}." else "") +
                         " Las demás partes salen de caja.",
                     color = c.error, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                 )
@@ -335,7 +337,7 @@ fun FilaPagoAgrupado(
                             }
                             guardando = false
                             confirmarBorrar = false
-                            if (err == null) Toaster.exito(if (uso != null) "Pago eliminado: el saldo a favor volvió al paciente" else "Pago eliminado")
+                            if (err == null) Toaster.exito(if (uso != null) "Pago eliminado: el saldo a favor volvió al ${tpl.paciente}" else "Pago eliminado")
                             else Toaster.error(err)
                             // También tras un error: un borrado parcial cambia lo que hay que ver.
                             onCambio()
@@ -361,6 +363,7 @@ fun AvisoSaldoCancelado(
     soloLectura: Boolean,
     onCambio: () -> Unit,
 ) {
+    val tpl = LocalTerminologiaPaciente.current
     if (t.estado != "Cancelado") return
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -436,7 +439,7 @@ fun AvisoSaldoCancelado(
             onDismissRequest = { if (!trabajando) confirmar = false },
             title = { Text("¿Pasar a saldo a favor?", fontWeight = FontWeight.Bold) },
             text = {
-                Text("¿Pasar ${soles(noAtendido)} a saldo a favor del paciente? Podrá usarlo para pagar otro tratamiento.",
+                Text("¿Pasar ${soles(noAtendido)} a saldo a favor del ${LocalTerminologiaPaciente.current.paciente}? Podrá usarlo para pagar otro tratamiento.",
                     color = c.texto, fontSize = Sania.txt.cuerpo)
             },
             confirmButton = {
@@ -446,7 +449,7 @@ fun AvisoSaldoCancelado(
                         val (r, err) = conIndicador(Gestion.GUARDANDO) { PagarConSaldoRepo.liberar(t.id) }
                         trabajando = false
                         confirmar = false
-                        if (err == null) Toaster.exito("${soles(r?.monto ?: noAtendido)} pasaron a saldo a favor del paciente")
+                        if (err == null) Toaster.exito("${soles(r?.monto ?: noAtendido)} pasaron a saldo a favor del ${tpl.paciente}")
                         else Toaster.error(err)
                         onCambio()
                     }
@@ -524,7 +527,7 @@ fun DialogoEliminarTratamiento(
                             )
                         }
                         if (r.recibido > 0.005) {
-                            AvisoCaja("${soles(r.recibido)} se pagaron con saldo a favor: vuelven al saldo del paciente.", c.texto, c.chipBg)
+                            AvisoCaja("${soles(r.recibido)} se pagaron con saldo a favor: vuelven al saldo del ${LocalTerminologiaPaciente.current.paciente}.", c.texto, c.chipBg)
                         }
                         if (r.dado.isNotEmpty()) {
                             AvisoCaja(

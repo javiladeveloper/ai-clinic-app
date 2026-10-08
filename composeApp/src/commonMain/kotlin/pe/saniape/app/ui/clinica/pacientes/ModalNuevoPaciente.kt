@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.pacientes
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -63,6 +64,7 @@ fun ModalNuevoPaciente(
     onCancelar: () -> Unit,
     onCreado: (PacienteStaff) -> Unit,       // creado (o el existente elegido) → abrir ficha
 ) {
+    val tpl = LocalTerminologiaPaciente.current
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     var paisDoc by remember { mutableStateOf("PE") }         // PE / CL / OTRO
@@ -175,13 +177,13 @@ fun ModalNuevoPaciente(
     }
 
     DialogoForm(
-        titulo = if (reactivando) "Reactivar paciente" else "Nuevo paciente",
+        titulo = if (reactivando) "Reactivar ${LocalTerminologiaPaciente.current.paciente}" else "Nuevo ${LocalTerminologiaPaciente.current.paciente}",
         subtitulo = if (reactivando) "Corrige solo lo que cambió" else "Los antecedentes clínicos son opcionales",
         textoAccion = when {
             reactivando && guardando -> "Reactivando…"
-            reactivando -> "↻ Reactivar paciente"
+            reactivando -> "↻ Reactivar ${LocalTerminologiaPaciente.current.paciente}"
             guardando -> "Creando…"
-            else -> "Crear paciente"
+            else -> "Crear ${LocalTerminologiaPaciente.current.paciente}"
         },
         accionHabilitada = nombre.isNotBlank() && !guardando && existente == null,
         ancla = "paciente_form",
@@ -247,7 +249,7 @@ fun ModalNuevoPaciente(
                 )
                 guardando = false
                 if (creado != null) {
-                    pe.saniape.app.ui.Toaster.exito("Paciente registrado")
+                    pe.saniape.app.ui.Toaster.exito("${tpl.Paciente} registrado")
                     onCreado(creado)
                 }
                 else error = "No se pudo crear. Revisa tu conexión."

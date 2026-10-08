@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.agenda.modales
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -91,7 +92,7 @@ fun ModalTriaje(
 
     DialogoForm(
         titulo = "🩺 Triaje",
-        subtitulo = cita.pacienteNombre ?: "Paciente",
+        subtitulo = cita.pacienteNombre ?: "${LocalTerminologiaPaciente.current.Paciente}",
         textoAccion = if (guardando) "Guardando…" else "Guardar triaje",
         accionHabilitada = !guardando && d != null,
         onCancelar = onCancelar,
@@ -112,7 +113,7 @@ fun ModalTriaje(
                 d.edad?.let { append("$it años · ") }
                 append(
                     if (flujoMedico) "Funciones vitales antes de la consulta (NTS 139). Quedan ligadas a esta cita."
-                    else "Signos vitales y medidas antes de la atención. Quedan ligados a esta cita y al historial del paciente."
+                    else "Signos vitales y medidas antes de la atención. Quedan ligados a esta cita y al historial del ${LocalTerminologiaPaciente.current.paciente}."
                 )
                 d.yaTenia?.let { append(" Triaje anterior: $it.") }
             },
@@ -136,7 +137,7 @@ fun ModalTriaje(
         Spacer(Modifier.height(12.dp))
         VitalesCampos(valores = valores, onChange = { valores = it; errores = emptyList() }, edad = d.edad, campos = campos)
         Spacer(Modifier.height(12.dp))
-        EtqForm("Motivo que refiere el paciente (opcional)")
+        EtqForm("Motivo que refiere el ${LocalTerminologiaPaciente.current.paciente} (opcional)")
         OutlinedTextField(
             value = motivo, onValueChange = { motivo = it.take(300) },
             colors = coloresCampoForm(), singleLine = false, minLines = 1,

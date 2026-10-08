@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.atencion
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -302,9 +303,10 @@ internal fun diagnosticoParaReceta(dx: List<pe.saniape.app.data.staff.Diagnostic
 }
 
 /** Aviso de solo lectura, con el motivo (como la web). */
+@androidx.compose.runtime.Composable
 private fun textoSoloLectura(d: DatosConsultaApp): String = when {
     !d.flags.puedeAtender -> "Solo lectura: solo el profesional que atiende puede editar."
-    d.cita.paciente?.estado == "Inactivo" -> "Solo lectura: el paciente está dado de baja."
+    d.cita.paciente?.estado == "Inactivo" -> "Solo lectura: el ${LocalTerminologiaPaciente.current.paciente} está dado de baja."
     else -> "Solo lectura."
 }
 
@@ -370,7 +372,7 @@ private fun Cabecera(
             }
         }
         Spacer(Modifier.height(Sania.dim.sm))
-        Text(cita.paciente?.nombre?.ifBlank { null } ?: "Paciente", color = c.sobreNavy, fontSize = Sania.txt.subtitulo,
+        Text(cita.paciente?.nombre?.ifBlank { null } ?: "${LocalTerminologiaPaciente.current.Paciente}", color = c.sobreNavy, fontSize = Sania.txt.subtitulo,
             fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(linea1, color = c.sobreNavy.copy(alpha = 0.8f), fontSize = 13.sp)
         Text(listOf(queEs, cuando).filter { it.isNotBlank() }.joinToString(" · "),

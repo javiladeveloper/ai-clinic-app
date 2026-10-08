@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.atencion
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -126,7 +127,7 @@ internal fun PasoPlan(
         BloqueControl(vm, d, soloLectura)
         Bloque {
             CampoTextoClinico(
-                label = "Indicaciones para el paciente",
+                label = "Indicaciones para el ${LocalTerminologiaPaciente.current.paciente}",
                 valor = vm.borrador.textos["tratamiento"].orEmpty(), onChange = { vm.texto("tratamiento", it) },
                 frases = frasesDe(d, "indicaciones"), soloLectura = soloLectura, minLineas = 3,
                 placeholder = "Medidas generales: reposo, dieta, signos de alarma… (los medicamentos van en la receta)",
@@ -187,7 +188,7 @@ private fun BloqueReceta(
         }
         Spacer(Modifier.height(8.dp))
         if (d.recetas.isEmpty()) {
-            Texto("Sin receta en esta atención. Se prellena con el paciente y el diagnóstico.")
+            Texto("Sin receta en esta atención. Se prellena con el ${LocalTerminologiaPaciente.current.paciente} y el diagnóstico.")
         } else {
             d.recetas.forEach { r ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {

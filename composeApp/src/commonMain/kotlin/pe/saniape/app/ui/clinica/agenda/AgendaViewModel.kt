@@ -330,7 +330,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                 return@launch
             }
             if (!r.encolada) {
-                val quien = cita.pacienteNombre ?: "Paciente"
+                val quien = cita.pacienteNombre ?: ctx.terminologiaPaciente.Paciente
                 pe.saniape.app.ui.Toaster.exito(if (triajeOn) "$quien en sala de espera — falta el triaje" else "$quien en sala de espera")
                 recargarLlegadas()
             }

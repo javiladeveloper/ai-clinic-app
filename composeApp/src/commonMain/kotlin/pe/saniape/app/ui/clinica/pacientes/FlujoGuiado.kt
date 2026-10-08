@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.pacientes
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -234,7 +235,7 @@ fun BarraRecorrido(
                         contentAlignment = Alignment.Center,
                     ) { Text("📝 Registrar atención (medicación/receta)", color = c.sobreNavy, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                     Spacer(Modifier.height(8.dp))
-                    Text("¿El paciente necesita volver?", color = c.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("¿El ${LocalTerminologiaPaciente.current.paciente} necesita volver?", color = c.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Box(

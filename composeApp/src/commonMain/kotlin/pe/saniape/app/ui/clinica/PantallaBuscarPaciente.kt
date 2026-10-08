@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -106,7 +107,7 @@ fun PantallaBuscarPaciente(
                 }
                 filtrados.isEmpty() -> Box(Modifier.fillMaxSize().padding(Sania.dim.xl), Alignment.Center) {
                     Text(
-                        if (query.isBlank()) "Escribe para buscar un paciente." else "Sin resultados para \"$query\".",
+                        if (query.isBlank()) "Escribe para buscar un ${LocalTerminologiaPaciente.current.paciente}." else "Sin resultados para \"$query\".",
                         color = c.textoSuave, fontSize = Sania.txt.cuerpo,
                     )
                 }

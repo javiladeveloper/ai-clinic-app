@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.agenda.componentes
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import pe.saniape.app.data.staff.FlujoClinica
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -147,7 +148,7 @@ fun TarjetaCita(
                     Modifier.weight(1f).clickable { cita.pacienteId?.let(onVerResumen) },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(cita.pacienteNombre ?: "Paciente", color = c.texto,
+                    Text(cita.pacienteNombre ?: "${LocalTerminologiaPaciente.current.Paciente}", color = c.texto,
                         fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f, fill = false))
                     Text(" ›", color = c.textoSuave, fontSize = Sania.txt.cuerpo,
@@ -447,7 +448,7 @@ fun BadgeEstadoCita(estado: String, confirmadaPaciente: Boolean = false) {
             Text(etiqueta, color = color.fg, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
         if (confirmadaPaciente) {
-            Text("✓ Confirmó el paciente", color = c.ok, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+            Text("✓ Confirmó el ${LocalTerminologiaPaciente.current.paciente}", color = c.ok, fontSize = 9.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(top = 2.dp))
         }
     }

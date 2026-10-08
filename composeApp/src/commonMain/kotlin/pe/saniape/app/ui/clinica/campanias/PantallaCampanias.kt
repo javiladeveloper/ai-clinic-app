@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.campanias
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -81,6 +82,7 @@ import pe.saniape.app.ui.theme.Sania
  */
 @Composable
 fun PantallaCampanias(ctx: ContextoStaff, onSalir: () -> Unit) {
+    val tpl = LocalTerminologiaPaciente.current
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     val hoy = remember { hoyClinicaIso() }
@@ -136,8 +138,8 @@ fun PantallaCampanias(ctx: ContextoStaff, onSalir: () -> Unit) {
             val (res, error) = try { conIndicador { CampaniasRepo.avisar(cp.id, segmento) } } finally { avisando = null }
             if (res == null) Toaster.error(error ?: "No se pudo enviar el aviso")
             else if (res.enviados > 0) {
-                Toaster.exito("Aviso enviado a ${res.enviados} paciente${if (res.enviados == 1) "" else "s"} con la app (${res.sinApp} sin la app no lo recibieron)")
-            } else Toaster.info("Ninguno de esos pacientes tiene la app todavía — el aviso no llegó a nadie")
+                Toaster.exito("Aviso enviado a ${res.enviados} ${if (res.enviados == 1) tpl.paciente else tpl.pacientes} con la app (${res.sinApp} sin la app no lo recibieron)")
+            } else Toaster.info("Ninguno de esos ${tpl.pacientes} tiene la app todavía — el aviso no llegó a nadie")
         }
     }
 
@@ -160,7 +162,7 @@ fun PantallaCampanias(ctx: ContextoStaff, onSalir: () -> Unit) {
             title = { Text("Avisar \"${cp.nombre}\"") },
             text = {
                 Text(
-                    "Se envía una notificación a tus pacientes que tienen la app. " +
+                    "Se envía una notificación a tus ${LocalTerminologiaPaciente.current.pacientes} que tienen la app. " +
                         "Máximo 1 aviso promocional por semana. ¿A quiénes?",
                 )
             },
@@ -170,7 +172,7 @@ fun PantallaCampanias(ctx: ContextoStaff, onSalir: () -> Unit) {
                     TextButton(onClick = { porAvisar = null; avisar(cp, "inactivos") }) {
                         Text("Solo a los que no vienen hace 60 días", color = c.navy, fontWeight = FontWeight.Bold)
                     }
-                    TextButton(onClick = { porAvisar = null; confirmarATodos = cp }) { Text("A todos mis pacientes con la app", color = c.navy) }
+                    TextButton(onClick = { porAvisar = null; confirmarATodos = cp }) { Text("A todos mis ${LocalTerminologiaPaciente.current.pacientes} con la app", color = c.navy) }
                     TextButton(onClick = { porAvisar = null }) { Text("Cancelar", color = c.textoSuave) }
                 }
             },
@@ -181,7 +183,7 @@ fun PantallaCampanias(ctx: ContextoStaff, onSalir: () -> Unit) {
         AlertaConTeclado(
             onDismissRequest = { confirmarATodos = null },
             title = { Text("¿Avisar a TODOS?") },
-            text = { Text("Se enviará \"${cp.nombre}\" a todos tus pacientes que tienen la app, no solo a los inactivos.") },
+            text = { Text("Se enviará \"${cp.nombre}\" a todos tus ${LocalTerminologiaPaciente.current.pacientes} que tienen la app, no solo a los inactivos.") },
             confirmButton = {
                 TextButton(onClick = { confirmarATodos = null; avisar(cp, "todos") }) { Text("Sí, avisar a todos", color = c.navy, fontWeight = FontWeight.Bold) }
             },
@@ -553,7 +555,7 @@ private fun FormularioCampania(
         TarjetaForm("Descripción (opcional)", "📝") {
             OutlinedTextField(
                 value = f.descripcion, onValueChange = { f = f.copy(descripcion = it) }, minLines = 2,
-                placeholder = { Text("Ej. Promo válida para pacientes nuevos") }, colors = coloresCampoForm(), modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Ej. Promo válida para ${LocalTerminologiaPaciente.current.pacientes} nuevos") }, colors = coloresCampoForm(), modifier = Modifier.fillMaxWidth(),
             )
             Text("La ven el bot y el equipo.", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
         }

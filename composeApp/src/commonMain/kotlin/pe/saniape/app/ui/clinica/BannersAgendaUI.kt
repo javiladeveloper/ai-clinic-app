@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -70,7 +71,7 @@ fun BannersAgendaUI(
                         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text(d.pacienteNombre ?: "Paciente", color = c.texto,
+                            Text(d.pacienteNombre ?: "${LocalTerminologiaPaciente.current.Paciente}", color = c.texto,
                                 fontSize = Sania.txt.pequeno, fontWeight = FontWeight.SemiBold)
                             val detalle = if (d.esExamen)
                                 "🔬 ${d.descripcion ?: "Examen"}" + (d.especialidadDestino?.let { " → $it" } ?: "")
@@ -90,7 +91,7 @@ fun BannersAgendaUI(
         if (banners.vencidas.isNotEmpty()) {
             BannerColapsable(
                 titulo = "⏰ ${banners.vencidas.size} cita(s) sin cerrar",
-                subtitulo = "Pasaron de fecha y siguen pendientes. ¿El paciente asistió?",
+                subtitulo = "Pasaron de fecha y siguen pendientes. ¿El ${LocalTerminologiaPaciente.current.paciente} asistió?",
                 colorFg = c.pend, colorBg = c.pendBg, colorBorde = c.pend,
                 abiertoInicial = false,
             ) {
@@ -100,7 +101,7 @@ fun BannersAgendaUI(
                             Column(Modifier.weight(1f)) {
                                 Text("${cita.fecha} · ${hora12(cita.hora)} · ${flujo.nombreTipo(cita.tipo)}",
                                     color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                Text(cita.pacienteNombre ?: "Paciente", color = c.textoSuave, fontSize = 12.sp)
+                                Text(cita.pacienteNombre ?: "${LocalTerminologiaPaciente.current.Paciente}", color = c.textoSuave, fontSize = 12.sp)
                             }
                             cita.pacienteTelefono?.takeIf { it.isNotBlank() }?.let { tel ->
                                 IconoMini("📞", c.navy) { acciones.abrirUrl("tel:${tel.filter { ch -> ch.isDigit() }}") }
@@ -141,7 +142,7 @@ fun BannersAgendaUI(
                         Spacer(Modifier.width(8.dp))
                         Column(Modifier.weight(1f)) {
                             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                                Text(cita.pacienteNombre ?: "Paciente", color = c.texto, fontSize = 12.sp)
+                                Text(cita.pacienteNombre ?: "${LocalTerminologiaPaciente.current.Paciente}", color = c.texto, fontSize = 12.sp)
                                 if (riesgoAlto) {
                                     Spacer(Modifier.width(6.dp))
                                     Box(

@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.pacientes
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -70,6 +71,7 @@ fun GaleriaFotos(
     tratamientoId: String,
     sesiones: List<SesionFicha>,
 ) {
+    val tpl = LocalTerminologiaPaciente.current
     val c = Sania.colors
     val scope = rememberCoroutineScope()
 
@@ -157,7 +159,7 @@ fun GaleriaFotos(
                         onVisible = {
                             scope.launch {
                                 val ok = FotosRepo.cambiarVisible(f.id, !f.visiblePaciente)
-                                if (ok) pe.saniape.app.ui.Toaster.exito(if (!f.visiblePaciente) "Visible para el paciente" else "Oculta al paciente")
+                                if (ok) pe.saniape.app.ui.Toaster.exito(if (!f.visiblePaciente) "Visible para el ${tpl.paciente}" else "Oculta al ${tpl.paciente}")
                                 else pe.saniape.app.ui.Toaster.error("No se pudo cambiar")
                                 recargar()
                             }
@@ -448,7 +450,7 @@ private fun ModalSubirFoto(
                     if (visible) Text("✓", color = c.sobreNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.width(8.dp))
-                Text("Mostrar esta foto al paciente en su portal", color = c.texto, fontSize = 12.sp)
+                Text("Mostrar esta foto al ${LocalTerminologiaPaciente.current.paciente} en su portal", color = c.texto, fontSize = 12.sp)
             }
         }
     }

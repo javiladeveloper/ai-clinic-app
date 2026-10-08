@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.atencion
 
+import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -222,11 +223,11 @@ fun DialogoFiliacion(
             }
             error?.let { CajaAviso(it, c.error, c.errorBg) }
             Text(
-                "El documento, la fecha de nacimiento, el teléfono, el domicilio y la ocupación se corrigen en ✏ Editar del paciente.",
+                "El documento, la fecha de nacimiento, el teléfono, el domicilio y la ocupación se corrigen en ✏ Editar del ${LocalTerminologiaPaciente.current.paciente}.",
                 color = c.textoSuave, fontSize = 12.sp,
             )
             if (sinHc) {
-                Text("Al guardar se abre la historia clínica del paciente.", color = c.textoSuave, fontSize = 12.sp)
+                Text("Al guardar se abre la historia clínica del ${LocalTerminologiaPaciente.current.paciente}.", color = c.textoSuave, fontSize = 12.sp)
             }
             if (cargando) {
                 Text("Cargando…", color = c.textoSuave, fontSize = 13.sp)
