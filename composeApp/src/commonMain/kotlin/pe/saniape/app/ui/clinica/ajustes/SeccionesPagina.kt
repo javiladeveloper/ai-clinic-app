@@ -156,7 +156,7 @@ internal fun SeccionDiseno(d: JsonObject, onVolver: () -> Unit, onCambio: () -> 
     val plantilla = cfg.t("plantilla").ifBlank { "clasica" }
     val info = plantillas.firstOrNull { it.t("id") == plantilla }
 
-    SubPantalla("Diseño de la página", onVolver) {
+    SubPantalla("Diseño de la página", onVolver, sinGuardar = !guardando && cfg != (cl.o("paginaConfig") ?: JsonObject(emptyMap()))) {
         if (!d.plan().b("pagina")) {
             CandadoPlan("El diseño de tu página es del plan Premium", "Elige una plantilla, el fondo y qué secciones se muestran para que tu página tenga identidad propia. Disponible desde el plan Premium.")
             return@SubPantalla
@@ -235,7 +235,9 @@ internal fun SeccionPortada(d: JsonObject, onVolver: () -> Unit, onCambio: () ->
     val tieneFoto = portada.isNotBlank()
     val estilo = cfg.t("heroEstilo").ifBlank { "foto-degradado" }
 
-    SubPantalla("Portada", onVolver) {
+    // Hay algo distinto de lo guardado (incluida una portada ya subida pero no publicada).
+    val sinGuardar = portada != cl.t("fotoPortadaUrl") || stats != statsDe(cl) || cfg != (cl.o("paginaConfig") ?: JsonObject(emptyMap()))
+    SubPantalla("Portada", onVolver, sinGuardar = sinGuardar && !guardando) {
         if (!d.plan().b("pagina")) {
             CandadoPlan("La portada de tu página es del plan Premium", "Sube una foto de portada e indica tus datos más destacados para que tu página pública luzca profesional. Disponible desde el plan Premium.")
             return@SubPantalla
@@ -311,13 +313,17 @@ internal fun SeccionContenido(d: JsonObject, onVolver: () -> Unit, onCambio: () 
     var precios by remember { mutableStateOf(cfg.b("mostrarPrecios")) }
     var subiendo by remember { mutableStateOf(false) }
     var quitar by remember { mutableStateOf<String?>(null) }
+    var guardandoToggle by remember { mutableStateOf(false) }
     val elegir = recordarSubirImagen("foto-clinica", { subiendo = it }) { r ->
         fotos = r.textos("fotos").ifEmpty { fotos + listOfNotNull(r.s("url")) }
         Toaster.exito("Foto agregada a tu página"); onCambio()
     }
     fun guardarToggle(campo: String, v: Boolean, alFallar: () -> Unit) {
+        guardandoToggle = true
         scope.launch {
-            val r = guardarAjuste { AjustesRepo.guardarSeccion("contenido-publico", buildJsonObject { put(campo, v) }) }
+            val r = try {
+                guardarAjuste { AjustesRepo.guardarSeccion("contenido-publico", buildJsonObject { put(campo, v) }) }
+            } finally { guardandoToggle = false }
             if (!r.registrada) alFallar() else onCambio()
         }
     }
@@ -363,10 +369,10 @@ internal fun SeccionContenido(d: JsonObject, onVolver: () -> Unit, onCambio: () 
             }
         }
         Tarjeta("Servicios en la página") {
-            FilaInterruptor("Mostrar mis servicios", "Lista tus servicios activos (nombre, categoría y descripción).", servicios) { v ->
+            FilaInterruptor("Mostrar mis servicios", "Lista tus servicios activos (nombre, categoría y descripción).", servicios, habilitado = !guardandoToggle) { v ->
                 val antes = servicios; servicios = v; guardarToggle("mostrarServicios", v) { servicios = antes }
             }
-            FilaInterruptor("Mostrar también los precios", "Se muestran como «Desde S/ X» (el precio por sesión de cada servicio).", precios, habilitado = servicios) { v ->
+            FilaInterruptor("Mostrar también los precios", "Se muestran como «Desde S/ X» (el precio por sesión de cada servicio).", precios, habilitado = servicios && !guardandoToggle) { v ->
                 val antes = precios; precios = v; guardarToggle("mostrarPrecios", v) { precios = antes }
             }
         }
@@ -513,13 +519,16 @@ internal fun DialogoBuscarDireccion(ciudad: String, lat: Double?, lng: Double?, 
     var items by remember { mutableStateOf<List<JsonObject>>(emptyList()) }
     var buscando by remember { mutableStateOf(false) }
     LaunchedEffect(q) {
+        // Una búsqueda vieja que se cancela (al seguir escribiendo o borrar) no deja "Buscando…" pegado.
+        buscando = false
         if (q.trim().length < 3) { items = emptyList(); return@LaunchedEffect }
         kotlinx.coroutines.delay(450)
         buscando = true
-        val cerca = if (lat != null && lng != null) "&lat=$lat&lng=$lng" else ""
-        val (r, _) = AjustesRepo.leerObjeto("/api/geocode?q=${pe.saniape.app.ui.urlEncode(q.trim())}&ciudad=${pe.saniape.app.ui.urlEncode(ciudad)}$cerca")
-        items = r?.objetos("items") ?: emptyList()
-        buscando = false
+        try {
+            val cerca = if (lat != null && lng != null) "&lat=$lat&lng=$lng" else ""
+            val (r, _) = AjustesRepo.leerObjeto("/api/geocode?q=${pe.saniape.app.ui.urlEncode(q.trim())}&ciudad=${pe.saniape.app.ui.urlEncode(ciudad)}$cerca")
+            items = r?.objetos("items") ?: emptyList()
+        } finally { buscando = false }
     }
     AlertaConTeclado(
         onDismissRequest = onCerrar,
@@ -601,11 +610,17 @@ internal fun SeccionResenas(d: JsonObject, onVolver: () -> Unit) {
     var resenas by remember { mutableStateOf<List<JsonObject>?>(null) }
     var recarga by remember { mutableIntStateOf(0) }
     var ocupado by remember { mutableStateOf<String?>(null) }
+    var errorResenas by remember { mutableStateOf<String?>(null) }
     val conPlan = d.plan().b("reservas")
     LaunchedEffect(recarga) {
         if (!conPlan) return@LaunchedEffect
         val (r, e) = AjustesRepo.leerObjeto("${AjustesRepo.BASE}/resenas")
-        if (r != null) resenas = r.objetos("resenas") else { Toaster.error(e ?: "No se pudieron cargar las reseñas"); if (resenas == null) resenas = emptyList() }
+        when {
+            r != null -> { resenas = r.objetos("resenas"); errorResenas = null }
+            // Un fallo no se muestra como "aún no tienes reseñas".
+            resenas == null -> errorResenas = e ?: "No se pudieron cargar las reseñas"
+            else -> Toaster.error(e ?: "No se pudieron cargar las reseñas")
+        }
     }
     fun cambiar(id: String, estado: String) {
         ocupado = id
@@ -628,6 +643,7 @@ internal fun SeccionResenas(d: JsonObject, onVolver: () -> Unit) {
         }
         val lista = resenas
         when {
+            lista == null && errorResenas != null -> ErrorCarga(errorResenas) { errorResenas = null; recarga++ }
             lista == null -> pe.saniape.app.ui.CargandoLista()
             lista.isEmpty() -> pe.saniape.app.ui.clinica.EstadoVacio("⭐", "Aún no tienes reseñas", "Aparecerán aquí cuando tus pacientes las dejen tras su cita.")
             else -> {
@@ -647,7 +663,7 @@ internal fun SeccionResenas(d: JsonObject, onVolver: () -> Unit) {
                         val n = (r.n("calificacion") ?: 0.0).toInt().coerceIn(0, 5)
                         Text("★".repeat(n) + "☆".repeat(5 - n), color = c.pend, fontSize = 15.sp)
                         r.s("comentario")?.takeIf { it.isNotBlank() }?.let { Text(it, color = c.texto, fontSize = 13.sp) }
-                        Text(r.t("created_at").take(10), color = c.textoSuave, fontSize = 11.sp)
+                        Text(fechaLima(r.t("created_at")), color = c.textoSuave, fontSize = 11.sp)
                         val id = r.t("id")
                         val libre = ocupado != id
                         when (r.t("estado")) {

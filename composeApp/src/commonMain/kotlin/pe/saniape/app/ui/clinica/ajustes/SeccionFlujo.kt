@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -94,7 +95,7 @@ internal data class Flujo(
 
 /** Cambia el modo conservando los nombres (misma lógica de pantalla que la web). */
 internal fun Flujo.conModo(m: String, guardado: Flujo): Flujo = when (m) {
-    "dos" -> if (modo == "dos") this else copy(usaConsulta = true, usaEvaluacion = true, labelConsulta = "Consulta", labelEvaluacion = "Evaluación")
+    "dos" -> copy(usaConsulta = true, usaEvaluacion = true)
     "ninguna" -> copy(usaConsulta = false, usaEvaluacion = false)
     else -> {
         val ent = if (modo == "una") entrada else guardado.entrada
@@ -149,13 +150,15 @@ internal fun SeccionFlujo(d: JsonObject, onVolver: () -> Unit, onCambio: () -> U
     var verHallazgos by remember { mutableStateOf(false) }
     var elegirBase by remember { mutableStateOf(false) }
     var cambiandoBase by remember { mutableStateOf(false) }
+    // El flujo de la clínica (sin especialidades) tiene cambios sin guardar.
+    var selectorSucio by remember { mutableStateOf(false) }
 
     ManejarAtras(activo = abierta != null || verHallazgos) { if (verHallazgos) verHallazgos = false else abierta = null }
     if (verHallazgos) { SeccionHallazgos({ verHallazgos = false }, volver = "← Flujo de atención"); return }
     val esp = esps.firstOrNull { it.t("id") == abierta }
     if (esp != null) {
         EditorFlujoEspecialidad(d, esp, esBase = esp.t("id") == baseId, flujoClinica,
-            onVolver = { abierta = null }, onGuardado = { abierta = null; onCambio() }, onHallazgos = { verHallazgos = true })
+            onVolver = { abierta = null }, onGuardado = onCambio, onHallazgos = { verHallazgos = true })
         return
     }
 
@@ -170,9 +173,9 @@ internal fun SeccionFlujo(d: JsonObject, onVolver: () -> Unit, onCambio: () -> U
         }
     }, { elegirBase = false })
 
-    SubPantalla("Flujo de atención", onVolver) {
+    SubPantalla("Flujo de atención", onVolver, sinGuardar = selectorSucio) {
         if (esps.isEmpty()) {
-            SelectorFlujoClinica(d, flujoClinica, onCambio)
+            SelectorFlujoClinica(d, flujoClinica, onCambio) { selectorSucio = it }
         } else {
             val varias = esps.size > 1
             Ayuda((if (varias) "Cómo empieza la atención en cada especialidad, cómo se llama cada paso y cuánto dura. Cada una se configura por separado."
@@ -199,7 +202,7 @@ internal fun SeccionFlujo(d: JsonObject, onVolver: () -> Unit, onCambio: () -> U
 /** Flujo de la clínica cuando no hay especialidades (el selector de siempre, con plantillas por rubro). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SelectorFlujoClinica(d: JsonObject, guardado: Flujo, onCambio: () -> Unit) {
+private fun SelectorFlujoClinica(d: JsonObject, guardado: Flujo, onCambio: () -> Unit, onSinGuardar: (Boolean) -> Unit) {
     val scope = rememberCoroutineScope()
     val cat = d.o("catalogos") ?: JsonObject(emptyMap())
     var borrador by remember(guardado) { mutableStateOf(guardado) }
@@ -209,6 +212,7 @@ private fun SelectorFlujoClinica(d: JsonObject, guardado: Flujo, onCambio: () ->
     val limpio = borrador.limpio(guardado)
     val sinCambios = limpio == guardado
     val invalido = borrador.modo == "una" && borrador.nombreEntrada.isBlank()
+    LaunchedEffect(sinCambios, guardando) { onSinGuardar(!sinCambios && !guardando) }
 
     Ayuda("Define cómo empieza la atención en tu clínica y cómo se llama cada paso. Es la forma de nombrarlos: tus datos y tus precios no se tocan.")
     FormularioFlujo(borrador, guardado, cat.textos("nombresEntrada"), d.o("duraciones"), null, null) { borrador = it }
@@ -310,7 +314,10 @@ private fun FormularioFlujo(
 @Composable
 private fun EditorFlujoEspecialidad(
     d: JsonObject, esp: JsonObject, esBase: Boolean, flujoClinica: Flujo,
-    onVolver: () -> Unit, onGuardado: () -> Unit, onHallazgos: () -> Unit,
+    onVolver: () -> Unit,
+    /** Algo quedó guardado (aunque sea en parte): el padre relee los ajustes. */
+    onGuardado: () -> Unit,
+    onHallazgos: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val cat = d.o("catalogos") ?: JsonObject(emptyMap())
@@ -324,19 +331,22 @@ private fun EditorFlujoEspecialidad(
     var borrador by remember { mutableStateOf(guardado) }
     var mins by remember { mutableStateOf(minsGuardados) }
     var guardando by remember { mutableStateOf(false) }
+    var botSync by remember { mutableStateOf<String?>(null) }
+    var verSync by remember { mutableStateOf(false) }
     val limpio = borrador.limpio(guardado)
     val flujoCambio = limpio != guardado
     val minsCambiaron = borrador.tipos.any { (mins[it] ?: "").trim() != (minsGuardados[it] ?: "") }
     val errores = borrador.tipos.mapNotNull { t -> (mins[t] ?: "").takeIf { it.isNotBlank() }?.let { errorMinutos(it, min, max) }?.let { t to it } }
 
-    SubPantalla("${esp.t("icono")} ${esp.t("nombre")}", onVolver, volver = "← Flujo de atención") {
+    SubPantalla("${esp.t("icono")} ${esp.t("nombre")}", onVolver, volver = "← Flujo de atención", sinGuardar = !guardando && (flujoCambio || minsCambiaron)) {
         if (esBase) Aviso("Las citas que llegan sin especialidad (bot, reserva web) siguen este flujo.", "info")
         FormularioFlujo(borrador, guardado, cat.textos("nombresEntrada"), d.o("duraciones"), mins, { mins = it }) { borrador = it }
         errores.forEach { (t, e) -> Aviso("${borrador.nombreTipo(t)}: $e", "error") }
         Boton(if (guardando) "Guardando…" else if (flujoCambio || minsCambiaron) "Guardar cambios" else "Guardado",
             habilitado = !guardando && (flujoCambio || minsCambiaron) && errores.isEmpty()) {
-            guardando = true
+            guardando = true; verSync = false
             scope.launch {
+                var algoGuardado = false
                 try {
                     if (flujoCambio) {
                         val r = guardarAjuste {
@@ -345,6 +355,9 @@ private fun EditorFlujoEspecialidad(
                             })
                         }
                         if (!r.registrada) return@launch
+                        algoGuardado = true
+                        // El flujo lo lee Sani: se muestra si quedó actualizado o pendiente.
+                        botSync = r.cuerpo?.s("botSync"); verSync = true
                     }
                     if (minsCambiaron) {
                         // Se mandan los TRES tipos: los que el flujo no usa van vacíos.
@@ -360,12 +373,17 @@ private fun EditorFlujoEspecialidad(
                             })
                         }
                         if (!r.registrada) return@launch
+                        algoGuardado = true
                     }
                     Toaster.exito("${esp.t("nombre")}: guardado")
-                    onGuardado()
-                } finally { guardando = false }
+                } finally {
+                    guardando = false
+                    // Aunque las duraciones fallen, el flujo ya quedó: el padre relee lo guardado.
+                    if (algoGuardado) onGuardado()
+                }
             }
         }
+        if (verSync) EstadoSani(botSync) { botSync = it }
         if (flujoCambio || minsCambiaron) Boton("Descartar", primario = false, habilitado = !guardando) { borrador = guardado; mins = minsGuardados }
         if (esp.b("esDental")) FilaNav("🦷  Hallazgos del odontograma", "Colores y procedimiento sugerido") { onHallazgos() }
     }

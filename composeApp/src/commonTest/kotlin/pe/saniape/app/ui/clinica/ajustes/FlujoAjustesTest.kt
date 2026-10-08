@@ -23,6 +23,8 @@ class FlujoAjustesTest {
         val dos = renova.conModo("dos", renova)
         assertEquals("dos", dos.modo)
         assertEquals("Consulta", dos.labelConsulta)
+        // Pasar a dos citas no pisa el nombre que ya tenía (como SelectorFlujo de la web).
+        assertEquals("Valoración", dos.labelEvaluacion)
         val otraVezUna = dos.conModo("una", renova)
         assertEquals("Evaluación", otraVezUna.entrada)
     }

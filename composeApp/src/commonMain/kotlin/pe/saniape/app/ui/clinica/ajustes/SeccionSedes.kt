@@ -33,7 +33,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ktor.http.HttpMethod
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -94,9 +96,14 @@ internal fun SeccionSedes(d: JsonObject, ctx: ContextoStaff, onVolver: () -> Uni
     var avisoPlan by remember { mutableStateOf(false) }
     var ocupado by remember { mutableStateOf(false) }
 
+    var errorCarga by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(recarga) {
         val (r, e) = AjustesRepo.leerObjeto("${AjustesRepo.BASE}/sedes")
-        if (r != null) datos = r else Toaster.error(e ?: "No se pudieron leer las sedes")
+        when {
+            r != null -> { datos = r; errorCarga = null }
+            datos == null -> errorCarga = e ?: "No se pudieron leer las sedes"
+            else -> Toaster.error(e ?: "No se pudieron leer las sedes")
+        }
     }
     val cambio = { recarga++; onCambio() }
     fun accion(cuerpo: JsonObject, exito: String, gestion: Gestion = Gestion.GUARDANDO) {
@@ -113,7 +120,10 @@ internal fun SeccionSedes(d: JsonObject, ctx: ContextoStaff, onVolver: () -> Uni
     if (dd != null) {
         editar?.let { s -> EditorSede(s, dd, ctx, onVolver = { editar = null }) { editar = null; cambio() }; return }
         if (nueva) { NuevaSede(onVolver = { nueva = false }) { nueva = false; cambio() }; return }
-        if (asistente) { AsistenteMultisede(dd, onVolver = { asistente = false }) { asistente = false; cambio() }; return }
+        if (asistente) {
+            AsistenteMultisede(dd, onVolver = { asistente = false }, onActivado = { cambio() }) { asistente = false }
+            return
+        }
     }
 
     borrar?.let { s ->
@@ -168,6 +178,7 @@ internal fun SeccionSedes(d: JsonObject, ctx: ContextoStaff, onVolver: () -> Uni
     )
 
     SubPantalla("Sedes / Locales", onVolver) {
+        if (dd == null && errorCarga != null) { ErrorCarga(errorCarga) { errorCarga = null; recarga++ }; return@SubPantalla }
         if (dd == null) { CargandoLista(); return@SubPantalla }
         val esAdmin = dd.b("esAdmin")
         val puede = dd.b("puedeMultiSede")
@@ -333,7 +344,7 @@ private fun NuevaSede(onVolver: () -> Unit, onHecho: () -> Unit) {
 
 /** Asistente "Activar varias sedes" (solo Admin): la principal, la nueva y el resumen. */
 @Composable
-private fun AsistenteMultisede(dd: JsonObject, onVolver: () -> Unit, onHecho: () -> Unit) {
+private fun AsistenteMultisede(dd: JsonObject, onVolver: () -> Unit, onActivado: () -> Unit, onHecho: () -> Unit) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     val existente = dd.objetos("sedes").firstOrNull { it.b("es_principal") }
@@ -365,11 +376,17 @@ private fun AsistenteMultisede(dd: JsonObject, onVolver: () -> Unit, onHecho: ()
                     Boton(if (enviando) "Activando…" else "Activar varias sedes", habilitado = !enviando && (nueva.nombre.isNotBlank() || otras > 0), modifier = Modifier.weight(1.4f)) {
                         enviando = true
                         scope.launch {
-                            val r = guardarAjuste(porDefecto = "No se pudo activar") {
-                                AjustesRepo.enviar(HttpMethod.Post, "/api/staff/sedes/activar", buildJsonObject {
-                                    put("principal", principal.json())
-                                    put("nueva", if (nueva.nombre.isNotBlank()) nueva.json() else JsonNull)
-                                })
+                            // La activación NO se corta a mitad aunque se cierre la pantalla
+                            // (un tab, el sistema): el pedido y el aviso al padre terminan igual.
+                            val r = withContext(NonCancellable) {
+                                val r = guardarAjuste(porDefecto = "No se pudo activar") {
+                                    AjustesRepo.enviar(HttpMethod.Post, "/api/staff/sedes/activar", buildJsonObject {
+                                        put("principal", principal.json())
+                                        put("nueva", if (nueva.nombre.isNotBlank()) nueva.json() else JsonNull)
+                                    })
+                                }
+                                if (r.registrada) onActivado()
+                                r
                             }
                             enviando = false
                             if (r.registrada) {
@@ -433,7 +450,7 @@ private fun EditorSede(s: JsonObject, dd: JsonObject, ctx: ContextoStaff, onVolv
         if (sv == null) { Toaster.error(e ?: "No se pudieron leer los servicios"); return@LaunchedEffect }
         val lista = sv.objetos("lista")
         servicios = lista; todos = sv.b("todos")
-        elegidos = lista.associate { it.t("procedimiento_id") to (it.b("ofrece") to (if (it.b("precioPropio")) (it.n("precio") ?: 0.0).toString() else "")) }
+        elegidos = lista.associate { it.t("procedimiento_id") to (it.b("ofrece") to (if (it.b("precioPropio")) precioEditable(it.n("precio") ?: 0.0) else "")) }
     }
 
     fun guardar() {
@@ -510,10 +527,11 @@ private fun EditorSede(s: JsonObject, dd: JsonObject, ctx: ContextoStaff, onVolv
                 }
             }
             else -> Tarjeta {
-                val numero = s.s("whatsapp_phone_number_id")?.takeIf { it.isNotBlank() }
                 when {
                     s.b("es_principal") -> Ayuda("La sede principal usa el número de la clínica (Ajustes → Tus redes).")
-                    numero != null -> Text("Esta sede tiene su número conectado ✅", color = c.ok, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    s.b("tiene_whatsapp") -> Text("Esta sede tiene su número conectado ✅", color = c.ok, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    !dd.b("esAdmin") -> Ayuda("Solo el administrador de la clínica puede conectar el número de una sede.")
+                    s.t("estado") != "Activa" -> Ayuda("Activa la sede para conectar su número.")
                     else -> {
                         Ayuda("Sin número propio, los recordatorios de esta sede salen por el número de la clínica. Conectar el WhatsApp de una sede usa el asistente de Meta, que se abre en la web.")
                         Boton("Conectar el WhatsApp de esta sede en la web ↗", primario = false) { acciones.abrirUrl("${Supabase.SITE_URL}/configuracion?tab=operacion") }
@@ -525,3 +543,7 @@ private fun EditorSede(s: JsonObject, dd: JsonObject, ctx: ContextoStaff, onVolv
         Boton(if (guardando) "Guardando…" else "Guardar", habilitado = !guardando) { guardar() }
     }
 }
+
+/** Un precio para editar: "50" (no "50.0") o "49.90". */
+private fun precioEditable(v: Double): String =
+    if (v % 1.0 == 0.0) v.toLong().toString() else ((kotlin.math.round(v * 100) / 100.0).toString())

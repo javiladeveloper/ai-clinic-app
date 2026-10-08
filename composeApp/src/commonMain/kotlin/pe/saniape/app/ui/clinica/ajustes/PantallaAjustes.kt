@@ -45,17 +45,18 @@ import pe.saniape.app.ui.theme.Sania
  *
  * Se abre con permiso "ajustes" (lo decide el padre). Los candados de plan y
  * de Admin son los mismos de la web, y el servidor los vuelve a validar
- * (/api/staff/configuracion/…). [onSalir] avisa si algo cambió, para que el
- * padre recargue el contexto (nombre, colores, terminología, módulos…).
+ * (/api/staff/configuracion/…). [onHuboCambios] avisa EN CUANTO algo se
+ * guarda, para que el padre recargue el contexto (nombre, colores,
+ * terminología, módulos…) al cerrar Ajustes por cualquier vía: la cabecera,
+ * el atrás del sistema o un tab.
  */
 @Composable
-fun PantallaAjustes(ctx: ContextoStaff, onSalir: (huboCambios: Boolean) -> Unit) = pe.saniape.app.tutoriales.PantallaTutorial("Ajustes") {
+fun PantallaAjustes(ctx: ContextoStaff, onSalir: () -> Unit, onHuboCambios: () -> Unit) = pe.saniape.app.tutoriales.PantallaTutorial("Ajustes") {
     val c = Sania.colors
     var datos by remember { mutableStateOf<JsonObject?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var recarga by remember { mutableIntStateOf(0) }
     var seccion by remember { mutableStateOf<String?>(null) }
-    var huboCambios by remember { mutableStateOf(false) }
 
     LaunchedEffect(ctx.clinicaId, recarga) {
         val (d, e) = AjustesRepo.cargar()
@@ -63,9 +64,10 @@ fun PantallaAjustes(ctx: ContextoStaff, onSalir: (huboCambios: Boolean) -> Unit)
         else Toaster.error(e ?: "No se pudieron actualizar los ajustes")
     }
 
-    val cambio: () -> Unit = { huboCambios = true; recarga++ }
-    // Atrás del sistema desde una sección → vuelve a la lista (no a "Más").
-    ManejarAtras(activo = seccion != null) { seccion = null }
+    val cambio: () -> Unit = { onHuboCambios(); recarga++ }
+    // Atrás del sistema: desde una sección vuelve a la lista; desde la lista,
+    // cierra Ajustes (y el padre recarga el contexto si hubo cambios).
+    ManejarAtras(activo = true) { if (seccion != null) seccion = null else onSalir() }
 
     val d = datos
     val sec = seccion
@@ -101,14 +103,14 @@ fun PantallaAjustes(ctx: ContextoStaff, onSalir: (huboCambios: Boolean) -> Unit)
             "comercial" -> SeccionComercial(d, volver, cambio)
             "horarios" -> SeccionHorarios(d, volver, cambio)
             "simultaneas" -> SeccionSimultaneas(d, volver, cambio)
-            else -> seccion = null
+            else -> LaunchedEffect(sec) { seccion = null }
         }
         return@PantallaTutorial
     }
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            CabeceraAjustes("← Más", "Ajustes de la clínica", { onSalir(huboCambios) })
+            CabeceraAjustes("← Más", "Ajustes de la clínica", { onSalir() })
             when {
                 d == null && error != null -> Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {

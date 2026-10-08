@@ -60,21 +60,27 @@ object AjustesRepo {
         rechazo = RechazoServidor("Sin conexión. Revisa tu internet.", "SIN_RED"),
     )
 
-    /** GET de una ruta de la web (relativa, "/api/…"). Devuelve el JSON o el motivo del fallo. */
-    suspend fun leer(ruta: String): Pair<JsonElement?, String?> {
-        val tk = token() ?: return null to "Tu sesión expiró. Vuelve a entrar."
+    /** Lo que respondió un GET: el JSON, el motivo del fallo y el status HTTP (0 = sin red/sesión). */
+    data class Lectura(val json: JsonElement?, val error: String?, val status: Int)
+
+    suspend fun leerConEstado(ruta: String): Lectura {
+        val tk = token() ?: return Lectura(null, "Tu sesión expiró. Vuelve a entrar.", 401)
         return try {
             val resp = http.get("${Supabase.SITE_URL}$ruta") { header("Authorization", "Bearer $tk") }
             val texto = resp.bodyAsText()
             val el = runCatching { json.parseToJsonElement(texto) }.getOrNull()
-            if (resp.status.value in 200..299 && el != null) el to null
-            else null to ((el as? JsonObject)?.let { (it["error"] as? JsonPrimitive)?.contentOrNull }?.takeIf { it.isNotBlank() } ?: "No se pudo cargar (HTTP ${resp.status.value}).")
+            val st = resp.status.value
+            if (st in 200..299 && el != null) Lectura(el, null, st)
+            else Lectura(null, (el as? JsonObject)?.let { (it["error"] as? JsonPrimitive)?.contentOrNull }?.takeIf { it.isNotBlank() } ?: "No se pudo cargar (HTTP $st).", st)
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (e: Exception) {
-            null to "Sin conexión. Revisa tu internet."
+            Lectura(null, "Sin conexión. Revisa tu internet.", 0)
         }
     }
+
+    /** GET de una ruta de la web (relativa, "/api/…"). Devuelve el JSON o el motivo del fallo. */
+    suspend fun leer(ruta: String): Pair<JsonElement?, String?> = leerConEstado(ruta).let { it.json to it.error }
 
     /** GET que debe devolver un objeto. */
     suspend fun leerObjeto(ruta: String): Pair<JsonObject?, String?> {

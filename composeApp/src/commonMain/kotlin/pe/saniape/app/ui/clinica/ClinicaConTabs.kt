@@ -104,6 +104,9 @@ fun ClinicaConTabs(
     var verServicios by remember { mutableStateOf(false) }
     var verEquipo by remember { mutableStateOf(false) }
     var verAjustes by remember { mutableStateOf(false) }
+    // Ajustes guardó algo (marca, terminología, módulos…): al cerrarlo, por la vía que sea, se recarga el contexto.
+    var recargarTrasAjustes by remember { mutableStateOf(false) }
+    LaunchedEffect(verAjustes) { if (!verAjustes && recargarTrasAjustes) { recargarTrasAjustes = false; intento++ } }
     var horarioDe by remember { mutableStateOf<Pair<String, String>?>(null) }   // (terapeutaId, nombre)
     var horarioVolver by remember { mutableStateOf("← Más") }
     // Más → "🌐 Mi página" (slug leído de la clínica; null = no tiene página).
@@ -485,8 +488,9 @@ fun ClinicaConTabs(
                 enter = entrarDetalle(), exit = salirDetalle(),
             ) {
                 Box(Modifier.fillMaxSize().background(c.fondo)) {
-                    // Si cambió la marca, la terminología o los módulos, se recarga el contexto al salir.
-                    pe.saniape.app.ui.clinica.ajustes.PantallaAjustes(ctx = contexto, onSalir = { cambio -> verAjustes = false; if (cambio) intento++ })
+                    pe.saniape.app.ui.clinica.ajustes.PantallaAjustes(
+                        ctx = contexto, onSalir = { verAjustes = false }, onHuboCambios = { recargarTrasAjustes = true },
+                    )
                 }
             }
             AnimatedVisibility(visible = horarioDe != null, enter = entrarDetalle(), exit = salirDetalle()) {

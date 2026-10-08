@@ -31,7 +31,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -41,28 +43,33 @@ import pe.saniape.app.ui.comprimirImagen
 import pe.saniape.app.ui.recordarSelectorArchivo
 import pe.saniape.app.ui.theme.Sania
 
+/** Vercel corta el cuerpo de una función en ~4,5 MB; el servidor acepta hasta 4 MB. */
+private const val MAX_SUBIDA = 4 * 1024 * 1024
+
 /**
- * Abre el selector de imágenes, comprime como la web (logo 1024 px conservando
- * PNG/SVG chicos; portada 1920; fotos 1600) y sube al MISMO bucket/ruta que la
- * web (/api/staff/configuracion/imagen). [onSubida] recibe la respuesta.
+ * Abre el selector de imágenes, comprime como la web (lib/comprimir-imagen.ts)
+ * y sube al MISMO bucket/ruta que la web (/api/staff/configuracion/imagen).
+ * Logo: 1024 px y, si es PNG/WebP, en PNG conservando la transparencia (en
+ * JPEG el fondo sale negro); un SVG va tal cual. Portada 1920; fotos 1600.
+ * La compresión corre fuera del hilo principal. [onSubida] recibe la respuesta.
  */
 @Composable
 internal fun recordarSubirImagen(tipo: String, onEstado: (Boolean) -> Unit, onSubida: (JsonObject) -> Unit): () -> Unit {
     val scope = rememberCoroutineScope()
-    return recordarSelectorArchivo { archivo ->
+    return recordarSelectorArchivo(mime = "image/*") { archivo ->
         if (archivo.mime?.startsWith("image/") != true) { Toaster.error("Elige una imagen (JPG o PNG)"); return@recordarSelectorArchivo }
         scope.launch {
             onEstado(true)
             try {
-                // Un logo PNG/SVG liviano va tal cual (conserva la transparencia); el resto se achica.
-                val esLogoLiviano = tipo == "logo" && archivo.bytes.size < 1_500_000 &&
-                    (archivo.mime == "image/png" || archivo.mime == "image/svg+xml" || archivo.mime == "image/webp")
-                val listo = when {
-                    esLogoLiviano -> archivo
-                    tipo == "logo" -> comprimirImagen(archivo, maxLado = 1024, calidad = 90)
-                    tipo == "portada" -> comprimirImagen(archivo, maxLado = 1920, calidad = 75)
-                    else -> comprimirImagen(archivo, maxLado = 1600, calidad = 72)
+                val listo = withContext(Dispatchers.Default) {
+                    when {
+                        tipo == "logo" && archivo.mime == "image/svg+xml" -> archivo
+                        tipo == "logo" -> comprimirImagen(archivo, maxLado = 1024, calidad = 90, conservarTransparencia = true)
+                        tipo == "portada" -> comprimirImagen(archivo, maxLado = 1920, calidad = 75)
+                        else -> comprimirImagen(archivo, maxLado = 1600, calidad = 72)
+                    }
                 }
+                if (listo.bytes.size > MAX_SUBIDA) { Toaster.error("La imagen pesa demasiado (máximo 4 MB). Elige una más liviana."); return@launch }
                 val r = guardarAjuste(porDefecto = "No se pudo subir la imagen") {
                     AjustesRepo.subirImagen(tipo, listo.nombre, listo.bytes, listo.mime)
                 }
@@ -114,7 +121,10 @@ internal fun SeccionMarca(d: JsonObject, onVolver: () -> Unit, onCambio: () -> U
         }
     }
 
-    SubPantalla("Identidad de marca", onVolver) {
+    // Hay algo distinto de lo guardado (incluido un logo ya subido pero no aplicado).
+    val sinGuardar = nombre != cl.t("nombre") || logo != cl.t("logoUrl") || termProf != cl.t("terminologiaProfesional") ||
+        termPac != cl.t("terminologiaPaciente") || color != cl.t("colorPrincipal") || colorMenu != cl.t("colorSidebar")
+    SubPantalla("Identidad de marca", onVolver, sinGuardar = sinGuardar && !guardando) {
         Tarjeta("🏥 Tu clínica") {
             Campo("Nombre de la clínica", nombre, { nombre = it }, max = 120)
             pe.saniape.app.ui.clinica.pacientes.EtqForm("Logo de la clínica")

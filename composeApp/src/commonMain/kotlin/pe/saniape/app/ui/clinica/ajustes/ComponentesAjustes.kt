@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -88,13 +89,35 @@ internal fun CabeceraAjustes(volver: String, titulo: String, onVolver: () -> Uni
     }
 }
 
-/** Sub-pantalla de una sección: cabecera + cuerpo desplazable. */
+/**
+ * Sub-pantalla de una sección: cabecera + cuerpo desplazable. Atiende el
+ * atrás del sistema igual que la cabecera; con [sinGuardar] pregunta antes de
+ * salir (patrón de Crear cita). El cuerpo deja lugar al teclado (imePadding:
+ * de borde a borde, Android no achica la ventana).
+ */
 @Composable
-internal fun SubPantalla(titulo: String, onVolver: () -> Unit, volver: String = "← Ajustes", contenido: @Composable ColumnScope.() -> Unit) {
+internal fun SubPantalla(
+    titulo: String,
+    onVolver: () -> Unit,
+    volver: String = "← Ajustes",
+    sinGuardar: Boolean = false,
+    contenido: @Composable ColumnScope.() -> Unit,
+) {
     val c = Sania.colors
+    var confirmarSalida by remember { mutableStateOf(false) }
+    val intentarSalir = { if (sinGuardar) confirmarSalida = true else onVolver() }
+    pe.saniape.app.ui.ManejarAtras(activo = true) { intentarSalir() }
+    if (confirmarSalida) AlertaConTeclado(
+        onDismissRequest = { confirmarSalida = false },
+        title = { Text("¿Salir sin guardar?", fontWeight = FontWeight.Bold) },
+        text = { Text("Tienes cambios sin guardar. Si sales, se pierden.") },
+        confirmButton = { TextButton(onClick = { confirmarSalida = false; onVolver() }) { Text("Salir", color = c.error, fontWeight = FontWeight.Bold) } },
+        dismissButton = { TextButton(onClick = { confirmarSalida = false }) { Text("Seguir editando", color = c.navy) } },
+        containerColor = c.superficie,
+    )
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
-            CabeceraAjustes(volver, titulo, onVolver)
+        Column(Modifier.fillMaxSize().imePadding()) {
+            CabeceraAjustes(volver, titulo, { intentarSalir() })
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Sania.dim.lg),
                 verticalArrangement = Arrangement.spacedBy(Sania.dim.md),
@@ -103,6 +126,17 @@ internal fun SubPantalla(titulo: String, onVolver: () -> Unit, volver: String = 
                 Spacer(Modifier.height(Sania.dim.xxl))
             }
         }
+    }
+}
+
+/** Error de carga con "Reintentar" (nunca una carga infinita ni un "vacío" falso). */
+@Composable
+internal fun ErrorCarga(mensaje: String?, onReintentar: () -> Unit) {
+    val c = Sania.colors
+    Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(mensaje ?: "No se pudo cargar.", color = c.textoSuave, fontSize = 13.sp, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(10.dp))
+        Boton("Reintentar", modifier = Modifier) { onReintentar() }
     }
 }
 

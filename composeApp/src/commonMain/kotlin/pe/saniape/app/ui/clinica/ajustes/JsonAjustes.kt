@@ -9,6 +9,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.datetime.toLocalDateTime
 
 // Ayudantes de lectura del JSON de Ajustes (cortos a propósito: son muchos
 // campos chicos y la web es la dueña de su forma).
@@ -30,3 +31,9 @@ internal fun mensajeGuardadoSani(botSync: String?): String = when (botSync) {
     "pendiente", null -> "Guardado; actualización de Sani pendiente"
     else -> "Guardado"
 }
+
+/** "08/10/2026" en hora de Lima (las fechas llegan en UTC: de noche serían "mañana"). */
+internal fun fechaLima(iso: String): String = runCatching {
+    val d = kotlinx.datetime.Instant.parse(iso).toLocalDateTime(pe.saniape.app.data.staff.ZONA_CLINICA).date
+    "${d.dayOfMonth.toString().padStart(2, '0')}/${d.monthNumber.toString().padStart(2, '0')}/${d.year}"
+}.getOrElse { iso.take(10) }

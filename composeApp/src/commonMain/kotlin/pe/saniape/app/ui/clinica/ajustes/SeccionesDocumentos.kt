@@ -57,9 +57,12 @@ internal fun SeccionConsentimientos(d: JsonObject, onVolver: () -> Unit) {
     var datos by remember { mutableStateOf<JsonObject?>(null) }
     var recarga by remember { mutableIntStateOf(0) }
     var editando by remember { mutableStateOf<Borrador?>(null) }
+    var errorCarga by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(recarga) {
         val (r, e) = AjustesRepo.leerObjeto("${AjustesRepo.BASE}/consentimientos")
-        if (r != null) datos = r else Toaster.error(e ?: "No se pudieron leer los documentos")
+        if (r != null) { datos = r; errorCarga = null }
+        else if (datos == null) errorCarga = e ?: "No se pudieron leer los documentos"
+        else Toaster.error(e ?: "No se pudieron leer los documentos")
     }
     val plantillas = datos?.objetos("plantillas") ?: emptyList()
     val nombrePsico = cat.t("nombrePsico")
@@ -81,6 +84,7 @@ internal fun SeccionConsentimientos(d: JsonObject, onVolver: () -> Unit) {
     SubPantalla("Compromiso y consentimiento", onVolver) {
         Ayuda("Es lo que el paciente lee y firma antes de empezar: qué autoriza, y las condiciones de tus paquetes. Se firma desde la ficha del paciente — él lo lee y firma con el dedo en su propio celular, escaneando un código.")
         when {
+            datos == null && errorCarga != null -> ErrorCarga(errorCarga) { errorCarga = null; recarga++ }
             datos == null -> CargandoLista()
             plantillas.isEmpty() -> Tarjeta("Todavía no tienes ninguno") {
                 Ayuda("Puedes partir de un ejemplo completo —pensado para un centro que vende paquetes de sesiones— y ajustarlo a tu clínica.")
@@ -142,7 +146,8 @@ private fun EditorConsentimiento(b: Borrador, cat: JsonObject, ejemplo: JsonObje
     var previa by remember { mutableStateOf<String?>(null) }
     var guardando by remember { mutableStateOf(false) }
 
-    SubPantalla(if (b.id.isEmpty()) "Nuevo documento" else "Editar documento", onVolver, volver = "← Consentimientos") {
+    val sinGuardar = !guardando && (nombre != b.nombre || contenido != b.contenido || salud != b.salud)
+    SubPantalla(if (b.id.isEmpty()) "Nuevo documento" else "Editar documento", onVolver, volver = "← Consentimientos", sinGuardar = sinGuardar) {
         Tarjeta {
             Campo("Nombre del documento", nombre, { nombre = it }, placeholder = "Ej. Compromiso y consentimiento", max = 150)
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -213,6 +218,11 @@ internal fun SeccionInformePsico(d: JsonObject, onVolver: () -> Unit) {
     val scope = rememberCoroutineScope()
     val esAdmin = d.b("esAdmin")
     var cargado by remember { mutableStateOf(false) }
+    // false = la carga falló: no se ofrece guardar (pisaría la plantilla con una vacía).
+    var cargadoOk by remember { mutableStateOf(false) }
+    var errorCarga by remember { mutableStateOf<String?>(null) }
+    var intento by remember { mutableIntStateOf(0) }
+    var guardada by remember { mutableStateOf<Triple<List<SeccionInforme>, String, String>?>(null) }
     var secciones by remember { mutableStateOf<List<SeccionInforme>>(emptyList()) }
     var encabezado by remember { mutableStateOf("") }
     var pie by remember { mutableStateOf("") }
@@ -223,12 +233,16 @@ internal fun SeccionInformePsico(d: JsonObject, onVolver: () -> Unit) {
         p ?: return
         secciones = p.objetos("secciones").map { SeccionInforme(it.t("clave"), it.t("titulo"), it.b("visible")) }
         encabezado = p.t("encabezado"); pie = p.t("pie")
+        guardada = Triple(secciones, encabezado, pie)
     }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(intento) {
         val (r, e) = AjustesRepo.leerObjeto("/api/staff/evaluacion-psico/plantilla")
-        if (r != null) aplicar(r.o("plantilla")) else Toaster.error(e ?: "No se pudo leer la plantilla")
+        val p = r?.o("plantilla")
+        if (p != null) { aplicar(p); cargadoOk = true; errorCarga = null }
+        else errorCarga = e ?: "No se pudo leer la plantilla"
         cargado = true
     }
+    val sinGuardar = cargadoOk && !guardando && guardada != Triple(secciones, encabezado, pie)
     fun guardar(restablecer: Boolean) {
         guardando = true
         scope.launch {
@@ -258,9 +272,10 @@ internal fun SeccionInformePsico(d: JsonObject, onVolver: () -> Unit) {
         containerColor = c.superficie,
     )
 
-    SubPantalla("Informe psicológico", onVolver) {
+    SubPantalla("Informe psicológico", onVolver, sinGuardar = sinGuardar) {
         Ayuda("Cómo sale el informe de la evaluación psicológica: el nombre y el orden de las secciones, cuáles se omiten, y los textos fijos. Los datos de filiación y la firma con el C.Ps.P. van siempre. Cada informe toma la plantilla al armarse: cambiarla no modifica los informes ya emitidos.")
         if (!cargado) { CargandoLista(); return@SubPantalla }
+        if (!cargadoOk) { ErrorCarga(errorCarga) { cargado = false; intento++ }; return@SubPantalla }
         Tarjeta {
             Campo("Encabezado (bajo el título «Informe psicológico»)", encabezado, { encabezado = it }, multilinea = true, lineas = 2, max = 500, habilitado = esAdmin,
                 placeholder = "Ej.: Área de Psicología — Documento confidencial")
@@ -317,12 +332,14 @@ internal fun SeccionHistoriaClinica(d: JsonObject, onVolver: () -> Unit) {
     var asociar by remember { mutableStateOf<JsonObject?>(null) }
     var editando by remember { mutableStateOf<JsonObject?>(null) }
     var ocupado by remember { mutableStateOf(false) }
+    var errorCarga by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(recarga) {
         val (r, e) = AjustesRepo.leerObjeto("${AjustesRepo.BASE}/historia-clinica")
         if (r != null) {
             if (datos == null) { categoria = r.o("ipress")?.t("categoria") ?: ""; renipress = r.o("ipress")?.t("renipress") ?: "" }
-            datos = r
-        } else Toaster.error(e ?: "No se pudo leer la configuración")
+            datos = r; errorCarga = null
+        } else if (datos == null) errorCarga = e ?: "No se pudo leer la configuración"
+        else Toaster.error(e ?: "No se pudo leer la configuración")
     }
     fun accion(cuerpo: JsonObject, exito: (JsonObject?) -> String) {
         ocupado = true
@@ -354,6 +371,7 @@ internal fun SeccionHistoriaClinica(d: JsonObject, onVolver: () -> Unit) {
     }
 
     SubPantalla("Historia clínica", onVolver) {
+        if (dd == null && errorCarga != null) { ErrorCarga(errorCarga) { errorCarga = null; recarga++ }; return@SubPantalla }
         if (dd == null) { CargandoLista(); return@SubPantalla }
         Tarjeta("Identificación del establecimiento (IPRESS)") {
             Ayuda("La NTS 139-MINSA pide la categoría del establecimiento en el encabezado de la historia clínica y del consentimiento. La asigna la DIRESA al categorizarte; el código RENIPRESS lo da SUSALUD al inscribirte.")
@@ -416,9 +434,10 @@ internal fun SeccionHistoriaClinica(d: JsonObject, onVolver: () -> Unit) {
 private fun EditorPlantillaCI(p: JsonObject, secciones: List<JsonObject>, onVolver: () -> Unit, onGuardado: () -> Unit) {
     val scope = rememberCoroutineScope()
     val id = p.s("id")
-    var valores by remember { mutableStateOf((listOf("procedimiento") + secciones.map { it.t("clave") }).associateWith { p.s(it) ?: "" }) }
+    val originales = remember(p) { (listOf("procedimiento") + secciones.map { it.t("clave") }).associateWith { p.s(it) ?: "" } }
+    var valores by remember { mutableStateOf(originales) }
     var guardando by remember { mutableStateOf(false) }
-    SubPantalla(if (id == null) "Nueva plantilla" else "Editar plantilla", onVolver, volver = "← Historia clínica") {
+    SubPantalla(if (id == null) "Nueva plantilla" else "Editar plantilla", onVolver, volver = "← Historia clínica", sinGuardar = !guardando && valores != originales) {
         Tarjeta {
             Campo("Procedimiento", valores["procedimiento"] ?: "", { v -> valores = valores + ("procedimiento" to v) }, max = 200)
             secciones.forEach { s ->

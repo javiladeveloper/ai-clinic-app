@@ -80,16 +80,20 @@ internal fun SeccionTusRedes(d: JsonObject, ctx: ContextoStaff, onVolver: () -> 
     var ocupado by remember { mutableStateOf<String?>(null) }
     var confirmar by remember { mutableStateOf<Pair<JsonObject, Boolean>?>(null) }   // (canal, liberar)
     var avisoLiberar by remember { mutableStateOf<String?>(null) }
+    var errorCarga by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(recarga, Reanudacion.contador) {
-        val (el, err) = AjustesRepo.leer("/api/staff/mensajes/canales")
+        val r = AjustesRepo.leerConEstado("/api/staff/mensajes/canales")
+        val el = r.json
         when {
-            err == "leadai_inactivo" -> bloqueo = "inactivo"
-            el == null && err != null && canales == null -> bloqueo = "sin_permiso".takeIf { err.contains("permiso", true) } ?: run { Toaster.error(err); null }
-            el is JsonArray -> { canales = el.mapNotNull { it as? JsonObject }; bloqueo = null }
-            el is JsonObject -> { canales = el.objetos("items"); bloqueo = null }
+            // Como la web: sin el módulo del bot, se explica; cualquier otro 403 = sin permiso.
+            r.status == 403 && r.error == "leadai_inactivo" -> bloqueo = "inactivo"
+            r.status == 403 -> bloqueo = "sin_permiso"
+            el is JsonArray -> { canales = el.mapNotNull { it as? JsonObject }; bloqueo = null; errorCarga = null }
+            el is JsonObject -> { canales = el.objetos("items"); bloqueo = null; errorCarga = null }
+            canales == null -> errorCarga = r.error ?: "No se pudieron cargar tus redes"
+            else -> Toaster.error(r.error ?: "No se pudieron actualizar tus redes")
         }
-        if (canales == null && bloqueo == null) canales = emptyList()
     }
     LaunchedEffect(sel, recarga, Reanudacion.contador) {
         pendientes = if (esAdmin && sel in TIPOS_OAUTH) AjustesRepo.leerObjeto("/api/staff/mensajes/canales/$sel/pendientes").first?.objetos("cuentas") ?: emptyList() else emptyList()
@@ -141,6 +145,7 @@ internal fun SeccionTusRedes(d: JsonObject, ctx: ContextoStaff, onVolver: () -> 
                 return@SubPantalla
             }
             bloqueo == "sin_permiso" -> { Ayuda("No tienes acceso a esta sección."); return@SubPantalla }
+            canales == null && errorCarga != null -> { ErrorCarga(errorCarga) { errorCarga = null; recarga++ }; return@SubPantalla }
             canales == null -> { CargandoLista(); return@SubPantalla }
         }
         val todos = canales ?: emptyList()
@@ -190,7 +195,7 @@ internal fun SeccionTusRedes(d: JsonObject, ctx: ContextoStaff, onVolver: () -> 
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).border(1.dp, c.borde, RoundedCornerShape(10.dp)).padding(10.dp)) {
                     Column(Modifier.weight(1f)) {
                         Text(canal.s("nombre")?.takeIf { it.isNotBlank() } ?: canal.t("cuentaExterna"), color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Text("Conectado el ${canal.t("creadoEn").take(10)} · ${if (canal.b("activo")) "Activo" else "Apagado"}", color = c.textoSuave, fontSize = 11.sp)
+                        Text("Conectado el ${fechaLima(canal.t("creadoEn"))} · ${if (canal.b("activo")) "Activo" else "Apagado"}", color = c.textoSuave, fontSize = 11.sp)
                     }
                     if (esAdmin) Text(
                         if (ocupado == canal.t("id")) "…" else if (canal.t("tipo") == "whatsapp") "Liberar mi número" else "Desconectar",
@@ -247,11 +252,12 @@ internal fun SeccionCobrosOnline(d: JsonObject, onVolver: () -> Unit, onCambio: 
     var recargo by remember { mutableStateOf("0") }
     var ocupado by remember { mutableStateOf(false) }
     var confirmarDesconectar by remember { mutableStateOf(false) }
+    var errorEstado by remember { mutableStateOf<String?>(null) }
     // Al volver del navegador (autorización de Mercado Pago) se relee solo.
     LaunchedEffect(recarga, Reanudacion.contador) {
         val (r, e) = AjustesRepo.leerObjeto("/api/staff/mp/estado")
-        if (r != null) { estado = r; recargo = (r.n("recargoPct") ?: 0.0).let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } }
-        else if (estado == null) { Toaster.error(e ?: "No se pudo leer el estado"); estado = JsonObject(emptyMap()) }
+        if (r != null) { estado = r; errorEstado = null; recargo = (r.n("recargoPct") ?: 0.0).let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } }
+        else if (estado == null) errorEstado = e ?: "No se pudo leer el estado de Mercado Pago"
     }
     fun conectar() {
         ocupado = true
@@ -284,6 +290,7 @@ internal fun SeccionCobrosOnline(d: JsonObject, onVolver: () -> Unit, onCambio: 
 
     SubPantalla("Cobros por la app", onVolver) {
         val e = estado
+        if (e == null && errorEstado != null) { ErrorCarga(errorEstado) { errorEstado = null; recarga++ }; return@SubPantalla }
         if (e == null) { CargandoLista(); return@SubPantalla }
         Ayuda("Conecta tu cuenta de Mercado Pago y tus pacientes podrán pagar su tratamiento desde la app, con tarjeta o Yape. El dinero llega directo a tu cuenta, no pasa por Sania.")
         val conectado = e.b("conectado") && !e.b("vencido")

@@ -53,15 +53,31 @@ import pe.saniape.app.ui.clinica.pacientes.DialogoHora
 import pe.saniape.app.ui.clinica.pacientes.EtqForm
 import pe.saniape.app.ui.theme.Sania
 
+/** Lo que hay de un catálogo: los datos, o el motivo por el que no se pudo leer. */
+private class CargaCatalogo(val datos: JsonObject?, val error: String?)
+
 /** Lee un catálogo de /api/staff/configuracion/catalogo (se relee al cambiar [recarga]). */
 @Composable
-private fun recordarCatalogo(tabla: String, recarga: Int): JsonObject? {
+private fun recordarCatalogo(tabla: String, recarga: Int): CargaCatalogo {
     var datos by remember { mutableStateOf<JsonObject?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(tabla, recarga) {
+        error = null
         val (r, e) = AjustesRepo.catalogo(tabla)
-        if (r != null) datos = r else { Toaster.error(e ?: "No se pudo cargar"); if (datos == null) datos = JsonObject(mapOf("items" to kotlinx.serialization.json.JsonArray(emptyList()))) }
+        when {
+            r != null -> datos = r
+            // Un fallo no se muestra como "vacío": sin datos, error con "Reintentar".
+            datos == null -> error = e ?: "No se pudo cargar"
+            else -> Toaster.error(e ?: "No se pudo actualizar")
+        }
     }
-    return datos
+    return CargaCatalogo(datos, error)
+}
+
+/** Cargando, o el error con "Reintentar" (los catálogos se releen subiendo [recarga]). */
+@Composable
+private fun CargandoOError(carga: CargaCatalogo?, onReintentar: () -> Unit) {
+    if (carga?.error != null) ErrorCarga(carga.error, onReintentar) else CargandoLista()
 }
 
 /** Confirmación de borrado (texto + acción). */
@@ -96,6 +112,21 @@ private fun FilaItem(titulo: String, detalle: String? = null, apagado: Boolean =
     }
 }
 
+/** Pastilla con nombre: SOLO la ✕ borra (como la web), no un toque en cualquier parte. */
+@Composable
+private fun PastillaBorrable(nombre: String, onBorrar: () -> Unit) {
+    val c = Sania.colors
+    Row(
+        Modifier.clip(RoundedCornerShape(20.dp)).background(c.fondo).border(1.dp, c.borde, RoundedCornerShape(20.dp))
+            .padding(start = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(nombre, color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Text("✕", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.clip(CircleShape).clickableSimple(onBorrar).padding(horizontal = 10.dp, vertical = 6.dp))
+    }
+}
+
 @Composable
 private fun AccionTexto(texto: String, color: androidx.compose.ui.graphics.Color = Sania.colors.textoSuave, onClick: () -> Unit) {
     Text(texto, color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold,
@@ -109,7 +140,8 @@ internal fun SeccionHallazgos(onVolver: () -> Unit, volver: String = "← Ajuste
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     var recarga by remember { mutableIntStateOf(0) }
-    val datos = recordarCatalogo("hallazgos_dentales", recarga)
+    val carga = recordarCatalogo("hallazgos_dentales", recarga)
+    val datos = carga.datos
     var editando by remember { mutableStateOf<JsonObject?>(null) }
     var borrar by remember { mutableStateOf<JsonObject?>(null) }
     val procs = datos?.objetos("procedimientos") ?: emptyList()
@@ -120,7 +152,7 @@ internal fun SeccionHallazgos(onVolver: () -> Unit, volver: String = "← Ajuste
             borrar = null
             scope.launch {
                 val r = guardarAjuste(Gestion.ELIMINANDO, "No se pudo eliminar") { AjustesRepo.borrarDeCatalogo("hallazgos_dentales", h.t("id")) }
-                if (r.registrada) { Toaster.exito("Hallazgo eliminado"); recarga++ }
+                if (r.registrada) { pe.saniape.app.data.staff.OdontogramaRepo.limpiarCache(); Toaster.exito("Hallazgo eliminado"); recarga++ }
             }
         }, onNo = { borrar = null })
     }
@@ -128,7 +160,7 @@ internal fun SeccionHallazgos(onVolver: () -> Unit, volver: String = "← Ajuste
 
     SubPantalla("Hallazgos del odontograma", onVolver, volver = volver) {
         Ayuda("El color con que se pinta el diente. El procedimiento sugerido arma el presupuesto automáticamente.")
-        if (datos == null) { CargandoLista(); return@SubPantalla }
+        if (datos == null) { CargandoOError(carga) { recarga++ }; return@SubPantalla }
         if (items.isEmpty()) Ayuda("Aún no registras ningún hallazgo. Ej.: Caries, Fractura, Corona existente.")
         items.forEach { h ->
             val activo = h.t("estado") == "Activo"
@@ -145,7 +177,7 @@ internal fun SeccionHallazgos(onVolver: () -> Unit, volver: String = "← Ajuste
                         val r = guardarAjuste(porDefecto = "No se pudo actualizar") {
                             AjustesRepo.editarEnCatalogo("hallazgos_dentales", h.t("id"), buildJsonObject { put("estado", if (activo) "Inactivo" else "Activo") })
                         }
-                        if (r.registrada) recarga++
+                        if (r.registrada) { pe.saniape.app.data.staff.OdontogramaRepo.limpiarCache(); recarga++ }
                     }
                 }
                 AccionTexto("Editar") { editando = h }
@@ -185,6 +217,7 @@ private fun DialogoHallazgo(h: JsonObject, procs: List<JsonObject>, total: Int, 
                 }
                 val r = guardarAjuste { if (id == null) AjustesRepo.crearEnCatalogo("hallazgos_dentales", datos) else AjustesRepo.editarEnCatalogo("hallazgos_dentales", id, datos) }
                 guardando = false
+                if (r.registrada) pe.saniape.app.data.staff.OdontogramaRepo.limpiarCache()
                 if (r.registrada) { Toaster.exito(if (id == null) "Hallazgo agregado" else "Hallazgo actualizado"); onHecho() }
             }
         },
@@ -226,12 +259,12 @@ internal fun SeccionModulos(d: JsonObject, onVolver: () -> Unit, onCambio: () ->
     fun nota(clave: String, activo: Boolean) = if (elegidos.bn(clave) == null) "Predeterminado para tu rubro: ${def(activo)}."
         else "Elegido por la clínica (para tu rubro, lo predeterminado es ${def(clinicaMedica)})."
 
-    fun guardar(seccion: String, datos: JsonObject, aviso: String, alFallar: () -> Unit = {}) {
+    fun guardar(seccion: String, datos: JsonObject, aviso: String, alFallar: () -> Unit = {}, alGuardar: () -> Unit = {}) {
         ocupado = seccion
         scope.launch {
             val r = guardarAjuste { AjustesRepo.guardarSeccion(seccion, datos) }
             ocupado = null
-            if (r.registrada) { Toaster.exito(aviso); onCambio() } else alFallar()
+            if (r.registrada) { alGuardar(); Toaster.exito(aviso); onCambio() } else alFallar()
         }
     }
     fun modulo(nombre: String, v: Boolean, aplicar: (Boolean) -> Unit) {
@@ -282,8 +315,9 @@ internal fun SeccionModulos(d: JsonObject, onVolver: () -> Unit, onCambio: () ->
                 val lineas = indicaciones.lines().count { it.isNotBlank() }
                 Ayuda("Una por línea ($lineas ${if (lineas == 1) "indicación" else "indicaciones"}). Salen a la derecha en el formato A5 horizontal, con tu logo y tus contactos abajo. Déjalo vacío si no usas.")
                 if (esAdmin) Boton("Guardar indicaciones", primario = false, habilitado = ocupado == null && indicaciones.trim() != indicacionesGuardadas.trim()) {
-                    guardar("indicaciones-fijas", buildJsonObject { put("texto", indicaciones) }, "Indicaciones guardadas: saldrán en las próximas hojas")
-                    indicacionesGuardadas = indicaciones
+                    val texto = indicaciones
+                    guardar("indicaciones-fijas", buildJsonObject { put("texto", texto) }, "Indicaciones guardadas: saldrán en las próximas hojas",
+                        alGuardar = { indicacionesGuardadas = texto })
                 }
             }
         }
@@ -301,9 +335,11 @@ internal fun SeccionCamposPaciente(d: JsonObject, onVolver: () -> Unit, onCambio
     val cat = d.o("catalogos") ?: JsonObject(emptyMap())
     val tipos = cat.objetos("tiposCampo")
     var recarga by remember { mutableIntStateOf(0) }
-    val datos = recordarCatalogo("campos_paciente", recarga)
+    val carga = recordarCatalogo("campos_paciente", recarga)
+    val datos = carga.datos
     var editando by remember { mutableStateOf<JsonObject?>(null) }
     var ocultos by remember { mutableStateOf(d.o("config")?.textos("fichaOcultar")?.toSet() ?: emptySet()) }
+    var guardandoOcultos by remember { mutableStateOf(false) }
     val items = datos?.objetos("items") ?: emptyList()
 
     editando?.let { campo -> DialogoCampo(campo, tipos, onCerrar = { editando = null }) { editando = null; recarga++ } }
@@ -312,7 +348,7 @@ internal fun SeccionCamposPaciente(d: JsonObject, onVolver: () -> Unit, onCambio
         Ayuda("Añade campos propios a la ficha del paciente (ej. densidad folicular, fototipo de piel, tipo de maloclusión). Aparecen en cada ficha para registrarlos.")
         Boton("+ Nuevo campo") { editando = JsonObject(emptyMap()) }
         when {
-            datos == null -> CargandoLista()
+            datos == null -> CargandoOError(carga) { recarga++ }
             items.isEmpty() -> pe.saniape.app.ui.clinica.EstadoVacio("🗂️", "Aún no tienes campos personalizados", "Créalos para registrar la información propia de tu rubro en cada ficha.")
             else -> items.forEach { campo ->
                 val tipo = tipos.firstOrNull { it.t("v") == campo.t("tipo") }
@@ -328,11 +364,15 @@ internal fun SeccionCamposPaciente(d: JsonObject, onVolver: () -> Unit, onCambio
             Ayuda("Apaga los que tu clínica no usa: dejan de aparecer al registrar pacientes. Lo ya guardado se conserva.")
             cat.objetos("camposFicha").forEach { cf ->
                 val k = cf.t("clave")
-                FilaInterruptor(cf.t("label"), cf.t("desc"), k !in ocultos) { visible ->
+                FilaInterruptor(cf.t("label"), cf.t("desc"), k !in ocultos, habilitado = !guardandoOcultos) { visible ->
                     val antes = ocultos
-                    ocultos = if (visible) ocultos - k else ocultos + k
+                    val nuevos = if (visible) ocultos - k else ocultos + k
+                    ocultos = nuevos
+                    guardandoOcultos = true
                     scope.launch {
-                        val r = guardarAjuste { AjustesRepo.guardarSeccion("campos-estandar", buildJsonObject { put("ocultos", buildJsonArray { ocultos.forEach { add(JsonPrimitive(it)) } }) }) }
+                        val r = try {
+                            guardarAjuste { AjustesRepo.guardarSeccion("campos-estandar", buildJsonObject { put("ocultos", buildJsonArray { nuevos.forEach { add(JsonPrimitive(it)) } }) }) }
+                        } finally { guardandoOcultos = false }
                         if (r.registrada) { Toaster.exito("Formulario actualizado"); onCambio() } else ocultos = antes
                     }
                 }
@@ -398,7 +438,8 @@ internal fun SeccionMetodosPago(onVolver: () -> Unit) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     var recarga by remember { mutableIntStateOf(0) }
-    val datos = recordarCatalogo("metodos_pago", recarga)
+    val carga = recordarCatalogo("metodos_pago", recarga)
+    val datos = carga.datos
     var nuevo by remember { mutableStateOf("") }
     var icono by remember { mutableStateOf("") }
     var borrar by remember { mutableStateOf<JsonObject?>(null) }
@@ -409,6 +450,7 @@ internal fun SeccionMetodosPago(onVolver: () -> Unit) {
             borrar = null
             scope.launch {
                 val r = guardarAjuste(Gestion.ELIMINANDO, "No se pudo eliminar") { AjustesRepo.borrarDeCatalogo("metodos_pago", m.t("id")) }
+                if (r.registrada) pe.saniape.app.data.staff.CatalogosCobroRepo.limpiar()
                 if (r.registrada) { Toaster.exito("Método eliminado"); recarga++ }
             }
         }, onNo = { borrar = null })
@@ -416,14 +458,14 @@ internal fun SeccionMetodosPago(onVolver: () -> Unit) {
 
     SubPantalla("Métodos de pago", onVolver) {
         Ayuda("Los métodos con que tu clínica cobra. Ajústalos a tu país (agrega Bizum, OXXO, crédito interno; desactiva los que no uses). Aparecen al registrar pagos y en el cierre de caja.")
-        if (datos == null) { CargandoLista(); return@SubPantalla }
+        if (datos == null) { CargandoOError(carga) { recarga++ }; return@SubPantalla }
         items.forEach { m ->
             val activo = m.t("estado") == "Activo"
             FilaItem("${m.s("icono")?.takeIf { it.isNotBlank() } ?: "💰"} ${m.t("nombre")}", apagado = !activo) {
                 AccionTexto(if (activo) "Activo" else "Inactivo", if (activo) c.ok else c.textoSuave) {
                     scope.launch {
                         val r = guardarAjuste { AjustesRepo.editarEnCatalogo("metodos_pago", m.t("id"), buildJsonObject { put("estado", if (activo) "Inactivo" else "Activo") }) }
-                        if (r.registrada) recarga++
+                        if (r.registrada) { pe.saniape.app.data.staff.CatalogosCobroRepo.limpiar(); recarga++ }
                     }
                 }
                 AccionTexto("Eliminar", c.error) { borrar = m }
@@ -438,6 +480,7 @@ internal fun SeccionMetodosPago(onVolver: () -> Unit) {
                 if (items.any { it.t("nombre").equals(nuevo.trim(), true) }) { Toaster.error("Ya existe un método con ese nombre"); return@Boton }
                 scope.launch {
                     val r = guardarAjuste(porDefecto = "No se pudo agregar") { AjustesRepo.crearEnCatalogo("metodos_pago", buildJsonObject { put("nombre", nuevo); put("icono", icono) }) }
+                    if (r.registrada) pe.saniape.app.data.staff.CatalogosCobroRepo.limpiar()
                     if (r.registrada) { nuevo = ""; icono = ""; recarga++ }
                 }
             }
@@ -483,7 +526,8 @@ internal fun SeccionEquipamiento(d: JsonObject, onVolver: () -> Unit) {
     val scope = rememberCoroutineScope()
     val cat = d.o("catalogos") ?: JsonObject(emptyMap())
     var recarga by remember { mutableIntStateOf(0) }
-    val datos = recordarCatalogo("equipos", recarga)
+    val carga = recordarCatalogo("equipos", recarga)
+    val datos = carga.datos
     var editando by remember { mutableStateOf<JsonObject?>(null) }
     var borrar by remember { mutableStateOf<JsonObject?>(null) }
     val items = datos?.objetos("items") ?: emptyList()
@@ -501,7 +545,7 @@ internal fun SeccionEquipamiento(d: JsonObject, onVolver: () -> Unit) {
 
     SubPantalla("Equipamiento", onVolver) {
         Ayuda("Las máquinas y equipos con que cuenta tu clínica, y para qué sirven. El asistente los usa para responder a los pacientes — si alguien pregunta «¿tienen algo para el dolor de rodilla?», la respuesta sale de aquí.")
-        if (datos == null) { CargandoLista(); return@SubPantalla }
+        if (datos == null) { CargandoOError(carga) { recarga++ }; return@SubPantalla }
         if (items.isEmpty()) Ayuda("Aún no registras ningún equipo. Ej.: ultrasonido terapéutico, magnetoterapia, láser.")
         items.forEach { e ->
             val activo = e.b("activo")
@@ -599,7 +643,7 @@ internal fun SeccionMostrador(d: JsonObject, onVolver: () -> Unit, onCambio: () 
     var verSync by remember { mutableStateOf(false) }
     val hayCambios = valores != base
 
-    SubPantalla("Preguntas de mostrador", onVolver) {
+    SubPantalla("Preguntas de mostrador", onVolver, sinGuardar = hayCambios && !guardando) {
         Ayuda("Lo que la gente pregunta por WhatsApp antes de agendar. Escribe la respuesta como se la dirías tú en el mostrador, en una frase. Lo que dejes vacío, el asistente lo responde con honestidad («eso te lo confirman en la clínica»).")
         campos.forEach { cm ->
             val k = cm.t("clave")
@@ -644,7 +688,8 @@ internal fun SeccionCategorias(onVolver: () -> Unit) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     var recarga by remember { mutableIntStateOf(0) }
-    val datos = recordarCatalogo("categorias_movimiento", recarga)
+    val carga = recordarCatalogo("categorias_movimiento", recarga)
+    val datos = carga.datos
     var tipo by remember { mutableStateOf("Egreso") }
     var nueva by remember { mutableStateOf("") }
     val delTipo = (datos?.objetos("items") ?: emptyList()).filter { it.t("tipo") == tipo }
@@ -652,19 +697,17 @@ internal fun SeccionCategorias(onVolver: () -> Unit) {
     SubPantalla("Categorías de finanzas", onVolver) {
         Ayuda("Define tus categorías de ingreso y egreso para que todo tu equipo registre igual y los reportes cuadren. Igual puedes escribir una libre al momento.")
         ChipsEleccion(listOf("Egreso" to "💸 Egresos", "Ingreso" to "💰 Ingresos"), tipo) { tipo = it }
-        if (datos == null) { CargandoLista(); return@SubPantalla }
+        if (datos == null) { CargandoOError(carga) { recarga++ }; return@SubPantalla }
         Tarjeta {
             if (delTipo.isEmpty()) Ayuda("Sin categorías de ${tipo.lowercase()} aún.")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 delTipo.forEach { cat ->
-                    Text("${cat.t("nombre")}  ✕", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(c.fondo).border(1.dp, c.borde, RoundedCornerShape(20.dp))
-                            .clickableSimple {
-                                scope.launch {
-                                    val r = guardarAjuste(Gestion.ELIMINANDO, "No se pudo eliminar") { AjustesRepo.borrarDeCatalogo("categorias_movimiento", cat.t("id")) }
-                                    if (r.registrada) recarga++
-                                }
-                            }.padding(horizontal = 10.dp, vertical = 6.dp))
+                    PastillaBorrable(cat.t("nombre")) {
+                        scope.launch {
+                            val r = guardarAjuste(Gestion.ELIMINANDO, "No se pudo eliminar") { AjustesRepo.borrarDeCatalogo("categorias_movimiento", cat.t("id")) }
+                            if (r.registrada) recarga++
+                        }
+                    }
                 }
             }
             Campo(null, nueva, { nueva = it }, placeholder = "Nueva categoría de ${tipo.lowercase()} (ej. ${if (tipo == "Egreso") "Insumos, Publicidad" else "Venta de productos"})", max = 80)
@@ -690,7 +733,8 @@ internal fun SeccionImagenesClinicas(d: JsonObject, onVolver: () -> Unit, onCamb
     var fotos by remember { mutableStateOf(d.o("config")?.b("fotosEvolutivasActiva") != false) }
     var fotosGuardado by remember { mutableStateOf(fotos) }
     var recarga by remember { mutableIntStateOf(0) }
-    val datos = if (d.o("plan")?.b("fotosEvolutivas") == true) recordarCatalogo("tipos_imagen", recarga) else null
+    val carga = if (d.o("plan")?.b("fotosEvolutivas") == true) recordarCatalogo("tipos_imagen", recarga) else null
+    val datos = carga?.datos
     var contexto by remember { mutableStateOf("evolucion") }
     var nuevo by remember { mutableStateOf("") }
     val delContexto = (datos?.objetos("items") ?: emptyList()).filter { it.t("contexto") == contexto }
@@ -713,19 +757,17 @@ internal fun SeccionImagenesClinicas(d: JsonObject, onVolver: () -> Unit, onCamb
             Ayuda("Los tipos de imagen que tu clínica usa. Aparecen al subir fotos en la ficha del paciente. Ajústalos a tu rubro (ej. odontograma y radiografías para dental, antes/después para estética).")
             ChipsEleccion(contextos.map { it.t("v") to it.t("label") }, contexto) { contexto = it }
             Ayuda(contextos.firstOrNull { it.t("v") == contexto }?.t("ayuda") ?: "")
-            if (datos == null) CargandoLista()
+            if (datos == null) CargandoOError(carga) { recarga++ }
             else {
                 if (delContexto.isEmpty()) Ayuda("Sin tipos en esta categoría.")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     delContexto.forEach { t ->
-                        Text("${t.t("nombre")}  ✕", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(c.fondo).border(1.dp, c.borde, RoundedCornerShape(20.dp))
-                                .clickableSimple {
-                                    scope.launch {
-                                        val r = guardarAjuste(Gestion.ELIMINANDO, "No se pudo eliminar") { AjustesRepo.borrarDeCatalogo("tipos_imagen", t.t("id")) }
-                                        if (r.registrada) recarga++
-                                    }
-                                }.padding(horizontal = 10.dp, vertical = 6.dp))
+                        PastillaBorrable(t.t("nombre")) {
+                            scope.launch {
+                                val r = guardarAjuste(Gestion.ELIMINANDO, "No se pudo eliminar") { AjustesRepo.borrarDeCatalogo("tipos_imagen", t.t("id")) }
+                                if (r.registrada) recarga++
+                            }
+                        }
                     }
                 }
                 Campo(null, nuevo, { nuevo = it }, placeholder = when (contexto) { "documento" -> "Ej. Odontograma, Radiografía"; "servicio" -> "Ej. Inicial, Final"; else -> "Ej. Antes, Después" }, max = 80)

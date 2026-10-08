@@ -18,18 +18,19 @@ import platform.darwin.NSObject
  * de Android. Los archivos clínicos son ≤15 MB, así que se cargan en memoria.
  */
 @Composable
-actual fun recordarSelectorArchivo(onElegido: (ArchivoSeleccionado) -> Unit): () -> Unit {
-    val handler = remember { SelectorHandler(onElegido) }
+actual fun recordarSelectorArchivo(mime: String, onElegido: (ArchivoSeleccionado) -> Unit): () -> Unit {
+    val handler = remember { SelectorHandler(onElegido, soloImagenes = mime.startsWith("image/")) }
     return { handler.abrir() }
 }
 
 private class SelectorHandler(
     private val onElegido: (ArchivoSeleccionado) -> Unit,
+    private val soloImagenes: Boolean = false,
 ) : NSObject(), UIDocumentPickerDelegateProtocol {
 
     fun abrir() {
         val picker = UIDocumentPickerViewController(
-            forOpeningContentTypes = listOf(UTTypePDF, UTTypeImage),
+            forOpeningContentTypes = if (soloImagenes) listOf(UTTypeImage) else listOf(UTTypePDF, UTTypeImage),
         )
         picker.delegate = this
         picker.allowsMultipleSelection = false
