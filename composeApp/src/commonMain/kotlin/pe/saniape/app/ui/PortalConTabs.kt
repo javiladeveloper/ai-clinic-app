@@ -54,7 +54,12 @@ fun PortalConTabs(
     // clínicas. Hasta que lo dé, se muestra SOLO la pantalla de DNI (sin tabs). "..." =
     // cargando; null = falta (bloquea); un valor = ya lo tiene (deja pasar).
     var dni by remember { mutableStateOf<String?>("...") }
-    LaunchedEffect(Unit) { dni = runCatching { SaludRepo.dniCuenta() }.getOrNull() }
+    var requiereGoogle by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        dni = try { SaludRepo.dniCuenta() } catch (e: pe.saniape.app.data.PortalRequiereGoogle) {
+            requiereGoogle = true; ""
+        } catch (e: Exception) { null }
+    }
 
     // Botón Atrás en una tab que no es Inicio → vuelve a Inicio (no cierra la app).
     ManejarAtras(activo = tab != Tab.Inicio) { tab = Tab.Inicio }
@@ -66,6 +71,14 @@ fun PortalConTabs(
         Box(Modifier.fillMaxSize().background(c.fondo), contentAlignment = androidx.compose.ui.Alignment.Center) {
             androidx.compose.material3.CircularProgressIndicator(color = Navy)
         }
+        return
+    }
+    if (requiereGoogle) {
+        PantallaPortalRequiereGoogle(
+            puedeIrAClinica = puedeIrAClinica,
+            onIrAClinica = onIrAClinica,
+            onCerrarSesion = onCerrarSesion,
+        )
         return
     }
     if (dni == null) {
