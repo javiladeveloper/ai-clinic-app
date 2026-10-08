@@ -53,6 +53,7 @@ object StaffContextoRepo {
         equipo = o?.bool("equipo") ?: false,
         ajustes = o?.bool("ajustes") ?: false,
         reportes = o?.bool("reportes") ?: false,
+        marketing = o?.bool("marketing") ?: false,
     )
 
     private fun features(o: JsonObject?, plan: JsonObject?): PlanFeatures = PlanFeatures(
@@ -68,6 +69,7 @@ object StaffContextoRepo {
         recuperacion = o?.bool("recuperacion") ?: false,
         // Vive en features (resolverPlan) o suelto en planEstado: se aceptan los dos.
         maxEspacioDocumentosMB = o?.intOrNull("maxEspacioDocumentosMB") ?: plan?.intOrNull("maxEspacioDocumentosMB"),
+        actividadEquipo = o?.bool("actividadEquipo") ?: false,
     )
 
     /** Módulos clínicos. Sin el objeto (backend viejo) → todo apagado, como siempre. */

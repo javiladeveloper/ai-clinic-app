@@ -170,6 +170,7 @@ data class ContextoStaff(
         "equipo" -> permisos.equipo
         "ajustes" -> permisos.ajustes
         "reportes" -> permisos.reportes
+        "marketing" -> permisos.marketing
         else -> false
     }
 
@@ -185,6 +186,7 @@ data class ContextoStaff(
         "examenes" -> planEstado.features.examenes
         "fotosEvolutivas" -> planEstado.features.fotosEvolutivas
         "recuperacion" -> planEstado.features.recuperacion
+        "actividadEquipo" -> planEstado.features.actividadEquipo
         else -> false
     }
 
@@ -231,6 +233,8 @@ data class Permisos(
     val ajustes: Boolean,
     /** Reportes (web /reportes). Default false: un backend sin la clave no lo abre. */
     val reportes: Boolean = false,
+    /** Marketing (campañas): junto con "servicios" abre Campañas, como la web. */
+    val marketing: Boolean = false,
 )
 
 data class PlanEstado(
@@ -257,6 +261,8 @@ data class PlanFeatures(
      * (Premium/Plus); Básico = 1024. Adjuntar documentos es de TODOS los planes.
      */
     val maxEspacioDocumentosMB: Int? = null,
+    /** Actividad del equipo (reporte de quién registró qué): Plus. */
+    val actividadEquipo: Boolean = false,
 )
 
 data class ClinicaRef(val id: String, val nombre: String)
