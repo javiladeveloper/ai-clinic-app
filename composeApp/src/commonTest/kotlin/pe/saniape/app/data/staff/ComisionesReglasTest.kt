@@ -54,7 +54,11 @@ class ComisionesReglasTest {
 
     @Test
     fun totalAPagarNoSumaLoYaPagado() {
-        val lista = listOf(esquema(avances = listOf(avance(300.0), avance(100.0, pagado = PagoComisionRef("x", 100.0, "")), avance(50.0))))
+        val lista = listOf(esquema(avances = listOf(
+            avance(300.0), avance(100.0, pagado = PagoComisionRef("x", 100.0, "")), avance(50.0),
+            // A quien le sale sola al cobrar no se le paga desde acá: no suma.
+            avance(80.0, liquidacion = "egreso"),
+        )))
         assertEquals(350.0, R.totalAPagar(lista))
     }
 

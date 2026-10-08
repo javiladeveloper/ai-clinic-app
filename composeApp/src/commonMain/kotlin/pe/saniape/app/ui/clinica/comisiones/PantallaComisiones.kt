@@ -218,7 +218,7 @@ private fun TabEsquemas(ctx: ContextoStaff, personal: List<PersonaComision>) {
         )
     }
     pagando?.let { (p, a) ->
-        DialogoPagar(p, a, onCerrar = { if (!ocupado) pagando = null }) { metodo ->
+        DialogoPagar(p, a, enviando = ocupado, onCerrar = { if (!ocupado) pagando = null }) { metodo ->
             if (ocupado) return@DialogoPagar
             ocupado = true
             scope.launch {
@@ -230,9 +230,10 @@ private fun TabEsquemas(ctx: ContextoStaff, personal: List<PersonaComision>) {
                         Toaster.exito(if (enCaja) "$nivel pagado ($metodo) y registrado en caja" else "$nivel pagado (revisa la caja del día)")
                         pagando = null
                         recarga++
-                    } else if (r.rechazo?.status == 409) {
-                        // Ya se pagó (otro toque u otra persona): se refresca para verlo.
-                        pagando = null
+                    } else {
+                        // Cualquier rechazo: se refresca para ver el estado real
+                        // (un 409 es que ya se pagó — otro toque u otra persona).
+                        if (r.rechazo?.status == 409) pagando = null
                         recarga++
                     }
                 } finally { ocupado = false }
@@ -316,7 +317,7 @@ private fun TabEsquemas(ctx: ContextoStaff, personal: List<PersonaComision>) {
                                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
                         }
                         if (p.unidad != "evaluaciones" && a.terapeutaId != null) {
-                            DetallePiramide(p.id, a.terapeutaId!!, periodoSel, a.paquetesQueCuentan)
+                            DetallePiramide(p.id, a.terapeutaId!!, d.periodoRef, a.paquetesQueCuentan)
                         }
                     }
                 }
@@ -344,7 +345,7 @@ private fun TabEsquemas(ctx: ContextoStaff, personal: List<PersonaComision>) {
 
         d.plantillas.forEach { p ->
             TarjetaEsquemaAdmin(
-                p = p, periodoSel = periodoSel, rangoEnCadaTarjeta = rangoEnCadaTarjeta, ocupado = ocupado,
+                p = p, periodoDatos = d.periodoRef, rangoEnCadaTarjeta = rangoEnCadaTarjeta, ocupado = ocupado,
                 onEditar = { editando = p },
                 onQuitar = { quitando = p },
                 onPagar = { a -> pagando = p to a },
@@ -371,7 +372,8 @@ private fun TabEsquemas(ctx: ContextoStaff, personal: List<PersonaComision>) {
 @Composable
 private fun TarjetaEsquemaAdmin(
     p: EsquemaComision,
-    periodoSel: String?,
+    /** El mes que el servidor calculó ('YYYY-MM'): el detalle tiene que ser de ESE mes. */
+    periodoDatos: String?,
     rangoEnCadaTarjeta: Boolean,
     ocupado: Boolean,
     onEditar: () -> Unit,
@@ -441,7 +443,7 @@ private fun TarjetaEsquemaAdmin(
                 }
                 if (p.tipo == "tramos") Piramide(p.tramos, a.logrado, a.nivelActual)
                 if (p.unidad != "evaluaciones" && a.terapeutaId != null) {
-                    DetallePiramide(p.id, a.terapeutaId!!, periodoSel, a.paquetesQueCuentan)
+                    DetallePiramide(p.id, a.terapeutaId!!, periodoDatos, a.paquetesQueCuentan)
                 }
                 a.ultimoPago?.let { u ->
                     Text(ReglasComisiones.textoAnular(u), color = c.textoSuave, fontSize = 12.sp,
@@ -467,7 +469,7 @@ private fun numero(n: Double): String = if (n % 1.0 == 0.0) n.toLong().toString(
 /** "Pagar comisión": el monto lo recalcula el servidor; acá se elige con qué se paga. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DialogoPagar(p: EsquemaComision, a: AvanceComision, onCerrar: () -> Unit, onPagar: (String) -> Unit) {
+private fun DialogoPagar(p: EsquemaComision, a: AvanceComision, enviando: Boolean, onCerrar: () -> Unit, onPagar: (String) -> Unit) {
     val c = Sania.colors
     var metodos by remember { mutableStateOf<List<MetodoPago>>(emptyList()) }
     var metodo by remember { mutableStateOf("Efectivo") }
@@ -476,9 +478,10 @@ private fun DialogoPagar(p: EsquemaComision, a: AvanceComision, onCerrar: () -> 
     DialogoForm(
         titulo = "Pagar comisión",
         subtitulo = p.nombre,
-        textoAccion = "Pagar ${soles(monto)}",
+        textoAccion = if (enviando) "Pagando…" else "Pagar ${soles(monto)}",
+        accionHabilitada = !enviando,
         onCancelar = onCerrar,
-        onAccion = { onPagar(metodo) },
+        onAccion = { if (!enviando) onPagar(metodo) },
     ) {
         Text(
             "Vas a pagar ${soles(monto)} a ${a.nombre}" +

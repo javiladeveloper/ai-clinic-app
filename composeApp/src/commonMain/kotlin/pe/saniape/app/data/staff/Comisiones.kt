@@ -285,9 +285,9 @@ object ReglasComisiones {
     fun rangosDistintos(lista: List<EsquemaComision>): List<Pair<String, String>> =
         lista.map { it.desde to it.hasta }.distinct()
 
-    /** Lo pendiente de pagar del período (lo ya pagado no suma). */
+    /** Lo pendiente de pagar DESDE ACÁ: a quien le sale sola al cobrar ya se le pagó en cada cobro. */
     fun totalAPagar(lista: List<EsquemaComision>): Double =
-        lista.sumOf { p -> p.avances.sumOf { a -> if (a.pagado != null) 0.0 else (a.aCobrar ?: 0.0) } }
+        lista.sumOf { p -> p.avances.sumOf { a -> if (a.pagado != null || a.liquidacion == "egreso") 0.0 else (a.aCobrar ?: 0.0) } }
 
     /** ¿Se le ofrece "Pagar"? A quien le sale sola al cobrar NO (se le pagaría dos veces). */
     fun puedePagar(a: AvanceComision): Boolean =
