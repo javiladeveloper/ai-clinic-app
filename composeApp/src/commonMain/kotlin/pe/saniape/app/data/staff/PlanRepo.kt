@@ -72,10 +72,12 @@ data class DatosPlan(
     val planes: List<PlanCatalogo>,
     val addons: List<AddonCatalogo>,
     val addonsActivos: List<AddonActivo>,
+    /** Lo que incluye el plan efectivo (lo manda el servidor; también en la prueba). */
+    val incluye: List<FilaPlan> = emptyList(),
 ) {
     val esTrial: Boolean get() = plan == "Trial"
     /** Las filas de lo que incluye el plan que tiene la clínica (si está en el catálogo). */
-    val incluyeActual: List<FilaPlan>? get() = planes.firstOrNull { it.id == (if (vencido) "Basico" else plan) }?.incluye
+    val incluyeActual: List<FilaPlan>? get() = incluye.ifEmpty { planes.firstOrNull { it.id == (if (vencido) "Basico" else plan) }?.incluye }
 }
 
 /** Nivel del Agente Sani que identifica el precio mensual registrado (null si no lo identifica sin ambigüedad). */
@@ -153,6 +155,7 @@ object PlanRepo {
                     },
                 )
             },
+            incluye = o.lista("incluyeActual").map { FilaPlan(it.bool("ok"), it.str("texto").orEmpty()) },
             addonsActivos = o.lista("addonsActivos").map { AddonActivo(it.str("addon").orEmpty(), it.str("vence"), it.dbl("precio_mensual")) },
         )
     }.getOrNull()

@@ -97,7 +97,7 @@ fun PantallaActividad(ctx: ContextoStaff, onSalir: () -> Unit) {
         cargando = false
     }
 
-    if (eligiendoDesde) DialogoFecha(inicial = desde, onElegir = { n -> desde = n; if (hasta < n) hasta = n }, onCerrar = { eligiendoDesde = false })
+    if (eligiendoDesde) DialogoFecha(inicial = desde, onElegir = { n -> val dn = if (n > hoy) hoy else n; desde = dn; if (hasta < dn) hasta = dn }, onCerrar = { eligiendoDesde = false })
     if (eligiendoHasta) DialogoFecha(inicial = hasta, onElegir = { n -> hasta = if (n > hoy) hoy else n; if (desde > hasta) desde = hasta }, onCerrar = { eligiendoHasta = false })
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
@@ -165,6 +165,12 @@ fun PantallaActividad(ctx: ContextoStaff, onSalir: () -> Unit) {
                     }
                 }
 
+                if (cargando && d != null) {
+                    item {
+                        Text("Actualizando…", color = c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.chipBg).padding(8.dp), textAlign = TextAlign.Center)
+                    }
+                }
                 if (error != null) {
                     item {
                         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie).padding(14.dp)) {

@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -120,8 +121,16 @@ fun PantallaMiPlan(ctx: ContextoStaff, onSalir: () -> Unit) {
                     items(d.planes, key = { it.id }) { p ->
                         TarjetaPlan(
                             p, esActual = d.plan == p.id && !d.vencido, abierto = planAbierto == p.id, sedes = d.uso.sedesActivas,
-                            onAlternar = { planAbierto = if (planAbierto == p.id) null else p.id }, onContratar = irWeb,
+                            onAlternar = { planAbierto = if (planAbierto == p.id) null else p.id },
                         )
+                    }
+                    // Un solo botón, sin precio como llamada a pagar (política de Google Play).
+                    item {
+                        Box(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
+                                .clickable { irWeb() }.padding(vertical = 13.dp),
+                            contentAlignment = Alignment.Center,
+                        ) { Text("Gestionar mi suscripción en la web ↗", color = c.sobreNavy, fontWeight = FontWeight.Bold, fontSize = 14.sp) }
                     }
                     item { Titulo("Servicios adicionales") }
                     items(d.addons, key = { it.clave }) { a ->
@@ -129,7 +138,7 @@ fun PantallaMiPlan(ctx: ContextoStaff, onSalir: () -> Unit) {
                     }
                     item {
                         Text(
-                            "💳 Para contratar o cambiar de plan se abre la web (inicia sesión con tu misma cuenta). " +
+                            "💳 La suscripción se gestiona en la web (inicia sesión con tu misma cuenta). " +
                                 "La suscripción se renueva automáticamente y puedes cancelarla escribiéndonos.",
                             color = c.textoSuave, fontSize = 12.sp, lineHeight = 17.sp, textAlign = TextAlign.Center,
                             modifier = Modifier.fillMaxWidth().padding(vertical = Sania.dim.md),
@@ -164,7 +173,8 @@ private fun FilaCheck(ok: Boolean, texto: String) {
     val c = Sania.colors
     Row(Modifier.padding(vertical = 3.dp)) {
         Text(if (ok) "✓" else "✕", color = if (ok) c.ok else c.textoSuave.copy(alpha = 0.5f), fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(20.dp))
-        Text(texto, color = if (ok) c.texto else c.textoSuave.copy(alpha = 0.6f), fontSize = 13.sp, lineHeight = 17.sp)
+        Text(texto, color = if (ok) c.texto else c.textoSuave.copy(alpha = 0.6f), fontSize = 13.sp, lineHeight = 17.sp,
+            textDecoration = if (ok) null else TextDecoration.LineThrough)
     }
 }
 
@@ -262,7 +272,7 @@ private fun TarjetaUso(d: DatosPlan) {
 @Composable
 private fun TarjetaPlan(
     p: PlanCatalogo, esActual: Boolean, abierto: Boolean, sedes: Int,
-    onAlternar: () -> Unit, onContratar: () -> Unit,
+    onAlternar: () -> Unit,
 ) {
     val c = Sania.colors
     Column(
@@ -301,16 +311,6 @@ private fun TarjetaPlan(
         if (abierto) {
             Spacer(Modifier.height(8.dp))
             p.incluye.forEach { FilaCheck(it.ok, it.texto) }
-        }
-        if (!esActual) {
-            Spacer(Modifier.height(10.dp))
-            Box(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(if (p.id == "Plus") c.navy else c.chipBg)
-                    .clickable { onContratar() }.padding(vertical = 11.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("Contratar ${p.nombre} en la web ↗", color = if (p.id == "Plus") c.sobreNavy else c.navy, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            }
         }
     }
 }
@@ -361,7 +361,7 @@ private fun TarjetaAddon(a: AddonCatalogo, d: DatosPlan, onVerWeb: () -> Unit) {
             requiereOtro -> Text("Disponible con el plan ${a.requierePlan}", color = c.pend, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             activo != null -> Text("✓ Activo en tu clínica", color = c.ok, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             else -> Text(
-                if (a.enConstruccion) "Avísame cuando esté (en la web) ↗" else "Contratar en la web ↗",
+                "Gestionar en la web ↗",
                 color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onVerWeb() }.padding(vertical = 6.dp),
             )

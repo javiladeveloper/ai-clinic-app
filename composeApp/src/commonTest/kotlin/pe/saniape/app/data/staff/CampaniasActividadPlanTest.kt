@@ -44,6 +44,16 @@ class CampaniasActividadPlanTest {
         assertTrue(c["cantidad"] is kotlinx.serialization.json.JsonNull)
     }
 
+    @Test fun sinRegalosCargadosNoSeMandaLaClave() {
+        val f = FormCampania(nombre = "P", tipo = "porcentaje", valor = "10", desde = "2026-10-01")
+        // Campaña existente cuyos regalos no se pudieron leer: la clave no viaja (el servidor no los toca).
+        assertTrue("regalos" !in cuerpoGuardarCampania(f.copy(regalosCargados = false), "abc"))
+        // Cargados (o campaña nueva): viaja, aunque sea vacía (= quitar todos).
+        assertTrue("regalos" in cuerpoGuardarCampania(f.copy(regalosCargados = true), "abc"))
+        assertTrue(!FormCampania.desde(camp(), "2026-10-01").regalosCargados)
+        assertTrue(FormCampania.desde(null, "2026-10-01").regalosCargados)
+    }
+
     @Test fun actividadFiltrosCombinados() {
         fun m(quien: String, accion: String, tabla: String, pac: String?, dni: String?) =
             MovimientoActividad("2026-10-08T18:49:00Z", quien, "x", accion, tabla, pac, dni, null, null)

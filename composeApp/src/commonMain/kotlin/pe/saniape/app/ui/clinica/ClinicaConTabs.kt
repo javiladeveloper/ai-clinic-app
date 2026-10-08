@@ -374,7 +374,7 @@ fun ClinicaConTabs(
                         onAbrirEquipo = if (contexto.puede("equipo")) ({ verEquipo = true }) else null,
                         // Nativos. Campañas: mismo permiso que /api/staff/campania; Actividad: solo Admin (/api/actividad);
                         // Mi plan: "ajustes" y de solo lectura (pagar abre la web).
-                        onAbrirCampanias = if (contexto.puede("servicios")) ({ verCampanias = true }) else null,
+                        onAbrirCampanias = if (contexto.puede("servicios") || contexto.puede("marketing")) ({ verCampanias = true }) else null,
                         onAbrirActividad = if (contexto.esAdmin) ({ verActividad = true }) else null,
                         onAbrirMiPlan = if (contexto.puede("ajustes")) ({ verMiPlan = true }) else null,
                     )
@@ -488,7 +488,7 @@ fun ClinicaConTabs(
                 }
             }
             AnimatedVisibility(
-                visible = verCampanias && contexto.puede("servicios"),
+                visible = verCampanias && (contexto.puede("servicios") || contexto.puede("marketing")),
                 enter = entrarDetalle(), exit = salirDetalle(),
             ) {
                 Box(Modifier.fillMaxSize().background(c.fondo)) {

@@ -110,6 +110,11 @@ data class FormCampania(
     val hasta: String = "",
     val regalos: List<RegaloForm> = emptyList(),
     val activo: Boolean = true,
+    /**
+     * false = los regalos de una campaña existente NO se pudieron leer: el cuerpo no manda la
+     * clave `regalos` (ausente = el servidor no los toca). Mandar [] los borraría.
+     */
+    val regalosCargados: Boolean = true,
 ) {
     companion object {
         fun desde(c: CampaniaGestion?, hoy: String): FormCampania = if (c == null) FormCampania(desde = hoy) else FormCampania(
@@ -125,6 +130,7 @@ data class FormCampania(
             desde = c.fechaInicio.ifBlank { hoy },
             hasta = c.fechaFin.orEmpty(),
             activo = c.activo,
+            regalosCargados = false,
         )
     }
 }
@@ -170,7 +176,7 @@ fun cuerpoGuardarCampania(f: FormCampania, id: String?): JsonObject = buildJsonO
     put("valor", if (f.tipo == "porcentaje" || f.tipo == "monto_fijo") aDec(f.valor) else null)
     put("activo", f.activo)
     put("servicios_ids", buildJsonArray { if (f.alcance == "servicios") f.serviciosIds.forEach { add(JsonPrimitive(it)) } })
-    put("regalos", buildJsonArray {
+    if (f.regalosCargados) put("regalos", buildJsonArray {
         f.regalos.filter { it.procedimientoId.isNotBlank() }.forEach { r ->
             add(buildJsonObject {
                 put("procedimiento_id", r.procedimientoId)

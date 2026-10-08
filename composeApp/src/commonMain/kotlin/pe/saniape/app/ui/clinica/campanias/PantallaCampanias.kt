@@ -92,6 +92,7 @@ fun PantallaCampanias(ctx: ContextoStaff, onSalir: () -> Unit) {
     var editando by remember { mutableStateOf<CampaniaGestion?>(null) }
     var porEliminar by remember { mutableStateOf<CampaniaGestion?>(null) }
     var porAvisar by remember { mutableStateOf<CampaniaGestion?>(null) }
+    var confirmarATodos by remember { mutableStateOf<CampaniaGestion?>(null) }
     var avisando by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(ctx.clinicaId, recarga) {
@@ -163,17 +164,28 @@ fun PantallaCampanias(ctx: ContextoStaff, onSalir: () -> Unit) {
                         "Máximo 1 aviso promocional por semana. ¿A quiénes?",
                 )
             },
+            // Opciones apiladas (tres botones en fila no caben en pantallas angostas).
             confirmButton = {
-                TextButton(onClick = { porAvisar = null; avisar(cp, "inactivos") }) {
-                    Text("Solo inactivos (60 días)", color = c.navy, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                Row {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = { porAvisar = null; avisar(cp, "inactivos") }) {
+                        Text("Solo a los que no vienen hace 60 días", color = c.navy, fontWeight = FontWeight.Bold)
+                    }
+                    TextButton(onClick = { porAvisar = null; confirmarATodos = cp }) { Text("A todos mis pacientes con la app", color = c.navy) }
                     TextButton(onClick = { porAvisar = null }) { Text("Cancelar", color = c.textoSuave) }
-                    TextButton(onClick = { porAvisar = null; avisar(cp, "todos") }) { Text("A todos", color = c.navy) }
                 }
             },
+        )
+    }
+    // Avisar a TODOS pide una segunda confirmación, como la web.
+    confirmarATodos?.let { cp ->
+        AlertaConTeclado(
+            onDismissRequest = { confirmarATodos = null },
+            title = { Text("¿Avisar a TODOS?") },
+            text = { Text("Se enviará \"${cp.nombre}\" a todos tus pacientes que tienen la app, no solo a los inactivos.") },
+            confirmButton = {
+                TextButton(onClick = { confirmarATodos = null; avisar(cp, "todos") }) { Text("Sí, avisar a todos", color = c.navy, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = { TextButton(onClick = { confirmarATodos = null }) { Text("Cancelar", color = c.textoSuave) } },
         )
     }
 
@@ -351,13 +363,17 @@ private fun FormularioCampania(
     var eligiendoDesde by remember { mutableStateOf(false) }
     var eligiendoHasta by remember { mutableStateOf(false) }
     var cargandoRegalos by remember { mutableStateOf(inicial != null) }
+    var falloRegalos by remember { mutableStateOf(false) }
+    var reintentoRegalos by remember { mutableIntStateOf(0) }
     var regaloAbierto by remember { mutableStateOf<Int?>(null) }
 
     // Los regalos viven en otra tabla: se leen al abrir (query plana, como la web).
-    LaunchedEffect(inicial?.id) {
+    LaunchedEffect(inicial?.id, reintentoRegalos) {
         if (inicial == null) return@LaunchedEffect
+        cargandoRegalos = true; falloRegalos = false
         val r = runCatching { CampaniasRepo.regalosDe(inicial.id) }.getOrNull()
-        if (r != null) f = f.copy(regalos = r)
+        // Si no se leyeron, el form NO manda `regalos` (el servidor no los toca): ver FormCampania.regalosCargados.
+        if (r != null) f = f.copy(regalos = r, regalosCargados = true) else falloRegalos = true
         cargandoRegalos = false
     }
 
@@ -492,6 +508,11 @@ private fun FormularioCampania(
         Spacer(Modifier.height(12.dp))
         TarjetaForm("Regalos (opcional)", "🎁") {
             if (cargandoRegalos) Text("Cargando…", color = c.textoSuave, fontSize = 12.sp)
+            if (falloRegalos) {
+                Text("No se pudieron cargar los regalos — Reintentar", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { reintentoRegalos++ }.padding(vertical = 8.dp))
+                Text("Mientras tanto, los regalos actuales no se tocan al guardar.", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(bottom = 8.dp))
+            }
             f.regalos.forEachIndexed { i, r ->
                 val nombre = servicios.firstOrNull { it.id == r.procedimientoId }?.nombre
                 Column(Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
@@ -521,7 +542,7 @@ private fun FormularioCampania(
             Text(
                 "+ Agregar regalo", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).border(1.dp, c.borde, RoundedCornerShape(8.dp))
-                    .clickable(enabled = !cargandoRegalos) { f = f.copy(regalos = f.regalos + RegaloForm()) }.padding(10.dp),
+                    .clickable(enabled = !cargandoRegalos && f.regalosCargados) { f = f.copy(regalos = f.regalos + RegaloForm()) }.padding(10.dp),
             )
             Text(
                 "Al crear un tratamiento con esta campaña, la cita del regalo se agenda sola (N días hábiles después, editable en la ficha).",
