@@ -196,6 +196,9 @@ sealed class ResultadoPago {
     data class Error(val mensaje: String) : ResultadoPago()
 }
 
+/** El portal del paciente exige entrar con Google/Apple (la sesión actual es por clave). */
+class PortalRequiereGoogle : Exception("El portal del paciente requiere entrar con Google")
+
 object SaludRepo {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -391,6 +394,15 @@ object SaludRepo {
         val tk = token() ?: return null
         val resp = http.get("${Supabase.SITE_URL}/api/paciente/dni") {
             header("Authorization", "Bearer $tk")
+        }
+        // 403 con requiereGoogle: la sesión entró con usuario+clave (staff en modo
+        // paciente). El portal solo confía en Google/Apple → la UI lo explica en vez
+        // de pedir un DNI que el servidor igual va a rechazar.
+        if (resp.status == HttpStatusCode.Forbidden) {
+            val requiere = runCatching {
+                json.parseToJsonElement(resp.bodyAsText()).jsonObject.bool("requiereGoogle")
+            }.getOrDefault(false)
+            if (requiere) throw PortalRequiereGoogle()
         }
         if (resp.status != HttpStatusCode.OK) return null
         return json.parseToJsonElement(resp.bodyAsText()).jsonObject.str("dni")
