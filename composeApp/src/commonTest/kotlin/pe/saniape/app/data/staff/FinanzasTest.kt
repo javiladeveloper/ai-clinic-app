@@ -24,12 +24,17 @@ class FinanzasTest {
 
     @Test
     fun rangoDeCadaPeriodoHastaHoy() {
-        assertEquals(RangoFechas("2026-10-08", "2026-10-08"), Finanzas.rango(PeriodoFinanzas.Dia, hoy, null))
+        // Sin techo en la consulta (como la web): el corte en hoy es de totales/lista.
+        assertEquals(RangoFechas("2026-10-08", null), Finanzas.rango(PeriodoFinanzas.Dia, hoy, null))
         // La semana empieza el lunes.
-        assertEquals(RangoFechas("2026-10-05", "2026-10-08"), Finanzas.rango(PeriodoFinanzas.Semana, hoy, null))
-        assertEquals(RangoFechas("2026-10-01", "2026-10-08"), Finanzas.rango(PeriodoFinanzas.Mes, hoy, null))
-        assertEquals(RangoFechas("2026-01-01", "2026-10-08"), Finanzas.rango(PeriodoFinanzas.Anio, hoy, null))
-        assertEquals(RangoFechas(null, "2026-10-08"), Finanzas.rango(PeriodoFinanzas.Total, hoy, null))
+        assertEquals(RangoFechas("2026-10-05", null), Finanzas.rango(PeriodoFinanzas.Semana, hoy, null))
+        assertEquals(RangoFechas("2026-10-01", null), Finanzas.rango(PeriodoFinanzas.Mes, hoy, null))
+        assertEquals(RangoFechas("2026-01-01", null), Finanzas.rango(PeriodoFinanzas.Anio, hoy, null))
+        assertEquals(RangoFechas(null, null), Finanzas.rango(PeriodoFinanzas.Total, hoy, null))
+        // Totales y lista: lo fechado a futuro no es dinero de hoy (salvo con rango manual).
+        val futuros = listOf(mov("Ingreso", 1.0, "2026-10-08"), mov("Ingreso", 2.0, "2026-10-20"))
+        assertEquals(1, Finanzas.hastaHoy(futuros, hoy, null).size)
+        assertEquals(2, Finanzas.hastaHoy(futuros, hoy, "2026-10-01" to "2026-10-31").size)
         // Rango manual al revés: se ordena (como aplicarRango de la web).
         assertEquals(RangoFechas("2026-09-01", "2026-09-30"), Finanzas.rango(PeriodoFinanzas.Mes, hoy, "2026-09-30" to "2026-09-01"))
     }

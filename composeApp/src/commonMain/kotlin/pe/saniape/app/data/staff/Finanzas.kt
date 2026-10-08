@@ -41,13 +41,18 @@ enum class PeriodoFinanzas(val etiqueta: String) {
     Dia("Hoy"), Semana("Semana"), Mes("Mes"), Anio("Año"), Total("Total"),
 }
 
-/** Rango de fechas a pedir (desde null = sin límite). Hasta = hoy: lo futuro no cuenta como dinero de hoy. */
-data class RangoFechas(val desde: String?, val hasta: String)
+/**
+ * Rango de fechas a pedir (null = sin límite). Con un periodo NO hay techo en la
+ * consulta, como la web: el gráfico del mes incluye lo ya fechado a futuro; los
+ * totales y la lista se cortan en hoy con [Finanzas.hastaHoy].
+ */
+data class RangoFechas(val desde: String?, val hasta: String?)
 
 object Finanzas {
 
-    /** Tope de movimientos por consulta (como la web: solo muerde con "Total"). */
-    const val TOPE_MOVIMIENTOS = 3000
+    /** Tope de movimientos (en páginas de 1000, lo máximo de PostgREST; solo muerde con "Total"). */
+    const val TOPE_MOVIMIENTOS = 20000
+    const val PAGINA_MOVIMIENTOS = 1000
     const val POR_PAGINA = 25
 
     /** Comprobantes que el sistema genera solo: cada prefijo es un origen con su propio botón. */
@@ -71,7 +76,18 @@ object Finanzas {
             val (a, b) = manual
             return if (a <= b) RangoFechas(a, b) else RangoFechas(b, a)
         }
-        return RangoFechas(inicioPeriodo(p, hoy)?.toString(), hoy.toString())
+        return RangoFechas(inicioPeriodo(p, hoy)?.toString(), null)
+    }
+
+    /**
+     * Lo que cuenta para los totales y la lista: con un periodo, hasta hoy (un
+     * movimiento con fecha futura por un error de tipeo no es dinero de hoy);
+     * con rango manual, todo lo pedido. Igual que movsFiltrados de la web.
+     */
+    fun hastaHoy(movs: List<MovimientoKardex>, hoy: LocalDate, manual: Pair<String, String>?): List<MovimientoKardex> {
+        if (manual != null) return movs
+        val h = hoy.toString()
+        return movs.filter { it.fecha <= h }
     }
 
     /** Manual = sin origen del sistema (los demás se corrigen desde su origen). Gemelo de lib/movimientos-manuales.ts. */
@@ -183,7 +199,7 @@ object Finanzas {
         if (manual != null) {
             val r = rango(p, hoy, manual)
             val desde = runCatching { LocalDate.parse(r.desde!!) }.getOrNull() ?: return emptyList()
-            val hasta = runCatching { LocalDate.parse(r.hasta) }.getOrNull() ?: return emptyList()
+            val hasta = runCatching { LocalDate.parse(r.hasta!!) }.getOrNull() ?: return emptyList()
             val n = desde.daysUntilSeguro(hasta) + 1
             return if (n > 62) meses(desde, hasta) else dias(desde, hasta)
         }

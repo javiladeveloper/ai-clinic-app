@@ -78,7 +78,8 @@ import pe.saniape.app.ui.theme.Sania
 internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
-    val hoy = remember { LocalDate.parse(hoyClinicaIso()) }
+    // "Hoy" se recalcula en cada carga: la app puede quedar abierta de un día para otro.
+    var hoy by remember { mutableStateOf(LocalDate.parse(hoyClinicaIso())) }
     var periodo by remember { mutableStateOf(PeriodoFinanzas.Mes) }
     var rangoManual by remember { mutableStateOf<Pair<String, String>?>(null) }
     var desdeBorrador by remember { mutableStateOf<String?>(null) }
@@ -98,18 +99,25 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
     var borrarDe by remember { mutableStateOf<MovimientoKardex?>(null) }
 
     val sede by SedeActiva.estado.collectAsState()
-    LaunchedEffect(periodo, rangoManual, sede.filtro, recarga) {
+    // Al volver la app al frente también se recarga (y se recalcula "hoy").
+    LaunchedEffect(periodo, rangoManual, sede.filtro, recarga, pe.saniape.app.ui.Reanudacion.contador) {
         fallo = null
+        hoy = LocalDate.parse(hoyClinicaIso())
         val r = Finanzas.rango(periodo, hoy, rangoManual)
         runCatching { FinanzasRepo.kardex(r) }
             .onSuccess { (lista, alcanzado) -> movs = lista; tope = alcanzado }
-            .onFailure { if (it is kotlin.coroutines.cancellation.CancellationException) throw it; fallo = "No se pudo cargar la caja. Revisa tu conexión." }
+            .onFailure {
+                if (it is kotlin.coroutines.cancellation.CancellationException) throw it
+                fallo = "No se pudo cargar la caja. Revisa tu conexión."
+                // Con datos ya en pantalla no se ve el aviso de error: que no parezca actualizado.
+                if (movs != null) Toaster.error("No se pudo actualizar la caja. Revisa tu conexión.")
+            }
         visibles = Finanzas.POR_PAGINA
     }
 
     fun aplicarRango(d: String?, h: String?) {
         desdeBorrador = d; hastaBorrador = h
-        rangoManual = if (d != null && h != null) Finanzas.rango(periodo, hoy, d to h).let { it.desde!! to it.hasta } else null
+        rangoManual = if (d != null && h != null) Finanzas.rango(periodo, hoy, d to h).let { it.desde!! to it.hasta!! } else null
     }
 
     eligiendo?.let { cual ->
@@ -132,11 +140,13 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
         }
         lista == null -> CargandoLista(filas = 6, conAvatar = true)
         else -> {
-            val resumen = Finanzas.resumen(lista)
-            val listaVista = Finanzas.filtrar(lista, verTipo, verMetodo, verCategoria)
-            val catsEgreso = Finanzas.categoriasEgreso(lista)
-            val metodos = Finanzas.metodosUsados(lista)
-            val barras = remember(lista, periodo, rangoManual) { Finanzas.barras(lista, periodo, hoy, rangoManual) }
+            // Totales y lista: hasta hoy (con periodo); el gráfico, todo lo pedido (como la web).
+            val vigentes = Finanzas.hastaHoy(lista, hoy, rangoManual)
+            val resumen = Finanzas.resumen(vigentes)
+            val listaVista = Finanzas.filtrar(vigentes, verTipo, verMetodo, verCategoria)
+            val catsEgreso = Finanzas.categoriasEgreso(vigentes)
+            val metodos = Finanzas.metodosUsados(vigentes)
+            val barras = remember(lista, periodo, rangoManual, hoy) { Finanzas.barras(lista, periodo, hoy, rangoManual) }
             LazyColumn(
                 Modifier.fillMaxSize().padding(horizontal = Sania.dim.lg),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -355,6 +365,8 @@ private fun FilaMovimiento(m: MovimientoKardex, esAdmin: Boolean, onEditar: () -
             // Corregir: solo Admin. Manuales → ✏️ 🗑; los del sistema → solo el método (💳) y 🔒 dice dónde se corrigen.
             if (esAdmin) Row {
                 if (Finanzas.esManual(m)) {
+                    // El método también se corrige solo, sin abrir la edición completa.
+                    AccionFila("💳", onMetodo)
                     AccionFila("✏️", onEditar)
                     AccionFila("🗑", onBorrar)
                 } else {

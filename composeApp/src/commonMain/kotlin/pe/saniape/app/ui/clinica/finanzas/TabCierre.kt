@@ -63,8 +63,13 @@ import pe.saniape.app.ui.theme.Sania
 internal fun TabCierre() {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
-    val hoy = remember { hoyClinicaIso() }
+    // "Hoy" se recalcula al volver la app al frente (puede quedar abierta de un día para otro).
+    var hoy by remember { mutableStateOf(hoyClinicaIso()) }
     var fecha by remember { mutableStateOf(hoy) }
+    LaunchedEffect(pe.saniape.app.ui.Reanudacion.contador) {
+        val nuevo = hoyClinicaIso()
+        if (nuevo != hoy) { if (fecha == hoy) fecha = nuevo; hoy = nuevo }
+    }
     var dia by remember { mutableStateOf<DiaCierre?>(null) }
     var fallo by remember { mutableStateOf<String?>(null) }
     var recarga by remember { mutableIntStateOf(0) }

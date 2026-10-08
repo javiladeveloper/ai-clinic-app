@@ -151,19 +151,31 @@ object FinanzasRepo {
      * debe leerse como total).
      */
     suspend fun kardex(r: RangoFechas): Pair<List<MovimientoKardex>, Boolean> {
-        val filas = Supabase.client.postgrest["movimientos"]
-            .select(Columns.raw("id, tipo, categoria, descripcion, monto, fecha, metodo_pago, comprobante, comision_id, sesion_id, sede_id, created_at, paciente:pacientes(id, nombre)")) {
-                filter {
-                    r.desde?.let { gte("fecha", it) }
-                    lte("fecha", r.hasta)
-                    // Multisede: la sede activa (la principal incluye los sin sede).
-                    filtroSede(SedeActiva.filtro)
+        // En páginas de 1000 (lo máximo que devuelve PostgREST): con una sola
+        // consulta, "Total" sumaba los primeros 1000 sin avisar.
+        val filas = ArrayList<JsonObject>()
+        var desde = 0
+        while (desde < Finanzas.TOPE_MOVIMIENTOS) {
+            val hasta = minOf(desde + Finanzas.PAGINA_MOVIMIENTOS, Finanzas.TOPE_MOVIMIENTOS) - 1
+            val pagina = Supabase.client.postgrest["movimientos"]
+                .select(Columns.raw("id, tipo, categoria, descripcion, monto, fecha, metodo_pago, comprobante, comision_id, sesion_id, sede_id, created_at, paciente:pacientes(id, nombre)")) {
+                    filter {
+                        r.desde?.let { gte("fecha", it) }
+                        r.hasta?.let { lte("fecha", it) }
+                        // Multisede: la sede activa (la principal incluye los sin sede).
+                        filtroSede(SedeActiva.filtro)
+                    }
+                    order("fecha", Order.DESCENDING)
+                    order("created_at", Order.DESCENDING)
+                    // Desempate: con fecha y hora iguales la paginación no repite ni salta filas.
+                    order("id", Order.DESCENDING)
+                    range(desde.toLong(), hasta.toLong())
                 }
-                order("fecha", Order.DESCENDING)
-                order("created_at", Order.DESCENDING)
-                limit(Finanzas.TOPE_MOVIMIENTOS.toLong())
-            }
-            .decodeList<JsonObject>()
+                .decodeList<JsonObject>()
+            filas += pagina
+            if (pagina.size < Finanzas.PAGINA_MOVIMIENTOS) break
+            desde += Finanzas.PAGINA_MOVIMIENTOS
+        }
         val movs = filas.mapNotNull { o ->
             val pac = o["paciente"] as? JsonObject
             MovimientoKardex(
