@@ -68,6 +68,8 @@ fun PantallaMasClinica(
     onAbrirMiHorario: (() -> Unit)? = null,
     // 🌐 Mi página (solo si la clínica tiene página pública).
     onAbrirMiPagina: (() -> Unit)? = null,
+    // 💊 Servicios nativo (solo con permiso "servicios"; null = no se muestra).
+    onAbrirServicios: (() -> Unit)? = null,
 ) = pe.saniape.app.tutoriales.PantallaTutorial("Mas") {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -188,7 +190,7 @@ fun PantallaMasClinica(
                 // veía NINGUNA opción de administración en la app; ahora las ve con los
                 // MISMOS permisos que el menú de la web y se abren en la web.
                 val modulosAdmin = modulosAdministracion(ctx)
-                if (modulosAdmin.isNotEmpty() || onAbrirEspecialidades != null || onAbrirProfesionales != null) {
+                if (modulosAdmin.isNotEmpty() || onAbrirEspecialidades != null || onAbrirProfesionales != null || onAbrirServicios != null) {
                     val acciones = pe.saniape.app.ui.recordarAcciones()
                     Text("ADMINISTRACIÓN", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(Sania.dim.sm))
@@ -211,6 +213,8 @@ fun PantallaMasClinica(
                     if (onAbrirProfesionales != null) {
                         FilaMas("🩺  ${pe.saniape.app.tutoriales.pluralPersonal(ctx.terminologiaProfesional)}", ancla = "mas.profesionales", onClick = onAbrirProfesionales)
                     }
+                    // Nativo: catálogo de servicios (crear, editar, activar/desactivar).
+                    if (onAbrirServicios != null) FilaMas("💊  Servicios", onClick = onAbrirServicios)
                     if (modulosAdmin.isNotEmpty()) {
                         Text("Se abren en la web (inicia sesión con tu misma cuenta).", color = c.textoSuave, fontSize = 11.sp)
                         Spacer(Modifier.height(Sania.dim.sm))
@@ -396,7 +400,7 @@ internal fun modulosAdministracion(ctx: ContextoStaff): List<Pair<String, String
     if (ctx.esAdmin) add("📈  Actividad del equipo" to "/actividad")
     if (ctx.puede("equipo")) add("👥  Equipo y accesos" to "/equipo")
     if (ctx.puede("servicios")) {
-        add("💊  Servicios" to "/procedimientos")
+        // 💊 Servicios ya es nativo (onAbrirServicios).
         add("🎉  Campañas" to "/campanias")
     }
     if (ctx.puede("ajustes")) {

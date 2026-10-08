@@ -99,6 +99,7 @@ fun ClinicaConTabs(
     var verPacientesNuevos by remember { mutableStateOf(false) }
     // Profesionales (lista + horario) y el horario propio en solo lectura.
     var verProfesionales by remember { mutableStateOf(false) }
+    var verServicios by remember { mutableStateOf(false) }
     var horarioDe by remember { mutableStateOf<Pair<String, String>?>(null) }   // (terapeutaId, nombre)
     var horarioVolver by remember { mutableStateOf("← Más") }
     // Más → "🌐 Mi página" (slug leído de la clínica; null = no tiene página).
@@ -147,8 +148,9 @@ fun ClinicaConTabs(
 
     // Con un flujo a pantalla completa abierto, el "atrás" es de ese flujo (tiene
     // su propio ManejarAtras, con la confirmación de salir sin guardar).
-    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verProfesionales || horarioDe != null || tab != TabClinica.Inicio)) {
+    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verProfesionales || verServicios || horarioDe != null || tab != TabClinica.Inicio)) {
         when {
+            verServicios -> verServicios = false
             horarioDe != null -> horarioDe = null
             verProfesionales -> verProfesionales = false
             verSesiones -> verSesiones = false
@@ -221,6 +223,7 @@ fun ClinicaConTabs(
     fun cerrarOverlays() {
         verSesiones = false; verCaja = false; verEspecialidades = false; verPacientesPeriodo = false
         verPacientesNuevos = false; verProfesionales = false; horarioDe = null
+        verServicios = false
     }
     // "Llévame" / "Retomar" de los tutoriales y los botones de Primeros pasos.
     fun irA(pantalla: String) {
@@ -255,7 +258,7 @@ fun ClinicaConTabs(
         urlPagina = pe.saniape.app.data.staff.OnboardingRepo.slugClinica(contexto.clinicaId)
             ?.let { pe.saniape.app.data.staff.urlPaginaClinica(it) }
     }
-    val hayOverlay = verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verProfesionales || horarioDe != null
+    val hayOverlay = verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verProfesionales || verServicios || horarioDe != null
     val tabs = buildList {
         add(TabClinica.Inicio)
         if (verAgenda) add(TabClinica.Agenda)
@@ -345,6 +348,8 @@ fun ClinicaConTabs(
                             { horarioVolver = "← Más"; horarioDe = id to (contexto.nombre ?: "Mi horario") }
                         },
                         onAbrirMiPagina = urlPagina?.let { { verMiPagina = true } },
+                        // Nativo. Mismo permiso que /api/staff/servicio (sin candado de plan, como la web).
+                        onAbrirServicios = if (contexto.puede("servicios")) ({ verServicios = true }) else null,
                     )
                 }
             }
@@ -412,6 +417,17 @@ fun ClinicaConTabs(
                         onSalir = { verProfesionales = false },
                         onAbrir = { p -> horarioVolver = "← ${pe.saniape.app.tutoriales.pluralPersonal(contexto.terminologiaProfesional)}"; horarioDe = p.id to p.nombre },
                     )
+                }
+            }
+            AnimatedVisibility(
+                visible = verServicios && contexto.puede("servicios"),
+                enter = entrarDetalle(), exit = salirDetalle(),
+            ) {
+                Box(Modifier.fillMaxSize().background(c.fondo)) {
+                    pe.saniape.app.tutoriales.PantallaTutorial("Servicios") { pe.saniape.app.ui.clinica.servicios.PantallaServicios(
+                        ctx = contexto,
+                        onSalir = { verServicios = false },
+                    ) }
                 }
             }
             AnimatedVisibility(visible = horarioDe != null, enter = entrarDetalle(), exit = salirDetalle()) {
