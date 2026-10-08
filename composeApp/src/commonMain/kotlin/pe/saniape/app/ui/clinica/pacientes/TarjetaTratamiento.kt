@@ -4,12 +4,13 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.IntrinsicSize
 import pe.saniape.app.ui.clinica.ChevronExpandible
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -207,13 +208,21 @@ fun TarjetaTratamiento(
     val acento = if (t.esConsulta && !t.esServicioUnico) c.purple else c.teal
     val cerrado = t.estado == "Alta" || t.estado == "Cancelado" || t.estado == "Suspendido"
 
+    // La barra de acento se DIBUJA detrás (drawBehind), no es un Box con
+    // fillMaxHeight dentro de un Row con height(IntrinsicSize.Min): las medidas
+    // intrínsecas revientan con cualquier LazyRow/BoxWithConstraints adentro, y
+    // la galería de fotos de las sesiones es una LazyRow → al expandir un
+    // paquete con fotos la app se cerraba (QA, 2026-10-08, desde que 2.29.0
+    // guarda las fotos al completar desde la agenda).
+    val colorAcento = if (cerrado) c.borde else acento
     Row(
-        Modifier.fillMaxWidth().height(IntrinsicSize.Min)
+        Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
+            .drawBehind { drawRect(colorAcento, size = Size(Sania.dim.acento.toPx(), size.height)) }
             .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)),
     ) {
-        // Barra de acento lateral (tipo de tratamiento)
-        Box(Modifier.width(Sania.dim.acento).fillMaxHeight().background(if (cerrado) c.borde else acento))
+        // Espacio de la barra de acento lateral (tipo de tratamiento)
+        Spacer(Modifier.width(Sania.dim.acento))
 
       Column(Modifier.fillMaxWidth().padding(Sania.dim.tarjeta).animateContentSize()) {
         // Cabecera tocable (expande/colapsa). La barra de recorrido va aparte para que
