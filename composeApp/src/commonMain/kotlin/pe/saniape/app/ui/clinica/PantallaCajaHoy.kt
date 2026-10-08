@@ -43,7 +43,8 @@ import pe.saniape.app.tutoriales.tourAncla
  * 💰 Caja de HOY (esencial móvil): cuánto entró hoy y por qué método, + egresos y neto,
  * y "+ Registrar" para meter un movimiento manual (recepción lo pedía: la caja era solo
  * un reporte y los gastos del día se quedaban sin anotar hasta llegar a la web).
- * El kardex completo y el cierre formal siguen en la web (/finanzas).
+ * El kardex completo y el cierre formal están en Más → Finanzas y caja (nativo);
+ * registrar va por el mismo endpoint (/api/staff/movimiento/registrar).
  */
 @Composable
 fun PantallaCajaHoy(ctx: ContextoStaff) {
@@ -185,7 +186,7 @@ fun PantallaCajaHoy(ctx: ContextoStaff) {
                             }
                         }
                         item {
-                            Text("El kardex completo y el cierre de caja están en la web (Finanzas).",
+                            Text(if (ctx.puede("finanzas")) "El kardex completo y el cierre de caja están en Más → Finanzas y caja." else "El kardex completo y el cierre de caja los ve quien tiene acceso a Finanzas.",
                                 color = c.textoSuave, fontSize = 10.sp,
                                 modifier = Modifier.tourAncla("caja.cierre_web").padding(vertical = 8.dp))
                         }

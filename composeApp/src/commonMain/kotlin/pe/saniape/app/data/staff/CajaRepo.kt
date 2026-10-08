@@ -3,9 +3,6 @@ package pe.saniape.app.data.staff
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
-import kotlinx.datetime.Clock
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import pe.saniape.app.data.Supabase
@@ -27,10 +24,9 @@ data class MovimientoCaja(
  */
 object CajaRepo {
 
-    private fun hoyISO(): String {
-        val d = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
-        return "${d.year}-${d.monthNumber.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}"
-    }
+    // El día de la CLÍNICA (Lima), no el del teléfono: el movimiento se registra
+    // con la fecha de Lima en el servidor, y la lista tiene que pedir la misma.
+    private fun hoyISO(): String = hoyClinicaIso()
 
     private fun JsonObject.str(k: String): String? =
         (this[k] as? JsonPrimitive)?.content?.takeIf { it != "null" }
@@ -38,41 +34,19 @@ object CajaRepo {
         (this[k] as? JsonPrimitive)?.content?.toDoubleOrNull()
 
     /**
-     * Registra un movimiento MANUAL en el kardex (mismo insert que /finanzas web:
-     * RLS pone la clínica; la fecha usa el DEFAULT de hoy). Devuelve null si entró,
-     * o el mensaje de error humano (comprobante repetido, sesión vencida…).
+     * Registra un movimiento MANUAL en el kardex por /api/staff/movimiento/registrar:
+     * la MISMA validación e insert que "+ Registrar Movimiento" de /finanzas web
+     * (fecha de Lima, comprobante, método válido, sede). Antes la app insertaba
+     * directo en la tabla y las reglas vivían en dos lados. Devuelve null si
+     * entró, o el mensaje humano del servidor (comprobante repetido, sesión
+     * vencida, sin permiso…).
      */
     suspend fun registrarMovimiento(
         tipo: String, categoria: String, descripcion: String?, monto: Double,
         metodo: String?, comprobante: String?,
-    ): String? = try {
-        Supabase.client.postgrest["movimientos"].insert(
-            kotlinx.serialization.json.buildJsonObject {
-                put("tipo", kotlinx.serialization.json.JsonPrimitive(tipo))
-                put("categoria", kotlinx.serialization.json.JsonPrimitive(categoria))
-                if (!descripcion.isNullOrBlank()) put("descripcion", kotlinx.serialization.json.JsonPrimitive(descripcion.trim()))
-                put("monto", kotlinx.serialization.json.JsonPrimitive(monto))
-                if (!metodo.isNullOrBlank()) put("metodo_pago", kotlinx.serialization.json.JsonPrimitive(metodo))
-                // '' NO es NULL: el índice único de comprobante cuenta el string vacío
-                // (mismo bug ya cazado en la web, DALU 2026-08-31).
-                comprobante?.trim()?.takeIf { it.isNotBlank() }?.let {
-                    put("comprobante", kotlinx.serialization.json.JsonPrimitive(it))
-                }
-                // Multisede: el movimiento es de la sede activa (en "todas las sedes"
-                // o sin multisede no se manda y la base decide, como siempre).
-                SedeActiva.filtro?.let { put("sede_id", kotlinx.serialization.json.JsonPrimitive(it.sedeId)) }
-            }
-        )
-        null
-    } catch (e: Exception) {
-        val msg = e.message ?: ""
-        when {
-            Regex("uq_movimiento_comprobante", RegexOption.IGNORE_CASE).containsMatchIn(msg) ->
-                "Ya existe un movimiento con ese comprobante — revisa la lista"
-            Regex("jwt|token|expired", RegexOption.IGNORE_CASE).containsMatchIn(msg) ->
-                "Tu sesión expiró — vuelve a entrar"
-            else -> "No se pudo registrar. Revisa tu conexión."
-        }
+    ): String? {
+        val r = FinanzasRepo.registrar(tipo, categoria, descripcion?.trim().orEmpty(), monto, metodo, comprobante)
+        return if (r.ok) null else (r.error ?: "No se pudo registrar. Revisa tu conexión.")
     }
 
     suspend fun movimientosDeHoy(): List<MovimientoCaja> {
