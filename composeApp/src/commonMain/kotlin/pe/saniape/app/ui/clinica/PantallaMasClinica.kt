@@ -62,6 +62,8 @@ fun PantallaMasClinica(
     onAbrirPacientesPeriodo: (() -> Unit)? = null,
     // 🌱 Pacientes nuevos nativo (solo con permiso "reportes"; null = no se muestra).
     onAbrirPacientesNuevos: (() -> Unit)? = null,
+    // 📈 Reportes nativo (mes a mes; solo con permiso "reportes"; null = no se muestra).
+    onAbrirReportes: (() -> Unit)? = null,
     // 🩺 (nombre del personal): lista + horario semanal (solo con permiso "equipo").
     onAbrirProfesionales: (() -> Unit)? = null,
     // 🕒 Mi horario (el profesional vinculado, solo lectura).
@@ -148,9 +150,11 @@ fun PantallaMasClinica(
                 }
 
                 // Reportes (con permiso "reportes"; el plan lo valida el servidor).
-                if (onAbrirPacientesPeriodo != null || onAbrirPacientesNuevos != null) {
+                if (onAbrirReportes != null || onAbrirPacientesPeriodo != null || onAbrirPacientesNuevos != null) {
                     Text("REPORTES", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(Sania.dim.sm))
+                    // 📈 Reportes (mes a mes): nativo, antes se abría en la web.
+                    if (onAbrirReportes != null) FilaMas("📈  Reportes", onClick = onAbrirReportes)
                     // 📊 Pacientes del período (con permiso de reportes): atendidos,
                     // evaluados y cuántos compraron paquete. El plan lo valida el servidor.
                     if (onAbrirPacientesPeriodo != null) {
@@ -391,7 +395,6 @@ private fun FilaMas(texto: String, ancla: String? = null, onClick: () -> Unit) {
 internal fun modulosAdministracion(ctx: ContextoStaff): List<Pair<String, String>> = buildList {
     if (ctx.puede("finanzas")) add("💸  Finanzas y caja" to "/finanzas")
     if (ctx.puede("comisiones")) add("💰  Comisiones" to "/comisiones")
-    if (ctx.puede("reportes")) add("📊  Reportes" to "/reportes")
     if (ctx.puede("pacientes")) add("🔄  Retención" to "/seguimiento")
     if (ctx.esAdmin) add("📈  Actividad del equipo" to "/actividad")
     if (ctx.puede("equipo")) add("👥  Equipo y accesos" to "/equipo")

@@ -97,6 +97,7 @@ fun ClinicaConTabs(
     var verEspecialidades by remember { mutableStateOf(false) }
     var verPacientesPeriodo by remember { mutableStateOf(false) }
     var verPacientesNuevos by remember { mutableStateOf(false) }
+    var verReportes by remember { mutableStateOf(false) }
     // Profesionales (lista + horario) y el horario propio en solo lectura.
     var verProfesionales by remember { mutableStateOf(false) }
     var horarioDe by remember { mutableStateOf<Pair<String, String>?>(null) }   // (terapeutaId, nombre)
@@ -147,7 +148,7 @@ fun ClinicaConTabs(
 
     // Con un flujo a pantalla completa abierto, el "atrás" es de ese flujo (tiene
     // su propio ManejarAtras, con la confirmación de salir sin guardar).
-    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verProfesionales || horarioDe != null || tab != TabClinica.Inicio)) {
+    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verReportes || verProfesionales || horarioDe != null || tab != TabClinica.Inicio)) {
         when {
             horarioDe != null -> horarioDe = null
             verProfesionales -> verProfesionales = false
@@ -156,6 +157,7 @@ fun ClinicaConTabs(
             verEspecialidades -> verEspecialidades = false
             verPacientesPeriodo -> verPacientesPeriodo = false
             verPacientesNuevos -> verPacientesNuevos = false
+            verReportes -> verReportes = false
             else -> tab = TabClinica.Inicio
         }
     }
@@ -221,6 +223,7 @@ fun ClinicaConTabs(
     fun cerrarOverlays() {
         verSesiones = false; verCaja = false; verEspecialidades = false; verPacientesPeriodo = false
         verPacientesNuevos = false; verProfesionales = false; horarioDe = null
+        verReportes = false
     }
     // "Llévame" / "Retomar" de los tutoriales y los botones de Primeros pasos.
     fun irA(pantalla: String) {
@@ -255,7 +258,7 @@ fun ClinicaConTabs(
         urlPagina = pe.saniape.app.data.staff.OnboardingRepo.slugClinica(contexto.clinicaId)
             ?.let { pe.saniape.app.data.staff.urlPaginaClinica(it) }
     }
-    val hayOverlay = verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verProfesionales || horarioDe != null
+    val hayOverlay = verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verReportes || verProfesionales || horarioDe != null
     val tabs = buildList {
         add(TabClinica.Inicio)
         if (verAgenda) add(TabClinica.Agenda)
@@ -338,6 +341,8 @@ fun ClinicaConTabs(
                         onAbrirPacientesPeriodo = if (contexto.puede("reportes")) ({ verPacientesPeriodo = true }) else null,
                         // Nativo. Mismo permiso que /api/staff/pacientes-nuevos (el plan lo valida el servidor).
                         onAbrirPacientesNuevos = if (contexto.puede("reportes")) ({ verPacientesNuevos = true }) else null,
+                        // 📈 Reportes nativo (mes a mes). Mismo permiso que /api/reportes/series.
+                        onAbrirReportes = if (contexto.puede("reportes")) ({ verReportes = true }) else null,
                         // (nombre del personal) → lista + horario: solo con permiso "equipo" (como la web).
                         onAbrirProfesionales = if (contexto.puede("equipo")) ({ verProfesionales = true }) else null,
                         // El propio profesional ve SU horario en solo lectura.
@@ -378,6 +383,20 @@ fun ClinicaConTabs(
                         ctx = contexto,
                         onSalir = { verEspecialidades = false },
                     ) }
+                }
+            }
+            AnimatedVisibility(
+                visible = verReportes && contexto.puede("reportes"),
+                enter = entrarDetalle(), exit = salirDetalle(),
+            ) {
+                Box(Modifier.fillMaxSize().background(c.fondo)) {
+                    pe.saniape.app.ui.clinica.reportes.PantallaReportes(
+                        ctx = contexto,
+                        onSalir = { verReportes = false },
+                        // Las otras dos vistas de la web se abren encima; al salir vuelven acá.
+                        onAbrirPacientesPeriodo = { verPacientesPeriodo = true },
+                        onAbrirPacientesNuevos = { verPacientesNuevos = true },
+                    )
                 }
             }
             AnimatedVisibility(

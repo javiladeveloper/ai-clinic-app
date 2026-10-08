@@ -57,6 +57,25 @@ private class AccionesAndroid(private val context: Context) : AccionesNativas {
             context.startActivity(Intent.createChooser(envio, titulo).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (_: Exception) { copiarTexto(texto, titulo) }
     }
+
+    override fun compartirArchivo(nombre: String, contenido: String, mime: String, titulo: String) {
+        try {
+            // Archivo temporal en cache/compartidos (expuesto por el FileProvider): se
+            // pisa en cada exportación, no se acumulan copias.
+            val dir = java.io.File(context.cacheDir, "compartidos").apply { mkdirs() }
+            val f = java.io.File(dir, nombre.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+            f.writeText(contenido, Charsets.UTF_8)
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f)
+            val envio = Intent(Intent.ACTION_SEND).setType(mime)
+                .putExtra(Intent.EXTRA_STREAM, uri)
+                .putExtra(Intent.EXTRA_SUBJECT, nombre)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            context.startActivity(
+                Intent.createChooser(envio, titulo)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            )
+        } catch (_: Exception) { compartirTexto(contenido, titulo) }
+    }
 }
 
 @Composable

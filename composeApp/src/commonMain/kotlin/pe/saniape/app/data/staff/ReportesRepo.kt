@@ -1,14 +1,18 @@
 package pe.saniape.app.data.staff
 
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.postgrest.postgrest
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
 import pe.saniape.app.data.Supabase
 import pe.saniape.app.data.crearHttpClient
 
@@ -56,6 +60,13 @@ data class ReportePacientesPeriodo(
     /** "octubre 2026", "últimos 3 meses"… (periodo.etiqueta de la web). */
     val etiquetaPeriodo: String?,
 )
+
+/** Resultado de las series "Mes a mes" (GET /api/reportes/series). */
+sealed class ResultadoSeries {
+    data class Ok(val series: SeriesReporte) : ResultadoSeries()
+    /** Sin permiso (403) u otro error: el mensaje ya es para mostrar. */
+    data class Error(val mensaje: String, val porPlan: Boolean = false) : ResultadoSeries()
+}
 
 sealed class ResultadoReporte {
     data class Ok(val reporte: ReportePacientesPeriodo) : ResultadoReporte()
@@ -129,5 +140,72 @@ object ReportesRepo {
         } catch (_: Exception) {
             ResultadoReporte.Error("Sin conexión con el servidor. Revisa tu internet e inténtalo de nuevo.")
         }
+    }
+
+    /**
+     * GET {SITE_URL}/api/reportes/series?meses=…[&sede=…][&metodo=…][&terapeuta=…]
+     * con el Bearer del staff. Las series ya vienen armadas (mes en curso marcado
+     * como parcial, proyección y mismo tramo del mes anterior): la app solo pinta.
+     */
+    suspend fun series(meses: Int, sedeId: String?, metodo: String?, terapeutaId: String?): ResultadoSeries {
+        val tk = runCatching { Supabase.client.auth.currentSessionOrNull()?.accessToken }.getOrNull()
+            ?: return ResultadoSeries.Error("Tu sesión expiró. Vuelve a entrar.")
+        return try {
+            val resp = http.get("${Supabase.SITE_URL}/api/reportes/series") {
+                header("Authorization", "Bearer $tk")
+                parameter("meses", meses)
+                sedeId?.takeIf { it.isNotBlank() }?.let { parameter("sede", it) }
+                metodo?.takeIf { it.isNotBlank() }?.let { parameter("metodo", it) }
+                terapeutaId?.takeIf { it.isNotBlank() }?.let { parameter("terapeuta", it) }
+            }
+            val texto = resp.bodyAsText()
+            if (resp.status.isSuccess()) {
+                ResultadoSeries.Ok(parsearSeriesReporte(texto))
+            } else {
+                val msg = runCatching {
+                    ((Json.parseToJsonElement(texto) as? JsonObject)?.get("error") as? JsonPrimitive)?.content
+                }.getOrNull()?.takeIf { it.isNotBlank() }
+                ResultadoSeries.Error(
+                    msg ?: "No se pudieron cargar los reportes.",
+                    porPlan = resp.status.value == 402,
+                )
+            }
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            ResultadoSeries.Error("Sin conexión con el servidor. Revisa tu internet e inténtalo de nuevo.")
+        }
+    }
+
+    /**
+     * Anotar qué pasó en un mes (igual que HitosDelMes.tsx: insert directo, la RLS
+     * acota a la clínica). clinica_id NO se manda: lo pone el DEFAULT
+     * get_clinica_id(); setearlo a mano rompe la RLS. null = ok; si no, el mensaje.
+     */
+    suspend fun anotarHito(mes: String, titulo: String, detalle: String?, tipo: String): String? = try {
+        Supabase.client.postgrest["hitos_mes"].insert(buildJsonObject {
+            put("mes", mes)
+            put("titulo", titulo.trim())
+            put("detalle", detalle?.trim()?.takeIf { it.isNotBlank() })
+            put("tipo", tipo)
+        })
+        null
+    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        // El índice único evita el duplicado por doble toque: se dice en claro.
+        val m = e.message.orEmpty()
+        if (m.contains("23505") || m.contains("duplicate", ignoreCase = true)) "Ya anotaste eso en ese mes"
+        else "No se pudo guardar"
+    }
+
+    /** Borra un hito. true = borrado. */
+    suspend fun borrarHito(id: String): Boolean = try {
+        Supabase.client.postgrest["hitos_mes"].delete { filter { eq("id", id) } }
+        true
+    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        false
     }
 }
