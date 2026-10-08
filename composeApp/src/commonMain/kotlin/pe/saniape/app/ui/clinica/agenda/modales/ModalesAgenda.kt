@@ -395,12 +395,11 @@ fun ModalCompletar(
                         val pz = if (conPiezas && piezasListas) piezas else null
                         val conProf = onConfirmarConProfesional
                         val fisio = onConfirmarFisio
-                        if (fisioSesion && fisio != null) {
-                            fisio(obs, pz, if (pideMejorias) mejorias.trim().ifBlank { null } else null, dolorInicio to dolorFin)
-                            return@clickable
+                        when (rutaCompletar(fisioSesion && fisio != null, esEvaluacion && profesionales != null, conProf != null)) {
+                            RutaCompletar.Fisio -> fisio!!(obs, pz, if (pideMejorias) mejorias.trim().ifBlank { null } else null, dolorInicio to dolorFin)
+                            RutaCompletar.ConProfesional -> conProf!!(obs, diag, esp, pz, terapeutaElegido)
+                            RutaCompletar.Normal -> onConfirmar(obs, diag, esp, pz)
                         }
-                        if (conProf != null) conProf(obs, diag, esp, pz, if (esEvaluacion) terapeutaElegido else null)
-                        else onConfirmar(obs, diag, esp, pz)
                     }.padding(horizontal = 20.dp, vertical = 11.dp),
             ) {
                 Text(if (cobro?.cobrar == true && !esEvaluacion) "✓ Completar y cobrar" else "✓ Guardar y completar",
@@ -411,6 +410,23 @@ fun ModalCompletar(
         containerColor = c.superficie,
         shape = RoundedCornerShape(Sania.shape.lg.dp),
     )
+}
+
+/** Por cuál callback de [ModalCompletar] sale "✓ Completar". */
+enum class RutaCompletar { Fisio, ConProfesional, Normal }
+
+/**
+ * Bug 2026-10-08 (PodoBlack, S/ 60 en efectivo perdidos): el modal salía por
+ * `onConfirmarConProfesional` de [ModalCompletar] en TODA cita que no fuera
+ * sesión de fisio, porque la agenda siempre lo pasa — y ese callback no lleva
+ * el cobro ("¿El paciente pagó esta sesión?") ni las fotos: la sesión quedaba
+ * Completada y el pago nunca salía del teléfono. Ese callback es SOLO para
+ * cuando el modal pidió "¿Quién atendió?" (evaluación sin profesional).
+ */
+fun rutaCompletar(fisioSesion: Boolean, pideProfesional: Boolean, hayConProfesional: Boolean): RutaCompletar = when {
+    fisioSesion -> RutaCompletar.Fisio
+    pideProfesional && hayConProfesional -> RutaCompletar.ConProfesional
+    else -> RutaCompletar.Normal
 }
 
 /**
@@ -503,7 +519,8 @@ fun ConfirmacionAccion(cita: CitaStaff, accion: AccionCita, onCancelar: () -> Un
             Text(
                 if (esCancelar) {
                     if (cita.tipo == "Sesión") "Se eliminará la sesión vinculada." else "La cita quedará como cancelada."
-                } else "Volverá a confirmada y se deshará el cobro/registro asociado.",
+                // "Cobrar ≠ atender": revertir ya NO toca el cobro (servidor, 2026-10-08).
+                } else "Volverá a confirmada para poder completarla. El cobro no se toca.",
                 color = c.texto, fontSize = Sania.txt.cuerpo,
             )
         },

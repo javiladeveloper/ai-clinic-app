@@ -771,7 +771,12 @@ fun PantallaAgenda(
                         congelarOdontograma = vm.esDental(cita) && evalua,
                         terapeutaId = terId,
                         evaluacionFisio = if (conEvalFisio) evalFisio.valor else null,
+                        // Lo mismo que onConfirmar: si algún día este camino cierra
+                        // una sesión, el cobro y las fotos no se pueden perder
+                        // (bug PodoBlack 2026-10-08, ver rutaCompletar).
+                        pago = if (conCobro) cobro.pago() else null,
                         ofrecerPlan = !planResuelto,
+                        alCompletarSesion = alCompletarConFotos(),
                     )
                 },
             )
