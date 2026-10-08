@@ -99,14 +99,17 @@ object EquipoRepo {
             if (!vincularTerapeutaId.isNullOrBlank()) put("vincularTerapeutaId", vincularTerapeutaId)
         })
 
-    /** Editar nombre, rol y (opcional) correo. Correo vacío = no cambiar. */
-    suspend fun editar(perfilId: String, nombre: String, rolId: String, email: String?): ResultadoEscritura =
-        enviar(HttpMethod.Patch, "miembro", buildJsonObject {
+    /** Editar nombre, rol y (opcional) correo. Correo vacío = no cambiar; `rolId` null = mantener su rol. */
+    suspend fun editar(perfilId: String, nombre: String, rolId: String?, email: String?): ResultadoEscritura =
+        enviar(HttpMethod.Patch, "miembro", cuerpoEditar(perfilId, nombre, rolId, email))
+
+    internal fun cuerpoEditar(perfilId: String, nombre: String, rolId: String?, email: String?): JsonObject =
+        buildJsonObject {
             put("perfilId", perfilId)
             put("nombre", nombre.trim())
-            put("rolId", rolId)
+            rolId?.let { put("rolId", it) }
             email?.trim()?.takeIf { it.isNotEmpty() }?.let { put("email", it) }
-        })
+        }
 
     /** Permisos individuales; `null` = restablecer a los del rol. */
     suspend fun guardarPermisos(perfilId: String, permisos: Map<String, Boolean>?): ResultadoEscritura =
@@ -151,17 +154,23 @@ object EquipoRepo {
         return if (token != null && url != null) EnlaceInvitacion(token, url) to null else null to "Respuesta inesperada del servidor."
     }
 
-    /** ¿Ya se registró alguien con el enlace? (usado, nombre). null = no se pudo consultar. */
-    suspend fun estadoEnlace(token: String): Pair<Boolean, String?>? {
-        val tk = token() ?: return null
+    /**
+     * ¿Ya se registró alguien con el enlace? null = falla pasajera (se reintenta).
+     * Sin sesión, o si el servidor ya no reconoce la sesión o el enlace
+     * (401/403/404), `detener`: preguntar para siempre no sirve de nada.
+     */
+    suspend fun estadoEnlace(token: String): EstadoEnlace? {
+        val tk = token() ?: return EstadoEnlace(usado = false, nombre = null, detener = true)
         return try {
             val resp = http.get("${Supabase.SITE_URL}/api/staff/equipo/invitacion") {
                 header("Authorization", "Bearer $tk")
                 parameter("token", token)
             }
-            if (resp.status.value !in 200..299) return null
+            val st = resp.status.value
+            if (st == 401 || st == 403 || st == 404) return EstadoEnlace(usado = false, nombre = null, detener = true)
+            if (st !in 200..299) return null
             val o = json.parseToJsonElement(resp.bodyAsText()) as? JsonObject ?: return null
-            ((o["usado"] as? JsonPrimitive)?.booleanOrNull == true) to o.str("nombre")
+            EstadoEnlace(usado = (o["usado"] as? JsonPrimitive)?.booleanOrNull == true, nombre = o.str("nombre"))
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (e: Exception) {

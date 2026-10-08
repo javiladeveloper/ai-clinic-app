@@ -11,7 +11,9 @@ import kotlinx.serialization.json.JsonObject
  */
 @Serializable
 data class EquipoDatos(
+    /** Admin que puede escribir (el soporte de solo lectura viene en false). */
     val esAdmin: Boolean = false,
+    val soloLectura: Boolean = false,
     val yoId: String? = null,
     /** Flag de la web (ROLES_PERSONALIZADOS_HABILITADOS): sin él, los roles son de solo lectura. */
     val rolesPersonalizados: Boolean = false,
@@ -70,6 +72,9 @@ data class PersonalEquipo(
 
 @Serializable
 data class SedeEquipo(val id: String, val nombre: String, val estado: String = "Activa", val esPrincipal: Boolean = false)
+
+/** ¿Ya se registró alguien con el enlace? `detener` = el servidor ya no lo reconoce (sesión/enlace). */
+data class EstadoEnlace(val usado: Boolean, val nombre: String?, val detener: Boolean = false)
 
 /** Enlace de invitación (POST /api/staff/equipo/invitacion). */
 @Serializable
@@ -136,7 +141,11 @@ object ReglasEquipo {
      * ¿Al guardar este rol se le quita el Admin? (aviso "debe quedar al menos un
      * administrador"; el servidor es el que lo impide).
      */
-    fun dejaDeSerAdmin(m: MiembroEquipo, rolElegido: String): Boolean = m.esAdmin && rolElegido != ROL_ADMIN
+    fun dejaDeSerAdmin(m: MiembroEquipo, rolElegido: String?): Boolean = m.esAdmin && rolElegido != null && rolElegido != ROL_ADMIN
+
+    /** El rol con el que queda: el elegido, o el que ya tiene si no se eligió (null). */
+    fun rolEfectivo(m: MiembroEquipo, rolElegido: String?): String =
+        rolElegido ?: if (m.esAdmin) ROL_ADMIN else (m.rolId ?: m.rolNombre)
 
     /** Personal que se puede elegir al invitar: activo y sin cuenta (como la web). */
     fun personalInvitable(personal: List<PersonalEquipo>): List<PersonalEquipo> =

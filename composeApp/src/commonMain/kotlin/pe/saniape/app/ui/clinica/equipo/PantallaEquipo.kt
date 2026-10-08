@@ -270,7 +270,12 @@ private fun FichaMiembro(
                     }
                     "revocar" -> {
                         val r = escribir(Gestion.ELIMINANDO) { EquipoRepo.revocar(m.id) }
-                        if (r.registrada) { Toaster.exito("Acceso de ${m.nombre} revocado"); onRevocado() }
+                        if (r.registrada) {
+                            // Cuenta personal (paciente del portal, otra clínica): solo pierde esta clínica.
+                            val borrada = (r.cuerpo?.get("cuentaBorrada") as? JsonPrimitive)?.contentOrNull != "false"
+                            Toaster.exito(if (borrada) "Acceso de ${m.nombre} revocado" else "${m.nombre} ya no tiene acceso a la clínica (su cuenta personal se conserva)")
+                            onRevocado()
+                        }
                     }
                     "desvincular" -> {
                         val r = escribir { EquipoRepo.desvincular(m.id) }

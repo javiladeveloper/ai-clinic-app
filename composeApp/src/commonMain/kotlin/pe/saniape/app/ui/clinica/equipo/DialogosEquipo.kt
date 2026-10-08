@@ -70,7 +70,16 @@ internal suspend fun escribir(
 
 /** Selector de rol: los roles de la clínica + "Administrador (Acceso total)", como la web. */
 @Composable
-private fun SelectorRol(roles: List<RolEquipo>, elegido: String, onElegir: (String) -> Unit) {
+private fun SelectorRol(
+    roles: List<RolEquipo>,
+    elegido: String?,
+    /** Rol actual de un perfil sin rol de la tabla: se ofrece "mantener" (null). */
+    rolActualSinTabla: String? = null,
+    onElegir: (String?) -> Unit,
+) {
+    if (rolActualSinTabla != null) {
+        OpcionElegible("Mantener su rol actual ($rolActualSinTabla)", elegida = elegido == null) { onElegir(null) }
+    }
     roles.forEach { r ->
         OpcionElegible(
             r.nombre,
@@ -152,7 +161,7 @@ fun DialogoInvitar(datos: EquipoDatos, onCerrar: () -> Unit, onHecho: () -> Unit
             Spacer(Modifier.height(Sania.dim.md))
         }
         EtqForm("Rol en el sistema")
-        SelectorRol(datos.roles, rolId) { rolId = it }
+        SelectorRol(datos.roles, rolId) { rolId = it ?: ReglasEquipo.ROL_ADMIN }
 
         if (invitables.isNotEmpty()) {
             Spacer(Modifier.height(Sania.dim.md))
@@ -220,11 +229,14 @@ fun DialogoEditarMiembro(
     val scope = rememberCoroutineScope()
     var nombre by remember { mutableStateOf(m.nombre) }
     var email by remember { mutableStateOf("") }
-    var rolId by remember { mutableStateOf(if (m.esAdmin) ReglasEquipo.ROL_ADMIN else m.rolId ?: ReglasEquipo.ROL_ADMIN) }
+    // Sin rol de la tabla (perfil de antes): null = mantener su rol actual. NUNCA
+    // se asume Admin (antes el formulario lo proponía y un "Guardar" lo ascendía).
+    val rolInicial = if (m.esAdmin) ReglasEquipo.ROL_ADMIN else m.rolId?.takeIf { id -> datos.roles.any { it.id == id } }
+    var rolId by remember { mutableStateOf(rolInicial) }
     var sedes by remember { mutableStateOf(m.sedesPermitidas) }
     var guardando by remember { mutableStateOf(false) }
     val sedesActivas = remember(datos) { datos.sedes.filter { it.estado == "Activa" } }
-    val ofreceSedes = ReglasEquipo.ofreceSedes(multiSede, datos.esAdmin, rolId)
+    val ofreceSedes = ReglasEquipo.ofreceSedes(multiSede, datos.esAdmin, ReglasEquipo.rolEfectivo(m, rolId))
 
     fun guardar() {
         if (guardando) return
@@ -279,7 +291,7 @@ fun DialogoEditarMiembro(
 
         Spacer(Modifier.height(Sania.dim.md))
         EtqForm("Rol en el sistema")
-        SelectorRol(datos.roles, rolId) { rolId = it }
+        SelectorRol(datos.roles, rolId, rolActualSinTabla = if (rolInicial == null) m.rolNombre else null) { rolId = it }
         if (ReglasEquipo.dejaDeSerAdmin(m, rolId)) {
             Text("⚠ Dejará de ser administrador. Debe quedar al menos un administrador en la clínica.",
                 color = c.pend, fontSize = Sania.txt.mini)
@@ -288,7 +300,7 @@ fun DialogoEditarMiembro(
         if (multiSede && datos.esAdmin) {
             Spacer(Modifier.height(Sania.dim.md))
             EtqForm("Sedes donde trabaja")
-            if (rolId == ReglasEquipo.ROL_ADMIN) {
+            if (ReglasEquipo.rolEfectivo(m, rolId) == ReglasEquipo.ROL_ADMIN) {
                 Text("El administrador trabaja en todas las sedes y puede ver todas juntas.", color = c.textoSuave, fontSize = 13.sp)
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -465,8 +477,12 @@ fun DialogoEnlace(datos: EquipoDatos, onCerrar: () -> Unit, onRegistrado: () -> 
         while (true) {
             delay(3_000)
             val estado = EquipoRepo.estadoEnlace(tk) ?: continue
-            if (estado.first) {
-                Toaster.exito("${estado.second?.let { "$it ya" } ?: "Ya"} se registró en tu equipo ✓")
+            if (estado.detener) {
+                Toaster.info("Ya no se puede seguir el registro desde acá. Revisa la lista del equipo en un rato.")
+                return@LaunchedEffect
+            }
+            if (estado.usado) {
+                Toaster.exito("${estado.nombre?.let { "$it ya" } ?: "Ya"} se registró en tu equipo ✓")
                 onRegistrado()
                 return@LaunchedEffect
             }

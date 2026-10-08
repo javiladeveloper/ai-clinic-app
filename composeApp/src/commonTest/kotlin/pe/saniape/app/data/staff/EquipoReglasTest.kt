@@ -155,4 +155,18 @@ class EquipoReglasTest {
         assertEquals("Debe quedar al menos un administrador.", EquipoRepo.mensajeDeError("""{"error":"Debe quedar al menos un administrador.","codigo":"ULTIMO_ADMIN"}"""))
         assertNull(EquipoRepo.mensajeDeError("<html>"))
     }
+
+    @Test
+    fun sinRolElegidoNoSeAsumeAdmin() {
+        val legado = miembro().copy(rolId = null, rolNombre = "Recepcionista")
+        assertEquals("Recepcionista", ReglasEquipo.rolEfectivo(legado, null))
+        assertEquals("Admin", ReglasEquipo.rolEfectivo(miembro(esAdmin = true), null))
+        assertEquals("r9", ReglasEquipo.rolEfectivo(legado, "r9"))
+        // Sin elegir no hay "dejará de ser administrador".
+        assertFalse(ReglasEquipo.dejaDeSerAdmin(miembro(esAdmin = true), null))
+        assertTrue(ReglasEquipo.dejaDeSerAdmin(miembro(esAdmin = true), "r1"))
+        // El PATCH sin rol no manda rolId (el servidor mantiene el actual).
+        assertNull(EquipoRepo.cuerpoEditar("p1", "Ana", null, null)["rolId"])
+        assertEquals(JsonPrimitive("r1"), EquipoRepo.cuerpoEditar("p1", "Ana", "r1", null)["rolId"])
+    }
 }
