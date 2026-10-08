@@ -69,6 +69,7 @@ class CampaniasActividadPlanTest {
         assertEquals("13:49", horaDeMovimiento("2026-10-08T18:49:00Z"))
         assertEquals("2026-10-08", diaDeMovimiento("2026-10-08T18:49:00Z"))
         assertEquals("LP", inicialesActividad("Dr. Luis Pérez"))
+        assertEquals("S", inicialesActividad("(sistema)"))
     }
 
     @Test fun actividadParseaLaRespuestaDeLaWeb() {

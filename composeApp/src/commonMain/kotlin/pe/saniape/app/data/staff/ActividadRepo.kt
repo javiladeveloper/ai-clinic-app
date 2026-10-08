@@ -96,7 +96,9 @@ fun diaDeMovimiento(iso: String): String = runCatching {
 
 /** Iniciales para el avatar (quita "Dr."/"Lic." como en la web). */
 fun inicialesActividad(nombre: String): String =
-    nombre.replace(Regex("[A-Za-z]+\\.\\s*"), "").split(" ").filter { it.isNotBlank() }.take(2)
+    nombre.replace(Regex("[A-Za-z]+\\.\\s*"), "").split(" ")
+        // Solo letras: "(sistema)" → "S", no "(".
+        .map { w -> w.filter { it.isLetter() } }.filter { it.isNotBlank() }.take(2)
         .joinToString("") { it.first().uppercase() }.ifEmpty { "?" }
 
 object ActividadRepo {
