@@ -218,6 +218,8 @@ data class ProcedimientoRef(
     val modoCobro: String? = null,
     val unidadLabel: String? = null,             // "folículos", "piezas"… (modo unidades)
     val precioUnitarioSugerido: Double? = null,  // precio por unidad sugerido (modo unidades)
+    /** Odontología: tramos de precio por caras {"1","2","3"} → precio. null = precio único. */
+    val precioPorCaras: Map<String, Double>? = null,
 )
 
 /** Un profesional con sus especialidades (para filtrar servicios). */

@@ -65,6 +65,7 @@ object StaffContextoRepo {
         derivaciones = o?.bool("derivaciones") ?: false,
         examenes = o?.bool("examenes") ?: false,
         fotosEvolutivas = o?.bool("fotosEvolutivas") ?: false,
+        recuperacion = o?.bool("recuperacion") ?: false,
         // Vive en features (resolverPlan) o suelto en planEstado: se aceptan los dos.
         maxEspacioDocumentosMB = o?.intOrNull("maxEspacioDocumentosMB") ?: plan?.intOrNull("maxEspacioDocumentosMB"),
     )

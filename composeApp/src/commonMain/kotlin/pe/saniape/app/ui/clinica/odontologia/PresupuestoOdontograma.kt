@@ -96,8 +96,9 @@ internal fun PresupuestoOdontograma(
     // Solo lo que todavía no tiene tratamiento: lo ya presupuestado no se
     // vuelve a ofrecer (crearía un segundo tratamiento por la misma caries).
     val libres = remember(hallazgos) { hallazgos.filter { it.tratamientoId == null } }
-    val (lineasBase, sinServicio) = remember(libres, catalogo, todos) {
-        agruparPresupuesto(libres, catalogo, todos)
+    val (lineasBase, sinServicio) = remember(libres, catalogo, todos, servicios) {
+        // El servicio SUGERIDO por nombre sale solo de los dentales (igual que la web).
+        agruparPresupuesto(libres, catalogo, todos, servicios)
     }
     // Se aplica el precio ajustado ANTES de planificar, así el tratamiento se
     // crea con lo que el médico acordó con el paciente, no con el de lista.

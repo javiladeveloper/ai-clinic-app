@@ -184,6 +184,7 @@ data class ContextoStaff(
         "derivaciones" -> planEstado.features.derivaciones
         "examenes" -> planEstado.features.examenes
         "fotosEvolutivas" -> planEstado.features.fotosEvolutivas
+        "recuperacion" -> planEstado.features.recuperacion
         else -> false
     }
 
@@ -249,6 +250,8 @@ data class PlanFeatures(
     val derivaciones: Boolean,
     val examenes: Boolean,
     val fotosEvolutivas: Boolean,
+    /** Retención (CRM de recuperación): plan Plus. Backend sin el campo → false. */
+    val recuperacion: Boolean = false,
     /**
      * Tope de espacio para documentos de la ficha (MB). null = sin límite
      * (Premium/Plus); Básico = 1024. Adjuntar documentos es de TODOS los planes.
