@@ -184,6 +184,7 @@ data class ContextoStaff(
         "derivaciones" -> planEstado.features.derivaciones
         "examenes" -> planEstado.features.examenes
         "fotosEvolutivas" -> planEstado.features.fotosEvolutivas
+        "actividadEquipo" -> planEstado.features.actividadEquipo
         else -> false
     }
 
@@ -254,6 +255,8 @@ data class PlanFeatures(
      * (Premium/Plus); Básico = 1024. Adjuntar documentos es de TODOS los planes.
      */
     val maxEspacioDocumentosMB: Int? = null,
+    /** Actividad del equipo (reporte de quién registró qué): Plus. */
+    val actividadEquipo: Boolean = false,
 )
 
 data class ClinicaRef(val id: String, val nombre: String)

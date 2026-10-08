@@ -103,6 +103,9 @@ fun ClinicaConTabs(
     var verProfesionales by remember { mutableStateOf(false) }
     var verServicios by remember { mutableStateOf(false) }
     var verEquipo by remember { mutableStateOf(false) }
+    var verCampanias by remember { mutableStateOf(false) }
+    var verActividad by remember { mutableStateOf(false) }
+    var verMiPlan by remember { mutableStateOf(false) }
     var horarioDe by remember { mutableStateOf<Pair<String, String>?>(null) }   // (terapeutaId, nombre)
     var horarioVolver by remember { mutableStateOf("← Más") }
     // Más → "🌐 Mi página" (slug leído de la clínica; null = no tiene página).
@@ -151,8 +154,11 @@ fun ClinicaConTabs(
 
     // Con un flujo a pantalla completa abierto, el "atrás" es de ese flujo (tiene
     // su propio ManejarAtras, con la confirmación de salir sin guardar).
-    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || horarioDe != null || tab != TabClinica.Inicio)) {
+    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verCampanias || verActividad || verMiPlan || horarioDe != null || tab != TabClinica.Inicio)) {
         when {
+            verCampanias -> verCampanias = false
+            verActividad -> verActividad = false
+            verMiPlan -> verMiPlan = false
             verServicios -> verServicios = false
             verEquipo -> verEquipo = false
             horarioDe != null -> horarioDe = null
@@ -233,6 +239,7 @@ fun ClinicaConTabs(
         verReportes = false
         verServicios = false
         verEquipo = false
+        verCampanias = false; verActividad = false; verMiPlan = false
     }
     // "Llévame" / "Retomar" de los tutoriales y los botones de Primeros pasos.
     fun irA(pantalla: String) {
@@ -267,7 +274,7 @@ fun ClinicaConTabs(
         urlPagina = pe.saniape.app.data.staff.OnboardingRepo.slugClinica(contexto.clinicaId)
             ?.let { pe.saniape.app.data.staff.urlPaginaClinica(it) }
     }
-    val hayOverlay = verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || horarioDe != null
+    val hayOverlay = verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verCampanias || verActividad || verMiPlan || horarioDe != null
     val tabs = buildList {
         add(TabClinica.Inicio)
         if (verAgenda) add(TabClinica.Agenda)
@@ -365,6 +372,11 @@ fun ClinicaConTabs(
                         onAbrirFinanzas = if (contexto.puede("finanzas")) ({ verFinanzas = true }) else null,
                         // Nativo. Mismo permiso que la web /equipo y GET /api/staff/equipo.
                         onAbrirEquipo = if (contexto.puede("equipo")) ({ verEquipo = true }) else null,
+                        // Nativos. Campañas: mismo permiso que /api/staff/campania; Actividad: solo Admin (/api/actividad);
+                        // Mi plan: "ajustes" y de solo lectura (pagar abre la web).
+                        onAbrirCampanias = if (contexto.puede("servicios")) ({ verCampanias = true }) else null,
+                        onAbrirActividad = if (contexto.esAdmin) ({ verActividad = true }) else null,
+                        onAbrirMiPlan = if (contexto.puede("ajustes")) ({ verMiPlan = true }) else null,
                     )
                 }
             }
@@ -473,6 +485,30 @@ fun ClinicaConTabs(
             ) {
                 Box(Modifier.fillMaxSize().background(c.fondo)) {
                     pe.saniape.app.ui.clinica.equipo.PantallaEquipo(ctx = contexto, onSalir = { verEquipo = false })
+                }
+            }
+            AnimatedVisibility(
+                visible = verCampanias && contexto.puede("servicios"),
+                enter = entrarDetalle(), exit = salirDetalle(),
+            ) {
+                Box(Modifier.fillMaxSize().background(c.fondo)) {
+                    pe.saniape.app.ui.clinica.campanias.PantallaCampanias(ctx = contexto, onSalir = { verCampanias = false })
+                }
+            }
+            AnimatedVisibility(
+                visible = verActividad && contexto.esAdmin,
+                enter = entrarDetalle(), exit = salirDetalle(),
+            ) {
+                Box(Modifier.fillMaxSize().background(c.fondo)) {
+                    pe.saniape.app.ui.clinica.actividad.PantallaActividad(ctx = contexto, onSalir = { verActividad = false })
+                }
+            }
+            AnimatedVisibility(
+                visible = verMiPlan && contexto.puede("ajustes"),
+                enter = entrarDetalle(), exit = salirDetalle(),
+            ) {
+                Box(Modifier.fillMaxSize().background(c.fondo)) {
+                    pe.saniape.app.ui.clinica.plan.PantallaMiPlan(ctx = contexto, onSalir = { verMiPlan = false })
                 }
             }
             AnimatedVisibility(visible = horarioDe != null, enter = entrarDetalle(), exit = salirDetalle()) {

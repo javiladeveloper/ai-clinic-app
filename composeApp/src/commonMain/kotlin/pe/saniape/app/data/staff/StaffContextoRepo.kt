@@ -67,6 +67,7 @@ object StaffContextoRepo {
         fotosEvolutivas = o?.bool("fotosEvolutivas") ?: false,
         // Vive en features (resolverPlan) o suelto en planEstado: se aceptan los dos.
         maxEspacioDocumentosMB = o?.intOrNull("maxEspacioDocumentosMB") ?: plan?.intOrNull("maxEspacioDocumentosMB"),
+        actividadEquipo = o?.bool("actividadEquipo") ?: false,
     )
 
     /** Módulos clínicos. Sin el objeto (backend viejo) → todo apagado, como siempre. */
