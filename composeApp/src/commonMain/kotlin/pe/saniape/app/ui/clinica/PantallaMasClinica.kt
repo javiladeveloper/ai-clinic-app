@@ -68,6 +68,8 @@ fun PantallaMasClinica(
     onAbrirMiHorario: (() -> Unit)? = null,
     // 🌐 Mi página (solo si la clínica tiene página pública).
     onAbrirMiPagina: (() -> Unit)? = null,
+    // 💸 Finanzas y caja nativa (solo con permiso "finanzas"; null = no se muestra).
+    onAbrirFinanzas: (() -> Unit)? = null,
 ) = pe.saniape.app.tutoriales.PantallaTutorial("Mas") {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -188,7 +190,7 @@ fun PantallaMasClinica(
                 // veía NINGUNA opción de administración en la app; ahora las ve con los
                 // MISMOS permisos que el menú de la web y se abren en la web.
                 val modulosAdmin = modulosAdministracion(ctx)
-                if (modulosAdmin.isNotEmpty() || onAbrirEspecialidades != null || onAbrirProfesionales != null) {
+                if (modulosAdmin.isNotEmpty() || onAbrirEspecialidades != null || onAbrirProfesionales != null || onAbrirFinanzas != null) {
                     val acciones = pe.saniape.app.ui.recordarAcciones()
                     Text("ADMINISTRACIÓN", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(Sania.dim.sm))
@@ -207,6 +209,8 @@ fun PantallaMasClinica(
                             Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
                         }
                     }
+                    // Nativo: kardex, cierre de caja, por cobrar y gastos fijos.
+                    if (onAbrirFinanzas != null) FilaMas("💸  Finanzas y caja", ancla = "mas.finanzas", onClick = onAbrirFinanzas)
                     // Nativo: la lista del personal y su horario semanal.
                     if (onAbrirProfesionales != null) {
                         FilaMas("🩺  ${pe.saniape.app.tutoriales.pluralPersonal(ctx.terminologiaProfesional)}", ancla = "mas.profesionales", onClick = onAbrirProfesionales)
@@ -389,7 +393,6 @@ private fun FilaMas(texto: String, ancla: String? = null, onClick: () -> Unit) {
  * al abrir (candado de plan), no se duplica acá.
  */
 internal fun modulosAdministracion(ctx: ContextoStaff): List<Pair<String, String>> = buildList {
-    if (ctx.puede("finanzas")) add("💸  Finanzas y caja" to "/finanzas")
     if (ctx.puede("comisiones")) add("💰  Comisiones" to "/comisiones")
     if (ctx.puede("reportes")) add("📊  Reportes" to "/reportes")
     if (ctx.puede("pacientes")) add("🔄  Retención" to "/seguimiento")
