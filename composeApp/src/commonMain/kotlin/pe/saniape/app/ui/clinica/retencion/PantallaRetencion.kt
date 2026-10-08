@@ -14,7 +14,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.math.roundToLong
+import pe.saniape.app.data.staff.FiltrosLlamadas
+import pe.saniape.app.data.staff.SatisfaccionPersona
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -101,7 +106,15 @@ fun PantallaRetencion(ctx: ContextoStaff, onSalir: () -> Unit) {
     var recarga by remember { mutableIntStateOf(0) }
     var resumen by remember { mutableStateOf<ResumenRetencion?>(null) }
     var cargandoResumen by remember { mutableStateOf(true) }
-    var conteoDental by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    // Números de las pestañas dentales: el del servidor (una llamada) y, cuando la
+    // pestaña carga su detalle, el real. Cada uno por separado (uno no pisa al otro).
+    var nPresupuestos by remember { mutableStateOf<Int?>(null) }
+    var nCuotas by remember { mutableStateOf<Int?>(null) }
+    // Los filtros de "Para llamar" viven acá: al cambiar de pestaña o volver de la
+    // ficha, la lista queda como estaba.
+    var filtrosLlamar by remember { mutableStateOf(FiltrosLlamadas()) }
+    var busquedaLlamar by remember { mutableStateOf("") }
+    var satisfaccion by remember { mutableStateOf<List<SatisfaccionPersona>>(emptyList()) }
     var vista by remember { mutableStateOf(VistaRet.LLAMAR) }
 
     // Sub-vistas encima de la lista (cada una trae su propio "atrás").
@@ -117,7 +130,16 @@ fun PantallaRetencion(ctx: ContextoStaff, onSalir: () -> Unit) {
         catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e }
         catch (_: Exception) { }
         cargandoResumen = false
-        if (esGestor && hayDental && conteoDental == null) conteoDental = RetencionRepo.conteosDental(hoy)
+        if (esGestor && hayDental && nPresupuestos == null && nCuotas == null) {
+            RetencionRepo.conteosDental(hoy)?.let { (p, q) -> if (nPresupuestos == null) nPresupuestos = p; if (nCuotas == null) nCuotas = q }
+        }
+    }
+    // Cómo califican al equipo: UNA carga por pantalla (no por pestaña ni por scroll).
+    LaunchedEffect(activo, recarga) {
+        if (!activo || !esGestor || !ctx.can("reportes")) return@LaunchedEffect
+        try { satisfaccion = RetencionRepo.satisfaccion() }
+        catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e }
+        catch (_: Exception) { }
     }
 
     fun abrirFicha(id: String) {
@@ -125,19 +147,6 @@ fun PantallaRetencion(ctx: ContextoStaff, onSalir: () -> Unit) {
             val p = try { PacientesRepo.porId(id) } catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e } catch (_: Exception) { null }
             if (p != null) fichaAbierta = p else Toaster.error("No se pudo abrir la ficha")
         }
-    }
-
-    // Ficha y "agendar" ocupan la pantalla; al volver, la lista se refresca.
-    fichaAbierta?.let { p ->
-        PantallaFichaPaciente(ctx = ctx, pacienteInicial = p, onCerrar = { fichaAbierta = null; recarga++ })
-        return
-    }
-    agendando?.let { pre ->
-        PantallaCrearCita(
-            ctx = ctx, fechaInicial = pre.fecha, prefill = pre,
-            onListo = { agendando = null; recarga++ }, onCancelar = { agendando = null },
-        )
-        return
     }
 
     cerrando?.let { f ->
@@ -194,13 +203,16 @@ fun PantallaRetencion(ctx: ContextoStaff, onSalir: () -> Unit) {
         add(VistaRet.NO_VUELVEN to resumen?.noVuelven)
         add(VistaRet.CONTROLES to resumen?.controles)
         if (esGestor) add(VistaRet.NUNCA to resumen?.nuncaEmpezaron)
-        if (esGestor && hayDental) add(VistaRet.PRESUPUESTOS to conteoDental?.first)
-        if (esGestor && hayDental && ctx.puede("pagos")) add(VistaRet.CUOTAS to conteoDental?.second)
+        if (esGestor && hayDental) add(VistaRet.PRESUPUESTOS to nPresupuestos)
+        if (esGestor && hayDental && ctx.puede("pagos")) add(VistaRet.CUOTAS to nCuotas)
     }
     val visible = if (pestanas.any { it.first == vista }) vista else VistaRet.LLAMAR
     val porRecontactar = resumen?.let { it.noVuelven + it.controles }
     val term = ctx.terminologiaPaciente()
 
+    // La lista queda compuesta DEBAJO de la ficha / "agendar": al volver conserva
+    // filtros, página y posición.
+    Box(Modifier.fillMaxSize()) {
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             Row(
@@ -242,19 +254,44 @@ fun PantallaRetencion(ctx: ContextoStaff, onSalir: () -> Unit) {
                         }
                     }
                     val kpis: @Composable () -> Unit = { if (ctx.can("reportes")) KpisRetencion(resumen, cargandoResumen) }
-                    val pie: @Composable () -> Unit = { if (esGestor && ctx.can("reportes")) PanelSatisfaccion() }
+                    val pie: @Composable () -> Unit = { if (esGestor && ctx.can("reportes")) PanelSatisfaccion(satisfaccion) }
                     when (visible) {
-                        VistaRet.LLAMAR -> TabLlamar(acc, resumen, esGestor, kpis, pie)
+                        VistaRet.LLAMAR -> TabLlamar(acc, resumen, esGestor, filtrosLlamar, { filtrosLlamar = it }, busquedaLlamar, { busquedaLlamar = it }, kpis, pie)
                         VistaRet.NO_VUELVEN -> TabNoVuelven(acc, resumen, kpis, pie)
                         VistaRet.CONTROLES -> TabControles(acc, kpis, pie)
                         VistaRet.NUNCA -> TabNuncaEmpezaron(acc, kpis, pie)
-                        VistaRet.PRESUPUESTOS -> TabPresupuestos(acc, kpis, pie) { n -> conteoDental = n to (conteoDental?.second ?: 0) }
-                        VistaRet.CUOTAS -> TabCuotas(acc, kpis, pie) { n -> conteoDental = (conteoDental?.first ?: 0) to n }
+                        VistaRet.PRESUPUESTOS -> TabPresupuestos(acc, kpis, pie) { n -> nPresupuestos = n }
+                        VistaRet.CUOTAS -> TabCuotas(acc, kpis, pie) { n -> nCuotas = n }
                     }
                 }
             }
         }
     }
+    fichaAbierta?.let { p ->
+        CapaEncima {
+            pe.saniape.app.tutoriales.PantallaTutorial("Ficha") {
+                PantallaFichaPaciente(ctx = ctx, pacienteInicial = p, onCerrar = { fichaAbierta = null; recarga++ })
+            }
+        }
+    }
+    agendando?.let { pre ->
+        CapaEncima {
+            PantallaCrearCita(
+                ctx = ctx, fechaInicial = pre.fecha, prefill = pre,
+                onListo = { agendando = null; recarga++ }, onCancelar = { agendando = null },
+            )
+        }
+    }
+    }
+}
+
+/** Pantalla completa encima de la lista (la de abajo no recibe toques). */
+@Composable
+private fun CapaEncima(contenido: @Composable () -> Unit) {
+    Box(
+        Modifier.fillMaxSize().background(Sania.colors.fondo)
+            .pointerInput(Unit) { detectTapGestures { } },
+    ) { contenido() }
 }
 
 @Composable
@@ -290,7 +327,7 @@ private fun KpisRetencion(r: ResumenRetencion?, cargando: Boolean) {
     Column(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ficha(Modifier.weight(1f), "En riesgo", r.noVuelven.toString(), c.error)
-            ficha(Modifier.weight(1f), "Dinero en riesgo", "S/ ${r.dineroRiesgo.toLong()}", c.pend)
+            ficha(Modifier.weight(1f), "Dinero en riesgo", "S/ ${r.dineroRiesgo.roundToLong()}", c.pend)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ficha(Modifier.weight(1f), "Completan paquete", if (pct != null) "$pct%" else "—", c.ok)

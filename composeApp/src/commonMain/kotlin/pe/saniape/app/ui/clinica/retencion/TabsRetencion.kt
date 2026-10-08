@@ -33,6 +33,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
@@ -165,14 +166,19 @@ private fun AccionesFila(acc: AccionesRet, r: FilaRetencion, conAgendar: Boolean
 @Composable
 internal fun TabLlamar(
     acc: AccionesRet, resumen: ResumenRetencion?, puedeExportar: Boolean,
+    filtrosIniciales: FiltrosLlamadas, onFiltros: (FiltrosLlamadas) -> Unit,
+    busquedaInicial: String, onBusqueda: (String) -> Unit,
     kpis: @Composable () -> Unit, pie: @Composable () -> Unit,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     val hoy = remember { hoyClinicaIso() }
     val opciones = resumen?.opciones
-    var f by remember { mutableStateOf(FiltrosLlamadas()) }
-    var qTexto by remember { mutableStateOf("") }
+    var f by remember { mutableStateOf(filtrosIniciales) }
+    var qTexto by remember { mutableStateOf(busquedaInicial) }
+    // Se guardan arriba: al cambiar de pestaña o volver de la ficha todo sigue igual.
+    LaunchedEffect(f) { onFiltros(f) }
+    LaunchedEffect(qTexto) { onBusqueda(qTexto) }
     var mas by remember { mutableStateOf(false) }
     var data by remember { mutableStateOf<Pair<Int, List<FilaRetencion>>?>(null) }
     var error by remember { mutableStateOf(false) }
@@ -192,7 +198,7 @@ internal fun TabLlamar(
         try {
             data = RetencionRepo.llamar(hoy, filtrosARpc(f), f.orden, f.asc, POR_PAGINA_RET, (f.pagina - 1) * POR_PAGINA_RET)
         } catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e }
-        catch (_: Exception) { error = true }
+        catch (_: Exception) { if (data != null) Toaster.error("No se pudo actualizar la lista") else error = true }
         cargando = false
     }
     val total = data?.first ?: 0
@@ -334,7 +340,7 @@ internal fun TabLlamar(
         item {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    if (data != null) "$total ${if (total == 1) "tratamiento" else "tratamientos"}" else "Buscando…",
+                    if (data != null) "$total ${if (total == 1) "tratamiento" else "tratamientos"}${if (cargando) " · Actualizando…" else ""}" else "Buscando…",
                     color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f),
                 )
                 if (puedeExportar) {
@@ -351,7 +357,7 @@ internal fun TabLlamar(
                     if (hayFiltrosRet(f)) "Limpiar filtros" else null, if (hayFiltrosRet(f)) ({ limpiar() }) else null)
             }
             else -> {
-                items(filas, key = { it.tratamientoId }) { r -> FilaLlamar(r, acc) }
+                items(filas, key = { it.tratamientoId }) { r -> Box(Modifier.alpha(if (cargando) 0.6f else 1f)) { FilaLlamar(r, acc) } }
                 if (paginas > 1) item {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                         BotonContorno("← Anterior", f.pagina > 1) { f = f.copy(pagina = f.pagina - 1) }
@@ -425,7 +431,7 @@ internal fun TabNoVuelven(acc: AccionesRet, resumen: ResumenRetencion?, kpis: @C
         error = false
         try { data = RetencionRepo.llamar(hoy, rpcNoVuelven(), OrdenRet.DIAS, false, TOPE_EXPORTAR_RET, 0).second }
         catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e }
-        catch (_: Exception) { error = true }
+        catch (_: Exception) { if (data != null) Toaster.error("No se pudo actualizar la lista") else error = true }
     }
     val lista = remember(data, filtroPago, filtroProf, busqueda) {
         val q = busqueda.trim().lowercase()
@@ -510,7 +516,7 @@ internal fun TabControles(acc: AccionesRet, kpis: @Composable () -> Unit, pie: @
         error = false
         try { data = RetencionRepo.llamar(hoy, rpcControles(), OrdenRet.CONTROL, true, TOPE_EXPORTAR_RET, 0).second }
         catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e }
-        catch (_: Exception) { error = true }
+        catch (_: Exception) { if (data != null) Toaster.error("No se pudo actualizar la lista") else error = true }
     }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = Sania.dim.lg), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { kpis() }
@@ -567,7 +573,7 @@ internal fun TabNuncaEmpezaron(acc: AccionesRet, kpis: @Composable () -> Unit, p
         error = false
         try { data = RetencionRepo.nuncaEmpezaron(hoy) }
         catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e }
-        catch (_: Exception) { error = true }
+        catch (_: Exception) { if (data != null) Toaster.error("No se pudo actualizar la lista") else error = true }
     }
     val items = data.orEmpty()
     val filtrados = remember(data, embudo, desde, hasta, verDescartados, busqueda) {
@@ -601,12 +607,17 @@ internal fun TabNuncaEmpezaron(acc: AccionesRet, kpis: @Composable () -> Unit, p
         }
     }
 
-    fun periodo(cual: String) {
-        if (cual == "todo") { desde = ""; hasta = ""; return }
+    fun rangoPeriodo(cual: String): Pair<String, String> {
         val h = LocalDateRet.parse(hoy)
         val ini = if (cual == "este_mes") h.primerDiaMes() else h.primerDiaMes().restarMes()
-        desde = ini.iso(); hasta = ini.ultimoDiaMes().iso()
+        return ini.iso() to ini.ultimoDiaMes().iso()
     }
+    fun periodo(cual: String) {
+        if (cual == "todo") { desde = ""; hasta = ""; return }
+        val (d, h) = rangoPeriodo(cual)
+        desde = d; hasta = h
+    }
+    fun enPeriodo(cual: String) = (desde to hasta) == rangoPeriodo(cual)
 
     fun exportar(html: Boolean) {
         if (html) {
@@ -672,8 +683,8 @@ internal fun TabNuncaEmpezaron(acc: AccionesRet, kpis: @Composable () -> Unit, p
                         Column(Modifier.weight(1f)) { EtqForm("Hasta"); CajaSelectorForm(hasta.ifEmpty { "Elegir…" }) { eligiendoFecha = "hasta" } }
                     }
                     Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        ChipFiltro("Este mes", false) { periodo("este_mes") }
-                        ChipFiltro("Mes pasado", false) { periodo("mes_pasado") }
+                        ChipFiltro("Este mes", enPeriodo("este_mes")) { periodo("este_mes") }
+                        ChipFiltro("Mes pasado", enPeriodo("mes_pasado")) { periodo("mes_pasado") }
                         ChipFiltro("Todo", desde.isEmpty() && hasta.isEmpty()) { periodo("todo") }
                     }
                     Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -687,7 +698,7 @@ internal fun TabNuncaEmpezaron(acc: AccionesRet, kpis: @Composable () -> Unit, p
                 }
                 if (filtrados.isEmpty()) item { EstadoVacio("🎉", "No hay pacientes en esta lista con los filtros aplicados.") }
                 items(filtrados, key = { it.id }) { p ->
-                    TarjetaRet(Modifier.then(if (p.descartado) Modifier.background(c.chipBg) else Modifier)) {
+                    TarjetaRet(Modifier.alpha(if (p.descartado) 0.6f else 1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(p.nombre, color = c.navy, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f, false).clickable { acc.onFicha(p.id) })
                             if (p.hizoCita) Pildora("Hizo cita, no siguió", c.pend, c.pendBg) else Pildora("Registrado sin nada", c.navy, c.chipBg)
@@ -740,9 +751,9 @@ internal fun TabPresupuestos(acc: AccionesRet, kpis: @Composable () -> Unit, pie
     var reintento by remember { mutableStateOf(0) }
     LaunchedEffect(acc.recarga, reintento) {
         error = false
-        try { data = RetencionRepo.presupuestos().also { onConteo(it.first.size) } }
+        try { data = RetencionRepo.presupuestos(acc.ctx.mapaDental).also { onConteo(it.first.size) } }
         catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e }
-        catch (_: Exception) { error = true }
+        catch (_: Exception) { if (data != null) Toaster.error("No se pudo actualizar la lista") else error = true }
     }
     val filas = data?.first.orEmpty()
     val aceptados = data?.second.orEmpty()
@@ -766,7 +777,7 @@ internal fun TabPresupuestos(acc: AccionesRet, kpis: @Composable () -> Unit, pie
                     Text(f.nombre, color = c.navy, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { acc.onFicha(f.pacienteId) })
                     Text("Evaluado ${if (dias <= 0) "hoy" else "hace $dias día${if (dias == 1) "" else "s"}"} · ${fechaCortaRet(f.desde)}", color = c.textoSuave, fontSize = 12.sp)
                     Text(f.resumen, color = c.texto, fontSize = 13.sp)
-                    f.enlaceEnviado?.let { Text("🔗 Enlace enviado el ${fechaCortaRet(it)}", color = c.textoSuave, fontSize = 11.sp) }
+                    f.enlaceEnviado?.let { Text("🔗 Enlace enviado el ${fechaHoraLima(it)}", color = c.textoSuave, fontSize = 11.sp) }
                     if (f.suma > 0) Text(soles(f.suma), color = c.navy, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(6.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -786,7 +797,7 @@ internal fun TabPresupuestos(acc: AccionesRet, kpis: @Composable () -> Unit, pie
             items(aceptados, key = { "a-" + it.pacienteId }) { a ->
                 TarjetaRet(Modifier.clickable { acc.onFicha(a.pacienteId) }) {
                     Text(a.nombre, color = c.navy, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text("Aceptado el ${fechaCortaRet(a.aceptadoAt)}${a.total?.let { " · ${soles(it)}" }.orEmpty()}", color = c.textoSuave, fontSize = 12.sp)
+                    Text("Aceptado el ${fechaHoraLima(a.aceptadoAt)}${a.total?.let { " · ${soles(it)}" }.orEmpty()}", color = c.textoSuave, fontSize = 12.sp)
                 }
             }
         }
@@ -810,7 +821,7 @@ internal fun TabCuotas(acc: AccionesRet, kpis: @Composable () -> Unit, pie: @Com
         error = false
         try { data = RetencionRepo.cuotas(hoy).also { onConteo(it.size) } }
         catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e }
-        catch (_: Exception) { error = true }
+        catch (_: Exception) { if (data != null) Toaster.error("No se pudo actualizar la lista") else error = true }
     }
     val filas = data.orEmpty()
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = Sania.dim.lg), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -866,14 +877,8 @@ internal fun TabCuotas(acc: AccionesRet, kpis: @Composable () -> Unit, pie: @Com
 
 /** Cómo califican a cada persona del equipo. NO es un ranking: orden alfabético, sin podio. */
 @Composable
-internal fun PanelSatisfaccion() {
+internal fun PanelSatisfaccion(filas: List<SatisfaccionPersona>) {
     val c = Sania.colors
-    var filas by remember { mutableStateOf<List<SatisfaccionPersona>>(emptyList()) }
-    LaunchedEffect(Unit) {
-        try { filas = RetencionRepo.satisfaccion() }
-        catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e }
-        catch (_: Exception) { }
-    }
     // Sin respuestas todavía no se pinta una sección vacía.
     if (filas.isEmpty()) return
     TarjetaRet(Modifier.padding(top = 8.dp)) {
@@ -911,7 +916,7 @@ internal fun DialogoRedactarIA(p: PedidoIA, acciones: pe.saniape.app.ui.Acciones
         cargando = true
         texto = try { RetencionRepo.redactarMensaje(p.objetivo, p.nombre, p.detalle) }
         catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e }
-        catch (e: Exception) { "⚠ " + (e.message ?: "No se pudo generar el mensaje.") }
+        catch (e: Exception) { (e.message ?: "No se pudo generar el mensaje.").let { m -> if (m.startsWith("⚠")) m else "⚠ $m" } }
         cargando = false
     }
     val wa = enlaceWhatsApp(p.telefono, texto)

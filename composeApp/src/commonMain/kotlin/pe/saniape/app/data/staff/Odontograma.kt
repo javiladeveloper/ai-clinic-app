@@ -29,6 +29,9 @@ data class HallazgoDental(
     val porBoca: Boolean = false,
 )
 
+/** Una pieza con sus caras y lo que cuesta según ellas. */
+data class PrecioPieza(val pieza: String, val caras: Int, val precio: Double)
+
 data class DienteHallazgo(
     val id: String,
     val pacienteId: String,
@@ -56,6 +59,8 @@ data class LineaPresupuesto(
     val precioUnitario: Double,
     val subtotal: Double,
     val porBoca: Boolean = false,
+    /** Servicio con precio según caras: lo que vale cada pieza. null = precio único. */
+    val preciosPieza: List<PrecioPieza>? = null,
 )
 
 /** Qué color lleva cada cara del diente, y si la pieza está ausente. */
@@ -204,55 +209,127 @@ fun pintarDiente(
 }
 
 /**
- * Agrupa los hallazgos PENDIENTES en líneas de presupuesto, una por servicio.
+ * Precio de UNA pieza según cuántas caras tiene (resina simple/compuesta/compleja).
+ * Gemelo de `precioSegunCaras` (lib/odontograma.ts): sin cara usa el tramo más
+ * alto (pieza entera); si falta el tramo exacto, el más cercano por debajo y,
+ * si no hay, el de arriba. null = el servicio no tiene tramos (precio único).
+ */
+fun precioSegunCaras(tramos: Map<String, Double>?, caras: Int): Double? {
+    if (tramos == null) return null
+    fun v(k: Int): Double? = tramos[k.toString()]?.takeIf { it > 0 }
+    if ((1..3).none { v(it) != null }) return null
+    val n = if (caras <= 0) 3 else minOf(caras, 3)
+    for (k in n downTo 1) v(k)?.let { return it }
+    for (k in n + 1..3) v(k)?.let { return it }
+    return null
+}
+
+/**
+ * Busca el servicio sugerido por palabra clave cuando el hallazgo no tiene uno
+ * enlazado. Gemelo de `buscarProcedimientoSugerido` (lib/odontograma.ts).
+ */
+fun buscarProcedimientoSugerido(nombre: String, procedimientos: List<ProcedimientoRef>): ProcedimientoRef? {
+    val n = nombre.lowercase()
+    fun busca(re: String) = procedimientos.firstOrNull { Regex(re, RegexOption.IGNORE_CASE).containsMatchIn(it.nombre) }
+    return when {
+        Regex("caries|fractura|restauraci|empaste|resina").containsMatchIn(n) -> busca("resina|curaci[oó]n|empaste|obturaci[oó]n|restauraci[oó]n")
+        Regex("sarro|gingivitis|profilaxis|limpieza|placa").containsMatchIn(n) -> busca("limpieza|profilaxis|destartraje")
+        Regex("endodoncia").containsMatchIn(n) -> busca("endodoncia")
+        Regex("extracci").containsMatchIn(n) -> busca("extracci[oó]n|cirug[ií]a")
+        Regex("corona").containsMatchIn(n) -> busca("corona|pr[oó]tesis")
+        Regex("blanqueamiento").containsMatchIn(n) -> busca("blanqueamiento")
+        Regex("bruxismo").containsMatchIn(n) -> busca("placa|f[eé]rula")
+        Regex("ortodoncia|bracket|frenillos|alineador|maloclusi").containsMatchIn(n) -> busca("ortodoncia|bracket|frenillo|alineador")
+        else -> null
+    }
+}
+
+/**
+ * Agrupa los hallazgos PENDIENTES (sin tratamiento) en líneas de presupuesto, una
+ * por servicio. Gemelo de `agruparPresupuesto` (lib/odontograma.ts): si cambia una
+ * regla, cambia la otra.
  *
- * Un hallazgo de boca se cobra UNA vez por muchas piezas que tenga marcadas:
- * la profilaxis es un procedimiento de toda la boca. Las piezas se conservan
- * igual, porque sirven para saber dónde estaba.
+ * - Un hallazgo de boca se cobra UNA vez por muchas piezas que tenga marcadas.
+ * - Pieza marcada ausente: lo registrado en ella ANTES ya no se cobra; lo de
+ *   después (un implante planificado) sí.
+ * - Trabajo previo (azul, sin servicio asignado a propósito) describe la boca: no se cobra.
+ * - Sin servicio enlazado se sugiere por nombre entre [sugeribles] (en clínicas
+ *   mixtas, solo los dentales; por defecto, todos).
+ * - Servicio con precio según caras: cada pieza vale según sus caras.
  *
- * Devuelve también los hallazgos sin servicio asociado: no se pueden cobrar,
- * pero el odontólogo tiene que verlos para no olvidarlos.
- *
- * Usa el `ProcedimientoRef` que ya define PacientesRepo.kt: declarar otro en el
- * mismo paquete rompía la compilación entera por redeclaración.
+ * Devuelve también los hallazgos sin servicio: no se pueden cobrar, pero el
+ * odontólogo tiene que verlos para no olvidarlos.
  */
 fun agruparPresupuesto(
     hallazgos: List<DienteHallazgo>,
     catalogo: List<HallazgoDental>,
     procedimientos: List<ProcedimientoRef>,
+    sugeribles: List<ProcedimientoRef> = procedimientos,
 ): Pair<List<LineaPresupuesto>, List<DienteHallazgo>> {
     val porId = catalogo.associateBy { it.id }
     val procPorId = procedimientos.associateBy { it.id }
-    val abiertos = hallazgos.filter { it.estado == "Pendiente" }
 
-    // Se acumula en estructuras mutables y se congela al final.
-    data class Acum(
-        val proc: ProcedimientoRef,
-        val nombres: MutableList<String> = mutableListOf(),
-        val piezas: MutableList<String> = mutableListOf(),
-        val ids: MutableList<String> = mutableListOf(),
-        var porBoca: Boolean = false,
-    )
+    val ausenteDesde = hashMapOf<String, String>()
+    for (r in hallazgos) {
+        if (porId[r.hallazgoId]?.marcaAusente != true) continue
+        val previa = ausenteDesde[r.diente]
+        if (previa == null || r.fecha < previa) ausenteDesde[r.diente] = r.fecha
+    }
+    fun trabajoPrevio(h: HallazgoDental?) = h != null && h.color.equals(COLOR_REALIZADO, ignoreCase = true) && h.procedimientoId == null
+    val abiertos = hallazgos.filter { r ->
+        val h = porId[r.hallazgoId]
+        r.estado == "Pendiente" && r.tratamientoId == null &&
+            h?.marcaAusente != true && !trabajoPrevio(h) &&
+            !(ausenteDesde[r.diente]?.let { r.fecha <= it } ?: false)
+    }
 
+    class Acum(val proc: ProcedimientoRef) {
+        val nombres = mutableListOf<String>()
+        val piezas = mutableListOf<String>()
+        val ids = mutableListOf<String>()
+        var porBoca = false
+    }
     val porProc = linkedMapOf<String, Acum>()
     val sinProcedimiento = mutableListOf<DienteHallazgo>()
+    // Caras de cada pieza en cada servicio (se juntan las de todos sus registros); null = pieza entera.
+    val caras = hashMapOf<String, Set<String>?>()
 
     for (r in abiertos) {
         val hal = porId[r.hallazgoId]
-        val proc = hal?.procedimientoId?.let { procPorId[it] }
+        var proc = hal?.procedimientoId?.let { procPorId[it] }
+        if (proc == null && hal != null) proc = buscarProcedimientoSugerido(hal.nombre, sugeribles)
         if (hal == null || proc == null) { sinProcedimiento.add(r); continue }
 
         val acum = porProc.getOrPut(proc.id) { Acum(proc) }
-        // Cuando dos hallazgos distintos comparten servicio (caries y fractura
-        // → resina), la línea debe nombrar los dos, no solo el primero.
         if (hal.nombre !in acum.nombres) acum.nombres.add(hal.nombre)
-        if (r.diente !in acum.piezas) acum.piezas.add(r.diente)
-        acum.ids.add(r.id)
+        // Basta UN hallazgo de boca para que la línea sea de boca.
         if (hal.porBoca || r.diente == "BOCA") acum.porBoca = true
+        if (r.diente !in acum.piezas) acum.piezas.add(r.diente)
+        val clave = "${proc.id}|${r.diente}"
+        val sup = r.superficies?.takeIf { it.isNotEmpty() }
+        val tiene = caras.containsKey(clave)
+        val previas = caras[clave]
+        caras[clave] = when {
+            tiene && previas == null -> null
+            sup == null -> null
+            !tiene -> sup.toSet()
+            else -> previas!! + sup
+        }
+        acum.ids.add(r.id)
     }
 
     val lineas = porProc.values.map { a ->
         val unitario = a.proc.precio
+        val tramos = a.proc.precioPorCaras
+        var subtotal = if (a.porBoca) unitario else unitario * a.piezas.size
+        var preciosPieza: List<PrecioPieza>? = null
+        if (!a.porBoca && precioSegunCaras(tramos, 1) != null) {
+            preciosPieza = a.piezas.map { p ->
+                val n = caras["${a.proc.id}|$p"]?.size ?: 0
+                PrecioPieza(p, n, precioSegunCaras(tramos, n) ?: unitario)
+            }
+            subtotal = preciosPieza.sumOf { it.precio }
+        }
         LineaPresupuesto(
             procedimientoId = a.proc.id,
             nombre = a.proc.nombre,
@@ -260,8 +337,9 @@ fun agruparPresupuesto(
             piezas = a.piezas.toList(),
             hallazgoIds = a.ids.toList(),
             precioUnitario = unitario,
-            subtotal = if (a.porBoca) unitario else unitario * a.piezas.size,
+            subtotal = subtotal,
             porBoca = a.porBoca,
+            preciosPieza = preciosPieza,
         )
     }
     return lineas to sinProcedimiento

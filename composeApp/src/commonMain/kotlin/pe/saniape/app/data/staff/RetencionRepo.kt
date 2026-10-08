@@ -11,6 +11,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlin.math.roundToInt
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -98,12 +99,27 @@ object RetencionRepo {
 
     private const val TOPE_PACIENTES = 2000
 
+    /**
+     * Pacientes de [ids] que tienen al menos una fila en [tabla]. En tandas de 50 y
+     * paginando de a 1000 filas (el tope de la API): una tanda con muchas citas no
+     * se corta a mitad y no deja a nadie mal clasificado.
+     */
     private suspend fun idsConAlgo(tabla: String, ids: List<String>): Set<String> = coroutineScope {
-        ids.chunked(100).map { lote ->
+        ids.chunked(50).map { lote ->
             async {
-                Supabase.client.postgrest[tabla].select(Columns.list("paciente_id")) {
-                    filter { isIn("paciente_id", lote) }
-                }.decodeList<JsonObject>().mapNotNull { it.s("paciente_id") }
+                val out = mutableSetOf<String>()
+                var desde = 0L
+                while (true) {
+                    val filas = Supabase.client.postgrest[tabla].select(Columns.list("id, paciente_id")) {
+                        filter { isIn("paciente_id", lote) }
+                        order("id", Order.ASCENDING)
+                        range(desde, desde + 999)
+                    }.decodeList<JsonObject>()
+                    filas.mapNotNullTo(out) { it.s("paciente_id") }
+                    if (filas.size < 1000) break
+                    desde += 1000
+                }
+                out
             }
         }.awaitAll().flatten().toSet()
     }
@@ -117,11 +133,9 @@ object RetencionRepo {
                 limit(TOPE_PACIENTES.toLong())
             }.decodeList<JsonObject>()
         val ids = pacs.mapNotNull { it.s("id") }
-        val (conCitas, conTrat) = coroutineScope {
-            val a = async { idsConAlgo("citas", ids) }
-            val b = async { idsConAlgo("tratamientos", ids) }
-            a.await() to b.await()
-        }
+        // Primero los tratamientos; las citas solo de quienes NO tienen tratamiento.
+        val conTrat = idsConAlgo("tratamientos", ids)
+        val conCitas = idsConAlgo("citas", ids.filter { it !in conTrat })
         val h = LocalDate.parse(hoy.take(10))
         return pacs.mapNotNull { p ->
             val id = p.s("id") ?: return@mapNotNull null
@@ -170,7 +184,7 @@ object RetencionRepo {
             }
         }
         fun fila(n: String, a: Acum) = SatisfaccionPersona(
-            n, kotlin.math.round(a.suma / a.total * 10) / 10.0, a.total, a.quejas.maxByOrNull { it.value }?.let { it.key to it.value },
+            n, (a.suma / a.total * 10).roundToInt() / 10.0, a.total, a.quejas.maxByOrNull { it.value }?.let { it.key to it.value },
         )
         val personas = porNombre.entries.sortedBy { it.key.lowercase() }.map { fila(it.key, it.value) }
         // Recepción al final, separada: el sistema no guarda quién estaba en el mostrador.
@@ -196,7 +210,7 @@ object RetencionRepo {
     // ── Dental: presupuestos sin aceptar ────────────────────────────────────
 
     /** (pendientes, aceptados por el enlace pero sin tratamiento aún). Mismo cálculo que la web. */
-    suspend fun presupuestos(): Pair<List<PresupuestoPendiente>, List<PresupuestoAceptado>> = coroutineScope {
+    suspend fun presupuestos(mapa: MapaDental = MapaDental()): Pair<List<PresupuestoPendiente>, List<PresupuestoAceptado>> = coroutineScope {
         val hallD = async {
             Supabase.client.postgrest["dientes_hallazgos"]
                 .select(Columns.raw("id, paciente_id, diente, diente_hasta, hallazgo_id, superficies, estado, tratamiento_id, fecha, paciente:pacientes(nombre, telefono, estado)")) {
@@ -236,10 +250,11 @@ object RetencionRepo {
                 DienteHallazgo(
                     id = it.s("id").orEmpty(), pacienteId = pid, diente = it.s("diente").orEmpty(),
                     hallazgoId = it.s("hallazgo_id").orEmpty(), estado = "Pendiente",
+                    superficies = (it["superficies"] as? JsonArray)?.mapNotNull { x -> (x as? JsonPrimitive)?.contentOrNull },
                     fecha = it.s("fecha").orEmpty(), dienteHasta = it.s("diente_hasta"),
                 )
             }
-            val (lineas, _) = agruparPresupuesto(dientes, cat, procs)
+            val (lineas, _) = agruparPresupuesto(dientes, cat, procs, procs.filter { esServicioDental(it.especialidadId, mapa) })
             val suma = lineas.sumOf { it.subtotal }
             val conteo = linkedMapOf<String, Int>()
             for (r in rs) { val n = porId[r.s("hallazgo_id")]?.nombre ?: "—"; conteo[n] = (conteo[n] ?: 0) + 1 }

@@ -26,6 +26,7 @@ private val CAT = listOf(
     HallazgoDental(id = "a", nombre = "Ausente", color = "#6b7280", marcaAusente = true),
     HallazgoDental(id = "s", nombre = "Sarro", color = "#d97706", procedimientoId = "P1", porBoca = true),
     HallazgoDental(id = "g", nombre = "Gingivitis", color = "#d97706", porBoca = true),
+    HallazgoDental(id = "f", nombre = "Fluorosis", color = "#d97706"),
     // Azul = trabajo YA hecho: describe la boca, no es un diagnóstico de hoy.
     HallazgoDental(id = "x", nombre = "Corona existente", color = COLOR_REALIZADO),
 )
@@ -127,7 +128,7 @@ class PresupuestoTest {
     @Test
     fun un_hallazgo_sin_servicio_se_reporta_aparte() {
         // No se puede cobrar, pero el odontólogo tiene que verlo.
-        val (lineas, sin) = agruparPresupuesto(listOf(h("31", "g")), CAT, PROCS)
+        val (lineas, sin) = agruparPresupuesto(listOf(h("31", "f")), CAT, PROCS)
         assertTrue(lineas.isEmpty())
         assertEquals(1, sin.size)
     }

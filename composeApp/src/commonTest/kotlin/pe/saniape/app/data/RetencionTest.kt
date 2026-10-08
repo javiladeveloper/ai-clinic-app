@@ -56,7 +56,7 @@ class RetencionTest {
         val plan = listOf(CuotaPlan(0, 100.0, "2026-09-01"), CuotaPlan(1, 100.0, "2026-10-01"), CuotaPlan(2, 100.0, "2026-10-20"))
         val r = estadoCuotas(plan, 150.0, "2026-10-08")
         assertEquals(EstadoCuota.PAGADA, r[0].estado)
-        assertEquals(EstadoCuota.POR_VENCER.takeIf { false } ?: EstadoCuota.ATRASADA, r[1].estado)
+        assertEquals(EstadoCuota.ATRASADA, r[1].estado)
         assertEquals(50.0, r[1].saldo)
         assertTrue(textoEstadoCuota(r[1]).contains("parcial"))
         assertEquals(7, r[1].diasAtraso)
@@ -67,6 +67,11 @@ class RetencionTest {
     @Test fun controlVencidoSeAgendaHoy() {
         assertEquals("2026-10-08", fechaParaControlRet("2026-09-01", "2026-10-08"))
         assertEquals("2026-10-20", fechaParaControlRet("2026-10-20", "2026-10-08"))
+    }
+
+    @Test fun csvNeutralizaFormulas() {
+        val csv = csvDe(listOf(listOf("=SUMA(A1)", "+51999", "-1", "@x", "normal")))
+        assertTrue(csv.contains("\"'=SUMA(A1)\",\"'+51999\",\"'-1\",\"'@x\",\"normal\""))
     }
 
     @Test fun csvEscapaComillas() {

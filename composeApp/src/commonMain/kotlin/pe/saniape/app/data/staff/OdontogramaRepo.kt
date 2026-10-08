@@ -327,7 +327,7 @@ object OdontogramaRepo {
     suspend fun procedimientos(especialidadId: String? = null): List<ProcedimientoRef> = try {
         Supabase.client.postgrest["procedimientos"]
             .select(Columns.list(
-                "id, nombre, precio, precio_paquete, especialidad_id, modo_cobro, unidad_label, precio_unitario_sugerido, " +
+                "id, nombre, precio, precio_paquete, especialidad_id, modo_cobro, unidad_label, precio_unitario_sugerido, precio_por_caras, " +
                     // El tarifario da cuántas sesiones tiene un servicio "por sesiones".
                     "tarifarios:tarifario_paquetes(id, cantidad_sesiones, precio_total)",
             )) {
@@ -359,6 +359,9 @@ object OdontogramaRepo {
                     modoCobro = o.str("modo_cobro"),
                     unidadLabel = o.str("unidad_label"),
                     precioUnitarioSugerido = o.str("precio_unitario_sugerido")?.toDoubleOrNull(),
+                    precioPorCaras = (o["precio_por_caras"] as? JsonObject)?.let { m ->
+                        m.entries.mapNotNull { (k, v) -> (v as? kotlinx.serialization.json.JsonPrimitive)?.content?.toDoubleOrNull()?.let { k to it } }.toMap()
+                    },
                 )
             }
     } catch (_: Exception) { emptyList() }

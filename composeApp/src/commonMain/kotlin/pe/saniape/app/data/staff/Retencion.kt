@@ -2,6 +2,7 @@ package pe.saniape.app.data.staff
 
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.daysUntil
+import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -381,9 +382,22 @@ fun filaExportable(f: FilaRetencion): List<String> = listOf(
     "",
 )
 
-/** CSV con BOM y comillas (abre bien en Excel). */
+/** "27/09 a las 20:14" en hora de Lima (los timestamptz vienen en UTC). */
+fun fechaHoraLima(iso: String?): String {
+    if (iso.isNullOrBlank()) return ""
+    return runCatching {
+        val d = kotlinx.datetime.Instant.parse(iso).toLocalDateTime(ZONA_CLINICA)
+        "${d.dayOfMonth.toString().padStart(2, '0')}/${d.monthNumber.toString().padStart(2, '0')} a las ${d.hour.toString().padStart(2, '0')}:${d.minute.toString().padStart(2, '0')}"
+    }.getOrDefault(fechaCortaRet(iso))
+}
+
+/** CSV con BOM y comillas (abre bien en Excel); neutraliza fórmulas. */
 fun csvDe(filas: List<List<String>>): String {
-    fun cel(s: String) = "\"" + s.replace("\"", "\"\"") + "\""
+    // Una celda que empieza con = + - @ se tomaría como fórmula en Excel: se antepone '.
+    fun cel(s: String): String {
+        val seguro = if (s.isNotEmpty() && s[0] in "=+-@\t\r") "'" + s else s
+        return "\"" + seguro.replace("\"", "\"\"") + "\""
+    }
     return "﻿" + filas.joinToString("\r\n") { r -> r.joinToString(",") { cel(it) } }
 }
 
