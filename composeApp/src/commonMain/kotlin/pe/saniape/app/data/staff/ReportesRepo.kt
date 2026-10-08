@@ -2,6 +2,7 @@ package pe.saniape.app.data.staff
 
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.query.Columns
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
@@ -199,13 +200,20 @@ object ReportesRepo {
         else "No se pudo guardar"
     }
 
-    /** Borra un hito. true = borrado. */
-    suspend fun borrarHito(id: String): Boolean = try {
-        Supabase.client.postgrest["hitos_mes"].delete { filter { eq("id", id) } }
-        true
+    /**
+     * Borra un hito. null = borrado; si no, el mensaje. Se piden las filas
+     * borradas: la RLS no da error cuando no deja borrar (rol Soporte de solo
+     * lectura) ni cuando la nota ya no existe — simplemente borra 0 filas.
+     */
+    suspend fun borrarHito(id: String): String? = try {
+        val borradas = Supabase.client.postgrest["hitos_mes"].delete {
+            select(Columns.list("id"))
+            filter { eq("id", id) }
+        }.decodeList<JsonObject>()
+        if (borradas.isEmpty()) "No tienes permiso o la nota ya no existe" else null
     } catch (e: kotlin.coroutines.cancellation.CancellationException) {
         throw e
     } catch (_: Exception) {
-        false
+        "No se pudo borrar"
     }
 }

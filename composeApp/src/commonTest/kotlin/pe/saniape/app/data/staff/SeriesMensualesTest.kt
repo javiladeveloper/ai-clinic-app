@@ -1,5 +1,6 @@
 package pe.saniape.app.data.staff
 
+import kotlin.math.pow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -132,9 +133,26 @@ class SeriesMensualesTest {
         assertEquals(0.0, m.first())
         assertTrue(m.last() >= 93.0)
         assertTrue(m.size in 3..7)
-        val dinero = marcasEje(15000.0)
+        val dinero = marcasEje(15000.0, conteo = false)
         assertTrue(dinero.last() >= 15000.0)
         assertEquals(dinero[1] - dinero[0], dinero[2] - dinero[1])
+    }
+
+    @Test
+    fun conteosSinPasosDeDosYMedio() {
+        // Con 2.5 el eje entero mostraba "0, 3, 5, 8, 10".
+        assertEquals(listOf(0.0, 5.0, 10.0), marcasEje(10.0))
+        assertEquals(listOf(0.0, 2.0, 4.0, 6.0, 8.0), marcasEje(7.0))
+        listOf(1.0, 4.0, 9.0, 10.0, 23.0, 25.0, 93.0, 240.0, 1000.0).forEach { max ->
+            val m = marcasEje(max)
+            assertTrue(m.all { it == kotlin.math.floor(it) }, "marcas enteras para $max: $m")
+            val paso = m[1] - m[0]
+            val base = 10.0.pow(kotlin.math.floor(kotlin.math.log10(paso)))
+            assertTrue((paso / base) in listOf(1.0, 2.0, 5.0, 10.0), "paso 1/2/5/10 para $max: $m")
+            assertTrue(m.last() >= max)
+        }
+        // El dinero sí admite 2.5 (S/ 2.5k, S/ 5k…).
+        assertEquals(listOf(0.0, 2.5, 5.0, 7.5, 10.0), marcasEje(10.0, conteo = false))
     }
 
     @Test
@@ -156,7 +174,7 @@ class SeriesMensualesTest {
 
     @Test
     fun csvComoElDeLaWeb() {
-        val csv = csvReporteMensual(parsearSeriesReporte(respuesta))
+        val csv = csvReporteMensual(parsearSeriesReporte(respuesta), conDinero = true)
         assertTrue(csv.startsWith("﻿"), "BOM para que Excel respete los acentos")
         val lineas = csv.removePrefix("﻿").split("\n")
         assertEquals("Mes;Estado;Pacientes;Citas atendidas;Sesiones;Ingresos;Egresos;Qué pasó", lineas[0])
@@ -165,6 +183,15 @@ class SeriesMensualesTest {
         assertEquals("2026-09;Cerrado;52;320;0;15000;16000.25;\"Promos; 2x1 / Feriado\"", lineas[2])
         assertEquals("2026-10;En curso;11;90;0;3000;100;", lineas[3])
         assertEquals("reporte-mensual-2026-10-08.csv", nombreCsvReporte("2026-10-08"))
+    }
+
+    @Test
+    fun csvSinPermisoDeFinanzasNoLlevaDinero() {
+        val lineas = csvReporteMensual(parsearSeriesReporte(respuesta), conDinero = false)
+            .removePrefix("﻿").split("\n")
+        assertEquals("Mes;Estado;Pacientes;Citas atendidas;Sesiones;Qué pasó", lineas[0])
+        assertEquals("2026-08;Cerrado;40;300;0;", lineas[1])
+        assertEquals("2026-09;Cerrado;52;320;0;\"Promos; 2x1 / Feriado\"", lineas[2])
     }
 
     @Test

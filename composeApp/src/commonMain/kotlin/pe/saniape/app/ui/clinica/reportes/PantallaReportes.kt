@@ -119,7 +119,15 @@ fun PantallaReportes(
 
     val sedeEstado by SedeActiva.estado.collectAsState()
     val sede = sedeEstado.filtro?.sedeId
+    // Multisede: mientras el diálogo obligatorio de sede esté abierto (o el usuario
+    // no tenga sedes activas) no se pide nada — si no, primero saldría el
+    // consolidado y una consulta pesada de más. Abrir "cambiar de sede" no cuenta:
+    // la sede no cambia hasta elegir, y entonces cambia `sede`.
+    val esperandoSede = sedeEstado.multiSede && (sedeEstado.obligatorio || sedeEstado.sinSedes)
     val conPlan = ctx.can("reportes")
+    // El dinero (titular de ingresos y columnas del CSV) solo con permiso de finanzas,
+    // como los gráficos de ingresos/egresos.
+    val conDinero = ctx.puede("finanzas")
 
     LaunchedEffect(ctx.clinicaId) {
         if (!conPlan) return@LaunchedEffect
@@ -129,12 +137,13 @@ fun PantallaReportes(
 
     // Cambiar un filtro cancela la carga anterior (LaunchedEffect): una
     // respuesta vieja nunca pisa a la nueva.
-    LaunchedEffect(ctx.clinicaId, meses, sede, metodo, terapeutaId, intento) {
-        if (!conPlan) { cargando = false; return@LaunchedEffect }
+    LaunchedEffect(ctx.clinicaId, meses, sede, metodo, terapeutaId, intento, esperandoSede) {
+        if (!conPlan || esperandoSede) { cargando = false; return@LaunchedEffect }
         cargando = true
         when (val r = ReportesRepo.series(meses, sede, metodo, terapeutaId)) {
             is ResultadoSeries.Ok -> { series = r.series; error = null }
-            is ResultadoSeries.Error -> { error = r; if (r.porPlan) series = null }
+            // Los números viejos NO quedan bajo los filtros nuevos: se ve el error con "Reintentar".
+            is ResultadoSeries.Error -> { error = r; series = null }
         }
         cargando = false
     }
@@ -166,7 +175,7 @@ fun PantallaReportes(
                             .clickable {
                                 acciones.compartirArchivo(
                                     nombre = nombreCsvReporte(s.hoy),
-                                    contenido = csvReporteMensual(s),
+                                    contenido = csvReporteMensual(s, conDinero = conDinero),
                                     mime = "text/csv",
                                     titulo = "Compartir reporte mensual",
                                 )
@@ -236,6 +245,7 @@ fun PantallaReportes(
                 val s = series
                 val e = error
                 when {
+                    esperandoSede -> MensajeReportes("🏥", "Elige una sede para ver sus reportes.")
                     cargando && s == null -> CargandoLista(filas = 4, conAvatar = false, conMargen = false)
                     e != null && s == null -> MensajeReportes(
                         emoji = if (e.porPlan) "💎" else "⚠",
@@ -280,7 +290,8 @@ private fun ContenidoSeries(
         add(Triple("Pacientes nuevos", "👥", s.pacientes) to false)
         add(Triple("Citas atendidas", "📅", s.citas) to false)
         if (ctx.usaSesiones) add(Triple("Sesiones", "🏃", s.sesiones) to false)
-        add(Triple("Ingresos", "💸", s.ingresos) to true)
+        // El dinero solo con permiso de finanzas (como los gráficos de ingresos/egresos).
+        if (ctx.puede("finanzas")) add(Triple("Ingresos", "💸", s.ingresos) to true)
     }
     tarjetas.chunked(2).forEach { fila ->
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Sania.dim.sm)) {
@@ -494,10 +505,10 @@ private fun HitosDelMes(hitos: List<HitoMes>, meses: List<String>, onCambio: () 
                 TextButton(enabled = !borrando, onClick = {
                     borrando = true
                     scope.launch {
-                        val ok = ReportesRepo.borrarHito(h.id)
+                        val error = ReportesRepo.borrarHito(h.id)
                         borrando = false
                         aBorrar = null
-                        if (ok) { Toaster.exito("Borrado"); onCambio() } else Toaster.error("No se pudo borrar")
+                        if (error == null) { Toaster.exito("Borrado"); onCambio() } else Toaster.error(error)
                     }
                 }) { Text(if (borrando) "Borrando…" else "Borrar", color = c.error, fontWeight = FontWeight.Bold) }
             },

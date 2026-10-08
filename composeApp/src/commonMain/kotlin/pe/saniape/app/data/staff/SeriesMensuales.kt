@@ -231,8 +231,12 @@ fun solesGrafico(n: Double, compacto: Boolean = false): String {
  * Marcas "redondas" del eje Y desde 0 hasta cubrir [maximo] (0, 5, 10, 15…;
  * 0, 2k, 4k…). Siempre devuelve al menos [0, algo]: un gráfico todo en cero
  * no debe dividir por cero.
+ *
+ * [conteo] = citas, pacientes, sesiones: pasos de 1/2/5/10 y nunca menos de 1
+ * (con 2.5 el eje entero mostraba "0, 3, 5, 8, 10"). El dinero sí admite 2.5
+ * (S/ 2.5k, S/ 5k…).
  */
-fun marcasEje(maximo: Double, marcasDeseadas: Int = 4): List<Double> {
+fun marcasEje(maximo: Double, marcasDeseadas: Int = 4, conteo: Boolean = true): List<Double> {
     if (maximo <= 0) return listOf(0.0, 1.0)
     val crudo = maximo / marcasDeseadas
     val potencia = 10.0.pow(floor(log10(crudo)))
@@ -240,12 +244,12 @@ fun marcasEje(maximo: Double, marcasDeseadas: Int = 4): List<Double> {
     val paso0 = when {
         fraccion <= 1 -> 1.0
         fraccion <= 2 -> 2.0
-        fraccion <= 2.5 -> 2.5
+        fraccion <= 2.5 && !conteo -> 2.5
         fraccion <= 5 -> 5.0
         else -> 10.0
     } * potencia
     // Conteos (citas, pacientes) no llevan medias marcas: 0, 0.5, 1 se lee mal.
-    val paso = if (paso0 < 1) 1.0 else paso0
+    val paso = if (conteo && paso0 < 1) 1.0 else paso0
     val tope = ceil(maximo / paso) * paso
     val n = (tope / paso).roundToInt()
     return (0..n).map { it * paso }
@@ -292,8 +296,10 @@ fun numeroCsv(n: Double): String {
  * estado ('En curso') va en su columna para que nadie sume un mes a medias con
  * meses cerrados. Separador ';' y BOM: Excel en español lo abre bien.
  */
-fun csvReporteMensual(s: SeriesReporte, etiquetaPacientes: String = "Pacientes"): String {
-    val cab = listOf("Mes", "Estado", etiquetaPacientes, "Citas atendidas", "Sesiones", "Ingresos", "Egresos", "Qué pasó")
+fun csvReporteMensual(s: SeriesReporte, conDinero: Boolean, etiquetaPacientes: String = "Pacientes"): String {
+    // Ingresos/egresos solo con permiso de finanzas (la misma regla que los gráficos de dinero).
+    val cab = listOf("Mes", "Estado", etiquetaPacientes, "Citas atendidas", "Sesiones") +
+        (if (conDinero) listOf("Ingresos", "Egresos") else emptyList()) + "Qué pasó"
     val filas = s.pacientes.mapIndexed { i, p ->
         listOf(
             p.mes,
@@ -301,10 +307,12 @@ fun csvReporteMensual(s: SeriesReporte, etiquetaPacientes: String = "Pacientes")
             numeroCsv(p.valor),
             numeroCsv(s.citas.getOrNull(i)?.valor ?: 0.0),
             numeroCsv(s.sesiones.getOrNull(i)?.valor ?: 0.0),
-            numeroCsv(s.ingresos.getOrNull(i)?.valor ?: 0.0),
-            numeroCsv(s.egresos.getOrNull(i)?.valor ?: 0.0),
-            s.hitos.filter { it.mes == p.mes }.joinToString(" / ") { it.titulo },
-        )
+        ) + (
+            if (conDinero) listOf(
+                numeroCsv(s.ingresos.getOrNull(i)?.valor ?: 0.0),
+                numeroCsv(s.egresos.getOrNull(i)?.valor ?: 0.0),
+            ) else emptyList()
+            ) + s.hitos.filter { it.mes == p.mes }.joinToString(" / ") { it.titulo }
     }
     val lineas = listOf(cab) + filas
     return "﻿" + lineas.joinToString("\n") { fila -> fila.joinToString(";") { celdaCsv(it) } }

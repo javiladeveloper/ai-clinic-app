@@ -107,7 +107,7 @@ fun GraficoMensual(
     val hitosPorMes = remember(hitos) { hitos.associateBy { it.mes } }
     val fmtEje: (Double) -> String = { v -> if (dinero) solesGrafico(v, compacto = true) else entero(v) }
     val maximo = datos.maxOf { maxOf(it.valor, it.proyectado ?: 0.0) }
-    val marcas = remember(maximo) { marcasEje(maximo) }
+    val marcas = remember(maximo, dinero) { marcasEje(maximo, conteo = !dinero) }
     val tope = marcas.last().takeIf { it > 0 } ?: 1.0
 
     val estiloEje = TextStyle(color = p.eje, fontSize = 10.sp)
