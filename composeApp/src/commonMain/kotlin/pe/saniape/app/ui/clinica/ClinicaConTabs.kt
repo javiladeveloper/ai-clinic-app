@@ -99,6 +99,7 @@ fun ClinicaConTabs(
     var verPacientesNuevos by remember { mutableStateOf(false) }
     // Profesionales (lista + horario) y el horario propio en solo lectura.
     var verProfesionales by remember { mutableStateOf(false) }
+    var verEquipo by remember { mutableStateOf(false) }
     var horarioDe by remember { mutableStateOf<Pair<String, String>?>(null) }   // (terapeutaId, nombre)
     var horarioVolver by remember { mutableStateOf("← Más") }
     // Más → "🌐 Mi página" (slug leído de la clínica; null = no tiene página).
@@ -345,6 +346,8 @@ fun ClinicaConTabs(
                             { horarioVolver = "← Más"; horarioDe = id to (contexto.nombre ?: "Mi horario") }
                         },
                         onAbrirMiPagina = urlPagina?.let { { verMiPagina = true } },
+                        // Nativo. Mismo permiso que la web /equipo y GET /api/staff/equipo.
+                        onAbrirEquipo = if (contexto.puede("equipo")) ({ verEquipo = true }) else null,
                     )
                 }
             }
@@ -412,6 +415,14 @@ fun ClinicaConTabs(
                         onSalir = { verProfesionales = false },
                         onAbrir = { p -> horarioVolver = "← ${pe.saniape.app.tutoriales.pluralPersonal(contexto.terminologiaProfesional)}"; horarioDe = p.id to p.nombre },
                     )
+                }
+            }
+            AnimatedVisibility(
+                visible = verEquipo && contexto.puede("equipo"),
+                enter = entrarDetalle(), exit = salirDetalle(),
+            ) {
+                Box(Modifier.fillMaxSize().background(c.fondo)) {
+                    pe.saniape.app.ui.clinica.equipo.PantallaEquipo(ctx = contexto, onSalir = { verEquipo = false })
                 }
             }
             AnimatedVisibility(visible = horarioDe != null, enter = entrarDetalle(), exit = salirDetalle()) {
