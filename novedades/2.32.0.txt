@@ -1,0 +1,7 @@
+# Novedades de la 2.32.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+La app ahora habla como tu clínica: si en Ajustes llamas "Clientes" a tus pacientes, toda la app usa esa palabra. Además, el avance de comisiones de cada profesional descuenta lo que ya se le pagó en el mes.
+---
+Clínicas:
+• Toda la app usa la palabra que elegiste en Ajustes para tus pacientes (por ejemplo, "Clientes" en estética): Inicio, lista, ficha, agenda, reportes y más.
+• Comisiones: después de un pago a mitad de mes, el profesional ve su avance sin lo que ya cobró.
