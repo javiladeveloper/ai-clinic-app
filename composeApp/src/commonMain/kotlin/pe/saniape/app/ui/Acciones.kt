@@ -24,6 +24,13 @@ interface AccionesNativas {
      * Por defecto lo copia (plataformas sin hoja de compartir todavía).
      */
     fun compartirTexto(texto: String, titulo: String = "Compartir") = copiarTexto(texto, titulo)
+    /**
+     * Comparte un archivo de texto (p.ej. el CSV de Reportes) con la hoja nativa:
+     * WhatsApp, correo, Drive… Por defecto comparte el contenido como texto
+     * (plataformas sin archivo compartible todavía).
+     */
+    fun compartirArchivo(nombre: String, contenido: String, mime: String, titulo: String = "Compartir") =
+        compartirTexto(contenido, titulo)
 }
 
 @Composable

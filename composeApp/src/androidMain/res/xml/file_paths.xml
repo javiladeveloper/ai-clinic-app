@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Rutas expuestas por el FileProvider: solo el subdirectorio de fotos de cámara en cache. -->
+<!-- Rutas expuestas por el FileProvider: fotos de cámara y archivos para compartir (CSV), ambos en cache. -->
 <paths>
     <cache-path name="fotos_camara" path="fotos_camara/" />
+    <cache-path name="compartidos" path="compartidos/" />
 </paths>
