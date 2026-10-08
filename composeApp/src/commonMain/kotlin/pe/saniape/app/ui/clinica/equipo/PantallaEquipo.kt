@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import pe.saniape.app.ui.ManejarAtras
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.EquipoDatos
 import pe.saniape.app.data.staff.EquipoRepo
@@ -80,6 +81,9 @@ fun PantallaEquipo(ctx: ContextoStaff, onSalir: () -> Unit) = pe.saniape.app.tut
     val d = datos
     if (d != null && invitando) DialogoInvitar(d, onCerrar = { invitando = false }, onHecho = { invitando = false; recarga++ })
     if (d != null && enlace) DialogoEnlace(d, onCerrar = { enlace = false }, onRegistrado = { enlace = false; recarga++ })
+
+    // Atrás del sistema desde la ficha → vuelve a la lista (no a "Más").
+    ManejarAtras(activo = detalleId != null) { detalleId = null }
 
     // Ficha del miembro (encima de la lista).
     val miembro = d?.miembros?.firstOrNull { it.id == detalleId }
