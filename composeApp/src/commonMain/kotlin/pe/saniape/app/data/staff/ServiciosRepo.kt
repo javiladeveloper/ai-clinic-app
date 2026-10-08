@@ -142,17 +142,25 @@ fun filtrarServicios(lista: List<ServicioApp>, busqueda: String, filtroEstado: S
 }
 
 /**
+ * Un grupo de la lista. [clave] = el `especialidad_id` ("" = sin especialidad):
+ * es la llave estable de la fila (la especialidad puede no encontrarse, p. ej.
+ * una que ya no se ve, y dos grupos no pueden compartir llave en la lista).
+ */
+data class GrupoServicios(val clave: String, val especialidad: EspecialidadServicio?, val servicios: List<ServicioApp>)
+
+/**
  * Agrupa por especialidad en el orden en que aparecen; los "sin especialidad"
  * van AL FINAL (como la web: son los menos organizados, su lugar es el cierre).
  */
 fun agruparPorEspecialidad(
     filtrados: List<ServicioApp>,
     especialidades: List<EspecialidadServicio>,
-): List<Pair<EspecialidadServicio?, List<ServicioApp>>> {
+): List<GrupoServicios> {
     val grupos = LinkedHashMap<String, MutableList<ServicioApp>>()
     filtrados.forEach { p -> grupos.getOrPut(p.especialidadId ?: "") { mutableListOf() }.add(p) }
-    val conEsp = grupos.filterKeys { it.isNotEmpty() }.map { (k, v) -> (especialidades.find { it.id == k } ?: v.first().especialidad) to v.toList() }
-    val sin = grupos[""]?.let { listOf<Pair<EspecialidadServicio?, List<ServicioApp>>>(null to it.toList()) }.orEmpty()
+    val conEsp = grupos.filterKeys { it.isNotEmpty() }
+        .map { (k, v) -> GrupoServicios(k, especialidades.find { it.id == k } ?: v.first().especialidad, v.toList()) }
+    val sin = grupos[""]?.let { listOf(GrupoServicios("", null, it.toList())) }.orEmpty()
     return conEsp + sin
 }
 
@@ -235,6 +243,28 @@ fun modoEfectivoForm(f: FormServicio, activas: List<EspecialidadServicio>): Stri
 
 private fun aEntero(t: String): Int? = t.trim().toDoubleOrNull()?.toInt()
 private fun aDecimal(t: String): Double? = t.trim().replace(',', '.').toDoubleOrNull()
+/** Escrito pero no se entiende ("." o "1.2.3"): no se guarda en silencio como 0. */
+private fun malEscrito(t: String): Boolean = t.isNotBlank() && aDecimal(t) == null
+
+/**
+ * Qué impide guardar el formulario (null = nada). Un precio que no se entiende
+ * NO se guarda como S/ 0 ni se descarta el paquete en silencio: se avisa.
+ */
+fun problemaFormServicio(f: FormServicio, activas: List<EspecialidadServicio>, mostrarTipoClinico: Boolean, esDental: Boolean): String? {
+    val modo = modoEfectivoForm(f, activas)
+    val evalActiva = mostrarTipoClinico && f.evalPsico
+    return when {
+        f.precio.isNotBlank() && aDecimal(f.precio).let { it == null || it < 0 } -> "El precio no es válido"
+        modo == "sesiones" && !evalActiva && f.tarifarios.any { (n, p) ->
+            (n.isNotBlank() || p.isNotBlank()) &&
+                ((aEntero(n) ?: 0) < 1 || aDecimal(p).let { it == null || it < 0 || it > 999999.99 })
+        } -> "Revisa los paquetes: cada uno necesita el número de sesiones y el precio total"
+        modo == "unidades" && malEscrito(f.precioUnitario) -> "El precio por unidad no es válido"
+        esDental && modo != "sesiones" && f.precioCaras.values.any(::malEscrito) -> "Revisa el precio según caras"
+        f.pasos.any { it.pasoId.isNotBlank() && malEscrito(it.precio) } -> "Revisa el precio de los pasos encadenados"
+        else -> null
+    }
+}
 
 /**
  * Cuerpo de /api/staff/servicio a partir del formulario. Port 1:1 de
@@ -244,6 +274,8 @@ private fun aDecimal(t: String): Double? = t.trim().replace(',', '.').toDoubleOr
  * @param tipoClinicoInicial el `tipo_clinico` que tenía el servicio al abrirlo (para desmarcarlo).
  * @param mostrarTipoClinico la clínica ve la opción de evaluación psicológica.
  * @param esDental el servicio es de una especialidad dental (precio por caras).
+ * @param incluirPasos false si los pasos del servicio no se pudieron leer: la
+ *   clave `pasos` no viaja (ausente = no se tocan). Mandarla vacía los borraría.
  */
 fun cuerpoGuardarServicio(
     f: FormServicio,
@@ -252,13 +284,15 @@ fun cuerpoGuardarServicio(
     tipoClinicoInicial: String?,
     mostrarTipoClinico: Boolean,
     esDental: Boolean,
+    incluirPasos: Boolean = true,
 ): JsonObject {
     val modo = modoEfectivoForm(f, activas)
-    val precio = aDecimal(f.precio) ?: 0.0
+    // null si no se entiende: viaja como null y el servidor lo rechaza ("El precio no es válido").
+    val precio = aDecimal(f.precio)
     val evalActiva = mostrarTipoClinico && f.evalPsico
     val tarifas: List<Pair<Int, Double>> = if (evalActiva) {
         // Evaluación psicológica: un solo paquete = N citas estimadas por el precio de la evaluación.
-        listOf(maxOf(1, aEntero(f.citasEstimadas) ?: 1) to precio)
+        if (precio == null) emptyList() else listOf(maxOf(1, aEntero(f.citasEstimadas) ?: 1) to precio)
     } else {
         f.tarifarios.filter { (n, p) -> n.isNotBlank() && p.isNotBlank() }
             .mapNotNull { (n, p) -> val ni = aEntero(n); val pd = aDecimal(p); if (ni == null || pd == null) null else ni to pd }
@@ -271,7 +305,7 @@ fun cuerpoGuardarServicio(
         put("nombre", f.nombre.trim())
         put("descripcion", f.descripcion.trim().ifEmpty { null })
         put("categoria", categoria.ifEmpty { "General" })
-        if (categoria.isNotEmpty()) put("categoria_libre", categoria)
+        put("categoria_libre", categoria.ifEmpty { null })
         if (especialidad.isNotEmpty()) put("especialidad_id", especialidad)
         put("precio", precio)
         put("modo_cobro", f.modoCobro.ifBlank { null })
@@ -282,7 +316,7 @@ fun cuerpoGuardarServicio(
         if (f.controlesDias.isEmpty()) put("controles_dias", JsonNull)
         else put("controles_dias", buildJsonArray { f.controlesDias.sorted().forEach { add(JsonPrimitive(it)) } })
         put("sesiones_auto", modo == "sesiones" && f.serieAuto)
-        put("sesiones_intervalo_dias", if (modo == "sesiones" && f.serieAuto) maxOf(1, aEntero(f.serieIntervalo) ?: 15) else null)
+        put("sesiones_intervalo_dias", if (modo == "sesiones" && f.serieAuto) (aEntero(f.serieIntervalo)?.takeIf { it > 0 } ?: 15) else null)
         put("estado", f.estado)
         // Las columnas de evaluación solo viajan al marcarla o al DESMARCAR una que lo era.
         if (evalActiva) {
@@ -302,11 +336,11 @@ fun cuerpoGuardarServicio(
         put("tarifarios", buildJsonArray {
             if (modo == "sesiones") tarifas.forEach { (n, p) -> add(buildJsonObject { put("cantidad_sesiones", n); put("precio_total", p) }) }
         })
-        put("pasos", buildJsonArray {
+        if (incluirPasos) put("pasos", buildJsonArray {
             f.pasos.filter { it.pasoId.isNotBlank() }.forEachIndexed { i, p ->
                 add(buildJsonObject {
                     put("paso_procedimiento_id", p.pasoId)
-                    put("dias_habiles", maxOf(1, aEntero(p.dias) ?: 7))
+                    put("dias_habiles", aEntero(p.dias)?.takeIf { it > 0 } ?: 7)   // vacío o 0 → 7, como la web
                     put("precio", aDecimal(p.precio))
                     put("orden", i)
                 })

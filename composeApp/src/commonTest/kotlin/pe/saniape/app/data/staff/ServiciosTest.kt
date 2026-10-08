@@ -95,9 +95,18 @@ class ServiciosTest {
             ServicioApp("b", "Electro", especialidadId = "e-fisio"),
         )
         val g = agruparPorEspecialidad(lista, activas)
-        assertEquals(listOf("e-fisio", "e-med", null), g.map { it.first?.id })
-        assertEquals(listOf("a", "b"), g[0].second.map { it.id })
-        assertEquals(listOf("x"), g[2].second.map { it.id })
+        assertEquals(listOf("e-fisio", "e-med", null), g.map { it.especialidad?.id })
+        assertEquals(listOf("e-fisio", "e-med", ""), g.map { it.clave })
+        assertEquals(listOf("a", "b"), g[0].servicios.map { it.id })
+        assertEquals(listOf("x"), g[2].servicios.map { it.id })
+    }
+
+    @Test
+    fun especialidadQueNoSeVeNoChocaConLosSinEspecialidad() {
+        // Una especialidad que ya no aparece en la lista: el grupo conserva su clave propia.
+        val g = agruparPorEspecialidad(listOf(ServicioApp("a", "A", especialidadId = "e-borrada"), ServicioApp("b", "B")), activas)
+        assertEquals(listOf("e-borrada", ""), g.map { it.clave })
+        assertEquals(2, g.map { it.clave }.toSet().size)
     }
 
     @Test
@@ -139,6 +148,7 @@ class ServiciosTest {
         assertEquals(JsonPrimitive("Terapia"), s["nombre"])
         assertEquals(JsonNull, s["descripcion"])
         assertEquals(JsonPrimitive("General"), s["categoria"])
+        assertEquals(JsonNull, s["categoria_libre"])                             // vacío → null (borra)
         assertEquals(JsonNull, s["modo_cobro"])                                  // heredado
         assertEquals(JsonPrimitive(true), s["sesiones_auto"])
         assertEquals(JsonPrimitive(15), s["sesiones_intervalo_dias"])            // vacío → 15
@@ -212,4 +222,52 @@ class ServiciosTest {
         "3 servicio(s) nuevo(s), 2 ya existían; 1 consentimiento(s) asociado(s).",
         resumenTipicos(obj("""{"ok":true,"creados":3,"existentes":2,"vinculados":1}""")),
     )
+
+    @Test
+    fun pasosSinLeerNoViajan() {
+        val f = FormServicio(nombre = "X", precio = "10", pasos = emptyList())
+        val c = cuerpoGuardarServicio(f, activas, "p1", null, false, false, incluirPasos = false)
+        assertNull(c["pasos"])                                                   // ausente = no se tocan
+        assertEquals("[]", cuerpoGuardarServicio(f, activas, "p1", null, false, false)["pasos"].toString())
+    }
+
+    @Test
+    fun diasEnCeroUsanLosDefaultsDeLaWeb() {
+        val f = FormServicio(
+            nombre = "X", precio = "10", especialidadId = "e-fisio", serieAuto = true, serieIntervalo = "0",
+            pasos = listOf(PasoServicioForm("p2", "0", "")),
+        )
+        val c = cuerpoGuardarServicio(f, activas, null, null, false, false)
+        assertEquals(JsonPrimitive(15), c["servicio"]!!.jsonObject["sesiones_intervalo_dias"])
+        assertEquals(JsonPrimitive(7), (c["pasos"] as JsonArray)[0].jsonObject["dias_habiles"])
+    }
+
+    @Test
+    fun precioQueNoSeEntiendeNoSeGuardaComoCero() {
+        val f = FormServicio(nombre = "X", precio = "1.2.3", especialidadId = "e-fisio")
+        assertEquals("El precio no es válido", problemaFormServicio(f, activas, false, false))
+        assertEquals(JsonNull, cuerpoGuardarServicio(f, activas, null, null, false, false)["servicio"]!!.jsonObject["precio"])
+        assertEquals("El precio no es válido", problemaFormServicio(f.copy(precio = "."), activas, false, false))
+        assertNull(problemaFormServicio(f.copy(precio = "80"), activas, false, false))
+    }
+
+    @Test
+    fun paqueteMalEscritoSeAvisaEnVezDeDescartarse() {
+        val f = FormServicio(nombre = "X", precio = "80", especialidadId = "e-fisio", tarifarios = listOf("5" to "3.5.0"))
+        assertTrue(problemaFormServicio(f, activas, false, false)!!.startsWith("Revisa los paquetes"))
+        assertTrue(problemaFormServicio(f.copy(tarifarios = listOf("" to "300")), activas, false, false) != null)
+        assertTrue(problemaFormServicio(f.copy(tarifarios = listOf("5" to "1000000")), activas, false, false) != null)
+        assertNull(problemaFormServicio(f.copy(tarifarios = listOf("5" to "300", "" to "")), activas, false, false))
+        // En pago único los paquetes no viajan: no bloquean.
+        assertNull(problemaFormServicio(f.copy(especialidadId = "e-med"), activas, false, false))
+    }
+
+    @Test
+    fun otrosPreciosMalEscritos() {
+        val base = FormServicio(nombre = "X", precio = "80", especialidadId = "e-med")
+        assertTrue(problemaFormServicio(base.copy(modoCobro = "unidades", precioUnitario = ".."), activas, false, false) != null)
+        assertTrue(problemaFormServicio(base.copy(precioCaras = mapOf("1" to "x.")), activas, false, esDental = true) != null)
+        assertNull(problemaFormServicio(base.copy(precioCaras = mapOf("1" to "x.")), activas, false, esDental = false))
+        assertTrue(problemaFormServicio(base.copy(pasos = listOf(PasoServicioForm("p2", "7", "4..0"))), activas, false, false) != null)
+    }
 }

@@ -55,6 +55,7 @@ import pe.saniape.app.data.staff.especialidadInicial
 import pe.saniape.app.data.staff.etiquetaControl
 import pe.saniape.app.data.staff.modoEfectivoForm
 import pe.saniape.app.data.staff.modoHeredado
+import pe.saniape.app.data.staff.problemaFormServicio
 import pe.saniape.app.data.staff.soles
 import pe.saniape.app.ui.Toaster
 import pe.saniape.app.ui.clinica.pacientes.CajaSelectorForm
@@ -87,7 +88,11 @@ fun FormularioServicio(
     val activas = remember(especialidades) { especialidades.filter { it.activa } }
     var f by remember(inicial?.id) { mutableStateOf(FormServicio.desde(inicial, especialidadInicial(activas)?.id)) }
     var guardando by remember { mutableStateOf(false) }
+    // Los pasos se mandan ENTEROS al guardar (reemplazo). true SOLO si se leyeron
+    // bien: si la lectura falla, guardar borraría la cadena (lavado → PRP de Renova).
     var pasosCargados by remember(inicial?.id) { mutableStateOf(inicial == null) }
+    var pasosFallo by remember(inicial?.id) { mutableStateOf(false) }
+    var intentoPasos by remember { mutableStateOf(0) }
     // Agregador de control a medida: número + unidad (1 días · 7 semanas · 30 meses · 365 años).
     var ctrlNum by remember { mutableStateOf("") }
     var ctrlUnidad by remember { mutableStateOf(30) }
@@ -95,17 +100,19 @@ fun FormularioServicio(
     var eligiendoServicio by remember { mutableStateOf<Int?>(null) }
 
     // Los pasos del servicio en edición se leen aparte (consulta plana).
-    LaunchedEffect(inicial?.id) {
+    LaunchedEffect(inicial?.id, intentoPasos) {
         val id = inicial?.id ?: return@LaunchedEffect
+        pasosFallo = false
         try {
             val pasos = ServiciosRepo.pasosDe(id)
             f = f.copy(pasos = pasos)
+            pasosCargados = true
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (_: Exception) {
-            Toaster.error("No se pudieron leer los pasos encadenados de este servicio")
+            // Sin los pasos no se guarda: el botón queda apagado hasta "Reintentar".
+            pasosFallo = true
         }
-        pasosCargados = true
     }
 
     // Los demás servicios activos (para pasos y devolución).
@@ -117,12 +124,21 @@ fun FormularioServicio(
     val porUnidades = modo == "unidades"
     val evalActiva = mostrarTipoClinico && f.evalPsico
     val esDental = ctx.mapaDental.activo && esServicioDental(f.especialidadId.ifBlank { null }, ctx.mapaDental)
+    // Un precio que no se entiende no se guarda como S/ 0: se avisa y no se guarda.
+    val problema = problemaFormServicio(f, activas, mostrarTipoClinico, esDental)
+    /** Nombre de un servicio elegido (puede estar inactivo: igual se muestra). */
+    fun nombreDe(id: String): String? = servicios.find { it.id == id }?.let { s ->
+        s.nombre + (if (s.activo) "" else " (inactivo)")
+    }
 
     fun guardar() {
         // Sin los pasos cargados, guardar los borraría (se mandan enteros).
-        if (guardando || !f.listoParaGuardar || !pasosCargados) return
+        if (guardando || !f.listoParaGuardar || !pasosCargados || problema != null) return
         guardando = true
-        val cuerpo = cuerpoGuardarServicio(f, activas, inicial?.id, inicial?.tipoClinico, mostrarTipoClinico, esDental)
+        val cuerpo = cuerpoGuardarServicio(
+            f, activas, inicial?.id, inicial?.tipoClinico, mostrarTipoClinico, esDental,
+            incluirPasos = pasosCargados,
+        )
         scope.launch {
             val r = try { conIndicador { ServiciosRepo.guardar(cuerpo) } } finally { guardando = false }
             if (r.registrada) {
@@ -152,10 +168,18 @@ fun FormularioServicio(
             inicial == null -> "Crear servicio"
             else -> "Guardar cambios"
         },
-        accionHabilitada = !guardando && f.listoParaGuardar && pasosCargados,
+        accionHabilitada = !guardando && f.listoParaGuardar && pasosCargados && problema == null,
         onCancelar = { if (!guardando) onCerrar() },
         onAccion = { guardar() },
     ) {
+        problema?.let {
+            Text(
+                "⚠ $it", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .background(c.errorBg).padding(10.dp),
+            )
+            Spacer(Modifier.height(10.dp))
+        }
         EtqForm("Nombre del servicio *")
         OutlinedTextField(
             value = f.nombre, onValueChange = { f = f.copy(nombre = it) },
@@ -265,8 +289,10 @@ fun FormularioServicio(
                     if (f.devolucion == "adicional") {
                         Spacer(Modifier.height(8.dp))
                         EtqForm("Servicio de devolución")
-                        val elegido = otros.find { it.id == f.devolucionProcId }
-                        CajaSelectorForm(elegido?.let { "${it.nombre} · ${soles(it.precio)}" } ?: "Elegir servicio…") { eligiendoServicio = -1 }
+                        val elegido = servicios.find { it.id == f.devolucionProcId }
+                        CajaSelectorForm(
+                            elegido?.let { "${nombreDe(it.id)} · ${soles(it.precio)}" } ?: "Elegir servicio…",
+                        ) { eligiendoServicio = -1 }
                     }
                     Ayuda("La plantilla del informe psicológico se personaliza en la web (Configuración).")
                 }
@@ -376,12 +402,20 @@ fun FormularioServicio(
         Espacio()
         Caja {
             Text("⛓️ Después de este servicio (opcional)", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            if (!pasosCargados) Text("Cargando pasos…", color = c.textoSuave, fontSize = 12.sp)
+            if (pasosFallo) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                    Text(
+                        "No se pudieron leer los pasos; hasta leerlos no se puede guardar.",
+                        color = c.error, fontSize = 12.sp, modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    BotonContorno("Reintentar") { intentoPasos++ }
+                }
+            } else if (!pasosCargados) Text("Cargando pasos…", color = c.textoSuave, fontSize = 12.sp)
             f.pasos.forEachIndexed { i, p ->
                 Spacer(Modifier.height(8.dp))
-                val elegido = otros.find { it.id == p.pasoId } ?: servicios.find { it.id == p.pasoId }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f)) { CajaSelectorForm(elegido?.nombre ?: "— Elegir servicio —") { eligiendoServicio = i } }
+                    Box(Modifier.weight(1f)) { CajaSelectorForm(nombreDe(p.pasoId) ?: "— Elegir servicio —") { eligiendoServicio = i } }
                     Spacer(Modifier.width(6.dp))
                     Quitar { f = f.copy(pasos = f.pasos.filterIndexed { j, _ -> j != i }) }
                 }

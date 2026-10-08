@@ -274,9 +274,10 @@ fun PantallaServicios(ctx: ContextoStaff, onSalir: () -> Unit) {
                                 )
                             }
                         } else if (agrupar) {
-                            grupos.forEach { (esp, procs) ->
-                                item(key = "h-${esp?.id ?: "sin"}") { CabeceraGrupo(esp, procs.size) }
-                                items(procs, key = { it.id }) { s ->
+                            grupos.forEach { g ->
+                                // Llave = la clave del grupo (especialidad_id), nunca la especialidad encontrada.
+                                item(key = "h-${g.clave}") { CabeceraGrupo(g.especialidad, g.servicios.size) }
+                                items(g.servicios, key = { it.id }) { s ->
                                     TarjetaServicio(s, onEditar = { formServicio = s; formAbierto = true }, onCambiarEstado = { pedirCambioEstado(s) })
                                 }
                             }
