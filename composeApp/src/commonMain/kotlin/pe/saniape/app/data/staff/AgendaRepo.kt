@@ -5,6 +5,7 @@ import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
 import io.ktor.client.request.header
+import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -473,6 +474,28 @@ object AgendaRepo {
             }
             .decodeList<JsonObject>().firstOrNull()?.let { parsearDetalleCita(it) } ?: DatosDetalleCita()
     }.getOrNull()
+
+    /**
+     * Guarda SOLO las observaciones de la cita (`citas.notas`) desde su detalle:
+     * `PATCH /api/staff/cita/notas` (el mismo endpoint que el popup de la web).
+     * [notas] vacío/null las borra. Directo, sin cola offline: es una edición
+     * que se ve al instante y, sin red, el error se muestra y el texto se conserva.
+     */
+    suspend fun guardarNotasCita(citaId: String, notas: String?): ResultadoNotasCita {
+        val tk = token() ?: return ResultadoNotasCita.Error("Tu sesión expiró. Vuelve a entrar.")
+        return try {
+            val resp = http.patch("${Supabase.SITE_URL}/api/staff/cita/notas") {
+                header("Authorization", "Bearer $tk")
+                contentType(ContentType.Application.Json)
+                setBody(cuerpoNotasCita(citaId, notas).toString())
+            }
+            parsearRespuestaNotasCita(resp.status.value, runCatching { resp.bodyAsText() }.getOrNull())
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            ResultadoNotasCita.Error("Sin conexión: no se guardaron las observaciones. Inténtalo de nuevo.")
+        }
+    }
 
     /** Terapeutas activos con sus especialidades (para filtrar por especialidad). */
     suspend fun terapeutasActivos(): List<TerapeutaRef> {

@@ -1,7 +1,11 @@
 package pe.saniape.app.data.staff
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import pe.saniape.app.ui.urlEncode
 
 /**
@@ -27,15 +31,23 @@ data class DatosDetalleCita(
 /** Lo que el detalle pinta debajo de los datos de la cita, en orden. */
 sealed class BloqueDetalleCita {
     /**
-     * Observaciones de la cita. [direccion] = el tramo que parece una dirección
-     * (atención a domicilio): se destaca y ofrece abrirlo en Maps con [urlMaps].
-     * [largo] = se muestra recortado con "Ver más".
+     * Observaciones de la cita: SIEMPRE presentes (aunque estén vacías), para que
+     * quien abre la cita vea dónde anotar la dirección del domicilio.
+     * [texto] = lo escrito ("" si nada). [direccion] = el tramo que parece una
+     * dirección (atención a domicilio): se destaca y ofrece abrirlo en Maps con
+     * [urlMaps]. [largo] = se muestra recortado con "Ver más". [mostrarTexto] =
+     * pintar el texto (no si está vacío o es solo la dirección). [textoVacio] =
+     * "Sin observaciones" / "Sin otras observaciones" cuando no hay más que ver.
+     * [accion] = "Agregar" / "Editar" (el botón, si quien mira puede editar).
      */
     data class Observaciones(
         val texto: String,
         val direccion: String?,
         val urlMaps: String?,
         val largo: Boolean,
+        val mostrarTexto: Boolean = texto.isNotEmpty(),
+        val textoVacio: String? = null,
+        val accion: String = accionObservaciones(texto),
     ) : BloqueDetalleCita()
 
     data class Diagnostico(val texto: String) : BloqueDetalleCita()
@@ -52,7 +64,41 @@ sealed class BloqueDetalleCita {
 fun veClinicoEnDetalleCita(puedeSesiones: Boolean): Boolean = puedeSesiones
 
 /**
- * Arma los bloques del detalle. Sin datos → lista vacía (no se pinta nada).
+ * ¿Quien mira puede editar las observaciones desde el detalle? Igual que la web
+ * (`PopupCita`): el permiso `citas` (el que edita/reprograma/cancela) y nunca en
+ * solo lectura. El servidor lo vuelve a validar (403 SIN_PERMISO / SOLO_LECTURA).
+ */
+fun puedeEditarObservaciones(puedeCitas: Boolean, soloLectura: Boolean = false): Boolean =
+    puedeCitas && !soloLectura
+
+/** Texto del botón: "Agregar" si no hay nada escrito, "Editar" si ya hay (gemelo de la web). */
+fun accionObservaciones(notas: String?): String = if (notas.isNullOrBlank()) "Agregar" else "Editar"
+
+/** Arma el bloque de observaciones (siempre, aunque [notas] esté vacío). */
+fun bloqueObservaciones(notas: String?): BloqueDetalleCita.Observaciones {
+    val t = notas?.trim().orEmpty()
+    if (t.isEmpty()) {
+        return BloqueDetalleCita.Observaciones(
+            texto = "", direccion = null, urlMaps = null, largo = false,
+            mostrarTexto = false, textoVacio = "Sin observaciones", accion = "Agregar",
+        )
+    }
+    val dir = direccionEnTexto(t)
+    val soloDireccion = dir != null && t.trimEnd('.') == dir
+    return BloqueDetalleCita.Observaciones(
+        texto = t,
+        direccion = dir,
+        urlMaps = dir?.let { urlMapsDe(t, it) },
+        largo = !soloDireccion && necesitaVerMas(t),
+        mostrarTexto = !soloDireccion,
+        textoVacio = if (soloDireccion) "Sin otras observaciones" else null,
+        accion = "Editar",
+    )
+}
+
+/**
+ * Arma los bloques del detalle. Sin datos (cargando / sin red) → lista vacía.
+ * Con datos, las observaciones van siempre primero (vacías: "Sin observaciones").
  * [citaEvalua] = Evaluación (o la cita que evalúa según el flujo de la especialidad).
  */
 fun bloquesDetalleCita(
@@ -63,15 +109,7 @@ fun bloquesDetalleCita(
 ): List<BloqueDetalleCita> {
     if (datos == null) return emptyList()
     return buildList {
-        datos.notas?.trim()?.takeIf { it.isNotEmpty() }?.let { t ->
-            val dir = direccionEnTexto(t)
-            add(BloqueDetalleCita.Observaciones(
-                texto = t,
-                direccion = dir,
-                urlMaps = dir?.let { urlMapsDe(t, it) },
-                largo = necesitaVerMas(t),
-            ))
-        }
+        add(bloqueObservaciones(datos.notas))
         if (!verClinico) return@buildList
         val diag = datos.diagnosticoCita?.trim()?.takeIf { it.isNotEmpty() }
             ?: datos.diagnosticoTratamiento?.trim()?.takeIf { citaEvalua && it.isNotEmpty() }
@@ -196,5 +234,59 @@ fun parsearDetalleCita(o: JsonObject): DatosDetalleCita {
         sesionNumero = ses?.s("numero")?.toIntOrNull(),
         sesionNotas = ses?.s("notas"),
         sesionMejorias = ses?.s("mejorias"),
+    )
+}
+
+// ── Edición de las observaciones (PATCH /api/staff/cita/notas) ──
+
+/** Tope de largo de `citas.notas` al editarlas desde el detalle (igual que la web). */
+const val OBSERVACIONES_MAX = 2000
+
+const val PLACEHOLDER_OBSERVACIONES = "Ej.: dirección para atención a domicilio, indicaciones…"
+
+/**
+ * Lo que se manda a guardar: saltos de línea conservados (CRLF → LF), bordes
+ * recortados y null si queda vacío ("borrar las observaciones" = guardarlas vacías).
+ */
+fun normalizarNotasCita(texto: String?): String? =
+    texto?.replace("\r\n", "\n")?.replace('\r', '\n')?.trim()?.ifEmpty { null }
+
+/** Cuerpo del PATCH: `{ citaId, notas }` (notas null = borrarlas). */
+fun cuerpoNotasCita(citaId: String, notas: String?): JsonObject = buildJsonObject {
+    put("citaId", citaId)
+    put("notas", normalizarNotasCita(notas))
+}
+
+/** Resultado de guardar las observaciones. */
+sealed class ResultadoNotasCita {
+    /** Lo que quedó guardado (ya normalizado por el servidor). */
+    data class Ok(val notas: String?) : ResultadoNotasCita()
+    /** [mensaje] ya es para mostrar; [codigo] el del servidor si vino. */
+    data class Error(val mensaje: String, val codigo: String? = null) : ResultadoNotasCita()
+}
+
+const val ERROR_GUARDAR_OBSERVACIONES = "No se pudieron guardar las observaciones"
+
+/**
+ * Interpreta la respuesta del PATCH. 2xx → [ResultadoNotasCita.Ok] con las notas
+ * que devolvió el servidor. Otro estado → el `error` del servidor si vino; si no
+ * (un servidor viejo sin el endpoint responde 404/405 sin JSON), uno genérico.
+ */
+fun parsearRespuestaNotasCita(status: Int, cuerpo: String?): ResultadoNotasCita {
+    val o = runCatching { Json.parseToJsonElement(cuerpo.orEmpty()) as? JsonObject }.getOrNull()
+    fun campo(k: String) = (o?.get(k) as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content
+    if (status in 200..299 && o != null && campo("error") == null) {
+        return ResultadoNotasCita.Ok(campo("notas")?.takeIf { it.isNotBlank() })
+    }
+    val codigo = campo("codigo")?.takeIf { it.isNotBlank() }
+    val error = campo("error")?.takeIf { it.isNotBlank() }
+    if (error != null) return ResultadoNotasCita.Error(error, codigo)
+    return ResultadoNotasCita.Error(
+        when (status) {
+            401 -> "Tu sesión expiró. Vuelve a entrar."
+            403 -> "No tienes permiso para editar citas."
+            else -> ERROR_GUARDAR_OBSERVACIONES
+        },
+        codigo,
     )
 }

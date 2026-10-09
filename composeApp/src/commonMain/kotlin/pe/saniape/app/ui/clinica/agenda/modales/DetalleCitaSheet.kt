@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -26,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,16 +36,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import pe.saniape.app.data.staff.AgendaRepo
 import pe.saniape.app.data.staff.BloqueDetalleCita
 import pe.saniape.app.data.staff.CitaStaff
 import pe.saniape.app.data.staff.DatosDetalleCita
 import pe.saniape.app.data.staff.FlujoClinica
 import pe.saniape.app.data.staff.LocalTerminologiaPaciente
+import pe.saniape.app.data.staff.OBSERVACIONES_MAX
+import pe.saniape.app.data.staff.PLACEHOLDER_OBSERVACIONES
+import pe.saniape.app.data.staff.ResultadoNotasCita
+import pe.saniape.app.data.staff.normalizarNotasCita
 import pe.saniape.app.data.staff.bloquesDetalleCita
 import pe.saniape.app.data.staff.fechaLegibleCorta
 import pe.saniape.app.data.staff.monedaDeFila
+import pe.saniape.app.ui.Toaster
 import pe.saniape.app.ui.clinica.agenda.componentes.BadgeEstadoCita
+import pe.saniape.app.ui.clinica.pacientes.DialogoForm
+import pe.saniape.app.ui.clinica.pacientes.coloresCampoForm
 import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.recordarAcciones
 import pe.saniape.app.ui.theme.Sania
@@ -53,7 +63,10 @@ import pe.saniape.app.ui.theme.Sania
  * /citas web): cuándo, con quién y — cargado al abrir, por id — las observaciones
  * de la cita (con "📍 Abrir en Maps" si son una dirección: atención a domicilio)
  * y, para quien atiende ([verClinico]), el diagnóstico y las notas de la sesión.
- * Las acciones siguen en la tarjeta: aquí no se duplica la lógica.
+ * Las observaciones se ven SIEMPRE (vacías: "Sin observaciones") y, con
+ * [puedeEditarNotas], se agregan/editan aquí mismo (PATCH /api/staff/cita/notas,
+ * como el popup de la web); al guardar se avisa con [onNotasGuardadas].
+ * Las demás acciones siguen en la tarjeta: aquí no se duplica la lógica.
  */
 @Composable
 fun DetalleCitaSheet(
@@ -63,11 +76,18 @@ fun DetalleCitaSheet(
     verClinico: Boolean,
     onCerrar: () -> Unit,
     onVerResumen: ((String) -> Unit)?,
+    puedeEditarNotas: Boolean = false,
+    onNotasGuardadas: (String?) -> Unit = {},
 ) {
     val c = Sania.colors
     var cargando by remember(cita.id) { mutableStateOf(true) }
     var datos by remember(cita.id) { mutableStateOf<DatosDetalleCita?>(null) }
     var fallo by remember(cita.id) { mutableStateOf(false) }
+    // Edición de las observaciones (diálogo con teclado encima del detalle).
+    var editando by remember(cita.id) { mutableStateOf(false) }
+    var borrador by remember(cita.id) { mutableStateOf("") }
+    var guardando by remember(cita.id) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(cita.id, verClinico) {
         cargando = true
@@ -119,7 +139,11 @@ fun DetalleCitaSheet(
                     }
                     fallo -> Text("Sin conexión: no se pudieron cargar las observaciones.",
                         color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = Sania.dim.md))
-                    else -> bloques.forEach { Bloque(it) }
+                    else -> bloques.forEach { b ->
+                        Bloque(b, onEditar = if (puedeEditarNotas && b is BloqueDetalleCita.Observaciones) {
+                            { borrador = datos?.notas.orEmpty(); editando = true }
+                        } else null)
+                    }
                 }
             }
         },
@@ -135,6 +159,51 @@ fun DetalleCitaSheet(
         containerColor = c.superficie,
         shape = RoundedCornerShape(Sania.shape.lg.dp),
     )
+
+    if (editando) {
+        val actuales = datos?.notas
+        DialogoForm(
+            titulo = if (actuales.isNullOrBlank()) "Agregar observaciones" else "Editar observaciones",
+            subtitulo = cita.pacienteNombre,
+            textoAccion = if (guardando) "Guardando…" else "Guardar",
+            accionHabilitada = !guardando,
+            onCancelar = { if (!guardando) editando = false },
+            onAccion = {
+                val nuevas = normalizarNotasCita(borrador)
+                // Sin cambios: se cierra sin escribir (como la web).
+                if (nuevas == normalizarNotasCita(actuales)) {
+                    editando = false
+                } else {
+                    guardando = true
+                    scope.launch {
+                        when (val r = AgendaRepo.guardarNotasCita(cita.id, nuevas)) {
+                            is ResultadoNotasCita.Ok -> {
+                                // Lo que devolvió el servidor (ya normalizado) refresca el detalle.
+                                datos = (datos ?: DatosDetalleCita()).copy(notas = r.notas)
+                                editando = false
+                                Toaster.exito("Observaciones guardadas")
+                                onNotasGuardadas(r.notas)
+                            }
+                            // El texto se conserva en el diálogo para reintentar.
+                            is ResultadoNotasCita.Error -> Toaster.error(r.mensaje)
+                        }
+                        guardando = false
+                    }
+                }
+            },
+        ) {
+            OutlinedTextField(
+                value = borrador,
+                onValueChange = { borrador = it.take(OBSERVACIONES_MAX) },
+                enabled = !guardando,
+                colors = coloresCampoForm(), singleLine = false, minLines = 4,
+                placeholder = { Text(PLACEHOLDER_OBSERVACIONES, color = c.textoSuave, fontSize = 13.sp) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text("${borrador.length}/$OBSERVACIONES_MAX", color = c.textoSuave, fontSize = 11.sp,
+                modifier = Modifier.align(Alignment.End).padding(top = 4.dp))
+        }
+    }
 }
 
 @Composable
@@ -148,20 +217,29 @@ private fun Dato(etiqueta: String, valor: String, suave: Boolean = false) {
 }
 
 @Composable
-private fun Seccion(titulo: String, contenido: @Composable () -> Unit) {
+private fun Seccion(titulo: String, accion: (@Composable () -> Unit)? = null, contenido: @Composable () -> Unit) {
     val c = Sania.colors
     Column(Modifier.fillMaxWidth().padding(top = Sania.dim.md)) {
-        Text(titulo, color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 6.dp))
+        Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(titulo, color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f))
+            accion?.invoke()
+        }
         contenido()
     }
 }
 
 @Composable
-private fun Bloque(b: BloqueDetalleCita) {
+private fun Bloque(b: BloqueDetalleCita, onEditar: (() -> Unit)? = null) {
     val c = Sania.colors
     when (b) {
-        is BloqueDetalleCita.Observaciones -> Seccion("OBSERVACIONES") {
+        is BloqueDetalleCita.Observaciones -> Seccion("OBSERVACIONES", accion = onEditar?.let { editar ->
+            {
+                Text("✏️ ${b.accion}", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).clickable { editar() }
+                        .padding(horizontal = 8.dp, vertical = 4.dp))
+            }
+        }) {
             var expandido by remember(b.texto) { mutableStateOf(false) }
             val acciones = recordarAcciones()
             Column(Modifier.fillMaxWidth()) {
@@ -184,7 +262,7 @@ private fun Bloque(b: BloqueDetalleCita) {
                     }
                 }
                 // El texto completo (con sus saltos de línea), salvo que sea solo la dirección.
-                if (b.direccion == null || b.texto.trim().trimEnd('.') != b.direccion) {
+                if (b.mostrarTexto) {
                     if (b.direccion != null) Spacer(Modifier.height(8.dp))
                     Text(b.texto, color = c.texto, fontSize = Sania.txt.cuerpo,
                         maxLines = if (b.largo && !expandido) 4 else Int.MAX_VALUE,
@@ -194,6 +272,11 @@ private fun Bloque(b: BloqueDetalleCita) {
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(top = 4.dp).clickable { expandido = !expandido })
                     }
+                }
+                // Vacías (o solo la dirección): se dice, para que se vea dónde anotar.
+                b.textoVacio?.let {
+                    if (b.direccion != null) Spacer(Modifier.height(8.dp))
+                    Text(it, color = c.textoSuave, fontSize = Sania.txt.cuerpo)
                 }
             }
         }

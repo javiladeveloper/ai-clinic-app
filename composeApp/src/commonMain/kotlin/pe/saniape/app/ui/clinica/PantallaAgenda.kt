@@ -976,6 +976,11 @@ fun PantallaAgenda(
             verClinico = pe.saniape.app.data.staff.veClinicoEnDetalleCita(ctx.puede("sesiones")),
             onCerrar = { detalleCita = null },
             onVerResumen = { pid -> detalleCita = null; resumenPacienteId = pid },
+            // Como la web: permiso `citas`. La app no recibe el flag de solo
+            // lectura (soporte): el servidor lo corta con 403 SOLO_LECTURA.
+            puedeEditarNotas = pe.saniape.app.data.staff.puedeEditarObservaciones(ctx.puede("citas")),
+            // Tras guardar, la agenda se recarga (tarjetas y banners al día).
+            onNotasGuardadas = { vm.refrescar() },
         )
     }
 

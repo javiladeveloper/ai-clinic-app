@@ -85,8 +85,101 @@ class DetalleCitaTest {
 
     @Test
     fun sinDatosNoSePintaNada() {
+        // Cargando o sin red: el detalle muestra su aviso, no bloques.
         assertTrue(bloquesDetalleCita("Sesión", false, null, verClinico = true).isEmpty())
-        assertTrue(bloquesDetalleCita("Sesión", false, DatosDetalleCita(), verClinico = true).isEmpty())
+    }
+
+    // ── Observaciones siempre visibles + editables ──
+
+    @Test
+    fun observacionesVaciasSeVenIgual() {
+        val b = bloquesDetalleCita("Sesión", false, DatosDetalleCita(), verClinico = true)
+        assertEquals(1, b.size)
+        val obs = assertIs<BloqueDetalleCita.Observaciones>(b[0])
+        assertEquals("", obs.texto)
+        assertFalse(obs.mostrarTexto)
+        assertEquals("Sin observaciones", obs.textoVacio)
+        assertEquals("Agregar", obs.accion)
+        assertNull(obs.direccion)
+        // Solo espacios = vacías.
+        assertEquals("Sin observaciones", bloqueObservaciones("   \n ").textoVacio)
+    }
+
+    @Test
+    fun observacionesConTextoSeEditan() {
+        val obs = bloqueObservaciones("Trae RX de columna")
+        assertTrue(obs.mostrarTexto)
+        assertNull(obs.textoVacio)
+        assertEquals("Editar", obs.accion)
+    }
+
+    @Test
+    fun soloLaDireccionDiceSinOtrasObservaciones() {
+        val obs = bloqueObservaciones("Av. Bolognesi 123.")
+        assertEquals("Av. Bolognesi 123", obs.direccion)
+        assertFalse(obs.mostrarTexto)
+        assertEquals("Sin otras observaciones", obs.textoVacio)
+        assertEquals("Editar", obs.accion)
+        // Dirección + algo más: se ve el texto y no hay "Sin otras…".
+        val mixta = bloqueObservaciones("Av. Bolognesi 123\nTocar el timbre 2 veces")
+        assertTrue(mixta.mostrarTexto)
+        assertNull(mixta.textoVacio)
+    }
+
+    @Test
+    fun accionYPermisoComoLaWeb() {
+        assertEquals("Agregar", accionObservaciones(null))
+        assertEquals("Agregar", accionObservaciones("  "))
+        assertEquals("Editar", accionObservaciones("x"))
+        assertTrue(puedeEditarObservaciones(puedeCitas = true))
+        assertFalse(puedeEditarObservaciones(puedeCitas = false))
+        assertFalse(puedeEditarObservaciones(puedeCitas = true, soloLectura = true))
+    }
+
+    @Test
+    fun normalizaYArmaElCuerpo() {
+        assertNull(normalizarNotasCita(null))
+        assertNull(normalizarNotasCita("  \n  "))
+        assertEquals("Línea 1\nLínea 2", normalizarNotasCita("  Línea 1\r\nLínea 2 \n"))
+        val c = cuerpoNotasCita("c-1", "  Av. Grau 1 ")
+        assertEquals("""{"citaId":"c-1","notas":"Av. Grau 1"}""", c.toString())
+        // Vacío = borrar: notas null explícito.
+        assertEquals("""{"citaId":"c-1","notas":null}""", cuerpoNotasCita("c-1", "").toString())
+        assertEquals(2000, OBSERVACIONES_MAX)
+    }
+
+    @Test
+    fun parseaLaRespuestaOk() {
+        assertEquals(ResultadoNotasCita.Ok("Av. Grau 1"),
+            parsearRespuestaNotasCita(200, """{"ok":true,"notas":"Av. Grau 1"}"""))
+        assertEquals(ResultadoNotasCita.Ok(null), parsearRespuestaNotasCita(200, """{"ok":true,"notas":null}"""))
+        assertEquals(ResultadoNotasCita.Ok(null), parsearRespuestaNotasCita(200, """{"ok":true}"""))
+    }
+
+    @Test
+    fun parseaLosErroresDelServidor() {
+        assertEquals(ResultadoNotasCita.Error("Cita no encontrada", "CITA_NO_ENCONTRADA"),
+            parsearRespuestaNotasCita(404, """{"error":"Cita no encontrada","codigo":"CITA_NO_ENCONTRADA"}"""))
+        assertEquals(ResultadoNotasCita.Error("Modo solo lectura: no puedes modificar datos", "SOLO_LECTURA"),
+            parsearRespuestaNotasCita(403, """{"error":"Modo solo lectura: no puedes modificar datos","codigo":"SOLO_LECTURA"}"""))
+        val firmada = parsearRespuestaNotasCita(409, """{"error":"La atención ya está firmada","codigo":"ATENCION_FIRMADA"}""")
+        assertEquals("ATENCION_FIRMADA", (firmada as ResultadoNotasCita.Error).codigo)
+        assertEquals("NOTAS_MUY_LARGAS", (parsearRespuestaNotasCita(400,
+            """{"error":"Las observaciones no pueden pasar de 2000 caracteres","codigo":"NOTAS_MUY_LARGAS"}""")
+            as ResultadoNotasCita.Error).codigo)
+    }
+
+    @Test
+    fun servidorViejoSinEndpointNoRompe() {
+        // Un servidor sin el endpoint responde 404/405 con HTML o vacío: error genérico.
+        assertEquals(ResultadoNotasCita.Error(ERROR_GUARDAR_OBSERVACIONES),
+            parsearRespuestaNotasCita(404, "<!DOCTYPE html><html>404</html>"))
+        assertEquals(ResultadoNotasCita.Error(ERROR_GUARDAR_OBSERVACIONES), parsearRespuestaNotasCita(405, ""))
+        assertEquals(ResultadoNotasCita.Error(ERROR_GUARDAR_OBSERVACIONES), parsearRespuestaNotasCita(500, null))
+        assertEquals("Tu sesión expiró. Vuelve a entrar.",
+            (parsearRespuestaNotasCita(401, "") as ResultadoNotasCita.Error).mensaje)
+        // 200 que no es JSON tampoco cuenta como guardado.
+        assertIs<ResultadoNotasCita.Error>(parsearRespuestaNotasCita(200, "<html></html>"))
     }
 
     @Test
