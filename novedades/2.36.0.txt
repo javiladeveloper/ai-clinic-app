@@ -6,4 +6,3 @@ Clínicas:
 • Agenda: toca una cita para ver su detalle — estado, paciente, fecha y hora, profesional y servicio.
 • Observaciones de la cita a la vista. Si anotaste una dirección (atención a domicilio), aparece destacada con "📍 Abrir en Maps".
 • Para quien atiende: el diagnóstico y las notas de la sesión en el mismo detalle.
-• Documentos extranjeros: un pasaporte o carné ya no aparece rotulado como "DNI".
