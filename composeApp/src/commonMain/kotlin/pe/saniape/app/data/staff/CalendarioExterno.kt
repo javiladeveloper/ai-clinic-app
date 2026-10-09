@@ -10,9 +10,10 @@ import kotlinx.serialization.json.intOrNull
 
 /**
  * Agenda traída de Google Calendar (o de un .ics) — estado para Más → Ajustes.
- * Gemelo de GET /api/staff/calendario (web). La conexión con Google y la vista
- * previa se hacen en la web (Google no deja autorizar dentro de la app); acá se
- * ve cómo va y se pide "Sincronizar ahora".
+ * Gemelo de GET /api/staff/calendario (web). La autorización con Google se hace
+ * en el navegador (Google no deja autorizar dentro de la app); elegir los
+ * calendarios, la vista previa y la importación son nativas y usan los mismos
+ * endpoints que la web (ver CalendarioVistaPrevia.kt).
  */
 data class CuentaCalendario(val id: String, val cuenta: String, val activa: Boolean, val error: String?)
 
@@ -34,7 +35,22 @@ data class CalendarioTraido(
     val enCurso: Boolean = false,
     /** "Enviar recordatorios a los pacientes" (WhatsApp). Apagado por defecto. */
     val recordatoriosPacientes: Boolean = false,
+    val conexionId: String = "",
+    val calendarioId: String = "",
+    val terapeutaId: String? = null,
+    /** Ajustes guardados de la fuente (punto de partida de la vista previa). */
+    val config: ConfigFuenteCal = ConfigFuenteCal(),
 )
+
+/** Un calendario de la cuenta de Google (GET /api/staff/calendario/calendarios). */
+data class CalendarioGoogle(val id: String, val nombre: String, val principal: Boolean, val color: String?, val rol: String)
+
+fun calendariosGoogleDe(o: JsonObject): List<CalendarioGoogle> = o.lista("calendarios").map {
+    CalendarioGoogle(
+        id = it.txt("id") ?: "", nombre = it.txt("nombre") ?: (it.txt("id") ?: "Calendario"),
+        principal = it.bool("principal"), color = it.txt("color"), rol = it.txt("rol") ?: "reader",
+    )
+}.filter { it.id.isNotEmpty() }
 
 data class EstadoCalendarioExterno(
     val disponible: Boolean,
@@ -67,6 +83,10 @@ fun estadoCalendarioDe(o: JsonObject): EstadoCalendarioExterno = EstadoCalendari
             porRevisar = it.ent("porRevisar"),
             enCurso = it.txt("importacion_estado") == "en_curso",
             recordatoriosPacientes = (it["config"] as? JsonObject)?.bool("recordatoriosPacientes") == true,
+            conexionId = it.txt("conexion_id") ?: "",
+            calendarioId = it.txt("calendario_id") ?: "",
+            terapeutaId = it.txt("terapeuta_id"),
+            config = configFuenteDe(it["config"] as? JsonObject),
         )
     },
 )
@@ -82,3 +102,34 @@ fun haceCuanto(isoMs: Long?, ahoraMs: Long): String {
     val d = (h + 12) / 24
     return if (d == 1L) "hace 1 día" else "hace $d días"
 }
+
+/**
+ * La línea de estado de un calendario en "Tus calendarios en Sania" (mismos
+ * textos que la web, app/(app)/configuracion/calendario/page.tsx).
+ */
+fun textoEstadoFuente(f: CalendarioTraido, hace: String): String {
+    val base = when {
+        f.enCurso -> "Importando… ${f.citas} citas hasta ahora (avanza sola cada 10 min)"
+        f.importadoEn == null -> "Falta revisar e importar"
+        f.esIcs -> "Importado $hace · ${f.citas} citas"
+        else -> "Sincronizado $hace · ${f.citas} ${if (f.citas == 1) "cita importada" else "citas importadas"}"
+    }
+    val pend = if (f.sinCupo <= 0) "" else if (f.esIcs)
+        " · ${f.sinCupo} sin cupo (vuelve a subir el archivo tras revisar el horario)"
+    else " · ${f.sinCupo} sin cupo o pendientes (se reintentan solas, cada vez con más espera)"
+    val rev = if (f.porRevisar > 0) " · ${f.porRevisar} por revisar" else ""
+    return base + pend + rev
+}
+
+/** Gemelo de textoQuitarFuente() de la web (lib/calendario/textos.ts). */
+data class TextoQuitarFuente(val boton: String, val confirmar: String, val ayuda: String)
+
+fun textoQuitarFuente(nombre: String, esIcs: Boolean): TextoQuitarFuente = if (esIcs) TextoQuitarFuente(
+    boton = "Quitar archivo",
+    confirmar = "¿Quitar el archivo \"$nombre\" de la lista? Las citas que ya se importaron se quedan en la agenda.",
+    ayuda = "Al quitarlo, las citas ya importadas se quedan en la agenda.",
+) else TextoQuitarFuente(
+    boton = "Dejar de traer",
+    confirmar = "¿Dejar de traer \"$nombre\"? Las citas que ya se importaron se quedan en la agenda; solo deja de sincronizar.",
+    ayuda = "Al dejar de traerlo, las citas ya importadas se quedan en la agenda.",
+)
