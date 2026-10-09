@@ -127,13 +127,15 @@ object AltaRapidaRepo {
      * agendarle la cita ya). Directo, no por la cola: sin id real no hay cita.
      * El endpoint deduplica por DNI: si otro lo creó entre medias, devuelve ese.
      */
-    suspend fun registrar(nombre: String, documento: String): ResultadoAltaRapida = try {
+    suspend fun registrar(nombre: String, documento: String, tipoDocumento: String? = null): ResultadoAltaRapida = try {
         val tk = token() ?: return ResultadoAltaRapida(null, error = "Sesión vencida. Vuelve a entrar.")
         // Pacientes por sede: nace en la sede activa (igual que el alta completa).
         val sede = SedeActiva.estado.value.let { sedeParaPacienteNuevo(it.pacientesPorSede, it.filtro?.sedeId) }
         val cuerpo = buildJsonObject {
             put("nombre", nombre.trim())
             put("dni", documento.trim())
+            // Tipo del documento (pasaporte, carné, CI…); sin tipo = el del país.
+            tipoDocumentoAGuardar(tipoDocumento, documento)?.let { put("tipo_documento", it) }
             put("fecha_ingreso", hoyClinicaIso())
             if (sede != null) put("sede_id", sede)
             put("idempotency_key", "alta-rapida:${documento.trim()}:${nuevaIdemKey()}")

@@ -796,6 +796,9 @@ internal fun SeccionComercial(d: JsonObject, onVolver: () -> Unit, onCambio: () 
     // La moneda de la clínica (clinicas.moneda) ya no va en "comercial": la cambia
     // SOLO el Admin con PATCH /api/staff/clinica/regional (el servidor la protege).
     var moneda by remember { mutableStateOf(cfg.t("moneda").ifBlank { "PEN" }) }
+    // País y zona horaria de la clínica: mismo endpoint y mismo candado (solo Admin).
+    var pais by remember { mutableStateOf(cfg.t("pais").ifBlank { "PE" }) }
+    var zona by remember { mutableStateOf(cfg.t("zona").ifBlank { "America/Lima" }) }
     var cambiandoMoneda by remember { mutableStateOf(false) }
     val puedeCambiarMoneda = d.b("esAdmin") && !d.b("soloLectura") &&
         (pe.saniape.app.data.staff.StaffContextoRepo.actual?.esAdmin ?: true)
@@ -823,6 +826,59 @@ internal fun SeccionComercial(d: JsonObject, onVolver: () -> Unit, onCambio: () 
         }
     }
 
+    /** Aplica lo que respondió el servidor y refresca el contexto regional de la app. */
+    suspend fun aplicarRegional(cuerpo: JsonObject?) {
+        cuerpo?.t("pais")?.ifBlank { null }?.let { pais = it }
+        cuerpo?.t("moneda")?.ifBlank { null }?.let { moneda = it }
+        cuerpo?.t("zona")?.ifBlank { null }?.let { zona = it }
+        runCatching { pe.saniape.app.data.staff.StaffContextoRepo.cargar() }
+        onCambio()
+    }
+
+    /**
+     * Elegir el país: se proponen su moneda y su zona (y se guardan juntas). Con
+     * cobros registrados la moneda no cambia (409 MONEDA_CON_COBROS): se guardan
+     * el país y la zona solos y se dice claro que la moneda quedó como estaba.
+     */
+    fun cambiarPais(nuevo: String) {
+        if (nuevo == pais || cambiandoMoneda) return
+        val cambios = pe.saniape.app.data.staff.cambiosPaisClinica(pais, moneda, zona, nuevo)
+        if (cambios.isEmpty()) return
+        cambiandoMoneda = true
+        scope.launch {
+            val r = pe.saniape.app.ui.conIndicador {
+                AjustesRepo.cambiarRegionalClinica(buildJsonObject { cambios.forEach { (k, v) -> put(k, v) } })
+            }
+            if (r.registrada) {
+                aplicarRegional(r.cuerpo)
+                Toaster.exito("País actualizado")
+            } else if (r.rechazo?.codigo == "MONEDA_CON_COBROS" && ("pais" in cambios || "zona" in cambios)) {
+                val r2 = guardarAjuste(porDefecto = "No se pudo cambiar el país ni la zona horaria.") {
+                    AjustesRepo.cambiarRegionalClinica(buildJsonObject { cambios.filterKeys { it != "moneda" }.forEach { (k, v) -> put(k, v) } })
+                }
+                if (r2.registrada) {
+                    aplicarRegional(r2.cuerpo)
+                    Toaster.exito("País y zona guardados. La moneda sigue en $moneda: ya hay cobros registrados y cambiarla no convierte los montos.")
+                }
+            } else {
+                Toaster.error(r.rechazo?.error ?: "No se pudo cambiar el país.")
+            }
+            cambiandoMoneda = false
+        }
+    }
+
+    fun cambiarZona(nueva: String) {
+        if (nueva == zona || cambiandoMoneda) return
+        cambiandoMoneda = true
+        scope.launch {
+            val r = guardarAjuste(porDefecto = "No se pudo cambiar la zona horaria.") {
+                AjustesRepo.cambiarRegionalClinica(buildJsonObject { put("zona", nueva) })
+            }
+            if (r.registrada) { aplicarRegional(r.cuerpo); Toaster.exito("Zona horaria actualizada") }
+            cambiandoMoneda = false
+        }
+    }
+
     SubPantalla("Perfil comercial", onVolver) {
         Tarjeta {
             Campo("Razón social", razon, { razon = it }, max = 200)
@@ -836,6 +892,19 @@ internal fun SeccionComercial(d: JsonObject, onVolver: () -> Unit, onCambio: () 
                 ChipsEleccion(monedas, moneda, deshabilitados = monedas.map { it.first }.toSet()) { }
                 Ayuda("Solo el administrador puede cambiarla.")
             }
+            // País y zona horaria (multipaís). Solo el Admin.
+            val paises = pe.saniape.app.data.staff.PAISES_SOPORTADOS.map { it.codigo to it.nombre }
+                .let { l -> if (l.none { it.first == pais }) l + (pais to pais) else l }
+            val zonas = pe.saniape.app.data.staff.zonasDePais(pais, zona).map { it to it }
+            val bloqueados = !puedeCambiarMoneda || cambiandoMoneda
+            EtqForm("País")
+            ChipsEleccion(paises, pais, deshabilitados = if (bloqueados) paises.map { it.first }.toSet() else emptySet()) { cambiarPais(it) }
+            EtqForm("Zona horaria")
+            ChipsEleccion(zonas, zona, deshabilitados = if (bloqueados) zonas.map { it.first }.toSet() else emptySet()) { cambiarZona(it) }
+            Ayuda(
+                if (puedeCambiarMoneda) "El país define el documento de tus pacientes (DNI, CI…), el prefijo de los teléfonos y los métodos de pago sugeridos. Al elegirlo se proponen su moneda y su zona horaria; puedes cambiarlas. Si tienes sedes en otros países, cada sede tiene lo suyo (Ajustes → Sedes)."
+                else "Solo el administrador puede cambiar el país y la zona horaria."
+            )
         }
         Boton(if (guardando) "Guardando…" else "Guardar perfil comercial", habilitado = !guardando) {
             guardando = true

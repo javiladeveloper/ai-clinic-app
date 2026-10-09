@@ -251,6 +251,28 @@ fun errorRegionalSede(v: RegionalSedeForm): String? {
     return null
 }
 
+/** Zonas que se ofrecen para un país (la guardada, aunque no esté en el catálogo, también). */
+fun zonasDePais(codigo: String?, zonaActual: String? = null): List<String> {
+    val zonas = paisPorCodigo(codigo)?.zonas ?: ZONAS_SOPORTADAS
+    val z = zonaActual?.trim().orEmpty()
+    return if (z.isNotEmpty() && z !in zonas) listOf(z) + zonas else zonas
+}
+
+/**
+ * País/moneda/zona de la CLÍNICA (Ajustes → Perfil comercial): lo que se manda a
+ * PATCH /api/staff/clinica/regional — solo lo que cambia. Al elegir un país se
+ * proponen su moneda y su primera zona (gemelo de proponerRegionalDePais +
+ * cambiosRegionalClinica de lib/multipais.ts).
+ */
+fun cambiosPaisClinica(paisActual: String, monedaActual: String, zonaActual: String, nuevoPais: String): Map<String, String> {
+    val p = paisPorCodigo(nuevoPais) ?: return emptyMap()
+    val out = linkedMapOf<String, String>()
+    if (p.codigo != paisActual.trim().uppercase()) out["pais"] = p.codigo
+    if (p.moneda != monedaActual.trim().uppercase()) out["moneda"] = p.moneda
+    if (p.zonas.first() != zonaActual.trim()) out["zona"] = p.zonas.first()
+    return out
+}
+
 /** "soles", "bolivianos", "dólares"… para textos como "Descuento en soles". */
 fun nombreMonedaPlural(moneda: String? = MONEDA_POR_DEFECTO): String = when (normalizarMoneda(moneda)) {
     "PEN" -> "soles"
@@ -268,18 +290,7 @@ fun banderaPais(pais: String?): String {
     return p.map { ch -> "\uD83C" + (0xDDE6 + (ch - 'A')).toChar() }.joinToString("")
 }
 
-/**
- * Documentos que se ofrecen al registrar un paciente, el primero por defecto.
- * Perú: DNI (busca en RENIEC) / RUT / pasaporte, como siempre. Otro país: su
- * documento nacional (Bolivia: CI) y pasaporte, sin búsqueda en RENIEC.
- */
-fun opcionesDocumento(pais: String?): List<Pair<String, String>> {
-    val p = pais?.trim()?.uppercase().orEmpty().ifEmpty { PAIS_POR_DEFECTO }
-    return when (p) {
-        PAIS_POR_DEFECTO -> listOf("PE" to "🇵🇪 DNI", "CL" to "🇨🇱 RUT", "OTRO" to "🌎 Pasaporte")
-        else -> listOf(p to "${banderaPais(p)} ${nombreDocumentoNacional(p)}", "OTRO" to "🌎 Pasaporte")
-    }
-}
+// opcionesDocumento(): ver TiposDocumento.kt (tipos que se guardan en pacientes.tipo_documento).
 
 /** [enlaceWhatsApp] con el país de la sede activa (mismo orden de parámetros). Perú: idéntico. */
 fun enlaceWhatsAppSede(contacto: String?, texto: String? = null, pais: String? = paisActivo()): String? =

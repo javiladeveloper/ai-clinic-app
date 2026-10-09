@@ -662,6 +662,8 @@ object PacientesRepo {
         apoderado: DatosApoderado = DatosApoderado(),
         /** YYYY-MM-DD. Se manda siempre: un alta sin señal que sincroniza mañana ingresó HOY. */
         fechaIngreso: String? = null,
+        /** pacientes.tipo_documento ('DNI', 'Pasaporte'…; "" / null = el del país). */
+        tipoDocumento: String? = null,
     ): PacienteStaff? {
         // Se ENCOLA contra /api/staff/paciente/crear (que hace dedup por DNI e
         // idempotencia) en vez de insertar directo: así no se pierde sin señal ni
@@ -673,6 +675,7 @@ object PacientesRepo {
         val cuerpo = buildJsonObject {
             put("nombre", nombre.trim())
             textoOpc("dni", dni)
+            textoOpc("tipo_documento", tipoDocumentoAGuardar(tipoDocumento, dni))
             textoOpc("telefono", telefono)
             if (edad != null) put("edad", edad)
             textoOpc("diagnostico", diagnostico)
@@ -761,6 +764,9 @@ object PacientesRepo {
         apoderado: DatosApoderado? = null,
         /** YYYY-MM-DD; null = no se toca (DALU 2026-10-07: corregir el ingreso). */
         fechaIngreso: String? = null,
+        /** true = se escribe [tipoDocumento] (con [dni]); false = no se toca. */
+        tocarTipoDocumento: Boolean = false,
+        tipoDocumento: String? = null,
     ): Boolean = try {
         Supabase.client.postgrest["pacientes"].update({
             set("nombre", nombre)
@@ -780,9 +786,22 @@ object PacientesRepo {
             }
             if (apoderado != null) setApoderado(apoderado)
             if (fechaIngreso != null) set("fecha_ingreso", fechaIngreso)
+            if (tocarTipoDocumento) set("tipo_documento", tipoDocumentoAGuardar(tipoDocumento, dni))
         }) { filter { eq("id", id) } }
         true
     } catch (_: Exception) { false }
+
+    /**
+     * pacientes.tipo_documento de un paciente (null = el del país, o si la base
+     * todavía no tiene la columna). Lectura aparte, a prueba de fallos: el
+     * listado de pacientes no depende de ella.
+     */
+    suspend fun tipoDocumentoDe(id: String): String? = runCatching {
+        Supabase.client.postgrest["pacientes"]
+            .select(Columns.raw("tipo_documento")) { filter { eq("id", id) } }
+            .decodeList<JsonObject>().firstOrNull()
+            ?.let { (it["tipo_documento"] as? JsonPrimitive)?.content?.takeIf { s -> s != "null" && s.isNotBlank() } }
+    }.getOrNull()
 
     private fun io.github.jan.supabase.postgrest.query.PostgrestUpdate.setApoderado(d: DatosApoderado) {
         fun txt(k: String, v: String) = set(k, v.trim().ifBlank { null })

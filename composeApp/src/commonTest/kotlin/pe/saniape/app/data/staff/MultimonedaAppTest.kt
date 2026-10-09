@@ -236,9 +236,9 @@ class MultimonedaAppTest {
         assertFalse(usaReniec("BO"))
         assertEquals("DNI", nombreDocumentoNacional("PE"))
         assertEquals("CI", nombreDocumentoNacional("BO"))
-        assertEquals(listOf("PE", "CL", "OTRO"), opcionesDocumento("PE").map { it.first })
+        assertEquals(listOf("DNI", "RUT", "Pasaporte"), opcionesDocumento("PE").map { it.first })
         assertEquals("🇵🇪 DNI", opcionesDocumento(null).first().second)
-        assertEquals(listOf("BO", "OTRO"), opcionesDocumento("BO").map { it.first })
+        assertEquals(listOf("CI", "Pasaporte"), opcionesDocumento("BO").map { it.first })
         assertEquals("🇧🇴 CI", opcionesDocumento("BO").first().second)
         assertEquals("🇧🇴", banderaPais("bo"))
     }

@@ -50,6 +50,7 @@ import pe.saniape.app.data.staff.PacienteStaff
 import pe.saniape.app.data.staff.PacientesRepo
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.tutoriales.tourAncla
+import androidx.compose.foundation.layout.FlowRow
 
 /**
  * Alta de paciente desde la app — PARIDAD con PacienteForm de la web (2026-09-02: la
@@ -59,6 +60,7 @@ import pe.saniape.app.tutoriales.tourAncla
  * fichas duplicadas). Anti-duplicados por documento antes de crear. Los antecedentes
  * clínicos van colapsados para que el alta rápida siga siendo rápida.
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun ModalNuevoPaciente(
     onCancelar: () -> Unit,
@@ -71,7 +73,13 @@ fun ModalNuevoPaciente(
     // 8 dígitos solo en Perú; en Bolivia es el CI). Perú: igual que siempre.
     val paisSede = remember { pe.saniape.app.data.staff.paisActivo() }
     val opcionesDoc = remember(paisSede) { pe.saniape.app.data.staff.opcionesDocumento(paisSede) }
-    var paisDoc by remember { mutableStateOf(opcionesDoc.first().first) }         // PE / CL / BO… / OTRO
+    // Los demás tipos (carné de extranjería, CI, otro…), detrás de "Otro tipo".
+    val extrasDoc = remember(paisSede) { pe.saniape.app.data.staff.opcionesDocumentoExtra(paisSede) }
+    // Tipo elegido = lo que se guarda en pacientes.tipo_documento (DNI / RUT /
+    // Pasaporte / CI / Carné de extranjería / Otro; "" = nacional genérico → NULL).
+    var paisDoc by remember { mutableStateOf(opcionesDoc.first().first) }
+    var verOtrosTipos by remember { mutableStateOf(false) }
+    val esDniPeruano = paisDoc == "DNI"
     var sinDocumento by remember { mutableStateOf(false) }
     var dni by remember { mutableStateOf("") }
     var nombre by remember { mutableStateOf("") }
@@ -112,7 +120,8 @@ fun ModalNuevoPaciente(
     fun cargarFichaBaja(f: FichaDeBaja) {
         fun vacio(v: String) = v.isBlank()
         if (vacio(nombre)) nombre = f.nombre
-        f.dni?.let { d -> dni = d; paisDoc = if (pe.saniape.app.data.staff.usaReniec(paisSede)) { if (d.length == 8 && d.all { it.isDigit() }) "PE" else "CL" } else paisSede; sinDocumento = false }
+        f.dni?.let { d -> dni = d; paisDoc = pe.saniape.app.data.staff.deducirTipoDocumento(d, paisSede, f.tipoDocumento); sinDocumento = false }
+        if (paisDoc in extrasDoc.map { it.first }) verOtrosTipos = true
         if (vacio(telefono)) f.telefono?.let { telefono = it }
         if (vacio(edad)) f.edad?.let { edad = it.toString() }
         if (vacio(email)) f.email?.let { email = it }
@@ -159,7 +168,7 @@ fun ModalNuevoPaciente(
 
     fun buscarDni() {
         val d = dni.trim()
-        if (paisDoc != "PE" || d.length != 8 || buscandoDni) return
+        if (!pe.saniape.app.data.staff.buscaPadronDoc(paisSede, paisDoc) || d.length != 8 || buscandoDni) return
         buscandoDni = true; avisoDni = null; existente = null
         scope.launch {
             // 1) ¿Ya existe en la clínica? (anti-duplicados)
@@ -209,6 +218,7 @@ fun ModalNuevoPaciente(
                         t("medicacion_actual", medicacion); t("tipo_patologia", tipoPatologia)
                         t("flag", flag)
                         if (fb.dni == null && !sinDocumento) t("dni", dni)
+                        if (!sinDocumento) pe.saniape.app.data.staff.tipoDocumentoAGuardar(paisDoc, fb.dni ?: dni)?.let { put("tipo_documento", it) }
                         edad.toIntOrNull()?.let { put("edad", it) }
                         talla.toIntOrNull()?.takeIf { it > 0 }?.let { put("talla", it) }
                         peso.toDoubleOrNull()?.takeIf { it > 0 }?.let { put("peso", it) }
@@ -250,6 +260,7 @@ fun ModalNuevoPaciente(
                     patologias = sintomas.split(",").map { it.trim() }.filter { it.isNotBlank() },
                     tipoPatologia = tipoPatologia.trim().ifBlank { null },
                     apoderado = apoderado,
+                    tipoDocumento = paisDoc,
                 )
                 guardando = false
                 if (creado != null) {
@@ -264,19 +275,31 @@ fun ModalNuevoPaciente(
             // País del documento: define cómo se valida y si se busca en el padrón
             // (el padrón es peruano — para RUT/pasaporte no hay búsqueda).
             EtqForm("Documento")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                opcionesDoc.forEach { (v, etq) ->
-                    val activo = paisDoc == v
+            val extraElegido = paisDoc in extrasDoc.map { it.first }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                (opcionesDoc + ("+otro" to if (extraElegido || verOtrosTipos) "Otro tipo ▴" else "Otro tipo ▾")).forEach { (v, etq) ->
+                    val activo = paisDoc == v || (v == "+otro" && extraElegido)
                     Box(
                         Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp))
                             .background(if (activo) c.navy else c.superficie)
                             .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                            .clickable { paisDoc = v; avisoDni = null; existente = null }
+                            .clickable {
+                                if (v == "+otro") verOtrosTipos = !verOtrosTipos
+                                else { paisDoc = v; verOtrosTipos = false; avisoDni = null; existente = null }
+                            }
                             .padding(horizontal = 12.dp, vertical = 7.dp),
                     ) {
                         Text(etq, color = if (activo) c.sobreNavy else c.textoSuave,
                             fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
+                }
+            }
+            // Los demás tipos (carné de extranjería, CI, otro…): se guardan en la
+            // ficha y la rotulan ("Pasaporte: …", no "DNI: …").
+            if (verOtrosTipos || extraElegido) {
+                Spacer(Modifier.height(6.dp))
+                pe.saniape.app.ui.clinica.ajustes.ChipsEleccion(extrasDoc, paisDoc) {
+                    paisDoc = it; avisoDni = null; existente = null
                 }
             }
             if (!sinDocumento) {
@@ -288,21 +311,23 @@ fun ModalNuevoPaciente(
                             // Solo el DNI peruano es "8 dígitos": un RUT trae guion
                             // ("12345678-9") y un pasaporte letras. Filtrar todo a
                             // dígitos dejaba a los extranjeros SIN documento.
-                            dni = if (paisDoc == "PE") it.filter { ch -> ch.isDigit() }.take(8) else it.take(20)
+                            dni = if (esDniPeruano) it.filter { ch -> ch.isDigit() }.take(8) else it.take(20)
                             avisoDni = null; existente = null
                         },
                         placeholder = { Text(when (paisDoc) {
-                            "PE" -> "8 dígitos"; "CL" -> "12345678-9"; "OTRO" -> "Nº de pasaporte"
-                            else -> "Nº de ${pe.saniape.app.data.staff.nombreDocumentoNacional(paisDoc)}"
+                            "DNI" -> "8 dígitos"; "RUT" -> "12345678-9"; "Pasaporte" -> "Nº de pasaporte"
+                            "CI" -> "Nº de CI"; "Carné de extranjería" -> "Nº de carné"
+                            "" -> "Nº de ${pe.saniape.app.data.staff.nombreDocumentoNacional(paisSede)}"
+                            else -> "Nº de documento"
                         }, color = c.textoSuave) },
                         singleLine = true,
                         // Reactivando: el documento es la llave de su ficha ("Cambiar documento").
                         readOnly = reactivando && fichaBaja?.dni != null,
-                        keyboardOptions = if (paisDoc == "PE")
+                        keyboardOptions = if (esDniPeruano)
                             KeyboardOptions(keyboardType = KeyboardType.Number) else KeyboardOptions.Default,
                         modifier = Modifier.weight(1f),
                     )
-                    if (paisDoc == "PE") Box(
+                    if (pe.saniape.app.data.staff.buscaPadronDoc(paisSede, paisDoc)) Box(
                         Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp))
                             .background(if (dni.length == 8 && !buscandoDni) c.navy else c.borde)
                             .clickable(enabled = dni.length == 8 && !buscandoDni) { buscarDni() }

@@ -53,6 +53,8 @@ data class FichaDeBaja(
     val nTratamientos: Int,
     /** "dd/mm/aaaa" en hora de Lima (lo formatea el servidor). */
     val fechaBajaTexto: String?,
+    /** pacientes.tipo_documento (null = el del país). */
+    val tipoDocumento: String? = null,
 )
 
 /** Resultado de reactivar: el estado real en que quedó, o el error del servidor. */
@@ -79,6 +81,7 @@ fun parsearFichaDeBaja(o: JsonObject): FichaDeBaja? {
         peso = o.txt("peso")?.toDoubleOrNull(),
         nTratamientos = o.txt("n_tratamientos")?.toIntOrNull() ?: 0,
         fechaBajaTexto = o.txt("fecha_baja_texto"),
+        tipoDocumento = o.txt("tipo_documento"),
     )
 }
 
@@ -89,7 +92,7 @@ fun textoFichaDeBaja(f: FichaDeBaja): String =
 /** ¿El documento escrito está completo como para buscarlo? (mismo criterio que la web) */
 fun documentoCompleto(doc: String, paisDoc: String): Boolean {
     val d = doc.trim()
-    return if (paisDoc == "PE") d.length == 8 && d.all { it.isDigit() }
+    return if (paisDoc == "DNI") d.length == 8 && d.all { it.isDigit() }
     else d.count { it.isLetterOrDigit() } >= 5
 }
 

@@ -48,10 +48,10 @@ class ReactivarPacienteTest {
 
     @Test
     fun documentoCompletoSegunPais() {
-        assertTrue(documentoCompleto("44556677", "PE"))
-        assertFalse(documentoCompleto("4455667", "PE"))
-        assertFalse(documentoCompleto("4455667a", "PE"))
-        assertTrue(documentoCompleto("12345678-9", "CL"))   // RUT chileno
-        assertFalse(documentoCompleto("12-3", "CL"))
+        assertTrue(documentoCompleto("44556677", "DNI"))
+        assertFalse(documentoCompleto("4455667", "DNI"))
+        assertFalse(documentoCompleto("4455667a", "DNI"))
+        assertTrue(documentoCompleto("12345678-9", "RUT"))   // RUT chileno
+        assertFalse(documentoCompleto("12-3", "RUT"))
     }
 }
