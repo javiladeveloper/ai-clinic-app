@@ -67,6 +67,8 @@ fun PantallaPacientes(
     val c = Sania.colors
     val vm: PacientesViewModel = viewModel(key = ctx.clinicaId) { PacientesViewModel(ctx) }
     var nuevoAbierto by remember { mutableStateOf(false) }
+    // QR de admisión: el paciente nuevo llena su ficha desde su celular (como la web).
+    var qrAdmisionAbierto by remember { mutableStateOf(false) }
 
     // Recargar cuando el contenedor pide (recargarTick > 0 = venimos de la ficha).
     androidx.compose.runtime.LaunchedEffect(recargarTick) {
@@ -96,6 +98,16 @@ fun PantallaPacientes(
                 pe.saniape.app.ui.tutoriales.BotonAyuda("Pacientes")
                 Spacer(Modifier.width(8.dp))
                 if (ctx.puede("pacientes")) {
+                    // Mismo permiso que pide /api/staff/admision-qr.
+                    Box(
+                        Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+                            .border(1.dp, c.sobreNavy.copy(alpha = 0.5f), RoundedCornerShape(Sania.shape.pill.dp))
+                            .clickable { qrAdmisionAbierto = true }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    ) {
+                        Text("📱 QR", color = c.sobreNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.width(6.dp))
                     Box(
                         Modifier.tourAncla("pacientes.nuevo").clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.teal)
                             .clickable { nuevoAbierto = true }
@@ -228,6 +240,14 @@ fun PantallaPacientes(
             }
             } // cierre PullToRefreshBox
         }
+    }
+
+    if (qrAdmisionAbierto) {
+        DialogoQrAdmision(
+            clinicaNombre = ctx.clinicaNombre,
+            // Al cerrar se recarga: quien se registró con el QR ya aparece.
+            onCerrar = { qrAdmisionAbierto = false; vm.cargar() },
+        )
     }
 
     // Alta de paciente (esencial de recepción): DNI con búsqueda + datos mínimos.
