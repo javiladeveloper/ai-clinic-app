@@ -157,6 +157,13 @@ const val TEXTO_AJUSTA_Y_REINTENTA =
 /** El botón para lo que no llegó (sin cupo / por revisar): no trae nada nuevo. */
 const val BOTON_REINTENTAR_PENDIENTES = "Reintentar las pendientes"
 
+/** En el reintento los ajustes no se editan: se aplican los de la importación (como la web). */
+const val TEXTO_AJUSTES_REINTENTO =
+    "Se usan los mismos ajustes de tu importación (fechas, pasadas, servicio, colores y recordatorios). Si ya ajustaste el horario del profesional, actualiza para ver cuáles entran ahora."
+
+/** ¿La vista previa deja editar los ajustes? En el reintento, no (el servidor usa los de la importación). */
+fun ajustesEditables(soloPendientes: Boolean): Boolean = !soloPendientes
+
 /** La línea de una fuente importada en Básico (sin botón de sincronizar). */
 const val TEXTO_IMPORTADA_UNA_VEZ = "Importada una vez — sincronización automática en Premium"
 

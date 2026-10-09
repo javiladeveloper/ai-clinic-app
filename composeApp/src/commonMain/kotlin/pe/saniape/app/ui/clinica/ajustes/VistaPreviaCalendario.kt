@@ -99,6 +99,9 @@ import pe.saniape.app.data.staff.telefonoDe
 import pe.saniape.app.data.staff.textoBotonImportar
 import pe.saniape.app.data.staff.textoElegirPaciente
 import pe.saniape.app.data.staff.textoPie
+import pe.saniape.app.data.staff.BOTON_REINTENTAR_PENDIENTES
+import pe.saniape.app.data.staff.TEXTO_AJUSTES_REINTENTO
+import pe.saniape.app.data.staff.ajustesEditables
 import pe.saniape.app.data.staff.textoPorRevisarResultado
 import pe.saniape.app.data.staff.textoSinCupoResultado
 import pe.saniape.app.data.staff.toastImportacion
@@ -280,7 +283,15 @@ internal fun VistaPreviaCalendario(
                     }
                 }
 
-                item("ajustes") {
+                // Reintento: se aplican los ajustes de la importación original (no se editan):
+                // lo que se ve es lo que se aplica.
+                if (!ajustesEditables(abierta.soloPendientes)) item("ajustes-reintento") {
+                    Tarjeta(BOTON_REINTENTAR_PENDIENTES) {
+                        Ayuda(TEXTO_AJUSTES_REINTENTO)
+                        Boton(if (trabajando == "actualizar") "Recalculando…" else "↻ Actualizar vista previa",
+                            primario = false, habilitado = trabajando == null) { actualizar() }
+                    }
+                } else item("ajustes") {
                     Tarjeta("Ajustes de la importación") {
                         Column {
                             Selector("Traer desde", config.desde?.let { fechaCortaCal(it) } ?: "", placeholder = "Los últimos 2 años") { eligiendoFecha = true }

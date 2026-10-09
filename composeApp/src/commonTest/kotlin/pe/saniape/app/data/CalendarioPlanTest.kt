@@ -18,6 +18,7 @@ import pe.saniape.app.data.staff.ConfigFuenteCal
 import pe.saniape.app.data.staff.DecisionesCal
 import pe.saniape.app.data.staff.TEXTO_PLAN_UNA_IMPORTACION
 import pe.saniape.app.data.staff.accionesFuente
+import pe.saniape.app.data.staff.ajustesEditables
 import pe.saniape.app.data.staff.estadoCalendarioDe
 import pe.saniape.app.data.staff.puedeAgregarCalendarios
 import pe.saniape.app.data.staff.puedeImportar
@@ -128,5 +129,8 @@ class CalendarioPlanTest {
         // El cuerpo lleva soloPendientes solo en el reintento.
         assertEquals("true", cuerpoGoogle("f1", ConfigFuenteCal(), DecisionesCal(), soloPendientes = true)["soloPendientes"].toString())
         assertNull(cuerpoGoogle("f1", ConfigFuenteCal(), DecisionesCal())["soloPendientes"])
+        // En el reintento los ajustes no se editan: lo que se ve es lo que se aplica.
+        assertFalse(ajustesEditables(soloPendientes = true))
+        assertTrue(ajustesEditables(soloPendientes = false))
     }
 }
