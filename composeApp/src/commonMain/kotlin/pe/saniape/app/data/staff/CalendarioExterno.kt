@@ -26,7 +26,14 @@ data class CalendarioTraido(
     val ultimaSync: String?,
     val error: String?,
     val citas: Int,
+    /** Sin cupo, con error o con un cambio sin aplicar (Google: se reintentan solas). */
     val sinCupo: Int,
+    /** Eventos que no se sabe de qué paciente son (se resuelven en la web). */
+    val porRevisar: Int = 0,
+    /** La importación inicial sigue (el servidor la continúa cada 10 min). */
+    val enCurso: Boolean = false,
+    /** "Enviar recordatorios a los pacientes" (WhatsApp). Apagado por defecto. */
+    val recordatoriosPacientes: Boolean = false,
 )
 
 data class EstadoCalendarioExterno(
@@ -57,6 +64,9 @@ fun estadoCalendarioDe(o: JsonObject): EstadoCalendarioExterno = EstadoCalendari
             error = it.txt("ultimo_error"),
             citas = it.ent("citas"),
             sinCupo = it.ent("pendientes"),
+            porRevisar = it.ent("porRevisar"),
+            enCurso = it.txt("importacion_estado") == "en_curso",
+            recordatoriosPacientes = (it["config"] as? JsonObject)?.bool("recordatoriosPacientes") == true,
         )
     },
 )

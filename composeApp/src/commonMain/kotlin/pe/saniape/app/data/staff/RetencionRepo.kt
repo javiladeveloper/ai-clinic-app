@@ -128,7 +128,8 @@ object RetencionRepo {
     suspend fun nuncaEmpezaron(hoy: String): List<NuncaEmpezo> {
         val pacs = Supabase.client.postgrest["pacientes"]
             .select(Columns.list("id, nombre, telefono, diagnostico, fecha_ingreso, estado, descartado_at, descartado_motivo")) {
-                filter { neq("estado", "Inactivo") }
+                // Las fichas creadas al importar una agenda (Google/.ics) son historial, no captación.
+                filter { neq("estado", "Inactivo"); exact("importado_de", null) }
                 order("fecha_ingreso", Order.ASCENDING)
                 limit(TOPE_PACIENTES.toLong())
             }.decodeList<JsonObject>()

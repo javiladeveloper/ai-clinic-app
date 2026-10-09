@@ -18,9 +18,11 @@ class CalendarioExternoTest {
                        {"id":"c2","proveedor":"ics","cuenta":"","estado":"activa"}],
          "fuentes":[{"id":"f1","nombre":"Agenda","terapeuta_nombre":"Lic. Ana","proveedor":"google",
                      "importacion_inicial_at":"2026-10-09T10:00:00Z","ultima_sync_at":"2026-10-09T11:55:00Z",
-                     "ultimo_error":null,"citas":312,"pendientes":4},
+                     "ultimo_error":null,"citas":312,"pendientes":4,"porRevisar":2,
+                     "importacion_estado":"lista","config":{"recordatoriosPacientes":true}},
                     {"id":"f2","nombre":"agenda.ics","terapeuta_nombre":null,"proveedor":"ics",
-                     "importacion_inicial_at":null,"ultima_sync_at":null,"citas":0,"pendientes":0}]}
+                     "importacion_inicial_at":null,"ultima_sync_at":null,"citas":0,"pendientes":0,
+                     "importacion_estado":"en_curso","config":{}}]}
     """.trimIndent()
 
     @Test fun leeCuentasYCalendarios() {
@@ -31,6 +33,12 @@ class CalendarioExternoTest {
         val g = e.calendarios[0]
         assertEquals(312, g.citas); assertEquals(4, g.sinCupo); assertEquals("Lic. Ana", g.profesional)
         assertFalse(g.esIcs)
+        assertEquals(2, g.porRevisar)
+        assertTrue(g.recordatoriosPacientes)
+        assertFalse(g.enCurso)
+        // Recordatorios a pacientes: apagados si no se dijo nada.
+        assertFalse(e.calendarios[1].recordatoriosPacientes)
+        assertTrue(e.calendarios[1].enCurso)
         assertTrue(e.calendarios[1].esIcs)
         assertNull(e.calendarios[1].importadoEn)
     }
