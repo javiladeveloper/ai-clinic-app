@@ -1,0 +1,9 @@
+# Novedades de la 2.34.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Clínicas con sedes en varios países: cada sede usa su propia moneda y su hora local. Si tu clínica trabaja solo en Perú, todo sigue igual que antes.
+---
+Clínicas:
+• Moneda por sede: los montos, cobros, caja, comisiones y reportes se muestran en la moneda de cada sede (por ejemplo, soles en Perú y bolivianos en Bolivia). Los totales nunca mezclan monedas: se muestran por separado.
+• Hora local por sede: la agenda, "hoy" y la caja usan la zona horaria de la sede.
+• Documento según el país: DNI en Perú, CI en Bolivia.
+• Ajustes → Sedes: el Admin elige el país, la moneda y la zona horaria de cada sede.
