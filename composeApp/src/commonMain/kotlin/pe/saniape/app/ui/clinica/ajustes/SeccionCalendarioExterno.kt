@@ -40,6 +40,7 @@ import pe.saniape.app.data.staff.CalendarioTraido
 import pe.saniape.app.data.staff.CuentaCalendario
 import pe.saniape.app.data.staff.DecisionesCal
 import pe.saniape.app.data.staff.EstadoCalendarioExterno
+import pe.saniape.app.data.staff.BOTON_REINTENTAR_PENDIENTES
 import pe.saniape.app.data.staff.TEXTO_PLAN_IMPORTACION_USADA
 import pe.saniape.app.data.staff.TEXTO_PLAN_UNA_IMPORTACION
 import pe.saniape.app.data.staff.accionesFuente
@@ -88,6 +89,8 @@ internal data class VistaAbierta(
     val profesional: String?,
     /** Lo marcado a mano (se conserva al actualizar). */
     val trabajo: TrabajoVista,
+    /** "Reintentar las pendientes" (Básico): solo lo que no llegó, sin traer nada nuevo. */
+    val soloPendientes: Boolean = false,
 )
 
 /** Qué selector de profesional está abierto. */
@@ -200,8 +203,8 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
         }
 
     /** Pide la vista previa (primera vez o "↻ Actualizar vista previa"). */
-    suspend fun pedirVista(f: CalendarioTraido, config: pe.saniape.app.data.staff.ConfigFuenteCal, decisiones: DecisionesCal): Boolean {
-        val r = pe.saniape.app.ui.conIndicador(Gestion.CARGANDO) { CalendarioRepo.vistaPrevia(f.id, config, decisiones) }
+    suspend fun pedirVista(f: CalendarioTraido, config: pe.saniape.app.data.staff.ConfigFuenteCal, decisiones: DecisionesCal, soloPendientes: Boolean = false): Boolean {
+        val r = pe.saniape.app.ui.conIndicador(Gestion.CARGANDO) { CalendarioRepo.vistaPrevia(f.id, config, decisiones, soloPendientes) }
         val o = r.cuerpo
         if (!r.registrada || o == null) {
             if (r.codigo == "RECONECTAR") reconectar = r.rechazo?.error ?: "Vuelve a conectar la cuenta de Google."
@@ -210,14 +213,14 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
         }
         val profesional = estado?.calendarios?.find { it.id == f.id }?.profesional ?: f.profesional
         // Actualizar conserva lo marcado, la pestaña y el desplazamiento.
-        val trabajo = vista?.takeIf { it.fuente.id == f.id }?.trabajo ?: TrabajoVista(config, decisiones)
-        vista = VistaAbierta(f, vistaPreviaDe(o), config, decisiones, profesional, trabajo)
+        val trabajo = vista?.takeIf { it.fuente.id == f.id && it.soloPendientes == soloPendientes }?.trabajo ?: TrabajoVista(config, decisiones)
+        vista = VistaAbierta(f, vistaPreviaDe(o), config, decisiones, profesional, trabajo, soloPendientes)
         return true
     }
 
-    fun abrirVista(f: CalendarioTraido) {
+    fun abrirVista(f: CalendarioTraido, soloPendientes: Boolean = false) {
         cargandoVista = true
-        scope.launch { pedirVista(f, f.config, DecisionesCal()); cargandoVista = false }
+        scope.launch { pedirVista(f, f.config, DecisionesCal(), soloPendientes); cargandoVista = false }
     }
 
     // ── Vista previa a pantalla completa ──
@@ -238,7 +241,7 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
             abierta = v,
             sincroniza = estado?.sincronizacion ?: true,
             procedimientos = procedimientos,
-            onActualizar = { config, decisiones -> pedirVista(v.fuente, config, decisiones) },
+            onActualizar = { config, decisiones -> pedirVista(v.fuente, config, decisiones, v.soloPendientes) },
             onImportado = { recarga++ },
             onReconectar = { reconectar = it },
             onCerrar = { vista = null },
@@ -367,6 +370,7 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
                     }
                     acc.candado?.let { Ayuda(it) }
                     if (acc.sincronizar) Boton("↻ Sincronizar ahora", primario = false, habilitado = !ocupado) { sincronizar(f) }
+                    if (acc.reintentar) Boton(BOTON_REINTENTAR_PENDIENTES, primario = false, habilitado = !cargandoVista && !ocupado) { abrirVista(f, soloPendientes = true) }
                     Boton(quitarTxt.boton, primario = false, habilitado = !ocupado) { confirmarQuitar = f }
                     Ayuda(quitarTxt.ayuda)
                 }

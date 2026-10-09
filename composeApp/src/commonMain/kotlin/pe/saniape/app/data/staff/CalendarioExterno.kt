@@ -126,12 +126,13 @@ fun textoEstadoFuente(f: CalendarioTraido, hace: String, sincroniza: Boolean = t
         sincroniza -> "Sincronizado $hace · $citas"
         else -> "$TEXTO_IMPORTADA_UNA_VEZ · $citas"
     }
-    // Sin sincronización, lo que quedó sin cupo ya no se reintenta solo.
-    val fuera = !sincroniza && !f.esIcs && f.importadoEn != null && !f.enCurso
+    // Básico, ya importada: no hay sincronización ni otra importación; lo que quedó
+    // pendiente se reintenta a mano tras ajustar el horario.
+    val basico = !sincroniza && f.importadoEn != null && !f.enCurso
     val pend = when {
         f.sinCupo <= 0 -> ""
+        basico -> " · ${f.sinCupo} sin cupo ($TEXTO_AJUSTA_Y_REINTENTA)"
         f.esIcs -> " · ${f.sinCupo} sin cupo (vuelve a subir el archivo tras revisar el horario)"
-        fuera -> " · ${f.sinCupo} sin cupo (quedaron fuera de la importación)"
         else -> " · ${f.sinCupo} sin cupo o pendientes (se reintentan solas, cada vez con más espera)"
     }
     val rev = if (f.porRevisar > 0) " · ${f.porRevisar} por revisar" else ""
@@ -149,6 +150,13 @@ const val TEXTO_PLAN_UNA_IMPORTACION =
 const val TEXTO_PLAN_IMPORTACION_USADA =
     "Ya usaste la importación de tu plan. Para traer otra agenda o que los cambios de Google lleguen solos, pasa a Premium."
 
+/** Básico: lo cumplible con lo que quedó sin cupo. */
+const val TEXTO_AJUSTA_Y_REINTENTA =
+    "ajusta el horario del profesional y toca “Reintentar las pendientes”, o agrégalas a mano en la agenda"
+
+/** El botón para lo que no llegó (sin cupo / por revisar): no trae nada nuevo. */
+const val BOTON_REINTENTAR_PENDIENTES = "Reintentar las pendientes"
+
 /** La línea de una fuente importada en Básico (sin botón de sincronizar). */
 const val TEXTO_IMPORTADA_UNA_VEZ = "Importada una vez — sincronización automática en Premium"
 
@@ -163,10 +171,13 @@ data class AccionesFuente(
     val sincronizar: Boolean,
     /** Línea con candado cuando el plan ya no deja importarlo. */
     val candado: String?,
+    /** Básico, ya importada, con algo sin cupo o por revisar: "Reintentar las pendientes". */
+    val reintentar: Boolean = false,
 )
 
 fun accionesFuente(f: CalendarioTraido, sincroniza: Boolean, leyendo: Boolean = false): AccionesFuente {
-    if (f.esIcs) return AccionesFuente(revisar = null, sincronizar = false, candado = null)
+    val reintentar = !sincroniza && f.importadoEn != null && !f.enCurso && (f.sinCupo > 0 || f.porRevisar > 0)
+    if (f.esIcs) return AccionesFuente(revisar = null, sincronizar = false, candado = null, reintentar = reintentar)
     val revisar = when {
         !f.puedeImportar -> null
         leyendo -> "Leyendo calendario…"
@@ -177,6 +188,7 @@ fun accionesFuente(f: CalendarioTraido, sincroniza: Boolean, leyendo: Boolean = 
         revisar = revisar,
         sincronizar = sincroniza && f.importadoEn != null,
         candado = if (!f.puedeImportar && f.importadoEn == null) "🔒 Tu plan incluye una importación y ya la usaste." else null,
+        reintentar = reintentar,
     )
 }
 

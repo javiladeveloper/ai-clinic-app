@@ -10,7 +10,12 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import pe.saniape.app.data.staff.CalendarioTraido
 import pe.saniape.app.data.staff.StaffContextoRepo
+import pe.saniape.app.data.staff.BOTON_REINTENTAR_PENDIENTES
+import pe.saniape.app.data.staff.TEXTO_AJUSTA_Y_REINTENTA
 import pe.saniape.app.data.staff.TEXTO_IMPORTADA_UNA_VEZ
+import pe.saniape.app.data.staff.cuerpoGoogle
+import pe.saniape.app.data.staff.ConfigFuenteCal
+import pe.saniape.app.data.staff.DecisionesCal
 import pe.saniape.app.data.staff.TEXTO_PLAN_UNA_IMPORTACION
 import pe.saniape.app.data.staff.accionesFuente
 import pe.saniape.app.data.staff.estadoCalendarioDe
@@ -68,7 +73,7 @@ class CalendarioPlanTest {
     @Test fun fuenteImportadaEnBasico() {
         assertEquals("$TEXTO_IMPORTADA_UNA_VEZ · 3 citas importadas", textoEstadoFuente(importada, "hace 5 min", sincroniza = false))
         assertEquals(
-            "$TEXTO_IMPORTADA_UNA_VEZ · 3 citas importadas · 2 sin cupo (quedaron fuera de la importación)",
+            "$TEXTO_IMPORTADA_UNA_VEZ · 3 citas importadas · 2 sin cupo ($TEXTO_AJUSTA_Y_REINTENTA)",
             textoEstadoFuente(importada.copy(sinCupo = 2), "hace 5 min", sincroniza = false),
         )
         assertEquals("Sincronizado hace 5 min · 3 citas importadas", textoEstadoFuente(importada, "hace 5 min"))
@@ -100,8 +105,28 @@ class CalendarioPlanTest {
         assertEquals("Nada para importar", textoBotonImportar(0, esGoogle = true, importando = false, sincroniza = false))
         assertFalse(puedeImportar(0, esGoogle = true, trabajando = false, sincroniza = false))
         assertTrue(puedeImportar(3, esGoogle = true, trabajando = false, sincroniza = false))
-        assertTrue(textoSinCupoResultado(sincroniza = false).startsWith("Quedan fuera de tu importación"))
+        assertEquals("Después $TEXTO_AJUSTA_Y_REINTENTA.", textoSinCupoResultado(sincroniza = false))
         assertFalse(textoPorRevisarResultado(2, sincroniza = false).contains("Revisar de nuevo"))
+        assertTrue(textoPorRevisarResultado(2, sincroniza = false).contains(BOTON_REINTENTAR_PENDIENTES))
         assertTrue(textoPorRevisarResultado(2).contains("Revisar de nuevo"))
+    }
+
+    @Test fun reintentarLasPendientesEnBasico() {
+        // Ya importada con algo sin cupo o por revisar: botón de reintento (Google y .ics).
+        assertTrue(accionesFuente(importada.copy(sinCupo = 2, puedeImportar = false), sincroniza = false).reintentar)
+        assertTrue(accionesFuente(importada.copy(porRevisar = 1, esIcs = true), sincroniza = false).reintentar)
+        assertFalse(accionesFuente(importada, sincroniza = false).reintentar)                        // nada pendiente
+        assertFalse(accionesFuente(importada.copy(sinCupo = 2), sincroniza = true).reintentar)       // Premium: se reintenta solo
+        assertFalse(accionesFuente(importada.copy(sinCupo = 2, enCurso = true), sincroniza = false).reintentar)
+        // .ics en Básico: nunca "vuelve a subir el archivo".
+        assertFalse(textoEstadoFuente(importada.copy(esIcs = true, sinCupo = 1), "hace 1 h", sincroniza = false).contains("vuelve a subir"))
+        // La vista previa del reintento.
+        assertEquals("Reintentar 2 citas", textoBotonImportar(2, true, false, sincroniza = false, reintento = true))
+        assertEquals("Nada para reintentar", textoBotonImportar(0, true, false, sincroniza = true, reintento = true))
+        assertFalse(puedeImportar(0, esGoogle = true, trabajando = false, sincroniza = true, reintento = true))
+        assertTrue(textoPie(2, 0, sincroniza = false, reintento = true).contains("no se trae nada nuevo"))
+        // El cuerpo lleva soloPendientes solo en el reintento.
+        assertEquals("true", cuerpoGoogle("f1", ConfigFuenteCal(), DecisionesCal(), soloPendientes = true)["soloPendientes"].toString())
+        assertNull(cuerpoGoogle("f1", ConfigFuenteCal(), DecisionesCal())["soloPendientes"])
     }
 }

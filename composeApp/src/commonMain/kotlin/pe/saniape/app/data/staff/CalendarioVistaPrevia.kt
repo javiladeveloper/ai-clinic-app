@@ -262,10 +262,12 @@ fun DecisionesCal.aJson(): JsonObject = buildJsonObject {
 }
 
 /** Cuerpo de vista previa / importar de un calendario de Google (igual que la web). */
-fun cuerpoGoogle(fuenteId: String, config: ConfigFuenteCal, decisiones: DecisionesCal): JsonObject = buildJsonObject {
+fun cuerpoGoogle(fuenteId: String, config: ConfigFuenteCal, decisiones: DecisionesCal, soloPendientes: Boolean = false): JsonObject = buildJsonObject {
     put("fuenteId", fuenteId)
     put("config", config.aJson())
     put("decisiones", decisiones.aJson())
+    // "Reintentar las pendientes": solo lo que no llegó, sin traer nada nuevo.
+    if (soloPendientes) put("soloPendientes", true)
 }
 
 /** Junta un cambio parcial a la decisión de un paciente (setPacientes de la web). */
@@ -397,15 +399,16 @@ fun eventosDePestana(items: List<EventoVista>, p: PestanaEventos): List<EventoVi
  * En Básico (`sincroniza` = false) no hay sincronización: con 0 citas no se gasta
  * la única importación en nada.
  */
-fun textoBotonImportar(aCrear: Int, esGoogle: Boolean, importando: Boolean, sincroniza: Boolean = true): String = when {
+fun textoBotonImportar(aCrear: Int, esGoogle: Boolean, importando: Boolean, sincroniza: Boolean = true, reintento: Boolean = false): String = when {
     importando -> "Importando… (puede tardar unos minutos)"
-    aCrear > 0 -> "Importar $aCrear ${if (aCrear == 1) "cita" else "citas"}"
+    aCrear > 0 -> "${if (reintento) "Reintentar" else "Importar"} $aCrear ${if (aCrear == 1) "cita" else "citas"}"
+    reintento -> "Nada para reintentar"
     esGoogle && sincroniza -> "Activar sincronización (sin citas por ahora)"
     else -> "Nada para importar"
 }
 
-fun puedeImportar(aCrear: Int, esGoogle: Boolean, trabajando: Boolean, sincroniza: Boolean = true): Boolean =
-    !trabajando && (aCrear > 0 || (esGoogle && sincroniza))
+fun puedeImportar(aCrear: Int, esGoogle: Boolean, trabajando: Boolean, sincroniza: Boolean = true, reintento: Boolean = false): Boolean =
+    !trabajando && (aCrear > 0 || (esGoogle && sincroniza && !reintento))
 
 /** Etiqueta de la acción del plan (ETIQUETA_ACCION de la web). */
 val ETIQUETA_ACCION: Map<String, String> = mapOf(
@@ -564,20 +567,24 @@ fun avisoCupoCruces(sinCupo: Int, cruces: Int): String? {
     return "⚠ $a$y$b. Las demás se importan igual."
 }
 
-fun textoPie(aCrear: Int, revisar: Int, sincroniza: Boolean = true): String =
-    "Se importarán $aCrear citas" + (if (revisar > 0) " (y $revisar por revisar quedan fuera)" else "") +
-        if (sincroniza) ". Después, los cambios de tu Google Calendar llegan solos cada 10 minutos."
-        else ". Es una importación única. $TEXTO_PLAN_UNA_IMPORTACION"
+fun textoPie(aCrear: Int, revisar: Int, sincroniza: Boolean = true, reintento: Boolean = false): String =
+    (if (reintento) "Se reintentarán $aCrear citas" else "Se importarán $aCrear citas") +
+        (if (revisar > 0) " (y $revisar por revisar quedan fuera)" else "") +
+        when {
+            reintento -> ". Solo se reintentan las pendientes de tu importación: no se trae nada nuevo del calendario."
+            sincroniza -> ". Después, los cambios de tu Google Calendar llegan solos cada 10 minutos."
+            else -> ". Es una importación única. $TEXTO_PLAN_UNA_IMPORTACION"
+        }
 
 /** Tras importar: los eventos que quedaron por revisar (gemelo de textoPorRevisarResultado de la web). */
 fun textoPorRevisarResultado(n: Int, sincroniza: Boolean = true): String =
     if (sincroniza) "$n eventos quedaron por revisar (no se sabe de qué paciente son): ábrelos con “Revisar de nuevo”."
-    else "$n eventos quedaron por revisar (no se sabe de qué paciente son): quedan fuera de tu importación; agrégalos a mano en la agenda."
+    else "$n eventos quedaron por revisar (no se sabe de qué paciente son): resuélvelos con “$BOTON_REINTENTAR_PENDIENTES”."
 
 /** Tras importar: qué pasa con las que no entraron por cupo u horario (Google). */
 fun textoSinCupoResultado(sincroniza: Boolean = true): String =
     if (sincroniza) "Sania las vuelve a intentar sola, cada vez con más espera (10 min, 20, 40…); al volver a revisar e importar se intentan al momento."
-    else "Quedan fuera de tu importación: agrégalas a mano en la agenda (con Premium, Sania las vuelve a intentar sola)."
+    else "Después $TEXTO_AJUSTA_Y_REINTENTA."
 
 fun toastImportacion(r: ResultadoImportacion): String =
     if (r.enCurso) "Van ${r.creadas} ${if (r.creadas == 1) "cita" else "citas"}: sigue importando"

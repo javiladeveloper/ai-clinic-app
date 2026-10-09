@@ -183,7 +183,7 @@ internal fun VistaPreviaCalendario(
         trabajando = "importar"
         scope.launch {
             try {
-                val res = conIndicador(Gestion.GUARDANDO) { CalendarioRepo.importar(abierta.fuente.id, config, dec) }
+                val res = conIndicador(Gestion.GUARDANDO) { CalendarioRepo.importar(abierta.fuente.id, config, dec, abierta.soloPendientes) }
                 val o = res.cuerpo
                 if (res.registrada && o != null) {
                     val ri = resultadoImportacionDe(o)
@@ -385,12 +385,12 @@ internal fun VistaPreviaCalendario(
                 // Al final de la lista, no flotando: tapaba los eventos (como la web).
                 item("pie") {
                     Tarjeta {
-                        Text(textoPie(aCrear, r.revisar, sincroniza), color = c.texto, fontSize = 13.5.sp, lineHeight = 18.sp)
+                        Text(textoPie(aCrear, r.revisar, sincroniza, abierta.soloPendientes), color = c.texto, fontSize = 13.5.sp, lineHeight = 18.sp)
                         Ayuda("Sin aviso de “nueva cita” por cada una. El profesional recibe sus avisos de agenda; los pacientes, solo si encendiste los recordatorios.")
                         if (tocado) Ayuda("Cambiaste algo: actualiza para ver los números (al importar se aplica igual).", c.pend)
                         Boton(
-                            textoBotonImportar(aCrear, esGoogle = true, importando = trabajando == "importar", sincroniza = sincroniza),
-                            habilitado = puedeImportar(aCrear, esGoogle = true, trabajando = trabajando != null, sincroniza = sincroniza),
+                            textoBotonImportar(aCrear, esGoogle = true, importando = trabajando == "importar", sincroniza = sincroniza, reintento = abierta.soloPendientes),
+                            habilitado = puedeImportar(aCrear, esGoogle = true, trabajando = trabajando != null, sincroniza = sincroniza, reintento = abierta.soloPendientes),
                         ) { importar() }
                     }
                     Spacer(Modifier.height(Sania.dim.xxl))
