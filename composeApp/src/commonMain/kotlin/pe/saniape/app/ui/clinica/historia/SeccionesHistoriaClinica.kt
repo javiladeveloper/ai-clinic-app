@@ -20,7 +20,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,10 +75,12 @@ import pe.saniape.app.data.staff.hallazgosParaOdontograma
 import pe.saniape.app.data.staff.numeroHc
 import pe.saniape.app.data.staff.piezasPeriodontogramaHc
 import pe.saniape.app.data.staff.seriePesoHc
-import pe.saniape.app.data.staff.solesHc
+import pe.saniape.app.data.staff.DatosNoLegiblesHc
+import pe.saniape.app.data.staff.dineroHc
 import pe.saniape.app.data.staff.textoHallazgoHc
 import pe.saniape.app.data.staff.tieneDeciduosHc
 import pe.saniape.app.ui.AccionesNativas
+import pe.saniape.app.ui.VisorImagen
 import pe.saniape.app.ui.clinica.fisio.CurvaDolor
 import pe.saniape.app.ui.clinica.fisio.MapaCorporal
 import pe.saniape.app.ui.clinica.odontologia.Boca
@@ -111,7 +116,7 @@ internal fun SeccionHistoria(s: SeccionHc, doc: HistoriaClinicaDoc, acc: Accione
                 d.items.forEach { ConsentimientoVista(it) }
                 if (d.nota.isNotBlank()) TextoSuave(d.nota)
             }
-            is DatosTratamientosHc -> d.items.forEachIndexed { i, t -> if (i > 0) Separador(); TratamientoVista(t, doc.graficos) }
+            is DatosTratamientosHc -> d.items.forEachIndexed { i, t -> if (i > 0) Separador(); TratamientoVista(t, doc.graficos, t.moneda ?: doc.regional.moneda) }
             is DatosConsultasHc -> d.items.forEach { ConsultaVista(it) }
             is DatosExamenesHc -> d.items.forEach { ex ->
                 Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
@@ -136,7 +141,9 @@ internal fun SeccionHistoria(s: SeccionHc, doc: HistoriaClinicaDoc, acc: Accione
             is DatosSignosVitalesHc -> SignosVitalesVista(d, doc.graficos)
             is DatosRecetasHc -> d.items.forEach { RecetaVista(it) }
             is DatosAntropometriaHc -> AntropometriaVista(d, doc.graficos)
-            is DatosFotosHc -> FotosVista(d, doc.graficos, acc.acciones)
+            is DatosFotosHc -> FotosVista(d, doc.graficos)
+            DatosNoLegiblesHc -> Aviso("No se pudo mostrar esta sección aquí — ver el PDF (🖨 Imprimir / compartir PDF).",
+                Sania.colors.pend, Sania.colors.pendBg)
             else -> {}
         }
     }
@@ -343,7 +350,7 @@ private fun CurvaEva(puntos: List<PuntoEvaHc>) {
 }
 
 @Composable
-private fun TratamientoVista(t: TratamientoHc, graficos: Boolean) {
+private fun TratamientoVista(t: TratamientoHc, graficos: Boolean, moneda: String) {
     val c = Sania.colors
     Row(verticalAlignment = Alignment.Top) {
         Text(t.nombre, color = c.navy, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -369,7 +376,7 @@ private fun TratamientoVista(t: TratamientoHc, graficos: Boolean) {
                 Row {
                     Text("#${s.numero} · ${fechaHora(s.fecha, s.hora)}", color = c.texto, fontSize = 12.sp,
                         fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    if (q.verCosto) s.costo?.let { Text(solesHc(it), color = c.teal, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                    if (q.verCosto) s.costo?.let { Text(dineroHc(it, moneda), color = c.teal, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                 }
                 if (q.verProfesional) s.profesional?.let { TextoSuave(it) }
                 if (q.verDuracion) s.duracion?.let { TextoSuave("$it min") }
@@ -389,13 +396,13 @@ private fun TratamientoVista(t: TratamientoHc, graficos: Boolean) {
             Row(Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
                 Text("${fechaHc(f.fecha)} · ${f.metodo}" + (f.nota?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
                     color = c.texto, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                Text(solesHc(f.monto), color = c.texto, fontSize = 12.sp)
+                Text(dineroHc(f.monto, moneda), color = c.texto, fontSize = 12.sp)
             }
         }
         Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Acordado ${solesHc(p.acordado)}", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Text("Pagado ${solesHc(p.pagado)}", color = c.ok, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Text("Saldo ${solesHc(p.saldo)}", color = if (p.saldo > 0.005) c.error else c.ok, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text("Acordado ${dineroHc(p.acordado, moneda)}", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text("Pagado ${dineroHc(p.pagado, moneda)}", color = c.ok, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text("Saldo ${dineroHc(p.saldo, moneda)}", color = if (p.saldo > 0.005) c.error else c.ok, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -630,13 +637,17 @@ private fun AntropometriaVista(d: DatosAntropometriaHc, graficos: Boolean) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FotosVista(d: DatosFotosHc, graficos: Boolean, acciones: AccionesNativas) {
+private fun FotosVista(d: DatosFotosHc, graficos: Boolean) {
     val c = Sania.colors
+    // Visor dentro de la app (la URL firmada vence en 1 h: no se guarda).
+    var abierta by remember(d) { mutableStateOf<FotoHc?>(null) }
+    abierta?.let { f -> VisorImagen(url = f.url, titulo = f.nombre.ifBlank { null }) { abierta = null } }
+    val abrir: (FotoHc) -> Unit = { abierta = it }
     if (graficos) d.pares.forEach { par ->
         Subtitulo(par.titulo)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FotoHcVista(par.antes, "Antes", acciones, Modifier.weight(1f))
-            FotoHcVista(par.despues, "Después", acciones, Modifier.weight(1f))
+            FotoHcVista(par.antes, "Antes", abrir, Modifier.weight(1f))
+            FotoHcVista(par.despues, "Después", abrir, Modifier.weight(1f))
         }
     }
     val enPares = if (graficos) d.pares.flatMap { listOf(it.antes.id, it.despues.id) }.toSet() else emptySet()
@@ -644,20 +655,20 @@ private fun FotosVista(d: DatosFotosHc, graficos: Boolean, acciones: AccionesNat
     if (sueltas.isNotEmpty()) {
         if (graficos && d.pares.isNotEmpty()) Subtitulo("Otras fotos")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            sueltas.forEach { f -> FotoHcVista(f, null, acciones, Modifier.width(100.dp)) }
+            sueltas.forEach { f -> FotoHcVista(f, null, abrir, Modifier.width(100.dp)) }
         }
     }
     TextoSuave("Toca una foto para verla en grande.")
 }
 
 @Composable
-private fun FotoHcVista(f: FotoHc, etiqueta: String?, acciones: AccionesNativas, modifier: Modifier) {
+private fun FotoHcVista(f: FotoHc, etiqueta: String?, abrir: (FotoHc) -> Unit, modifier: Modifier) {
     val c = Sania.colors
     Column(modifier) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(3f / 4f).clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.fondo)
                 .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                .clickable(enabled = f.url != null) { f.url?.let { acciones.abrirUrl(it) } },
+                .clickable(enabled = f.url != null) { abrir(f) },
             contentAlignment = Alignment.Center,
         ) {
             if (f.url != null) AsyncImage(model = f.url, contentDescription = etiqueta ?: f.nombre,

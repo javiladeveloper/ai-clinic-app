@@ -8,6 +8,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import pe.saniape.app.data.staff.CargaHistoriaHc
 import pe.saniape.app.data.staff.DatosAntropometriaHc
+import pe.saniape.app.data.staff.DatosNoLegiblesHc
 import pe.saniape.app.data.staff.DatosAtencionesHc
 import pe.saniape.app.data.staff.DatosConsultasHc
 import pe.saniape.app.data.staff.DatosEncabezadoHc
@@ -19,6 +20,7 @@ import pe.saniape.app.data.staff.DatosParesHc
 import pe.saniape.app.data.staff.DatosPsicologiaHc
 import pe.saniape.app.data.staff.DatosTratamientosHc
 import pe.saniape.app.data.staff.HallazgoDentalHc
+import pe.saniape.app.data.staff.dineroHc
 import pe.saniape.app.data.staff.hallazgosParaOdontograma
 import pe.saniape.app.data.staff.interpretarRespuestaHistoria
 import pe.saniape.app.data.staff.numeroHc
@@ -341,6 +343,37 @@ class HistoriaClinicaParseoTest {
         assertEquals("No se encontró el paciente.", e404.mensaje)
         val e503 = assertIs<CargaHistoriaHc.Error>(interpretarRespuestaHistoria(503, "error"))
         assertNull(e503.codigo)
+    }
+
+    @Test fun seccionObligatoriaIlegibleNoSeDescartaEnSilencio() {
+        val json = """{"version":1,"formato":"estandar","bloques":[{"id":"general","rubro":"general","titulo":null,"secciones":[
+          {"id":"filiacion","tipo":"filiacion","titulo":"Filiación","obligatoria":true,"datos":{"filas":"roto"}},
+          {"id":"norma-nueva","tipo":"tipo_de_norma_futuro","titulo":"Algo de la norma","obligatoria":true,"datos":{}},
+          {"id":"opcional-rota","tipo":"tratamientos","titulo":"Tratamientos","obligatoria":false,"datos":{"items":"roto"}}]}]}"""
+        val secciones = parsearHistoriaClinica(json)!!.secciones
+        assertEquals(listOf("filiacion", "norma-nueva"), secciones.map { it.id })
+        assertTrue(secciones.all { it.datos == DatosNoLegiblesHc && it.obligatoria })
+        assertEquals("Filiación", secciones[0].titulo)
+    }
+
+    @Test fun regionalYMonedaPorTratamiento() {
+        // Sin `regional` (servidor previo al multipaís): Perú, soles, DNI.
+        val viejo = parsearHistoriaClinica(ejemplo)!!
+        assertEquals("PEN", viejo.regional.moneda)
+        assertEquals("DNI", viejo.regional.etiquetaDocumento)
+        assertNull(assertIs<DatosTratamientosHc>(viejo.secciones.first { it.tipo == "tratamientos" }.datos).items.single().moneda)
+        val json = """{"version":1,"formato":"estandar","regional":{"pais":"BO","moneda":"BOB","zona":"America/La_Paz","etiquetaDocumento":"CI"},
+          "bloques":[{"id":"general","rubro":"general","titulo":null,"secciones":[
+            {"id":"t","tipo":"tratamientos","titulo":"Tratamientos","obligatoria":false,"datos":{"items":[{"id":"t1","nombre":"Rehab","moneda":"BOB"}]}}]}]}"""
+        val doc = parsearHistoriaClinica(json)!!
+        assertEquals("BO", doc.regional.pais)
+        assertEquals("CI", doc.regional.etiquetaDocumento)
+        assertEquals("BOB", assertIs<DatosTratamientosHc>(doc.secciones.single().datos).items.single().moneda)
+        assertEquals("Bs 1,234.50", dineroHc(1234.5, "BOB"))
+        assertEquals("S/ 1,234.50", dineroHc(1234.5, "PEN"))
+        assertEquals("S/ 0.50", dineroHc(0.5, null))
+        assertEquals("S/ 1,000,000.00", dineroHc(1_000_000.0, "PEN"))
+        assertEquals("-S/ 3.40", dineroHc(-3.4, "PEN"))
     }
 
     @Test fun formatosDeNumeros() {

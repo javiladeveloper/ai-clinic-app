@@ -190,6 +190,8 @@ data class TratamientoHc(
     val cuadro: CuadroSesionesHc = CuadroSesionesHc(),
     /** Solo con permiso de pagos. */
     val pagos: PagosTratamientoHc? = null,
+    /** Moneda de los montos de este tratamiento (multipaís). null = la de [RegionalHc]. */
+    val moneda: String? = null,
 )
 
 @Serializable
@@ -451,6 +453,12 @@ data class ParFotosHc(val tratamientoId: String? = null, val titulo: String = ""
 @Serializable
 data class DatosFotosHc(val fotos: List<FotoHc> = emptyList(), val pares: List<ParFotosHc> = emptyList()) : DatosHc
 
+/**
+ * Una sección OBLIGATORIA (de la norma) que la app no pudo leer: no se descarta
+ * en silencio, se muestra el aviso "ver PDF" (el HTML del servidor sí la trae).
+ */
+data object DatosNoLegiblesHc : DatosHc
+
 /** Una sección ya leída. [tipo] es el del contrato ("tratamientos", "controles"…). */
 data class SeccionHc(
     val id: String,
@@ -471,6 +479,16 @@ data class PacienteHc(val id: String = "", val nombre: String = "", val iniciale
 @Serializable
 data class PermisosHc(val verContacto: Boolean = false, val verPagos: Boolean = false, val soloLoMio: Boolean = false)
 
+/** País de la sede del paciente (multipaís). Respaldo: Perú, soles, DNI. */
+@Serializable
+data class RegionalHc(
+    val pais: String = "PE",
+    val moneda: String = "PEN",
+    val zona: String = "America/Lima",
+    /** "DNI" / "CI"… donde la app diría "DNI". */
+    val etiquetaDocumento: String = "DNI",
+)
+
 @Serializable
 data class PieHc(val izquierda: String = "", val derecha: String = "")
 
@@ -489,6 +507,7 @@ data class HistoriaClinicaDoc(
     val permisos: PermisosHc,
     val bloques: List<BloqueHc>,
     val pie: PieHc,
+    val regional: RegionalHc = RegionalHc(),
 ) {
     val esPorEspecialidad: Boolean get() = formato == "especialidad"
     /** Todas las secciones, en orden (para buscar una en particular). */
@@ -519,6 +538,7 @@ private data class DocCrudoHc(
     val permisos: PermisosHc = PermisosHc(),
     val bloques: List<BloqueCrudoHc>? = null,
     val pie: PieHc = PieHc(),
+    val regional: RegionalHc? = null,
 )
 
 internal val jsonHc = Json { ignoreUnknownKeys = true; coerceInputValues = true; explicitNulls = false; isLenient = true }
@@ -550,15 +570,21 @@ fun parsearHistoriaClinica(texto: String): HistoriaClinicaDoc? {
             BloqueHc(b.id, b.rubro, b.titulo?.takeIf { it.isNotBlank() }, b.secciones.mapNotNull(::parsearSeccionHc))
         }.filter { it.secciones.isNotEmpty() },
         pie = crudo.pie,
+        regional = crudo.regional ?: RegionalHc(),
     )
 }
 
 private fun JsonObject.texto(k: String): String? = (this[k] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content
 
-/** Una sección: tipo desconocido o ilegible → null (se salta, no rompe la historia). */
+/**
+ * Una sección: tipo desconocido o ilegible → null (se salta, no rompe la
+ * historia), SALVO que sea obligatoria (de la norma): entonces llega con
+ * [DatosNoLegiblesHc] para avisar "ver PDF" en vez de desaparecer.
+ */
 internal fun parsearSeccionHc(el: JsonElement): SeccionHc? {
     val o = el as? JsonObject ?: return null
     val tipo = o.texto("tipo") ?: return null
+    val obligatoria = o.texto("obligatoria") == "true"
     val datos = o["datos"]?.takeIf { it !is JsonNull } ?: JsonObject(emptyMap())
     val d: DatosHc = runCatching {
         fun <T : DatosHc> leer(s: kotlinx.serialization.KSerializer<T>): T = jsonHc.decodeFromJsonElement(s, datos)
@@ -585,12 +611,12 @@ internal fun parsearSeccionHc(el: JsonElement): SeccionHc? {
             "fotos" -> leer(DatosFotosHc.serializer())
             else -> null
         }
-    }.getOrNull() ?: return null
+    }.getOrNull() ?: (if (obligatoria) DatosNoLegiblesHc else return null)
     return SeccionHc(
         id = o.texto("id") ?: tipo,
         tipo = tipo,
         titulo = o.texto("titulo") ?: "",
-        obligatoria = o.texto("obligatoria") == "true",
+        obligatoria = obligatoria,
         datos = d,
     )
 }
@@ -654,12 +680,27 @@ fun numeroHc(v: Double): String {
     return if (r == kotlin.math.floor(r)) r.toLong().toString() else r.toString()
 }
 
-/** "S/ 120.00" */
-fun solesHc(v: Double): String {
-    val cent = kotlin.math.round(kotlin.math.abs(v) * 100).toLong()
-    val s = "${cent / 100}.${(cent % 100).toString().padStart(2, '0')}"
-    return if (v < 0) "-S/ $s" else "S/ $s"
+/** Símbolo de una moneda ISO (respaldo: el código mismo). */
+fun simboloMonedaHc(moneda: String?): String = when (moneda?.uppercase()) {
+    null, "", "PEN" -> "S/"
+    "BOB" -> "Bs"
+    "USD" -> "US$"
+    "EUR" -> "€"
+    "CLP", "COP", "MXN", "ARS" -> "$"
+    else -> moneda.uppercase()
 }
+
+/** PEN → "S/ 1,234.50", BOB → "Bs 1,234.50" (como `formatearDinero` de la web). */
+fun dineroHc(v: Double, moneda: String? = "PEN"): String {
+    val cent = kotlin.math.round(kotlin.math.abs(v) * 100).toLong()
+    val miles = (cent / 100).toString().reversed().chunked(3).joinToString(",").reversed()
+    val s = "$miles.${(cent % 100).toString().padStart(2, '0')}"
+    val sim = simboloMonedaHc(moneda)
+    return if (v < 0) "-$sim $s" else "$sim $s"
+}
+
+/** "S/ 120.00" (soles; ver [dineroHc] para otras monedas). */
+fun solesHc(v: Double): String = dineroHc(v, "PEN")
 
 /**
  * Los hallazgos de la HC en el formato del odontograma nativo: los registros

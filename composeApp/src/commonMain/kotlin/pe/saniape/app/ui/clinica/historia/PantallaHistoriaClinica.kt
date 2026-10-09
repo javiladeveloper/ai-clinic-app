@@ -12,9 +12,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -132,23 +132,31 @@ fun PantallaHistoriaClinica(
                     BotonHc("Reintentar", relleno = true) { reintento++ }
                 }
                 else -> {
-                    val scroll = rememberScrollState()
-                    Column(
-                        Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)
-                            .padding(horizontal = Sania.dim.lg, vertical = Sania.dim.md),
+                    // Perezosa: una historia larga (años de sesiones, fotos, odontogramas)
+                    // solo compone lo que está en pantalla. Cada bloque y cada sección es un item.
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = Sania.dim.lg, vertical = Sania.dim.md),
                     ) {
-                        SelectorFormato(d, cargando) { estilo = it }
-                        if (d.permisos.soloLoMio) AvisoInfo("Ves solo tus tratamientos y atenciones con este paciente.")
-                        error?.let { AvisoInfo("⚠ $it") }
-                        d.bloques.forEach { b ->
-                            b.titulo?.let { TituloBloque(it) }
-                            b.secciones.forEach { s -> SeccionHistoria(s, d, accionesHc) }
+                        item(key = "formato") {
+                            Column {
+                                SelectorFormato(d, cargando) { estilo = it }
+                                if (d.permisos.soloLoMio) AvisoInfo("Ves solo tus tratamientos y atenciones con este paciente.")
+                                error?.let { AvisoInfo("⚠ $it") }
+                            }
                         }
-                        Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                            Text(d.pie.izquierda, color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.weight(1f))
-                            Text(d.pie.derecha, color = c.textoSuave, fontSize = 10.sp, textAlign = TextAlign.End)
+                        d.bloques.forEachIndexed { ib, b ->
+                            b.titulo?.let { t -> item(key = "b$ib:${b.id}") { TituloBloque(t) } }
+                            b.secciones.forEachIndexed { isec, s ->
+                                item(key = "b$ib:${b.id}/$isec:${s.id}", contentType = s.tipo) { SeccionHistoria(s, d, accionesHc) }
+                            }
                         }
-                        Spacer(Modifier.height(Sania.dim.xxl))
+                        item(key = "pie") {
+                            Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = Sania.dim.xxl)) {
+                                Text(d.pie.izquierda, color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                                Text(d.pie.derecha, color = c.textoSuave, fontSize = 10.sp, textAlign = TextAlign.End)
+                            }
+                        }
                     }
                 }
             }
