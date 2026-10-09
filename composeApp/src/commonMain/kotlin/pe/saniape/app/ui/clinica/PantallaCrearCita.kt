@@ -588,6 +588,17 @@ fun PantallaCrearCita(
                         termino = ctx.terminologiaPaciente.paciente,
                         items = pacientes, elegido = paciente,
                         onElegir = { paciente = it; terapeuta = null; tratamiento = null; terapeutaAMano = false; precargado = null },
+                        // Alta al vuelo (DNI → RENIEC → registrar), como la web: solo en
+                        // Consulta/Evaluación y para quien agenda. Con el país de la sede.
+                        altaRapida = pe.saniape.app.data.staff.altaRapidaPermitida(tipo, ctx.puede("agendar")),
+                        pais = pe.saniape.app.data.staff.paisDeFila(sedeId),
+                        puedeReactivar = ctx.puede("datos_personales"),
+                        onRegistrado = { nuevo ->
+                            // El recién creado entra a la lista local (si no, el selector
+                            // tendría elegido un id que su copia desconoce).
+                            pacientes = listOf(nuevo) + pacientes.filter { it.id != nuevo.id }
+                            paciente = nuevo; terapeuta = null; tratamiento = null; terapeutaAMano = false; precargado = null
+                        },
                     )
                 }
 
@@ -833,6 +844,13 @@ private fun <T> SelectorLista(
 @Composable
 private fun SelectorPacienteBuscable(
     items: List<RefNombre>, elegido: RefNombre?, onElegir: (RefNombre) -> Unit, termino: String = "paciente",
+    /** ¿Se ofrece registrar un documento que no está? (ver `altaRapidaPermitida`) */
+    altaRapida: Boolean = false,
+    /** País de la sede de la cita: RENIEC solo en Perú. */
+    pais: String? = null,
+    puedeReactivar: Boolean = false,
+    /** Paciente recién registrado (o reactivado): queda elegido. */
+    onRegistrado: (RefNombre) -> Unit = onElegir,
 ) {
     val c = Sania.colors
     var abierto by remember { mutableStateOf(false) }
@@ -857,6 +875,10 @@ private fun SelectorPacienteBuscable(
                 // Resultados del servidor para la búsqueda actual (null = aún no / sin señal).
                 var remotos by remember { mutableStateOf<Pair<String, List<RefNombre>>?>(null) }
                 var buscandoRemoto by remember { mutableStateOf(false) }
+                // La última búsqueda que el servidor ya contestó (o que falló sin señal).
+                // El alta rápida espera a esto: ofrecer "registrar" antes de saber si
+                // está entre los que no se precargaron sería abrir la puerta a un duplicado.
+                var consultado by remember { mutableStateOf<String?>(null) }
                 LaunchedEffect(query) {
                     val q = query.trim()
                     if (q.length < 2) { remotos = null; buscandoRemoto = false; return@LaunchedEffect }
@@ -865,6 +887,7 @@ private fun SelectorPacienteBuscable(
                     val r = runCatching { AgendaRepo.buscarPacientes(q) }.getOrNull()
                     buscandoRemoto = false
                     if (r != null) remotos = q to r
+                    consultado = q
                 }
                 val filtrados = remember(query, items, remotos) {
                     val q = query.trim()
@@ -877,11 +900,19 @@ private fun SelectorPacienteBuscable(
                     }
                 }
                 Column(Modifier.fillMaxWidth().heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
-                    if (filtrados.isEmpty()) {
+                    // Documento que no está en la clínica → alta al vuelo (como la web).
+                    val docNuevo = if (altaRapida && !buscandoRemoto && consultado == query.trim())
+                        pe.saniape.app.data.staff.documentoParaAltaRapida(query, filtrados.isNotEmpty()) else null
+                    if (docNuevo != null) {
+                        PanelAltaRapida(
+                            documento = docNuevo, pais = pais, puedeReactivar = puedeReactivar,
+                            onListo = { nuevo -> onRegistrado(nuevo); abierto = false; query = "" },
+                        )
+                    } else if (filtrados.isEmpty()) {
                         Text(
                             when {
                                 query.isBlank() -> "Escribe para buscar."
-                                buscandoRemoto -> "Buscando…"
+                                buscandoRemoto || (altaRapida && query.trim().length >= 2 && consultado != query.trim()) -> "Buscando…"
                                 else -> "Sin coincidencias."
                             },
                             color = c.textoSuave, fontSize = Sania.txt.pequeno,
