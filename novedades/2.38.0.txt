@@ -1,0 +1,9 @@
+# Novedades de la 2.38.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Trae tu agenda de Google Calendar a Sania desde la app: revisa cada evento, corrige pacientes y une duplicados antes de importar.
+---
+Clínicas (Admin):
+• Ajustes → Agenda de Google Calendar: elige qué calendarios traer y a qué profesional va cada uno.
+• Vista previa antes de importar: eventos ordenados por fecha, seleccionar todos, y qué no es cita (almuerzos, reuniones, recordatorios).
+• Pacientes detectados: corrige nombre, celular y dirección, y une duplicados ("Jenny" y "Jeny") con "Es la misma persona que…".
+• Después de importar, los cambios de tu Google Calendar llegan solos cada 10 minutos.
