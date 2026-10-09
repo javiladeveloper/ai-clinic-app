@@ -40,7 +40,11 @@ import pe.saniape.app.data.staff.CalendarioTraido
 import pe.saniape.app.data.staff.CuentaCalendario
 import pe.saniape.app.data.staff.DecisionesCal
 import pe.saniape.app.data.staff.EstadoCalendarioExterno
+import pe.saniape.app.data.staff.TEXTO_PLAN_IMPORTACION_USADA
+import pe.saniape.app.data.staff.TEXTO_PLAN_UNA_IMPORTACION
+import pe.saniape.app.data.staff.accionesFuente
 import pe.saniape.app.data.staff.calendariosGoogleDe
+import pe.saniape.app.data.staff.puedeAgregarCalendarios
 import pe.saniape.app.data.staff.estadoCalendarioDe
 import pe.saniape.app.data.staff.haceCuanto
 import pe.saniape.app.data.staff.hexColor
@@ -61,6 +65,11 @@ import pe.saniape.app.ui.theme.Sania
  * autorizar dentro de la app), elegir qué calendario va a qué profesional, la
  * lista "Tus calendarios en Sania" y la vista previa antes de importar
  * ([VistaPreviaCalendario]). Solo Admin; el servidor lo valida.
+ *
+ * Plan Básico = UNA importación (el servidor manda `plan` y `puedeImportar`):
+ * aviso con candado antes de importar, sin "Sincronizar ahora" y, ya usada, sin
+ * elegir otro calendario. El servidor lo valida igual (PLAN_UNA_IMPORTACION /
+ * PLAN_SIN_SYNC).
  */
 
 /** Calendarios de una cuenta: cargando, error o la lista. */
@@ -227,6 +236,7 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
     vista?.let { v ->
         VistaPreviaCalendario(
             abierta = v,
+            sincroniza = estado?.sincronizacion ?: true,
             procedimientos = procedimientos,
             onActualizar = { config, decisiones -> pedirVista(v.fuente, config, decisiones) },
             onImportado = { recarga++ },
@@ -286,6 +296,16 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
         val ahora = Clock.System.now().toEpochMilliseconds()
         val ms = { iso: String? -> iso?.let { runCatching { Instant.parse(it).toEpochMilliseconds() }.getOrNull() } }
         val nombreTer = { id: String? -> terapeutas.find { it.first == id }?.second }
+        val agregar = puedeAgregarCalendarios(e)
+
+        // Plan Básico: una importación (candado como el resto de la app).
+        if (!e.sincronizacion) {
+            if (e.importacionUsada) CandadoPlan("Ya usaste la importación de tu plan", TEXTO_PLAN_IMPORTACION_USADA)
+            else {
+                Aviso("🔒 $TEXTO_PLAN_UNA_IMPORTACION", "info")
+                Boton("💎 Ver planes", primario = false) { acciones.abrirUrl("${Supabase.SITE_URL}/suscripcion") }
+            }
+        }
 
         // 1. Conectar la cuenta
         Tarjeta("1. Conecta tu cuenta de Google") {
@@ -303,10 +323,10 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (!cta.activa) Boton("Volver a conectar", habilitado = !ocupado, modifier = Modifier.weight(1f)) { conectar() }
-                        else Boton("Elegir calendarios", primario = false, habilitado = listas[cta.id] != ListaCuenta.Cargando, modifier = Modifier.weight(1f)) { verCalendarios(cta.id) }
+                        else if (agregar) Boton("Elegir calendarios", primario = false, habilitado = listas[cta.id] != ListaCuenta.Cargando, modifier = Modifier.weight(1f)) { verCalendarios(cta.id) }
                         Boton("Desconectar", primario = false, habilitado = !ocupado, modifier = Modifier.weight(1f)) { confirmarDesconectar = cta }
                     }
-                    when (val l = listas[cta.id]) {
+                    when (val l = listas[cta.id]?.takeIf { agregar }) {
                         null -> {}
                         ListaCuenta.Cargando -> Ayuda("Buscando tus calendarios…")
                         is ListaCuenta.Error -> Text(l.mensaje, color = c.error, fontSize = 12.5.sp)
@@ -321,7 +341,7 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
                     }
                 }
             }
-            Boton(if (e.cuentas.isEmpty()) "Conectar con Google" else "+ Conectar otra cuenta", habilitado = e.disponible && !ocupado) { conectar() }
+            if (agregar) Boton(if (e.cuentas.isEmpty()) "Conectar con Google" else "+ Conectar otra cuenta", habilitado = e.disponible && !ocupado) { conectar() }
             Ayuda("Google puede mostrar “Google no verificó esta app”: toca Configuración avanzada → Ir a Sania. Es normal mientras Google revisa la app.")
         }
 
@@ -331,7 +351,7 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
                 val quitarTxt = textoQuitarFuente(f.nombre, f.esIcs)
                 CajaBorde {
                     Text((if (f.esIcs) "📄 " else "📅 ") + f.nombre, color = c.texto, fontSize = 14.5.sp, fontWeight = FontWeight.Bold)
-                    Text(textoEstadoFuente(f, haceCuanto(ms(f.ultimaSync), ahora)), color = c.textoSuave, fontSize = 12.5.sp, lineHeight = 17.sp)
+                    Text(textoEstadoFuente(f, haceCuanto(ms(f.ultimaSync), ahora), e.sincronizacion), color = c.textoSuave, fontSize = 12.5.sp, lineHeight = 17.sp)
                     f.error?.let { Text("⚠ $it", color = c.error, fontSize = 12.sp) }
                     if (!f.esIcs) Selector("Profesional", nombreTer(f.terapeutaId) ?: f.profesional ?: "", placeholder = "Sin profesional", habilitado = !ocupado) {
                         selector = SelectorProf.Fuente(f)
@@ -341,13 +361,12 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
                         "WhatsApp y notificaciones de la app del paciente",
                         activo = f.recordatoriosPacientes, habilitado = !ocupado,
                     ) { recordatorios(f, it) }
-                    if (!f.esIcs) {
-                        Boton(
-                            if (cargandoVista) "Leyendo calendario…" else if (f.importadoEn != null) "Revisar de nuevo" else "Revisar e importar",
-                            primario = f.importadoEn == null, habilitado = !cargandoVista && !ocupado,
-                        ) { abrirVista(f) }
-                        if (f.importadoEn != null) Boton("↻ Sincronizar ahora", primario = false, habilitado = !ocupado) { sincronizar(f) }
+                    val acc = accionesFuente(f, e.sincronizacion, leyendo = cargandoVista)
+                    acc.revisar?.let { txt ->
+                        Boton(txt, primario = f.importadoEn == null, habilitado = !cargandoVista && !ocupado) { abrirVista(f) }
                     }
+                    acc.candado?.let { Ayuda(it) }
+                    if (acc.sincronizar) Boton("↻ Sincronizar ahora", primario = false, habilitado = !ocupado) { sincronizar(f) }
                     Boton(quitarTxt.boton, primario = false, habilitado = !ocupado) { confirmarQuitar = f }
                     Ayuda(quitarTxt.ayuda)
                 }
@@ -355,8 +374,12 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
         }
 
         Tarjeta("¿Prefieres no conectar la cuenta? Sube el archivo .ics") {
-            Ayuda("En Google Calendar (computadora): ⚙ Configuración → Importar y exportar → Exportar. Descarga un .zip; ábrelo y sube el archivo .ics de tu calendario. Es una importación única: los cambios futuros no llegan solos. Si lo vuelves a subir, no se duplica nada.")
-            Boton("Subir el archivo en la web", primario = false) { acciones.abrirUrl("${Supabase.SITE_URL}/configuracion/calendario") }
+            Ayuda("En Google Calendar (computadora): ⚙ Configuración → Importar y exportar → Exportar. Descarga un .zip; ábrelo y sube el archivo .ics de tu calendario. Es una importación única: los cambios futuros no llegan solos." +
+                if (e.sincronizacion) " Si lo vuelves a subir, no se duplica nada." else " Cuenta como la importación de tu plan.")
+            // Un .ics a medias se termina subiéndolo otra vez (la web lo decide con el plan).
+            val icsAMedias = e.calendarios.any { it.esIcs && it.importadoEn == null && it.puedeImportar }
+            if (agregar || icsAMedias) Boton("Subir el archivo en la web", primario = false) { acciones.abrirUrl("${Supabase.SITE_URL}/configuracion/calendario") }
+            else Ayuda("🔒 $TEXTO_PLAN_IMPORTACION_USADA")
         }
     }
 }

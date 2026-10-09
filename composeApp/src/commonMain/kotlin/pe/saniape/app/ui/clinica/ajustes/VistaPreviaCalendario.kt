@@ -99,6 +99,8 @@ import pe.saniape.app.data.staff.telefonoDe
 import pe.saniape.app.data.staff.textoBotonImportar
 import pe.saniape.app.data.staff.textoElegirPaciente
 import pe.saniape.app.data.staff.textoPie
+import pe.saniape.app.data.staff.textoPorRevisarResultado
+import pe.saniape.app.data.staff.textoSinCupoResultado
 import pe.saniape.app.data.staff.toastImportacion
 import pe.saniape.app.data.staff.usarActual
 import pe.saniape.app.ui.AlertaConTeclado
@@ -141,6 +143,8 @@ internal fun VistaPreviaCalendario(
     onImportado: () -> Unit,
     onReconectar: (String) -> Unit,
     onCerrar: () -> Unit,
+    /** El plan sincroniza (Premium/Plus). Básico = una importación: cambian textos y el botón con 0 citas. */
+    sincroniza: Boolean = true,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -202,7 +206,7 @@ internal fun VistaPreviaCalendario(
     }
 
     resultado?.let { res ->
-        PantallaResultado(res, config.recordatoriosPacientes == true, onCerrar)
+        PantallaResultado(res, config.recordatoriosPacientes == true, sincroniza, onCerrar)
         return
     }
 
@@ -381,12 +385,12 @@ internal fun VistaPreviaCalendario(
                 // Al final de la lista, no flotando: tapaba los eventos (como la web).
                 item("pie") {
                     Tarjeta {
-                        Text(textoPie(aCrear, r.revisar), color = c.texto, fontSize = 13.5.sp, lineHeight = 18.sp)
+                        Text(textoPie(aCrear, r.revisar, sincroniza), color = c.texto, fontSize = 13.5.sp, lineHeight = 18.sp)
                         Ayuda("Sin aviso de “nueva cita” por cada una. El profesional recibe sus avisos de agenda; los pacientes, solo si encendiste los recordatorios.")
                         if (tocado) Ayuda("Cambiaste algo: actualiza para ver los números (al importar se aplica igual).", c.pend)
                         Boton(
-                            textoBotonImportar(aCrear, esGoogle = true, importando = trabajando == "importar"),
-                            habilitado = puedeImportar(aCrear, esGoogle = true, trabajando = trabajando != null),
+                            textoBotonImportar(aCrear, esGoogle = true, importando = trabajando == "importar", sincroniza = sincroniza),
+                            habilitado = puedeImportar(aCrear, esGoogle = true, trabajando = trabajando != null, sincroniza = sincroniza),
                         ) { importar() }
                     }
                     Spacer(Modifier.height(Sania.dim.xxl))
@@ -699,7 +703,7 @@ private fun SelectorFechaDesde(inicial: String?, hoy: String, onElegir: (String)
 
 /** Lo que pasó al importar (como la tarjeta de resultado de la web). */
 @Composable
-private fun PantallaResultado(res: ResultadoImportacion, recordatorios: Boolean, onCerrar: () -> Unit) {
+private fun PantallaResultado(res: ResultadoImportacion, recordatorios: Boolean, sincroniza: Boolean, onCerrar: () -> Unit) {
     val c = Sania.colors
     SubPantalla("Agenda de Google Calendar", onCerrar, volver = "← Agenda de Google Calendar") {
         Tarjeta(if (res.enCurso) "⏳ Importación en curso" else "✓ Importación terminada") {
@@ -709,10 +713,7 @@ private fun PantallaResultado(res: ResultadoImportacion, recordatorios: Boolean,
                 color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold,
             )
             Text("${res.pacientesCreados} fichas nuevas de paciente", color = c.texto, fontSize = 14.sp)
-            if (res.porRevisar > 0) Text(
-                "${res.porRevisar} eventos quedaron por revisar (no se sabe de qué paciente son): ábrelos con “Revisar de nuevo”.",
-                color = c.texto, fontSize = 13.sp,
-            )
+            if (res.porRevisar > 0) Text(textoPorRevisarResultado(res.porRevisar, sincroniza), color = c.texto, fontSize = 13.sp)
             if (res.enCurso) Text("El calendario es grande: el resto se importa solo en los próximos minutos (cada 10 min avanza).", color = c.texto, fontSize = 13.sp)
             Ayuda(
                 "Al profesional le llegan sus avisos normales de estas citas (1 h antes y el resumen del día), pero no el de “nueva cita” por cada una." +
@@ -724,7 +725,7 @@ private fun PantallaResultado(res: ResultadoImportacion, recordatorios: Boolean,
                     if (res.sinCupo.size > 12) "\n… y ${res.sinCupo.size - 12} más" else ""
                 Aviso(
                     "${res.sinCupo.size} no entraron por cupo u horario. Revisa el horario del profesional (Equipo → Horario). " +
-                        "Sania las vuelve a intentar sola, cada vez con más espera (10 min, 20, 40…); al volver a revisar e importar se intentan al momento.\n\n$lista",
+                        textoSinCupoResultado(sincroniza) + "\n\n$lista",
                 )
             }
             if (res.errores.isNotEmpty()) Text("Algunas no se pudieron guardar: ${res.errores.take(2).joinToString(" · ")}", color = c.error, fontSize = 12.5.sp)

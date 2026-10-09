@@ -70,6 +70,7 @@ object StaffContextoRepo {
         // Vive en features (resolverPlan) o suelto en planEstado: se aceptan los dos.
         maxEspacioDocumentosMB = o?.intOrNull("maxEspacioDocumentosMB") ?: plan?.intOrNull("maxEspacioDocumentosMB"),
         actividadEquipo = o?.bool("actividadEquipo") ?: false,
+        calendarioSync = o?.boolOrNull("calendarioSync") ?: true,
     )
 
     /** Módulos clínicos. Sin el objeto (backend viejo) → todo apagado, como siempre. */
