@@ -111,7 +111,11 @@ internal fun mensajeSeguimientoNuevo(f: FilaPacienteNuevo, clinica: String): Str
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PantallaPacientesNuevos(ctx: ContextoStaff, onSalir: () -> Unit) {
+fun PantallaPacientesNuevos(
+    ctx: ContextoStaff,
+    onSalir: () -> Unit,
+    onVista: (pe.saniape.app.ui.clinica.reportes.VistaReportes) -> Unit = {},
+) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     val acciones = recordarAcciones()
@@ -182,6 +186,11 @@ fun PantallaPacientesNuevos(ctx: ContextoStaff, onSalir: () -> Unit) {
                         ),
                         verticalArrangement = Arrangement.spacedBy(Sania.dim.sm),
                     ) {
+                        item(key = "vistas") {
+                            pe.saniape.app.ui.clinica.reportes.FilaVistasReportes(
+                                ctx, pe.saniape.app.ui.clinica.reportes.VistaReportes.Nuevos, onVista,
+                            )
+                        }
                         item(key = "meses") {
                             Row(
                                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),

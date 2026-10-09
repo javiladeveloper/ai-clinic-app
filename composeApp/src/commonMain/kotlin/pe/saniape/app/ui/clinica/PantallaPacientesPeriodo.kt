@@ -48,14 +48,18 @@ import pe.saniape.app.data.staff.SedeActiva
 import pe.saniape.app.ui.theme.Sania
 
 /**
- * 📊 "Pacientes del período" (nativo). Gemelo del bloque BloqueEmbudo de la web
+ * 🎯 "Rendimiento" (nativo). Gemelo del bloque BloqueEmbudo de la web
  * (Reportes → Rendimiento): cuántos pacientes se atendieron, cuántos vinieron a
  * evaluación y qué pasó con ellos (compraron paquete / sin pagar / ya tenían /
  * sin paquete). Los números vienen calculados del servidor; aquí solo se pintan.
  * Solo con permiso `reportes` (lo decide el padre); el plan lo valida el servidor.
  */
 @Composable
-fun PantallaPacientesPeriodo(ctx: ContextoStaff, onSalir: () -> Unit) {
+fun PantallaPacientesPeriodo(
+    ctx: ContextoStaff,
+    onSalir: () -> Unit,
+    onVista: (pe.saniape.app.ui.clinica.reportes.VistaReportes) -> Unit = {},
+) {
     val c = Sania.colors
     var periodo by remember { mutableStateOf(PeriodoReporte.MES) }
     var resultado by remember { mutableStateOf<ResultadoReporte?>(null) }
@@ -88,8 +92,10 @@ fun PantallaPacientesPeriodo(ctx: ContextoStaff, onSalir: () -> Unit) {
                             .clickable { onSalir() }.padding(vertical = 2.dp),
                     )
                     Spacer(Modifier.height(2.dp))
-                    Text("📊 ${ctx.terminologiaPaciente.Pacientes} del período", color = c.sobreNavy,
+                    Text("🎯 Rendimiento", color = c.sobreNavy,
                         fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
+                    Text("Rendimiento de la clínica: ocupación, ingreso por hora, paquetes y faltas",
+                        color = c.sobreNavy.copy(alpha = 0.8f), fontSize = Sania.txt.mini)
                     ChipSede(Modifier.padding(top = 4.dp))
                 }
             }
@@ -98,6 +104,10 @@ fun PantallaPacientesPeriodo(ctx: ContextoStaff, onSalir: () -> Unit) {
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState())
                     .padding(horizontal = Sania.dim.lg, vertical = Sania.dim.md),
             ) {
+                pe.saniape.app.ui.clinica.reportes.FilaVistasReportes(
+                    ctx, pe.saniape.app.ui.clinica.reportes.VistaReportes.Rendimiento, onVista,
+                )
+                Spacer(Modifier.height(Sania.dim.md))
                 // Período (los mismos cuatro que la web).
                 Row(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
