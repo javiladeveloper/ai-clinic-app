@@ -32,7 +32,8 @@ data class FeedCalendario(
     val privacidad: String,
 )
 
-data class EstadoCalendario(val tieneAgenda: Boolean, val feed: FeedCalendario?)
+/** [completoPermitido]: el Admin de la clínica permitió mostrar el nombre completo del paciente. */
+data class EstadoCalendario(val tieneAgenda: Boolean, val feed: FeedCalendario?, val completoPermitido: Boolean = false)
 
 /**
  * "Mis citas en mi Google Calendar" (/api/staff/calendario/feed). Todo lo decide
@@ -64,9 +65,19 @@ object CalendarioFeedRepo {
             ?: return null to "Tu sesión expiró. Vuelve a entrar."
         return try {
             val resp = http.get("${Supabase.SITE_URL}$RUTA") { header("Authorization", "Bearer $tk") }
-            val o = json.parseToJsonElement(resp.bodyAsText()).jsonObject
-            if (resp.status.value !in 200..299) return null to (o.str("error") ?: "No se pudo cargar.")
-            EstadoCalendario((o["tieneAgenda"] as? JsonPrimitive)?.contentOrNull == "true", feedDe(o)) to null
+            val o = runCatching { json.parseToJsonElement(resp.bodyAsText()).jsonObject }.getOrNull()
+            if (resp.status.value !in 200..299) {
+                return null to (o?.str("error") ?: when (resp.status.value) {
+                    401 -> "Tu sesión expiró. Vuelve a entrar."
+                    403 -> "No tienes permiso para ver esto."
+                    else -> "El servidor tuvo un problema. Intenta de nuevo en un momento."
+                })
+            }
+            if (o == null) return null to "Respuesta inesperada del servidor. Intenta de nuevo."
+            EstadoCalendario(
+                (o["tieneAgenda"] as? JsonPrimitive)?.contentOrNull == "true", feedDe(o),
+                (o["completoPermitido"] as? JsonPrimitive)?.contentOrNull == "true",
+            ) to null
         } catch (e: CancellationException) { throw e } catch (_: Exception) {
             null to "Sin conexión. Revisa tu internet."
         }

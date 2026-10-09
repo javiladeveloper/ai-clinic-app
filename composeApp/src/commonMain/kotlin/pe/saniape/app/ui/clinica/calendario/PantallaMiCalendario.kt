@@ -74,7 +74,7 @@ fun PantallaMiCalendario(onSalir: () -> Unit) {
             val (feed, msg) = CalendarioFeedRepo.accion(accion, privacidad)
             trabajando = false
             if (msg != null) { Toaster.error(msg); return@launch }
-            estado = EstadoCalendario(true, feed)
+            estado = EstadoCalendario(true, feed, estado?.completoPermitido ?: false)
             Toaster.exito(ok)
         }
     }
@@ -128,9 +128,15 @@ fun PantallaMiCalendario(onSalir: () -> Unit) {
                         Boton("Crear mi enlace de calendario", activo = !trabajando) { correr("crear", ok = "Enlace creado") }
                     } else {
                         ContenidoFeed(
-                            feed = feed, trabajando = trabajando,
+                            feed = feed, trabajando = trabajando, completoPermitido = e.completoPermitido,
                             onGoogle = { acciones.abrirUrl(feed.google) },
-                            onWebcal = { acciones.abrirUrl(feed.webcal) },
+                            onWebcal = {
+                                // Si ninguna app atiende webcal:// no hay forma de saberlo: dejamos el enlace
+                                // copiado para pegarlo a mano.
+                                acciones.copiarTexto(feed.url, "Enlace de calendario")
+                                acciones.abrirUrl(feed.webcal)
+                                Toaster.info("Si no se abre ninguna app, el enlace ya quedó copiado para pegarlo.")
+                            },
                             onCompartir = { acciones.compartirTexto(feed.url, "Mi calendario de Sania") },
                             onCopiar = { acciones.copiarTexto(feed.url, "Enlace de calendario"); Toaster.exito("Enlace copiado") },
                             onPrivacidad = { correr("privacidad", it, "Guardado") },
@@ -171,6 +177,7 @@ fun PantallaMiCalendario(onSalir: () -> Unit) {
 private fun ContenidoFeed(
     feed: FeedCalendario,
     trabajando: Boolean,
+    completoPermitido: Boolean,
     onGoogle: () -> Unit,
     onWebcal: () -> Unit,
     onCompartir: () -> Unit,
@@ -202,7 +209,11 @@ private fun ContenidoFeed(
     ) {
         Text("QUÉ SE VE DEL PACIENTE", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
         Opcion("Solo iniciales (J.P. · Sesión) — recomendado", feed.privacidad == "iniciales", !trabajando) { onPrivacidad("iniciales") }
-        Opcion("Nombre completo", feed.privacidad == "completo", !trabajando) { onPrivacidad("completo") }
+        if (completoPermitido) {
+            Opcion("Nombre completo", feed.privacidad == "completo", !trabajando) { onPrivacidad("completo") }
+        } else {
+            Text("El nombre completo está desactivado por tu clínica (lo decide el administrador).", color = c.textoSuave, fontSize = 11.5.sp)
+        }
         Text("Nunca se envía diagnóstico, motivo ni teléfono.", color = c.textoSuave, fontSize = 11.5.sp)
     }
 

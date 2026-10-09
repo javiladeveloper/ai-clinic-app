@@ -27,7 +27,7 @@ private class AccionesIos : AccionesNativas {
     }
 
     override fun abrirUrl(url: String) {
-        val u = if (url.startsWith("http")) url else "https://$url"
+        val u = if (url.startsWith("http") || url.startsWith("webcal:")) url else "https://$url"
         val nsUrl = NSURL.URLWithString(u) ?: return
         UIApplication.sharedApplication.openURL(nsUrl, options = emptyMap<Any?, Any?>(), completionHandler = null)
     }
