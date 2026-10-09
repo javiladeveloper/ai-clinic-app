@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -46,6 +47,16 @@ import pe.saniape.app.data.Supabase
 import pe.saniape.app.data.staff.AjustesRepo
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.soles
+import pe.saniape.app.data.staff.MONEDAS_ELEGIBLES
+import pe.saniape.app.data.staff.PAISES_SOPORTADOS
+import pe.saniape.app.data.staff.RegionalSedeForm
+import pe.saniape.app.data.staff.SedesRegionalRepo
+import pe.saniape.app.data.staff.StaffContextoRepo
+import pe.saniape.app.data.staff.ZONAS_SOPORTADAS
+import pe.saniape.app.data.staff.elegirPaisSede
+import pe.saniape.app.data.staff.errorRegionalSede
+import pe.saniape.app.data.staff.formatearDinero
+import pe.saniape.app.data.staff.paisPorCodigo
 import pe.saniape.app.ui.AlertaConTeclado
 import pe.saniape.app.ui.CargandoLista
 import pe.saniape.app.ui.Gestion
@@ -441,6 +452,16 @@ private fun EditorSede(s: JsonObject, dd: JsonObject, ctx: ContextoStaff, onVolv
     var todos by remember { mutableStateOf<Boolean?>(null) }
     var elegidos by remember { mutableStateOf<Map<String, Pair<Boolean, String>>>(emptyMap()) }
     var guardando by remember { mutableStateOf(false) }
+    // Multipaís: país/moneda/zona propios de la sede ("" = los de la clínica).
+    // null = todavía no se leyó (o la base no tiene las columnas): no se muestra.
+    var regionalGuardado by remember { mutableStateOf<RegionalSedeForm?>(null) }
+    var regional by remember { mutableStateOf(RegionalSedeForm()) }
+    var eligiendoRegional by remember { mutableStateOf<String?>(null) }   // "pais" | "moneda" | "zona"
+    LaunchedEffect(s.t("id")) {
+        SedesRegionalRepo.leer(s.t("id"))?.let { regionalGuardado = it; regional = it }
+    }
+    // Moneda con la que se muestran los precios de esta sede.
+    val monedaSede = regional.moneda.ifBlank { ctx.moneda }
 
     // Los servicios se descargan solo si se abre su pestaña.
     LaunchedEffect(pestana == "servicios") {
@@ -458,6 +479,7 @@ private fun EditorSede(s: JsonObject, dd: JsonObject, ctx: ContextoStaff, onVolv
         val lim = limite.trim().takeIf { it.isNotEmpty() }?.toIntOrNull()
         if (limite.isNotBlank() && (lim == null || lim < 1)) { pestana = "horario"; Toaster.error("El límite debe ser 1 o más (o vacío)"); return }
         if (horarioPropio && horario.any { it.activo && it.apertura >= it.cierre }) { pestana = "horario"; Toaster.error("Revisa el horario: la hora de cierre debe ser después de la de apertura"); return }
+        errorRegionalSede(regional)?.let { pestana = "datos"; Toaster.error(it); return }
         // undefined (null) = no se tocan; JsonNull = todos al precio normal; lista = solo esos.
         val serviciosJson: kotlinx.serialization.json.JsonElement? = if (servicios != null && todos != null) {
             if (todos == true) JsonNull
@@ -481,8 +503,15 @@ private fun EditorSede(s: JsonObject, dd: JsonObject, ctx: ContextoStaff, onVolv
                     serviciosJson?.let { put("servicios", it) }
                 })
             }
-            guardando = false
-            if (r.registrada) { Toaster.exito("Sede actualizada"); onHecho() }
+            if (r.registrada) {
+                // País/moneda/zona: directo en la sede (como la web), solo si cambió algo.
+                val antes = regionalGuardado
+                val errRegional = if (antes != null && antes != regional) SedesRegionalRepo.guardar(s.t("id"), antes, regional) else null
+                guardando = false
+                if (errRegional != null) { Toaster.error("Datos guardados, pero no el país/moneda/zona: $errRegional"); return@launch }
+                if (antes != null && antes != regional) runCatching { StaffContextoRepo.cargar() }
+                Toaster.exito("Sede actualizada"); onHecho()
+            } else guardando = false
         }
     }
 
@@ -490,7 +519,39 @@ private fun EditorSede(s: JsonObject, dd: JsonObject, ctx: ContextoStaff, onVolv
         val tabs = listOf("datos" to "📍 Datos", "horario" to "⏰ Horario", "servicios" to "🩺 Servicios") + if (ctx.multiSede) listOf("whatsapp" to "💬 WhatsApp") else emptyList()
         ChipsEleccion(tabs, pestana) { pestana = it }
         when (pestana) {
-            "datos" -> Tarjeta { FormDatosSede(datos, conGps = true) { datos = it } }
+            "datos" -> {
+                Tarjeta { FormDatosSede(datos, conGps = true) { datos = it } }
+                if (regionalGuardado != null) Tarjeta("🌎 País, moneda y hora") {
+                    val paisClinica = paisPorCodigo(ctx.pais)?.nombre ?: ctx.pais
+                    Ayuda("Solo si esta sede está en otro país. Vacío = lo de la clínica ($paisClinica · ${ctx.moneda}).")
+                    Selector("País", regional.pais.takeIf { it.isNotBlank() }?.let { paisPorCodigo(it)?.nombre ?: it } ?: "El de la clínica ($paisClinica)") { eligiendoRegional = "pais" }
+                    Spacer(Modifier.height(8.dp))
+                    Selector("Moneda", regional.moneda.takeIf { it.isNotBlank() }?.let { m -> MONEDAS_ELEGIBLES.firstOrNull { it.first == m }?.second ?: m } ?: "La de la clínica (${ctx.moneda})") { eligiendoRegional = "moneda" }
+                    Spacer(Modifier.height(8.dp))
+                    Selector("Zona horaria", regional.zona.ifBlank { "La de la clínica (${ctx.zona})" }) { eligiendoRegional = "zona" }
+                    val monedaAntes = regionalGuardado?.moneda?.ifBlank { null } ?: ctx.moneda
+                    if (monedaSede != monedaAntes) {
+                        Spacer(Modifier.height(8.dp))
+                        Aviso("Los montos que ya se cobraron en esta sede pasarán a leerse en $monedaSede (no se convierten: " +
+                            "${formatearDinero(100.0, monedaAntes)} pasa a ser ${formatearDinero(100.0, monedaSede)}).")
+                    }
+                }
+                when (eligiendoRegional) {
+                    "pais" -> DialogoLista("País de la sede", listOf("" to "El de la clínica") + PAISES_SOPORTADOS.map { it.codigo to it.nombre }, { v ->
+                        regional = if (v.isBlank()) RegionalSedeForm() else elegirPaisSede(v); eligiendoRegional = null
+                    }, { eligiendoRegional = null })
+                    "moneda" -> DialogoLista("Moneda de la sede", listOf("" to "La de la clínica (${ctx.moneda})") + MONEDAS_ELEGIBLES, { v ->
+                        regional = regional.copy(moneda = v); eligiendoRegional = null
+                    }, { eligiendoRegional = null })
+                    "zona" -> {
+                        val zonas = paisPorCodigo(regional.pais)?.zonas ?: ZONAS_SOPORTADAS
+                        val opciones = (if (regional.zona.isNotBlank() && regional.zona !in zonas) listOf(regional.zona) else emptyList()) + zonas
+                        DialogoLista("Zona horaria", listOf("" to "La de la clínica (${ctx.zona})") + opciones.map { it to it }, { v ->
+                            regional = regional.copy(zona = v); eligiendoRegional = null
+                        }, { eligiendoRegional = null })
+                    }
+                }
+            }
             "horario" -> {
                 Tarjeta {
                     FilaInterruptor("Usar el horario de la clínica", "Desmárcalo si esta sede abre en otro horario.", !horarioPropio) { usar ->
@@ -520,7 +581,7 @@ private fun EditorSede(s: JsonObject, dd: JsonObject, ctx: ContextoStaff, onVolv
                                 Checkbox(checked = ofrece, onCheckedChange = { v -> elegidos = elegidos + (id to (v to precio)) }, colors = CheckboxDefaults.colors(checkedColor = c.navy))
                                 Text(sv.t("nombre"), color = if (ofrece) c.texto else c.textoSuave, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                                 Campo(null, precio, { v -> elegidos = elegidos + (id to (ofrece to v.filter { ch -> ch.isDigit() || ch == '.' })) },
-                                    placeholder = soles(sv.n("precioNormal") ?: 0.0), teclado = KeyboardType.Decimal, habilitado = ofrece, max = 9, modifier = Modifier.width(110.dp))
+                                    placeholder = formatearDinero(sv.n("precioNormal") ?: 0.0, monedaSede), teclado = KeyboardType.Decimal, habilitado = ofrece, max = 9, modifier = Modifier.width(110.dp))
                             }
                         }
                     }

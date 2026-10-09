@@ -50,7 +50,16 @@ import pe.saniape.app.data.staff.MovimientoKardex
 import pe.saniape.app.data.staff.PeriodoFinanzas
 import pe.saniape.app.data.staff.SedeActiva
 import pe.saniape.app.data.staff.hoyClinicaIso
-import pe.saniape.app.data.staff.soles
+import pe.saniape.app.data.staff.StaffContextoRepo
+import pe.saniape.app.data.staff.consolidadoMultimoneda
+import pe.saniape.app.data.staff.dineroActivo
+import pe.saniape.app.data.staff.dineroDeFila
+import pe.saniape.app.data.staff.formatearDinero
+import pe.saniape.app.data.staff.monedaActiva
+import pe.saniape.app.data.staff.monedaDeFila
+import pe.saniape.app.data.staff.monedasEnUso
+import pe.saniape.app.data.staff.simboloActivo
+import pe.saniape.app.data.staff.simboloMoneda
 import pe.saniape.app.tutoriales.tourAncla
 import pe.saniape.app.ui.Gestion
 import pe.saniape.app.ui.Toaster
@@ -130,7 +139,14 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
     }
 
     val etiquetaPeriodo = rangoManual?.let { "${fechaCortaFin(it.first)} — ${fechaCortaFin(it.second)}" } ?: periodo.etiqueta
-    val lista = movs
+    // Multipaís: en "todas las sedes" con sedes que cobran en monedas distintas se
+    // ve UNA moneda a la vez (totales, gráfico y lista): nunca se suman soles con
+    // bolivianos. Con una sola moneda (DALU), todo igual que siempre.
+    val multimoneda = consolidadoMultimoneda()
+    val monedas = if (multimoneda) StaffContextoRepo.actual?.monedasEnUso.orEmpty() else emptyList()
+    var monedaElegida by remember { mutableStateOf<String?>(null) }
+    val moneda = if (multimoneda) (monedaElegida?.takeIf { it in monedas } ?: monedas.firstOrNull() ?: monedaActiva()) else monedaActiva()
+    val lista = if (multimoneda) movs?.filter { monedaDeFila(it.sedeId) == moneda } else movs
     when {
         lista == null && fallo != null -> Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -179,12 +195,18 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
                 if (tope) item {
                     AvisoFin("⚠ Se muestran los ${Finanzas.TOPE_MOVIMIENTOS} movimientos más recientes. Elige un periodo o un rango para ver los totales completos.", c.pend, c.pendBg)
                 }
+                if (multimoneda) item {
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        RotuloFin("Moneda")
+                        monedas.forEach { m -> ChipFin("${simboloMoneda(m)} · $m", activo = m == moneda) { monedaElegida = m; visibles = Finanzas.POR_PAGINA } }
+                    }
+                }
                 // Totales del periodo (no cambian con los filtros de la lista)
                 item {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        CifraFin("Ingresos", resumen.ingresos, c.ok, Modifier.weight(1f))
-                        CifraFin("Egresos", resumen.egresos, c.error, Modifier.weight(1f))
-                        CifraFin("Balance", resumen.balance, if (resumen.balance < 0) c.error else c.navy, Modifier.weight(1f))
+                        CifraFin("Ingresos", resumen.ingresos, c.ok, Modifier.weight(1f), moneda)
+                        CifraFin("Egresos", resumen.egresos, c.error, Modifier.weight(1f), moneda)
+                        CifraFin("Balance", resumen.balance, if (resumen.balance < 0) c.error else c.navy, Modifier.weight(1f), moneda)
                     }
                 }
                 if (resumen.porMetodo.isNotEmpty()) item {
@@ -195,7 +217,7 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
                             Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text("${iconoMetodoFin(met)}  $met", color = c.texto, fontSize = 13.sp, modifier = Modifier.weight(1f))
                                 if (resumen.ingresos > 0) Text("${pcts[idx]}%  ", color = c.textoSuave, fontSize = 11.sp)
-                                Text(soles(monto), color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text(formatearDinero(monto, moneda), color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -212,7 +234,7 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
                         RotuloFin("📊 Balance ($sub)", modifier = Modifier.padding(bottom = 8.dp))
                         if (barras.none { it.ingresos > 0 || it.egresos > 0 }) {
                             Text("Sin movimientos en este periodo.", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(vertical = 18.dp))
-                        } else GraficoBalance(barras)
+                        } else GraficoBalance(barras, moneda = moneda)
                     }
                 }
                 // Encabezado de la lista + registrar
@@ -262,7 +284,7 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
                             color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.weight(1f),
                         )
                         val cero = kotlin.math.abs(neto) < 0.005
-                        Text((if (cero) "" else if (neto < 0) "− " else "+ ") + soles(kotlin.math.abs(neto)), color = if (cero) c.textoSuave else if (neto < 0) c.error else c.ok,
+                        Text((if (cero) "" else if (neto < 0) "− " else "+ ") + formatearDinero(kotlin.math.abs(neto), moneda), color = if (cero) c.textoSuave else if (neto < 0) c.error else c.ok,
                             fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
                 }
@@ -310,7 +332,7 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
                     else {
                         val cerrada = (r.cuerpo?.get("cajaCerrada") as? kotlinx.serialization.json.JsonPrimitive)?.content == "true"
                         if (cerrada) Toaster.info("Registrado. La caja de hoy ya estaba cerrada: actualiza el cierre.")
-                        else Toaster.exito("$tipo de ${soles(monto)} registrado")
+                        else Toaster.exito("$tipo de ${dineroActivo(monto)} registrado")
                     }
                     recarga++
                 }
@@ -329,7 +351,7 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
     borrarDe?.let { m ->
         ConfirmarFin(
             titulo = "¿Eliminar este movimiento?",
-            detalle = "\"${m.descripcion ?: "Movimiento"}\" de ${soles(m.monto)}. Queda registrado en la auditoría quién lo eliminó y qué decía.",
+            detalle = "\"${m.descripcion ?: "Movimiento"}\" de ${dineroDeFila(m.monto, m.sedeId)}. Queda registrado en la auditoría quién lo eliminó y qué decía.",
             textoAccion = "Eliminar",
             onCancelar = { borrarDe = null },
         ) {
@@ -364,7 +386,7 @@ private fun FilaMovimiento(m: MovimientoKardex, esAdmin: Boolean, onEditar: () -
             if (quien.isNotEmpty()) Text(quien.joinToString(" · "), color = c.textoSuave, fontSize = 11.sp)
         }
         Column(horizontalAlignment = Alignment.End) {
-            Text((if (esIn) "+ " else "− ") + soles(m.monto), color = if (esIn) c.ok else c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text((if (esIn) "+ " else "− ") + dineroDeFila(m.monto, m.sedeId), color = if (esIn) c.ok else c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             // Corregir: solo Admin. Manuales → ✏️ 🗑; los del sistema → solo el método (💳) y 🔒 dice dónde se corrigen.
             if (esAdmin) Row {
                 if (Finanzas.esManual(m)) {
@@ -468,7 +490,7 @@ private fun DialogoMovimiento(
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) {
-                    EtqForm("Monto (S/) *")
+                    EtqForm("Monto (${simboloActivo()}) *")
                     OutlinedTextField(
                         colors = coloresCampoForm(), value = monto,
                         onValueChange = { monto = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
@@ -508,7 +530,7 @@ private fun DialogoMetodo(m: MovimientoKardex, onCancelar: () -> Unit, onGuardar
     var metodo by remember { mutableStateOf(m.metodoPago ?: "") }
     DialogoForm(
         titulo = "¿Con qué se pagó?",
-        subtitulo = "${m.descripcion ?: "Movimiento"} · ${soles(m.monto)} · ${fechaCortaFin(m.fecha)}",
+        subtitulo = "${m.descripcion ?: "Movimiento"} · ${dineroDeFila(m.monto, m.sedeId)} · ${fechaCortaFin(m.fecha)}",
         textoAccion = "Corregir",
         accionHabilitada = metodo.isNotBlank() && metodo != m.metodoPago,
         onCancelar = onCancelar,

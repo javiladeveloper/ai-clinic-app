@@ -22,7 +22,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import pe.saniape.app.data.staff.soles
+import pe.saniape.app.data.staff.formatearDinero
+import pe.saniape.app.data.staff.monedaActiva
 import pe.saniape.app.ui.theme.Sania
 
 /** Piezas chicas que comparten las pestañas de Finanzas y caja. */
@@ -44,7 +45,7 @@ internal fun RotuloFin(texto: String, color: Color = Sania.colors.textoSuave, mo
 
 /** Tarjeta de cifra: rótulo arriba, monto grande abajo. */
 @Composable
-internal fun CifraFin(titulo: String, monto: Double, color: Color, modifier: Modifier = Modifier) {
+internal fun CifraFin(titulo: String, monto: Double, color: Color, modifier: Modifier = Modifier, moneda: String = monedaActiva()) {
     val c = Sania.colors
     Column(
         modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
@@ -53,7 +54,22 @@ internal fun CifraFin(titulo: String, monto: Double, color: Color, modifier: Mod
     ) {
         Text(titulo.uppercase(), color = c.textoSuave, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp, textAlign = TextAlign.Center)
         Spacer(Modifier.height(3.dp))
-        Text(soles(monto), color = color, fontSize = 15.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Text(formatearDinero(monto, moneda), color = color, fontSize = 15.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+    }
+}
+
+/** Cifra ya formateada (p. ej. un total por moneda: "S/ 1,200.00 · Bs 300.00"). */
+@Composable
+internal fun CifraFinTexto(titulo: String, texto: String, color: Color, modifier: Modifier = Modifier) {
+    val c = Sania.colors
+    Column(
+        modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
+            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(vertical = 12.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(titulo.uppercase(), color = c.textoSuave, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(3.dp))
+        Text(texto.replace(" · ", "\n"), color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
     }
 }
 

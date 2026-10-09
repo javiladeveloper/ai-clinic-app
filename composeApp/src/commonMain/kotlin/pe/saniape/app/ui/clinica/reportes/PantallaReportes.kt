@@ -69,7 +69,12 @@ import pe.saniape.app.data.staff.entero
 import pe.saniape.app.data.staff.etiquetaMes
 import pe.saniape.app.data.staff.mesConAnio
 import pe.saniape.app.data.staff.nombreCsvReporte
-import pe.saniape.app.data.staff.solesGrafico
+import pe.saniape.app.data.staff.StaffContextoRepo
+import pe.saniape.app.data.staff.consolidadoMultimoneda
+import pe.saniape.app.data.staff.dineroGrafico
+import pe.saniape.app.data.staff.monedaActiva
+import pe.saniape.app.data.staff.monedasEnUso
+import pe.saniape.app.data.staff.simboloMoneda
 import pe.saniape.app.data.staff.titularDe
 import pe.saniape.app.ui.AlertaConTeclado
 import pe.saniape.app.ui.CargandoLista
@@ -128,6 +133,13 @@ fun PantallaReportes(
     // El dinero (titular de ingresos y columnas del CSV) solo con permiso de finanzas,
     // como los gráficos de ingresos/egresos.
     val conDinero = ctx.puede("finanzas")
+    // Multipaís: en "todas las sedes" con sedes que cobran en monedas distintas
+    // el dinero se grafica de UNA moneda a la vez (nunca sumados). Una moneda: igual que siempre.
+    val multimoneda = consolidadoMultimoneda()
+    val monedas = if (multimoneda) StaffContextoRepo.actual?.monedasEnUso.orEmpty() else emptyList()
+    var monedaElegida by remember { mutableStateOf<String?>(null) }
+    val moneda = if (multimoneda) (monedaElegida?.takeIf { it in monedas } ?: monedas.firstOrNull() ?: monedaActiva()) else monedaActiva()
+    val monedaSerie = if (multimoneda) moneda else null
 
     LaunchedEffect(ctx.clinicaId) {
         if (!conPlan) return@LaunchedEffect
@@ -137,10 +149,10 @@ fun PantallaReportes(
 
     // Cambiar un filtro cancela la carga anterior (LaunchedEffect): una
     // respuesta vieja nunca pisa a la nueva.
-    LaunchedEffect(ctx.clinicaId, meses, sede, metodo, terapeutaId, intento, esperandoSede) {
+    LaunchedEffect(ctx.clinicaId, meses, sede, metodo, terapeutaId, intento, esperandoSede, monedaSerie) {
         if (!conPlan || esperandoSede) { cargando = false; return@LaunchedEffect }
         cargando = true
-        when (val r = ReportesRepo.series(meses, sede, metodo, terapeutaId)) {
+        when (val r = ReportesRepo.series(meses, sede, metodo, terapeutaId, monedaSerie)) {
             is ResultadoSeries.Ok -> { series = r.series; error = null }
             // Los números viejos NO quedan bajo los filtros nuevos: se ve el error con "Reintentar".
             is ResultadoSeries.Error -> { error = r; series = null }
@@ -216,6 +228,15 @@ fun PantallaReportes(
                         ChipFiltro("$m meses", activo = meses == m) { meses = m }
                     }
                 }
+                if (multimoneda && conDinero) {
+                    Spacer(Modifier.height(Sania.dim.sm))
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        monedas.forEach { m -> ChipFiltro("${simboloMoneda(m)} · $m", activo = m == moneda) { monedaElegida = m } }
+                    }
+                }
                 Spacer(Modifier.height(Sania.dim.sm))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SelectorFiltro(
@@ -266,6 +287,7 @@ fun PantallaReportes(
                         ContenidoSeries(
                             ctx = ctx,
                             s = s,
+                            moneda = moneda,
                             onCambioHitos = { intento++ },
                             onAbrirFinanzas = { acciones.abrirUrl("${Supabase.SITE_URL}/finanzas") },
                         )
@@ -281,6 +303,7 @@ fun PantallaReportes(
 private fun ContenidoSeries(
     ctx: ContextoStaff,
     s: SeriesReporte,
+    moneda: String,
     onCambioHitos: () -> Unit,
     onAbrirFinanzas: () -> Unit,
 ) {
@@ -296,7 +319,7 @@ private fun ContenidoSeries(
     tarjetas.chunked(2).forEach { fila ->
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Sania.dim.sm)) {
             fila.forEach { (t, dinero) ->
-                TarjetaMetrica(t.first, t.second, t.third, dinero, Modifier.weight(1f))
+                TarjetaMetrica(t.first, t.second, t.third, dinero, Modifier.weight(1f), moneda)
             }
             if (fila.size == 1) Spacer(Modifier.weight(1f))
         }
@@ -323,13 +346,13 @@ private fun ContenidoSeries(
         TarjetaGrafico("💸 Ingresos y egresos", "Lo que entró y salió de caja cada mes.") {
             val p = paletaGrafico()
             Leyenda("Ingresos", p.serie2)
-            GraficoMensual(s.ingresos, serie = 2, dinero = true, hitos = s.hitos, altura = 170.dp)
+            GraficoMensual(s.ingresos, serie = 2, dinero = true, hitos = s.hitos, altura = 170.dp, moneda = moneda)
             Spacer(Modifier.height(Sania.dim.md))
             Leyenda("Egresos", p.serie3)
-            GraficoMensual(s.egresos, serie = 3, dinero = true, hitos = s.hitos, altura = 170.dp)
+            GraficoMensual(s.egresos, serie = 3, dinero = true, hitos = s.hitos, altura = 170.dp, moneda = moneda)
             balanceUltimoCerrado(s.ingresos, s.egresos)?.let {
                 Spacer(Modifier.height(Sania.dim.md))
-                ResumenBalance(it)
+                ResumenBalance(it, moneda)
             }
             Text(
                 "Ver Finanzas y caja ↗", color = c.navy, fontSize = Sania.txt.pequeno, fontWeight = FontWeight.Bold,
@@ -347,10 +370,10 @@ private fun ContenidoSeries(
  * es contra el MISMO TRAMO del mes pasado, no contra su total.
  */
 @Composable
-private fun TarjetaMetrica(titulo: String, icono: String, serie: List<PuntoMes>, dinero: Boolean, modifier: Modifier) {
+private fun TarjetaMetrica(titulo: String, icono: String, serie: List<PuntoMes>, dinero: Boolean, modifier: Modifier, moneda: String) {
     val c = Sania.colors
     val t = titularDe(serie) ?: return
-    val fmt: (Double) -> String = { if (dinero) solesGrafico(it) else entero(it) }
+    val fmt: (Double) -> String = { if (dinero) dineroGrafico(it, moneda) else entero(it) }
     Box(
         modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
             .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(12.dp),
@@ -409,7 +432,7 @@ private fun Leyenda(texto: String, color: Color) {
 
 /** Balance del último mes cerrado (el en curso aún no es comparable). */
 @Composable
-private fun ResumenBalance(b: BalanceMes) {
+private fun ResumenBalance(b: BalanceMes, moneda: String) {
     val c = Sania.colors
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.chipBg)
@@ -417,11 +440,11 @@ private fun ResumenBalance(b: BalanceMes) {
     ) {
         Text("Último mes cerrado (${b.etiqueta})", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
         Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Entró ${solesGrafico(b.ingresos)}", color = c.texto, fontSize = Sania.txt.pequeno)
-            Text("Salió ${solesGrafico(b.egresos)}", color = c.texto, fontSize = Sania.txt.pequeno)
+            Text("Entró ${dineroGrafico(b.ingresos, moneda)}", color = c.texto, fontSize = Sania.txt.pequeno)
+            Text("Salió ${dineroGrafico(b.egresos, moneda)}", color = c.texto, fontSize = Sania.txt.pequeno)
         }
         Text(
-            "Balance ${solesGrafico(b.balance)}",
+            "Balance ${dineroGrafico(b.balance, moneda)}",
             color = if (b.balance >= 0) c.ok else c.error, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(top = 2.dp),
         )

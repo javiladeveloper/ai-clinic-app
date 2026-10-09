@@ -65,6 +65,7 @@ import pe.saniape.app.ui.CargandoFicha
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.data.staff.FlujoClinica
 import pe.saniape.app.tutoriales.tourAncla
+import pe.saniape.app.data.staff.simboloMoneda
 
 /** Petición de subir un archivo: documento suelto o resultado de una solicitud. */
 data class SubidaDoc(val categoria: String, val solicitudId: String?, val tratamientoId: String? = null)
@@ -86,6 +87,28 @@ fun PantallaFichaPaciente(
      */
     ejerciciosAlAbrir: pe.saniape.app.ui.clinica.fisio.IndicarEjercicios? = null,
 ) {
+    // Multipaís: el dinero de la ficha va en la moneda de la sede del paciente
+    // (solo con "pacientes por sede"; si no, la de la sede activa). Una clínica de
+    // un solo local no consulta nada y sigue en soles.
+    var sedePaciente by remember(pacienteInicial.id) { mutableStateOf<String?>(null) }
+    if (ctx.multiSede) {
+        LaunchedEffect(pacienteInicial.id) {
+            sedePaciente = pe.saniape.app.data.staff.AgendaRepo.sedeDePaciente(pacienteInicial.id)
+        }
+    }
+    androidx.compose.runtime.CompositionLocalProvider(
+        pe.saniape.app.ui.LocalMoneda provides pe.saniape.app.data.staff.monedaDeFila(sedePaciente),
+    ) {
+        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir)
+    }
+}
+
+@Composable
+private fun PantallaFichaPacienteContenido(
+    ctx: ContextoStaff, pacienteInicial: PacienteStaff, onCerrar: () -> Unit,
+    ejerciciosAlAbrir: pe.saniape.app.ui.clinica.fisio.IndicarEjercicios?,
+) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val tpl = LocalTerminologiaPaciente.current
     val c = Sania.colors
     val acciones = recordarAcciones()
@@ -384,7 +407,7 @@ fun PantallaFichaPaciente(
                                 modifier = Modifier.fillMaxWidth().clickable {
                                     menuPaciente = false
                                     val tel = paciente.telefono!!.filter { it.isDigit() }
-                                    val wa = if (tel.length <= 9) "51$tel" else tel
+                                    val wa = pe.saniape.app.data.staff.numeroWhatsApp(tel, pe.saniape.app.data.staff.paisActivo())
                                     acciones.abrirUrl("https://wa.me/$wa?text=${urlEncode(msg)}")
                                 }.padding(horizontal = Sania.dim.xl, vertical = Sania.dim.md))
                             Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
@@ -487,7 +510,7 @@ fun PantallaFichaPaciente(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             BotonContacto("📞 Llamar", c.navy) { acciones.abrirUrl("tel:${tel.filter { ch -> ch.isDigit() }}") }
                             BotonContacto("💬 WhatsApp", androidx.compose.ui.graphics.Color(0xFF25D366)) {
-                                val n = tel.filter { ch -> ch.isDigit() }.let { if (it.length <= 9) "51$it" else it }
+                                val n = pe.saniape.app.data.staff.numeroWhatsApp(tel, pe.saniape.app.data.staff.paisActivo())
                                 acciones.abrirUrl("https://wa.me/$n")
                             }
                         }
@@ -521,7 +544,7 @@ fun PantallaFichaPaciente(
                     if (ctx.puede("pagos")) {
                         StatCard(
                             "SALDO PENDIENTE",
-                            when { saldo == null -> "…"; saldo > 0.005 -> "S/ ${formatoMonto(saldo)}"; else -> "S/ 0.00" },
+                            when { saldo == null -> "…"; saldo > 0.005 -> "${simboloMoneda(moneda)} ${formatoMonto(saldo)}"; else -> "${simboloMoneda(moneda)} 0.00" },
                             if (saldo != null && saldo > 0.005) c.error else c.ok, Modifier.weight(1f),
                         )
                     } else {
@@ -531,7 +554,7 @@ fun PantallaFichaPaciente(
                 // Pagó de más en algún tratamiento: se ve, sin mezclarlo con la deuda.
                 if (ctx.puede("pagos") && saldoAFavor > 0.005) {
                     Spacer(Modifier.height(6.dp))
-                    Text("💚 A favor S/ ${formatoMonto(saldoAFavor)}", color = c.ok, fontSize = 12.sp,
+                    Text("💚 A favor ${simboloMoneda(moneda)} ${formatoMonto(saldoAFavor)}", color = c.ok, fontSize = 12.sp,
                         fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.End)
                 }
                 if (ctx.puede("citas")) {
@@ -685,9 +708,9 @@ fun PantallaFichaPaciente(
                         onAltaHecha = { t ->
                             scope.launch {
                                 val tel = paciente.telefono
-                                if (pe.saniape.app.data.staff.enlaceWhatsApp(tel) == null) return@launch
+                                if (pe.saniape.app.data.staff.enlaceWhatsAppSede(tel) == null) return@launch
                                 val token = PacientesRepo.encuestaToken(t.id) ?: return@launch
-                                ofrecerEncuesta = pe.saniape.app.data.staff.enlaceWhatsApp(
+                                ofrecerEncuesta = pe.saniape.app.data.staff.enlaceWhatsAppSede(
                                     tel, pe.saniape.app.data.staff.textoEncuestaAlta(paciente.nombre, token),
                                 )
                             }
@@ -1552,6 +1575,7 @@ private fun ModalCrearSesion(
     // pago = (monto, método) si activó "¿el paciente pagó?" — momento 1 del cobro (web).
     onGuardar: (fecha: String, hora: String, duracion: Int, terapeutaId: String?, estado: String, costo: Double?, notas: String?, pago: Pair<Double, String>?) -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val esPaquete = t.modalidad == "Paquete"
     var cobrar by remember { mutableStateOf(false) }
@@ -1696,7 +1720,7 @@ private fun ModalCrearSesion(
                         }
                     }
                 } else {
-                    EtqForm("Costo de la sesión (S/)")
+                    EtqForm("Costo de la sesión (${simboloMoneda(moneda)})")
                     CampoFicha("", costo, soloNumero = true) { costo = it }
                 }
             }
@@ -1737,7 +1761,7 @@ private fun ModalCrearSesion(
             if (cobrar) {
                 Spacer(Modifier.height(8.dp))
                 TarjetaForm(titulo = "Cobro", icono = "💳") {
-                    EtqForm("Monto (S/)")
+                    EtqForm("Monto (${simboloMoneda(moneda)})")
                     CampoFicha("", pagoMonto, soloNumero = true) { pagoMonto = it }
                     Spacer(Modifier.height(10.dp))
                     EtqForm("Método")
@@ -2306,6 +2330,7 @@ private fun OtrosTratamientos(
 private fun ContenidoPagos(
     ctx: ContextoStaff, paciente: PacienteStaff, recargaToken: Int, onVerEnAtenciones: () -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     var resumen by remember { mutableStateOf<pe.saniape.app.data.staff.ResumenPagos?>(null) }
     LaunchedEffect(paciente.id, recargaToken) {
@@ -2325,14 +2350,14 @@ private fun ContenidoPagos(
                 fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CifraPago("Acordado", r?.let { "S/ ${formatoMonto(it.acordado)}" } ?: "…", c.texto, Modifier.weight(1f))
-                CifraPago("Pagado", r?.let { "S/ ${formatoMonto(it.pagado)}" } ?: "…", c.ok, Modifier.weight(1f))
-                CifraPago("Saldo", r?.let { "S/ ${formatoMonto(it.saldo)}" } ?: "…",
+                CifraPago("Acordado", r?.let { "${simboloMoneda(moneda)} ${formatoMonto(it.acordado)}" } ?: "…", c.texto, Modifier.weight(1f))
+                CifraPago("Pagado", r?.let { "${simboloMoneda(moneda)} ${formatoMonto(it.pagado)}" } ?: "…", c.ok, Modifier.weight(1f))
+                CifraPago("Saldo", r?.let { "${simboloMoneda(moneda)} ${formatoMonto(it.saldo)}" } ?: "…",
                     if (r != null && r.saldo > 0.005) c.error else c.ok, Modifier.weight(1f))
             }
             if (r != null && r.aFavor > 0.005) {
                 Spacer(Modifier.height(8.dp))
-                Text("💚 A favor S/ ${formatoMonto(r.aFavor)} (saldo disponible para pagar otro tratamiento)", color = c.ok,
+                Text("💚 A favor ${simboloMoneda(moneda)} ${formatoMonto(r.aFavor)} (saldo disponible para pagar otro tratamiento)", color = c.ok,
                     fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
@@ -2365,6 +2390,7 @@ private fun ContenidoPagos(
 /** Fila resumida de pagos de un tratamiento: nombre + acordado/pagado/saldo + barra + estado. */
 @Composable
 private fun FilaPagoResumen(t: TratamientoPaciente, pagado: Double, aFavor: Double, onVer: () -> Unit) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val acordado = t.montoAcordado
     val saldo = (acordado - pagado).coerceAtLeast(0.0)
@@ -2383,14 +2409,14 @@ private fun FilaPagoResumen(t: TratamientoPaciente, pagado: Double, aFavor: Doub
         }
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Acordado S/ ${formatoMonto(acordado)}", color = c.textoSuave, fontSize = 11.sp)
-            Text("Pagado S/ ${formatoMonto(pagado)}", color = c.ok, fontSize = 11.sp)
+            Text("Acordado ${simboloMoneda(moneda)} ${formatoMonto(acordado)}", color = c.textoSuave, fontSize = 11.sp)
+            Text("Pagado ${simboloMoneda(moneda)} ${formatoMonto(pagado)}", color = c.ok, fontSize = 11.sp)
             // A favor: ya calculado en resumenPagosDe (reglas en data/SaldoAFavor.kt;
             // en suelta/consulta cuenta lo realizado, no solo el acordado).
             if (aFavor > 0.0) {
-                Text("A favor S/ ${formatoMonto(aFavor)}", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("A favor ${simboloMoneda(moneda)} ${formatoMonto(aFavor)}", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             } else {
-                Text("Saldo S/ ${formatoMonto(saldo)}", color = if (saldo > 0.005) c.error else c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("Saldo ${simboloMoneda(moneda)} ${formatoMonto(saldo)}", color = if (saldo > 0.005) c.error else c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
         }
         Spacer(Modifier.height(5.dp))
@@ -2458,7 +2484,7 @@ private fun ContenidoResumen(
             Etiqueta("Datos del ${LocalTerminologiaPaciente.current.paciente}")
             val imcTxt = paciente.imc?.let { "${formatoMonto(it)}" }
             val datos = listOfNotNull(
-                paciente.dni?.let { "DNI" to it },
+                paciente.dni?.let { pe.saniape.app.data.staff.nombreDocumentoNacional(pe.saniape.app.data.staff.paisActivo()) to it },
                 paciente.edad?.let { "Edad" to "$it años" },
                 paciente.ocupacion?.let { "Ocupación" to it },
                 paciente.talla?.let { "Talla" to "$it cm" },

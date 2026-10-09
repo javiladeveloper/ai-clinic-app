@@ -42,10 +42,21 @@ data class DiaCierre(
     val porMetodo: List<Pair<String, Double>>,
     val cierre: CierreCaja?,
     val movimientos: List<MovimientoCierre>,
+    /** Multipaís: moneda del día (la de la sede); null = backend viejo → la sede activa. */
+    val moneda: String? = null,
+    /** "Todas las sedes" con varias monedas: un total por moneda (nunca sumados). Vacío = una sola moneda. */
+    val totalesPorMoneda: List<TotalMoneda> = emptyList(),
 )
 
+/** Totales de un día en UNA moneda (consolidado multipaís). */
+data class TotalMoneda(val moneda: String, val ingresos: Double, val egresos: Double, val neto: Double)
+
 data class CierreCaja(val id: String, val efectivoContado: Double, val diferencia: Double, val nota: String?, val cerradoAt: String?)
-data class MovimientoCierre(val tipo: String, val monto: Double, val metodoPago: String?, val descripcion: String, val createdAt: String?)
+data class MovimientoCierre(
+    val tipo: String, val monto: Double, val metodoPago: String?, val descripcion: String, val createdAt: String?,
+    /** Multipaís: la sede del movimiento (su moneda en "todas las sedes"). */
+    val sedeId: String? = null,
+)
 
 /** Un gasto fijo con su estado en la caja (GET /api/staff/gastos-recurrentes). */
 data class GastoFijo(
@@ -62,6 +73,8 @@ data class GastoFijo(
     val unicoCerrado: Boolean,
     /** Próxima fecha en que entra a la caja (YYYY-MM-DD) o null. */
     val proximo: String?,
+    /** Multipaís: la sede del gasto (su moneda). null = la activa. */
+    val sedeId: String? = null,
 )
 
 data class GastosYCategorias(
@@ -81,6 +94,8 @@ data class PendienteCobro(
     val paciente: String,
     val pacienteId: String?,
     val profesional: String?,
+    /** Multipaís: la sede de la cita (su moneda en "todas las sedes"). */
+    val sedeId: String? = null,
 )
 
 /** Resultado de una escritura: null = ok; si no, el mensaje del servidor. */
@@ -321,6 +336,17 @@ object FinanzasRepo {
                     metodoPago = x.str("metodoPago"),
                     descripcion = x.str("descripcion") ?: x.str("categoria") ?: "",
                     createdAt = x.str("createdAt"),
+                    sedeId = x.str("sedeId") ?: x.str("sede_id"),
+                )
+            },
+            moneda = o.str("moneda")?.takeIf { it.isNotBlank() },
+            totalesPorMoneda = (o["totalesPorMoneda"] as? JsonArray).orEmpty().mapNotNull { e ->
+                val x = e as? JsonObject ?: return@mapNotNull null
+                TotalMoneda(
+                    moneda = x.str("moneda")?.let(::normalizarMoneda) ?: return@mapNotNull null,
+                    ingresos = x.dbl("ingresos") ?: 0.0,
+                    egresos = x.dbl("egresos") ?: 0.0,
+                    neto = x.dbl("neto") ?: 0.0,
                 )
             },
         )
@@ -358,6 +384,7 @@ object FinanzasRepo {
                     yaEnCaja = g.bool("yaEnCaja") ?: false,
                     unicoCerrado = g.bool("unicoCerrado") ?: false,
                     proximo = g.str("proximo"),
+                    sedeId = g.str("sedeId") ?: g.str("sede_id"),
                 )
             },
             catEgreso = lista("egreso"),
@@ -401,7 +428,7 @@ object FinanzasRepo {
     suspend fun porCobrar(hoyIso: String): List<PendienteCobro> {
         val desde = sumarDiasIso(hoyIso, -60)
         return Supabase.client.postgrest["citas"]
-            .select(Columns.raw("id, fecha, hora, tipo, costo, paciente_id, paciente:pacientes(nombre), terapeuta:terapeutas(nombre)")) {
+            .select(Columns.raw("id, fecha, hora, tipo, costo, paciente_id, sede_id, paciente:pacientes(nombre), terapeuta:terapeutas(nombre)")) {
                 filter {
                     eq("estado", "Completada")
                     exact("pagada_at", null)
@@ -423,6 +450,7 @@ object FinanzasRepo {
                     paciente = (o["paciente"] as? JsonObject)?.str("nombre") ?: "Paciente",
                     pacienteId = o.str("paciente_id"),
                     profesional = (o["terapeuta"] as? JsonObject)?.str("nombre"),
+                    sedeId = o.str("sede_id"),
                 )
             }
     }

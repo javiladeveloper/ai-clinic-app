@@ -909,7 +909,7 @@ fun PantallaAgenda(
             title = { Text("↺ ¿Anular este cobro?", fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    "${cita.pacienteNombre ?: "El ${LocalTerminologiaPaciente.current.paciente}"} pagó ${pe.saniape.app.ui.clinica.agenda.modales.textoSoles(cita.costo ?: 0.0)}" +
+                    "${cita.pacienteNombre ?: "El ${LocalTerminologiaPaciente.current.paciente}"} pagó ${pe.saniape.app.ui.clinica.agenda.modales.textoSoles(cita.costo ?: 0.0, pe.saniape.app.data.staff.monedaDeFila(cita.sedeId))}" +
                         (medios?.let { " con $it" } ?: "") + ". Se borrarán de caja TODAS sus partes y la cita volverá a " +
                         "\"por cobrar\" para cobrarla de nuevo. La atención, el diagnóstico y el historial no cambian.",
                     color = c.textoSuave, fontSize = 13.sp,
@@ -1141,8 +1141,9 @@ private fun BotonPagina(texto: String, habilitado: Boolean, onClick: () -> Unit)
  * citar la próxima sesión/control.
  */
 private fun repetirDesde(cita: pe.saniape.app.data.staff.CitaStaff): pe.saniape.app.ui.clinica.PrefillCita {
+    // "Hoy" de la sede activa, no del teléfono.
     val hoy = kotlinx.datetime.Clock.System.now()
-        .toLocalDateTime(kotlinx.datetime.TimeZone.currentSystemDefault()).date
+        .toLocalDateTime(pe.saniape.app.data.staff.ZONA_CLINICA).date
     val base = runCatching { kotlinx.datetime.LocalDate.parse(cita.fecha) }.getOrDefault(hoy)
     val desde = if (base < hoy) hoy else base
     val proxima = desde.plus(7, kotlinx.datetime.DateTimeUnit.DAY)

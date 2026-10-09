@@ -48,12 +48,12 @@ data class CampaniaApp(
         else -> base
     }
 
-    /** Etiqueta corta para el chip ("10 sesiones a S/500", "20% de descuento"…). */
-    fun etiqueta(): String = when (tipo) {
-        "paquete_fijo" -> "${cantidad ?: 0} sesiones a S/${fmt(precio ?: 0.0)}"
-        "precio_fijo" -> "S/${fmt(precio ?: 0.0)}"
+    /** Etiqueta corta para el chip ("10 sesiones a S/500", "20% de descuento"…), con la moneda de la sede. */
+    fun etiqueta(moneda: String = monedaActiva()): String = when (tipo) {
+        "paquete_fijo" -> "${cantidad ?: 0} sesiones a ${dineroCorto(precio ?: 0.0, moneda)}"
+        "precio_fijo" -> dineroCorto(precio ?: 0.0, moneda)
         "porcentaje" -> "${fmt(valor ?: 0.0)}% de descuento"
-        "monto_fijo" -> "S/${fmt(valor ?: 0.0)} de descuento"
+        "monto_fijo" -> "${dineroCorto(valor ?: 0.0, moneda)} de descuento"
         else -> nombre
     }
 
@@ -71,10 +71,7 @@ data class CampaniaApp(
 }
 
 private fun redondear2(n: Double): Double = kotlin.math.round(n * 100) / 100
-private fun fmt(n: Double): String = if (n % 1.0 == 0.0) n.toInt().toString() else {
-    val cent = kotlin.math.round(n * 100).toLong()
-    "${cent / 100}.${(cent % 100).toString().padStart(2, '0')}"
-}
+private fun fmt(n: Double): String = montoCorto(n)
 
 object CatalogosCobroRepo {
 
@@ -165,9 +162,6 @@ object CatalogosCobroRepo {
         return redondear2(mejorPrecio) to mejor
     }
 
-    private fun hoyIsoLocal(): String {
-        val d = kotlinx.datetime.Clock.System.now()
-            .toLocalDateTime(kotlinx.datetime.TimeZone.currentSystemDefault()).date
-        return "${d.year}-${d.monthNumber.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}"
-    }
+    /** Hoy en la zona de la sede activa (no la del teléfono: un celular en UTC cambiaba de día a las 19:00). */
+    private fun hoyIsoLocal(): String = hoyClinicaIso()
 }

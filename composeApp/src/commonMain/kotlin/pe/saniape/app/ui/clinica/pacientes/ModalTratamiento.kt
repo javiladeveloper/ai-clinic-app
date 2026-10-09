@@ -50,6 +50,7 @@ import pe.saniape.app.data.staff.TarifarioRef
 import pe.saniape.app.data.staff.TerapeutaConEsp
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.tutoriales.tourAncla
+import pe.saniape.app.data.staff.simboloMoneda
 
 /** Resultado del form de tratamiento (lo que se envía al endpoint crear). */
 data class TratamientoNuevo(
@@ -127,6 +128,7 @@ fun ModalCrearTratamiento(
      */
     prefillPlan: pe.saniape.app.data.staff.PrefillPlanPsico? = null,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     var procedimientos by remember { mutableStateOf<List<ProcedimientoRef>>(emptyList()) }
     var terapeutas by remember { mutableStateOf<List<TerapeutaConEsp>>(emptyList()) }
@@ -572,7 +574,7 @@ fun ModalCrearTratamiento(
                     Tarjeta(titulo = "Cobro por $etiquetaU", icono = "🔢") {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Column(Modifier.weight(1f)) { Etq("Cantidad de $etiquetaU"); CampoNum(cantidadUnidades) { cantidadUnidades = it } }
-                            Column(Modifier.weight(1f)) { Etq("Precio por unidad (S/)"); CampoNum(precioUnitario) { precioUnitario = it } }
+                            Column(Modifier.weight(1f)) { Etq("Precio por unidad (${simboloMoneda(moneda)})"); CampoNum(precioUnitario) { precioUnitario = it } }
                         }
                         // Total en vivo (cantidad × precio unitario) — es el acordado por defecto.
                         val total = (cantidadUnidades.toIntOrNull() ?: 0) * (precioUnitario.toDoubleOrNull() ?: 0.0)
@@ -580,13 +582,13 @@ fun ModalCrearTratamiento(
                             Spacer(Modifier.height(8.dp))
                             Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
                                 .background(c.chipBg).padding(10.dp)) {
-                                Text("Total: S/ ${if (total % 1.0 == 0.0) total.toInt() else total}",
+                                Text("Total: ${simboloMoneda(moneda)} ${if (total % 1.0 == 0.0) total.toInt() else total}",
                                     color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                         Spacer(Modifier.height(10.dp))
-                        Etq("Precio acordado (S/) — opcional")
-                        CampoNum(precioAcordado, ayuda = if (total > 0) "Vacío = total S/ ${formatoNum(total)}" else "Vacío = cantidad × precio") { precioAcordado = it }
+                        Etq("Precio acordado (${simboloMoneda(moneda)}) — opcional")
+                        CampoNum(precioAcordado, ayuda = if (total > 0) "Vacío = total ${simboloMoneda(moneda)} ${formatoNum(total)}" else "Vacío = cantidad × precio") { precioAcordado = it }
                         Text("Solo si se negoció distinto al total (cantidad × precio).",
                             color = c.textoSuave, fontSize = 10.sp)
                     }
@@ -594,10 +596,10 @@ fun ModalCrearTratamiento(
                     Spacer(Modifier.height(12.dp))
                     Tarjeta(titulo = "Servicio único", icono = "✨") {
                         Etq("Precio base del servicio")
-                        SelectorBox("S/ ${proc?.precio ?: 0.0}", bloqueado = true) {}
+                        SelectorBox("${simboloMoneda(moneda)} ${proc?.precio ?: 0.0}", bloqueado = true) {}
                         Spacer(Modifier.height(10.dp))
-                        Etq("Precio acordado (S/) — opcional")
-                        CampoNum(precioAcordado, ayuda = "S/ ${formatoNum(proc?.precio ?: 0.0)} (precio de lista)") { precioAcordado = it }
+                        Etq("Precio acordado (${simboloMoneda(moneda)}) — opcional")
+                        CampoNum(precioAcordado, ayuda = "${simboloMoneda(moneda)} ${formatoNum(proc?.precio ?: 0.0)} (precio de lista)") { precioAcordado = it }
                         Text("Vacío = se cobra el precio de lista; escríbelo solo si se negoció otro. " +
                             "El servicio se registra al realizarse (paso “Por hacer”).",
                             color = c.textoSuave, fontSize = 10.sp)
@@ -616,7 +618,7 @@ fun ModalCrearTratamiento(
                             if (tarifs.isNotEmpty()) {
                                 Etq("Elegir paquete del tarifario")
                                 SelectorLista(tarifs, null as TarifarioRef?,
-                                    { "${it.cantidadSesiones} sesiones — S/ ${it.precioTotal}" },
+                                    { "${it.cantidadSesiones} sesiones — ${simboloMoneda(moneda)} ${it.precioTotal}" },
                                     "Personalizado o manual…") { t -> totalSesiones = t.cantidadSesiones.toString(); precioPaquete = t.precioTotal.toString() }
                                 Spacer(Modifier.height(8.dp))
                             }
@@ -640,7 +642,7 @@ fun ModalCrearTratamiento(
                             Text("Se cobra por cada sesión realizada.", color = c.textoSuave, fontSize = 10.sp)
                         }
                         Spacer(Modifier.height(10.dp))
-                        Etq("Precio acordado (S/) — opcional")
+                        Etq("Precio acordado (${simboloMoneda(moneda)}) — opcional")
                         CampoNum(precioAcordado, ayuda = "Vacío = precio base") { precioAcordado = it }
                         Text("Solo si se negoció un precio distinto al base.", color = c.textoSuave, fontSize = 10.sp)
                     }
@@ -649,7 +651,7 @@ fun ModalCrearTratamiento(
                     Tarjeta(titulo = "Consulta", icono = "📋") {
                         // La medicación/receta NO se pide al crear: el médico aún no atendió.
                         // Se registra al EDITAR el tratamiento, después de la atención.
-                        Etq("Costo de la consulta (S/) — opcional")
+                        Etq("Costo de la consulta (${simboloMoneda(moneda)}) — opcional")
                         CampoNum(precioAcordado, ayuda = "Ej. 80 — vacío si es gratis") { precioAcordado = it }
                         Text("Déjalo vacío si es gratis. La medicación y el próximo control se " +
                             "registran al editar, después de atender.", color = c.textoSuave, fontSize = 10.sp)
@@ -672,7 +674,7 @@ fun ModalCrearTratamiento(
                             onValueChange = { motivoPrecio = it.take(200) },
                             placeholder = { Text("Ej. Promoción acordada, ${LocalTerminologiaPaciente.current.paciente} frecuente…", color = c.textoSuave) },
                             singleLine = true, modifier = Modifier.fillMaxWidth())
-                        Text("Queda registrado: S/ ${formatoNum(referencia)} → S/ ${formatoNum(acordadoNum)}",
+                        Text("Queda registrado: ${simboloMoneda(moneda)} ${formatoNum(referencia)} → ${simboloMoneda(moneda)} ${formatoNum(acordadoNum)}",
                             color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
                     }
                 }
@@ -831,6 +833,7 @@ fun ModalAmpliarTratamiento(
     onCancelar: () -> Unit,
     onConfirmar: (sesionesExtra: Int, montoExtra: Double, nota: String?) -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     var sesiones by remember { mutableStateOf("") }
     var monto by remember { mutableStateOf("") }
@@ -852,7 +855,7 @@ fun ModalAmpliarTratamiento(
                 modifier = Modifier.padding(bottom = 10.dp))
             EtqForm("Sesiones adicionales"); CampoNum(sesiones) { sesiones = it }
             Spacer(Modifier.height(10.dp))
-            EtqForm("Monto adicional (S/) — opcional"); CampoNum(monto) { monto = it }
+            EtqForm("Monto adicional (${simboloMoneda(moneda)}) — opcional"); CampoNum(monto) { monto = it }
             Spacer(Modifier.height(10.dp))
             EtqForm("Motivo / acuerdo — opcional")
             OutlinedTextField(colors = coloresCampoForm(), value = nota, onValueChange = { nota = it }, minLines = 2,
@@ -883,6 +886,7 @@ fun ModalEditarTratamiento(
                 cantidadUnidades: Int?, precioUnitario: Double?) -> Unit,
     onCorregir: ((CorreccionTratamiento) -> Unit)? = null,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val correccion = onCorregir != null
     var diagnosticoC by remember { mutableStateOf(t.diagnostico ?: "") }
@@ -961,17 +965,17 @@ fun ModalEditarTratamiento(
                     Tarjeta(titulo = "Cobro por $etiquetaU", icono = "🔢") {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Column(Modifier.weight(1f)) { Etq("Cantidad de $etiquetaU"); CampoNum(cantidadUnidades) { cantidadUnidades = it } }
-                            Column(Modifier.weight(1f)) { Etq("Precio por unidad (S/)"); CampoNum(precioUnitario) { precioUnitario = it } }
+                            Column(Modifier.weight(1f)) { Etq("Precio por unidad (${simboloMoneda(moneda)})"); CampoNum(precioUnitario) { precioUnitario = it } }
                         }
                         Spacer(Modifier.height(10.dp))
-                        Etq("Precio acordado (S/)"); CampoNum(precioAcordado) { precioAcordado = it }
+                        Etq("Precio acordado (${simboloMoneda(moneda)})"); CampoNum(precioAcordado) { precioAcordado = it }
                         Text("El acordado manda sobre cantidad × precio si se negoció distinto.",
                             color = c.textoSuave, fontSize = 10.sp)
                     }
                 } else if (t.esServicioUnico) {
                     Tarjeta(titulo = "Servicio único", icono = "✨") {
-                        Etq("Precio acordado (S/)"); CampoNum(precioAcordado) { precioAcordado = it }
-                        Text("Precio base del servicio: S/ ${t.precioBase ?: 0.0}.",
+                        Etq("Precio acordado (${simboloMoneda(moneda)})"); CampoNum(precioAcordado) { precioAcordado = it }
+                        Text("Precio base del servicio: ${simboloMoneda(moneda)} ${t.precioBase ?: 0.0}.",
                             color = c.textoSuave, fontSize = 10.sp)
                     }
                 } else if (!t.esConsulta) {
@@ -983,14 +987,14 @@ fun ModalEditarTratamiento(
                         if (esPaquete) { Etq("Precio del paquete"); CampoNum(precioPaquete) { precioPaquete = it } }
                         else { Etq("Precio por sesión"); CampoNum(precioPorSesion) { precioPorSesion = it } }
                         Spacer(Modifier.height(10.dp))
-                        Etq("Precio acordado (S/) — opcional"); CampoNum(precioAcordado) { precioAcordado = it }
+                        Etq("Precio acordado (${simboloMoneda(moneda)}) — opcional"); CampoNum(precioAcordado) { precioAcordado = it }
                         Text("Solo si se negoció un precio distinto al base.", color = c.textoSuave, fontSize = 10.sp)
                     }
                 } else {
                     // EDITAR (ajuste administrativo) = solo el costo. Lo clínico (diagnóstico/
                     // medicación/próximo control) se registra en "Registrar atención" (paso Control).
                     Tarjeta(titulo = "Ajuste de la consulta", icono = "💲") {
-                        Etq("Costo de la consulta (S/)"); CampoNum(precioAcordado) { precioAcordado = it }
+                        Etq("Costo de la consulta (${simboloMoneda(moneda)})"); CampoNum(precioAcordado) { precioAcordado = it }
                         Text("El diagnóstico, medicación y próximo control se registran al atender " +
                             "(paso “Control” del recorrido).", color = c.textoSuave, fontSize = 10.sp)
                     }
@@ -1063,6 +1067,7 @@ fun ModalEditarConsulta(
     onCancelar: () -> Unit,
     onGuardar: (EdicionConsulta) -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     var fecha by remember { mutableStateOf(cita?.fecha ?: "") }
     var hora by remember { mutableStateOf(cita?.hora ?: "09:00") }
@@ -1169,7 +1174,7 @@ fun ModalEditarConsulta(
                     )
                     if (puedePagos) {
                         Spacer(Modifier.height(10.dp))
-                        Etq("Costo de la consulta (S/) — opcional")
+                        Etq("Costo de la consulta (${simboloMoneda(moneda)}) — opcional")
                         CampoNum(costo) { costo = it }
                         Text("Déjalo vacío si es gratis (p. ej. un control sin cobro).",
                             color = c.textoSuave, fontSize = 10.sp)

@@ -40,7 +40,7 @@ import pe.saniape.app.data.staff.PacienteDetalleComision
 import pe.saniape.app.data.staff.ReglasComisiones
 import pe.saniape.app.data.staff.TramoComision
 import pe.saniape.app.data.staff.TratamientoDetalleComision
-import pe.saniape.app.data.staff.soles
+import pe.saniape.app.data.staff.dineroActivo
 import pe.saniape.app.ui.clinica.finanzas.fechaCortaFin
 import pe.saniape.app.ui.theme.Sania
 
@@ -157,7 +157,7 @@ private fun FilaPacienteDetalle(p: PacienteDetalleComision) {
             Text(p.nombre, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             Text(" · $k ${if (k == 1) "paquete" else "paquetes"}  ", color = c.textoSuave, fontSize = 11.sp)
-            Text(soles(p.total), color = c.teal, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text(dineroActivo(p.total), color = c.teal, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
         if (abierto) {
             Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 8.dp)) {
@@ -179,7 +179,7 @@ private fun FilaTratamientoDetalle(t: TratamientoDetalleComision) {
                 Spacer(Modifier.width(6.dp))
                 Text(t.servicio, color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1,
                     overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                Text(soles(t.monto), color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text(dineroActivo(t.monto), color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
             Row(Modifier.padding(start = 16.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("${t.sesionesCompletadas}/${t.totalSesiones} sesiones", color = c.textoSuave, fontSize = 11.sp)
@@ -217,7 +217,7 @@ private fun FilaTratamientoDetalle(t: TratamientoDetalleComision) {
                 t.pagos.forEach { pg ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
                         Text("${fechaCortaFin(pg.fecha)}${pg.metodo?.let { " · $it" } ?: ""}", color = c.texto, fontSize = 11.sp, modifier = Modifier.weight(1f))
-                        Text(soles(pg.monto), color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(dineroActivo(pg.monto), color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

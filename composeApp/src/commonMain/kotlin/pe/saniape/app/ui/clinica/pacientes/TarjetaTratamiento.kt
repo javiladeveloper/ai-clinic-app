@@ -48,6 +48,7 @@ import pe.saniape.app.ui.theme.EstadosColor
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.data.staff.FlujoClinica
 import pe.saniape.app.tutoriales.tourAncla
+import pe.saniape.app.data.staff.simboloMoneda
 
 /** Estado de sesión que se puede fijar desde el menú ⋯ (igual que la web). */
 private val ESTADOS_SESION = pe.saniape.app.data.staff.ESTADOS_MENU_SESION
@@ -120,6 +121,7 @@ fun TarjetaTratamiento(
     val puedeSesionesEf = puedeSesiones && !soloLectura
     val puedeCobrarEf = verPagos && !soloLectura
     val c = Sania.colors
+    val moneda = pe.saniape.app.ui.monedaUI()
     val scope = rememberCoroutineScope()
     var expandido by remember { mutableStateOf(false) }
     var sesiones by remember { mutableStateOf<List<SesionFicha>?>(null) }
@@ -237,7 +239,7 @@ fun TarjetaTratamiento(
                         color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
                     // Unidades: "1500 folículos × S/ 1.2" bajo el nombre (como el badge web).
                     if (esUnid && t.cantidadUnidades != null) {
-                        Text("${t.cantidadUnidades} ${t.unidadLabel ?: "unidades"}${t.precioUnitario?.let { " × S/ $it" } ?: ""}",
+                        Text("${t.cantidadUnidades} ${t.unidadLabel ?: "unidades"}${t.precioUnitario?.let { " × ${simboloMoneda(moneda)} $it" } ?: ""}",
                             color = c.teal, fontSize = 10.sp, fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(top = 1.dp))
                     }
@@ -812,6 +814,7 @@ private fun ModalRegistrarServicio(
     onCancelar: () -> Unit,
     onConfirmar: (nota: String?, cobrar: Boolean, monto: Double?, metodo: String) -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     var nota by remember { mutableStateOf("") }
     var cobrar by remember { mutableStateOf(false) }
@@ -838,7 +841,7 @@ private fun ModalRegistrarServicio(
                     }
                     if (cobrar) {
                         Spacer(Modifier.height(8.dp))
-                        CampoTexto("Monto (S/)", monto, soloNumero = true) { monto = it }
+                        CampoTexto("Monto (${simboloMoneda(moneda)})", monto, soloNumero = true) { monto = it }
                         Spacer(Modifier.height(8.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             rememberMetodosPago().forEach { m -> ChipMetodo(m, metodo == m) { metodo = m } }
@@ -883,6 +886,7 @@ private fun FilaSesion(
     onReasignar: () -> Unit,
     onCobrar: () -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val estado = EstadosColor.sesion(ses.estado)
     val completada = ses.estado == "Completada"
@@ -928,7 +932,7 @@ private fun FilaSesion(
                 ses.duracion?.let { DetalleSesion("Duración", "$it min", c.texto) }
                 ses.terapeutaNombre?.let { DetalleSesion("Profesional", it, c.texto) }
                 if (verCosto) DetalleSesion("Pago sesión",
-                    if ((ses.costo ?: 0.0) > 0) "S/ ${formato2(ses.costo!!)}" else "Sin costo registrado", c.texto)
+                    if ((ses.costo ?: 0.0) > 0) "${simboloMoneda(moneda)} ${formato2(ses.costo!!)}" else "Sin costo registrado", c.texto)
                 ses.motivoEstado?.takeIf { it.isNotBlank() }?.let { DetalleSesion("Motivo", it, c.pend) }
                 DetalleSesion("Procedimientos", ses.notas?.takeIf { it.isNotBlank() } ?: "Sin observaciones", c.texto)
                 ses.mejorias?.takeIf { it.isNotBlank() }?.let { DetalleSesion("Mejorías", it, c.ok) }
@@ -1062,6 +1066,7 @@ fun SeccionPagos(
     /** Cada vez que sube, abre "Registrar pago" con el saldo precargado (aviso del alta). */
     abrirRegistro: Int = 0,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     var pagos by remember { mutableStateOf<List<pe.saniape.app.data.staff.PagoFicha>?>(null) }
@@ -1104,7 +1109,7 @@ fun SeccionPagos(
     val puedeUsarSaldo = admiteSaldo && usableSaldo > 0.005
     val totalForm = pe.saniape.app.data.staff.montoDeTexto(monto)
     val validacionSaldo = if (usarSaldo && puedeUsarSaldo)
-        pe.saniape.app.data.staff.partesDelFormulario(totalForm, montoSaldo, usableSaldo, metodo, filasResto) else null
+        pe.saniape.app.data.staff.partesDelFormulario(totalForm, montoSaldo, usableSaldo, metodo, filasResto, moneda) else null
     fun limpiarSaldo() { usarSaldo = false; montoSaldo = ""; filasResto = null }
     // Pedido de afuera (confirmación de alta con deuda): abrir el registro con el
     // saldo, una vez por pedido y recién con los pagos cargados.
@@ -1200,7 +1205,7 @@ fun SeccionPagos(
                     }
                     Spacer(Modifier.width(8.dp))
                     Text(p.fecha, color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.weight(1f))
-                    Text("S/ ${formato2(p.monto)}", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("${simboloMoneda(moneda)} ${formato2(p.monto)}", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     // Editar / borrar (solo Admin, y no en una ficha dada de baja)
                     if (esAdmin && !soloLectura) {
                         Spacer(Modifier.width(8.dp))
@@ -1321,7 +1326,7 @@ fun SeccionPagos(
                             is pe.saniape.app.data.staff.ResultadoPagoSaldo.Ok -> {
                                 if (filasResto == null && v.partes.size > 1) pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(pacienteId, metodo)
                                 monto = ""; notaPago = ""; agregando = false; limpiarSaldo()
-                                pe.saniape.app.ui.Toaster.exito("Pago registrado: ${pe.saniape.app.data.staff.resumenPartes(v.partes)}")
+                                pe.saniape.app.ui.Toaster.exito("Pago registrado: ${pe.saniape.app.data.staff.resumenPartes(v.partes, moneda)}")
                                 onCambio()
                             }
                             is pe.saniape.app.data.staff.ResultadoPagoSaldo.Rechazo -> {
@@ -1368,10 +1373,11 @@ private fun ChipMetodo(m: String, activo: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun ColMonto(label: String, monto: Double, color: Color) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     Column(horizontalAlignment = Alignment.Start) {
         Text(label, color = c.textoSuave, fontSize = 10.sp)
-        Text("S/ ${formato2(monto)}", color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text("${simboloMoneda(moneda)} ${formato2(monto)}", color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -1403,6 +1409,7 @@ private fun ModalEditarSesion(
     onCancelar: () -> Unit,
     onGuardar: (fecha: String, hora: String?, duracion: Int, costo: Double?, notas: String?) -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     // Fecha y hora con PICKERS nativos (antes eran texto libre "AAAA-MM-DD" sin
     // validación: un typo guardaba cualquier cosa) + duración editable, como la web.
     var fecha by remember { mutableStateOf(ses.fecha) }
@@ -1438,7 +1445,7 @@ private fun ModalEditarSesion(
             EtqForm("Duración")
             ChipsDuracion(duracion, onChange = { duracion = it })
             Spacer(Modifier.height(10.dp))
-            CampoTexto("Costo (S/) — vacío si no aplica", costo, soloNumero = true) { costo = it }
+            CampoTexto("Costo (${simboloMoneda(moneda)}) — vacío si no aplica", costo, soloNumero = true) { costo = it }
             Spacer(Modifier.height(10.dp))
             CampoTexto("Notas / procedimientos", notas, multilinea = true) { notas = it }
         }
@@ -1464,6 +1471,7 @@ private fun ModalCorregirSesion(
     onCancelar: () -> Unit,
     onGuardar: (CorreccionSesion) -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val completada = ses.estado == "Completada"
     var fecha by remember { mutableStateOf(ses.fecha) }
@@ -1515,7 +1523,7 @@ private fun ModalCorregirSesion(
             EtqForm("Duración")
             ChipsDuracion(duracion, onChange = { duracion = it })
             Spacer(Modifier.height(10.dp))
-            CampoTexto("Costo (S/) — vacío si no aplica", costo, soloNumero = true) { costo = it }
+            CampoTexto("Costo (${simboloMoneda(moneda)}) — vacío si no aplica", costo, soloNumero = true) { costo = it }
         }
         Spacer(Modifier.height(10.dp))
         TarjetaForm(titulo = "Atención", icono = "🩺") {
@@ -1585,6 +1593,7 @@ private fun ModalReasignar(onCancelar: () -> Unit, onElegir: (String) -> Unit) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ModalCobrar(ses: SesionFicha, pacienteId: String? = null, onCancelar: () -> Unit, onConfirmar: (Double, String, String?) -> Unit) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     var monto by remember { mutableStateOf(ses.costo?.let { formato2(it) } ?: "") }
     var metodo by rememberMetodoPagoInicial(pacienteId)
@@ -1594,7 +1603,7 @@ private fun ModalCobrar(ses: SesionFicha, pacienteId: String? = null, onCancelar
         title = { Text("💳 Cobrar sesión #${ses.numero}", fontWeight = FontWeight.Bold) },
         text = {
             Column {
-                CampoTexto("Monto (S/)", monto, soloNumero = true) { monto = it }
+                CampoTexto("Monto (${simboloMoneda(moneda)})", monto, soloNumero = true) { monto = it }
                 Spacer(Modifier.height(8.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     rememberMetodosPago().forEach { m -> ChipMetodo(m, metodo == m) { metodo = m } }

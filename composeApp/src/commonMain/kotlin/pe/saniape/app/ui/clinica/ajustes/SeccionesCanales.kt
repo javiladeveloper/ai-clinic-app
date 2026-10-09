@@ -46,6 +46,7 @@ import pe.saniape.app.ui.Toaster
 import pe.saniape.app.ui.clinica.pacientes.EtqForm
 import pe.saniape.app.ui.recordarAcciones
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.data.staff.simboloMoneda
 
 // ─── 💬 Tus redes ───────────────────────────────────────────────────────────
 
@@ -243,6 +244,7 @@ internal fun SeccionTusRedes(d: JsonObject, ctx: ContextoStaff, onVolver: () -> 
 
 @Composable
 internal fun SeccionCobrosOnline(d: JsonObject, onVolver: () -> Unit, onCambio: () -> Unit) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     val acciones = recordarAcciones()
@@ -320,7 +322,7 @@ internal fun SeccionCobrosOnline(d: JsonObject, onVolver: () -> Unit, onCambio: 
                     }
                 }
                 (recargo.toDoubleOrNull() ?: 0.0).takeIf { it > 0 }?.let { p ->
-                    Ayuda("Un abono de S/ 400 se cobrará como ${pe.saniape.app.data.staff.soles(400 * (1 + p / 100))}, y al tratamiento se le abonarán los S/ 400.")
+                    Ayuda("Un abono de ${simboloMoneda(moneda)} 400 se cobrará como ${pe.saniape.app.data.staff.formatearDinero(400 * (1 + p / 100), moneda)}, y al tratamiento se le abonarán los ${simboloMoneda(moneda)} 400.")
                 }
             }
             if (esAdmin) {

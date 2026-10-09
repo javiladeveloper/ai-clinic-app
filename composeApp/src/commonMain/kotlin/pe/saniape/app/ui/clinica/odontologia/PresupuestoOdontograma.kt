@@ -42,6 +42,7 @@ import pe.saniape.app.ui.Toaster
 import pe.saniape.app.ui.clinica.pacientes.DialogoForm
 import pe.saniape.app.ui.clinica.pacientes.EtqForm
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.data.staff.simboloMoneda
 
 /**
  * El presupuesto que sale del odontograma, y el botón que lo vuelve tratamiento.
@@ -71,6 +72,7 @@ internal fun PresupuestoOdontograma(
      */
     registro: RegistroPresupuesto? = null,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     // `todos` arma las líneas (un hallazgo ya vinculado nunca se pierde);
@@ -209,7 +211,7 @@ internal fun PresupuestoOdontograma(
                 }
                 // Tocar el precio lo edita (precio por pieza, o total si es de boca).
                 Text(
-                    "S/ ${dinero(l.subtotal)}",
+                    "${simboloMoneda(moneda)} ${dinero(l.subtotal)}",
                     color = if (l.procedimientoId in precios) c.navy else c.texto,
                     fontWeight = FontWeight.Bold, fontSize = 13.sp,
                     modifier = Modifier.clickable(enabled = !soloLectura) {
@@ -229,7 +231,7 @@ internal fun PresupuestoOdontograma(
                     Text("Tratamiento complementario", color = c.textoSuave, fontSize = 11.sp)
                 }
                 Text(
-                    "S/ ${dinero(precioExtra(e))}",
+                    "${simboloMoneda(moneda)} ${dinero(precioExtra(e))}",
                     color = if (e.id in precios) c.navy else c.texto,
                     fontWeight = FontWeight.Bold, fontSize = 13.sp,
                     modifier = Modifier.clickable(enabled = !soloLectura) { editandoPrecio = e.id to e.nombre }.padding(4.dp),
@@ -274,7 +276,7 @@ internal fun PresupuestoOdontograma(
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Total", color = c.textoSuave, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Text("S/ ${dinero(total)}", color = c.texto, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                Text("${simboloMoneda(moneda)} ${dinero(total)}", color = c.texto, fontWeight = FontWeight.Bold, fontSize = 17.sp)
             }
             val cuantos = marcadas.size + extras.size
             if (!soloLectura) {
@@ -415,6 +417,7 @@ private fun ElegirServicio(
     onCerrar: () -> Unit,
     onElegir: (ProcedimientoRef) -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     DialogoForm(titulo = titulo, subtitulo = subtitulo, textoAccion = "Cerrar", onCancelar = onCerrar, onAccion = onCerrar) {
         if (servicios.isEmpty()) {
@@ -430,7 +433,7 @@ private fun ElegirServicio(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(s.nombre, color = c.texto, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    Text("S/ ${dinero(s.precio)}", color = c.textoSuave, fontSize = 12.sp)
+                    Text("${simboloMoneda(moneda)} ${dinero(s.precio)}", color = c.textoSuave, fontSize = 12.sp)
                 }
             }
         }
@@ -447,6 +450,7 @@ private fun EditarPrecio(
     /** null = volver al precio de lista. */
     onGuardar: (Double?) -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     var texto by remember { mutableStateOf(dinero(actual)) }
     val valor = texto.replace(',', '.').toDoubleOrNull()
@@ -461,7 +465,7 @@ private fun EditarPrecio(
         androidx.compose.material3.OutlinedTextField(
             value = texto,
             onValueChange = { texto = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-            prefix = { Text("S/ ") },
+            prefix = { Text("${simboloMoneda(moneda)} ") },
             singleLine = true,
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                 keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
@@ -470,7 +474,7 @@ private fun EditarPrecio(
             modifier = Modifier.fillMaxWidth(),
         )
         Text(
-            "Precio de lista: S/ ${dinero(base)}",
+            "Precio de lista: ${simboloMoneda(moneda)} ${dinero(base)}",
             color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp),
         )
         if (actual != base) {

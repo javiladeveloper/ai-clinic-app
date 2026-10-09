@@ -59,13 +59,14 @@ import pe.saniape.app.data.staff.montoDeTexto
 import pe.saniape.app.data.staff.pagadoNeto
 import pe.saniape.app.data.staff.resumenAlEliminar
 import pe.saniape.app.data.staff.resumenPartes
-import pe.saniape.app.data.staff.soles
 import pe.saniape.app.data.staff.yaDioSaldo
 import pe.saniape.app.ui.Gestion
 import pe.saniape.app.ui.Toaster
 import pe.saniape.app.ui.clinica.agenda.modales.PagoDividido
 import pe.saniape.app.ui.conIndicador
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.data.staff.formatearDinero
+import pe.saniape.app.data.staff.simboloMoneda
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PAGAR CON SALDO A FAVOR y el saldo de los CANCELADOS en la tarjeta de pagos
@@ -96,6 +97,7 @@ fun OpcionSaldoAFavor(
     validacion: ValidacionPartes?,
     deshabilitado: Boolean,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val medios = metodos.filterNot { esMetodoSaldo(it) }.ifEmpty { listOf("Efectivo") }
     Column(
@@ -111,7 +113,7 @@ fun OpcionSaldoAFavor(
                 colors = CheckboxDefaults.colors(checkedColor = c.teal),
             )
             Column(Modifier.weight(1f)) {
-                Text("Usar saldo a favor (disponible ${soles(usable)})", color = c.teal, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("Usar saldo a favor (disponible ${formatearDinero(usable, moneda)})", color = c.teal, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Text("No entra a caja: ese dinero ya se recibió.", color = c.textoSuave, fontSize = 10.sp)
             }
         }
@@ -125,7 +127,7 @@ fun OpcionSaldoAFavor(
                 colors = coloresCampoForm(),
                 value = montoSaldo,
                 onValueChange = { t -> onMontoSaldo(t.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }) },
-                label = { Text("Con saldo a favor (S/)", fontSize = 11.sp) },
+                label = { Text("Con saldo a favor (${simboloMoneda(moneda)})", fontSize = 11.sp) },
                 singleLine = true, enabled = !deshabilitado,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.weight(1f),
@@ -133,7 +135,7 @@ fun OpcionSaldoAFavor(
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text("Resto a cobrar", color = c.textoSuave, fontSize = 10.sp)
-                Text(soles(resto.coerceAtLeast(0.0)), color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text(formatearDinero(resto.coerceAtLeast(0.0), moneda), color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -169,8 +171,8 @@ fun OpcionSaldoAFavor(
         Spacer(Modifier.height(6.dp))
         val (texto, color) = when (validacion) {
             is ValidacionPartes.Ok ->
-                (if (validacion.partes.size == 1) "✓ Todo con saldo a favor (${soles(validacion.saldo)})"
-                else "✓ ${resumenPartes(validacion.partes)}") to c.ok
+                (if (validacion.partes.size == 1) "✓ Todo con saldo a favor (${formatearDinero(validacion.saldo, moneda)})"
+                else "✓ ${resumenPartes(validacion.partes, moneda)}") to c.ok
             is ValidacionPartes.Error -> validacion.mensaje to c.error
             null -> "" to c.textoSuave
         }
@@ -219,6 +221,7 @@ fun FilaPagoAgrupado(
     soloLectura: Boolean,
     onCambio: () -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val tpl = LocalTerminologiaPaciente.current
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -242,7 +245,7 @@ fun FilaPagoAgrupado(
                 Text(g.detalle.orEmpty(), color = c.textoSuave, fontSize = 11.sp)
                 Text(g.fecha, color = c.textoSuave, fontSize = 10.sp)
             }
-            Text(soles(g.monto), color = c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text(formatearDinero(g.monto, moneda), color = c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
         return
     }
@@ -258,14 +261,14 @@ fun FilaPagoAgrupado(
                     val conSaldo = p.saldoTipo == pe.saniape.app.data.staff.SALDO_TIPO_USO
                     Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(if (conSaldo) c.tealBg else c.chipBg)
                         .padding(horizontal = 8.dp, vertical = 2.dp)) {
-                        Text("${p.metodo} ${soles(p.monto)}", color = if (conSaldo) c.teal else c.navy,
+                        Text("${p.metodo} ${formatearDinero(p.monto, moneda)}", color = if (conSaldo) c.teal else c.navy,
                             fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
             Spacer(Modifier.width(6.dp))
             Column(horizontalAlignment = Alignment.End) {
-                Text("= ${soles(g.monto)}", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("= ${formatearDinero(g.monto, moneda)}", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Text(g.fecha, color = c.textoSuave, fontSize = 10.sp)
             }
             if (esAdmin && !soloLectura) {
@@ -291,7 +294,7 @@ fun FilaPagoAgrupado(
                 colors = coloresCampoForm(),
                 value = montoEdit,
                 onValueChange = { t -> montoEdit = t.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                label = { Text("Con saldo a favor (S/)", fontSize = 11.sp) },
+                label = { Text("Con saldo a favor (${simboloMoneda(moneda)})", fontSize = 11.sp) },
                 singleLine = true, enabled = !guardando,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth(),
@@ -321,7 +324,7 @@ fun FilaPagoAgrupado(
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             ) {
                 Text(
-                    "¿Borrar el pago completo de ${soles(g.monto)}?" +
+                    "¿Borrar el pago completo de ${formatearDinero(g.monto, moneda)}?" +
                         (if (uso != null) " El saldo a favor vuelve al ${LocalTerminologiaPaciente.current.paciente}." else "") +
                         " Las demás partes salen de caja.",
                     color = c.error, fontSize = 11.sp, fontWeight = FontWeight.Bold,
@@ -363,6 +366,7 @@ fun AvisoSaldoCancelado(
     soloLectura: Boolean,
     onCambio: () -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val tpl = LocalTerminologiaPaciente.current
     if (t.estado != "Cancelado") return
     val c = Sania.colors
@@ -386,7 +390,7 @@ fun AvisoSaldoCancelado(
             Text(
                 "✓ Pasado a saldo a favor el ${fechaLiberacion(liberadoAt)}" +
                     (nombre?.let { " por $it" } ?: "") +
-                    (if (noAtendido > 0.005) " · quedan ${soles(noAtendido)} sin usar" else ""),
+                    (if (noAtendido > 0.005) " · quedan ${formatearDinero(noAtendido, moneda)} sin usar" else ""),
                 color = c.texto, fontSize = 12.sp,
             )
             if (esAdmin && !soloLectura) {
@@ -419,7 +423,7 @@ fun AvisoSaldoCancelado(
         Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.pendBg)
             .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
-        Text("${soles(noAtendido)} pagados y no atendidos. No son saldo a favor hasta que un administrador los pase.",
+        Text("${formatearDinero(noAtendido, moneda)} pagados y no atendidos. No son saldo a favor hasta que un administrador los pase.",
             color = c.texto, fontSize = 12.sp)
         if (esAdmin && !soloLectura) {
             Spacer(Modifier.height(6.dp))
@@ -428,7 +432,7 @@ fun AvisoSaldoCancelado(
                     .clickable(enabled = !trabajando) { confirmar = true }.padding(vertical = 8.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(if (trabajando) "Guardando…" else "Pasar lo pagado no atendido a saldo a favor (${soles(noAtendido)})",
+                Text(if (trabajando) "Guardando…" else "Pasar lo pagado no atendido a saldo a favor (${formatearDinero(noAtendido, moneda)})",
                     color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 8.dp))
             }
@@ -439,7 +443,7 @@ fun AvisoSaldoCancelado(
             onDismissRequest = { if (!trabajando) confirmar = false },
             title = { Text("¿Pasar a saldo a favor?", fontWeight = FontWeight.Bold) },
             text = {
-                Text("¿Pasar ${soles(noAtendido)} a saldo a favor del ${LocalTerminologiaPaciente.current.paciente}? Podrá usarlo para pagar otro tratamiento.",
+                Text("¿Pasar ${formatearDinero(noAtendido, moneda)} a saldo a favor del ${LocalTerminologiaPaciente.current.paciente}? Podrá usarlo para pagar otro tratamiento.",
                     color = c.texto, fontSize = Sania.txt.cuerpo)
             },
             confirmButton = {
@@ -449,7 +453,7 @@ fun AvisoSaldoCancelado(
                         val (r, err) = conIndicador(Gestion.GUARDANDO) { PagarConSaldoRepo.liberar(t.id) }
                         trabajando = false
                         confirmar = false
-                        if (err == null) Toaster.exito("${soles(r?.monto ?: noAtendido)} pasaron a saldo a favor del ${tpl.paciente}")
+                        if (err == null) Toaster.exito("${formatearDinero(r?.monto ?: noAtendido, moneda)} pasaron a saldo a favor del ${tpl.paciente}")
                         else Toaster.error(err)
                         onCambio()
                     }
@@ -477,6 +481,7 @@ fun DialogoEliminarTratamiento(
     /** Terminó (bien o con un parcial): la ficha se recarga. */
     onTermino: () -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     var resumen by remember(t.id) { mutableStateOf<ResumenEliminar?>(null) }
@@ -521,18 +526,18 @@ fun DialogoEliminarTratamiento(
                     else -> {
                         if (r.reales.isNotEmpty()) {
                             AvisoCaja(
-                                "💳 Tiene ${if (r.reales.size == 1) "un pago" else "${r.reales.size} pagos"} por ${soles(r.totalReales)} " +
+                                "💳 Tiene ${if (r.reales.size == 1) "un pago" else "${r.reales.size} pagos"} por ${formatearDinero(r.totalReales, moneda)} " +
                                     "registrado${if (r.reales.size == 1) "" else "s"} en caja. ¿Qué hago con ese dinero?",
                                 c.teal, c.tealBg,
                             )
                         }
                         if (r.recibido > 0.005) {
-                            AvisoCaja("${soles(r.recibido)} se pagaron con saldo a favor: vuelven al saldo del ${LocalTerminologiaPaciente.current.paciente}.", c.texto, c.chipBg)
+                            AvisoCaja("${formatearDinero(r.recibido, moneda)} se pagaron con saldo a favor: vuelven al saldo del ${LocalTerminologiaPaciente.current.paciente}.", c.texto, c.chipBg)
                         }
                         if (r.dado.isNotEmpty()) {
                             AvisoCaja(
                                 "Parte de este dinero ya pagó otro tratamiento como saldo a favor. Si lo reviertes, " +
-                                    r.dado.joinToString(", ") { (n, m) -> "$n vuelve a deber ${soles(m)}" } + ".",
+                                    r.dado.joinToString(", ") { (n, m) -> "$n vuelve a deber ${formatearDinero(m, moneda)}" } + ".",
                                 c.texto, c.pendBg,
                             )
                         }

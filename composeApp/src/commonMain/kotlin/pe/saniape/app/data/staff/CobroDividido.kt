@@ -50,11 +50,8 @@ private fun dosDecimales(monto: Double): Boolean =
 fun diferenciaCentimos(montos: List<Double?>, total: Double): Long =
     aCentimos(total) - montos.sumOf { aCentimos(it ?: 0.0) }
 
-/** 2000 → "S/ 20.00" (céntimos; signo ignorado). */
-fun solesDeCentimos(centimos: Long): String {
-    val c = kotlin.math.abs(centimos)
-    return "S/ ${c / 100}.${(c % 100).toString().padStart(2, '0')}"
-}
+/** 2000 → "S/ 20.00" (céntimos; signo ignorado). Con otra moneda: [dineroDeCentimos]. */
+fun solesDeCentimos(centimos: Long): String = dineroDeCentimos(centimos, MONEDA_POR_DEFECTO)
 
 /** El reparto validado, o por qué no se puede cobrar (en castellano, listo para mostrar). */
 sealed class ValidacionPagos {
@@ -73,6 +70,8 @@ fun validarPagosDivididos(
     total: Double,
     /** 1 = el pago de un tratamiento con saldo a favor (puede ir todo con saldo). */
     minPartes: Int = MIN_PARTES_COBRO,
+    /** Moneda de la sede del cobro (solo cambia el símbolo de los textos). */
+    moneda: String = MONEDA_POR_DEFECTO,
 ): ValidacionPagos {
     if (pagos.size < minPartes || pagos.size > MAX_PARTES_COBRO) {
         return ValidacionPagos.Error(
@@ -91,10 +90,10 @@ fun validarPagosDivididos(
     }
     val dif = diferenciaCentimos(normalizados.map { it.monto }, total)
     if (dif != 0L) {
-        val tot = solesDeCentimos(aCentimos(total))
+        val tot = dineroDeCentimos(aCentimos(total), moneda)
         return ValidacionPagos.Error(
-            if (dif > 0) "Los pagos no suman el total de $tot: faltan ${solesDeCentimos(dif)}."
-            else "Los pagos no suman el total de $tot: sobran ${solesDeCentimos(dif)}."
+            if (dif > 0) "Los pagos no suman el total de $tot: faltan ${dineroDeCentimos(dif, moneda)}."
+            else "Los pagos no suman el total de $tot: sobran ${dineroDeCentimos(dif, moneda)}."
         )
     }
     return ValidacionPagos.Ok(normalizados)
@@ -134,13 +133,13 @@ fun diferenciaFilas(filas: List<FilaPago>, total: Double): Long =
  * validación si suma bien pero algo no vale (un monto 0, tres decimales…) o
  * "✓ Suma S/ X" cuando cuadra.
  */
-fun estadoReparto(filas: List<FilaPago>, total: Double): String {
+fun estadoReparto(filas: List<FilaPago>, total: Double, moneda: String = MONEDA_POR_DEFECTO): String {
     val dif = diferenciaFilas(filas, total)
-    if (dif > 0) return "Falta ${solesDeCentimos(dif)}"
-    if (dif < 0) return "Sobra ${solesDeCentimos(dif)}"
-    return when (val v = validarPagosDivididos(pagosDeFilas(filas), total)) {
+    if (dif > 0) return "Falta ${dineroDeCentimos(dif, moneda)}"
+    if (dif < 0) return "Sobra ${dineroDeCentimos(dif, moneda)}"
+    return when (val v = validarPagosDivididos(pagosDeFilas(filas), total, moneda = moneda)) {
         is ValidacionPagos.Error -> v.mensaje
-        is ValidacionPagos.Ok -> "✓ Suma ${solesDeCentimos(aCentimos(total))}"
+        is ValidacionPagos.Ok -> "✓ Suma ${dineroDeCentimos(aCentimos(total), moneda)}"
     }
 }
 

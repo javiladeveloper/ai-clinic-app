@@ -55,7 +55,7 @@ import pe.saniape.app.data.staff.PacientesRepo
 import pe.saniape.app.data.staff.RefNombre
 import pe.saniape.app.data.staff.ResultadoPacientesNuevos
 import pe.saniape.app.data.staff.SedeActiva
-import pe.saniape.app.data.staff.enlaceWhatsApp
+import pe.saniape.app.data.staff.enlaceWhatsAppSede
 import pe.saniape.app.data.staff.fechaLegibleCorta
 import pe.saniape.app.data.staff.filtrarPorEtapa
 import pe.saniape.app.data.staff.hoyClinicaIso
@@ -283,7 +283,7 @@ fun PantallaPacientesNuevos(ctx: ContextoStaff, onSalir: () -> Unit) {
                                                 }
                                             },
                                             onWhatsApp = f.telefono?.takeIf { !f.pagado }
-                                                ?.let { tel -> enlaceWhatsApp(tel, mensajeSeguimientoNuevo(f, ctx.clinicaNombre)) }
+                                                ?.let { tel -> enlaceWhatsAppSede(tel, mensajeSeguimientoNuevo(f, ctx.clinicaNombre)) }
                                                 ?.let { url -> { acciones.abrirUrl(url) } },
                                         )
                                     }

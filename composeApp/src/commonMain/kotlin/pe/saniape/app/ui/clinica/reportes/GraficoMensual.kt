@@ -44,7 +44,8 @@ import pe.saniape.app.data.staff.marcasEje
 import pe.saniape.app.data.staff.mesConAnio
 import pe.saniape.app.data.staff.muestraEtiqueta
 import pe.saniape.app.data.staff.pasoEtiquetas
-import pe.saniape.app.data.staff.solesGrafico
+import pe.saniape.app.data.staff.dineroGrafico
+import pe.saniape.app.data.staff.monedaActiva
 import pe.saniape.app.ui.theme.Sania
 
 /**
@@ -95,6 +96,8 @@ fun GraficoMensual(
     hitos: List<HitoMes> = emptyList(),
     unidad: String = "",
     altura: Dp = 190.dp,
+    /** Moneda del dinero (multipaís); por defecto, la de la sede activa. */
+    moneda: String = monedaActiva(),
 ) {
     val c = Sania.colors
     val p = paletaGrafico()
@@ -105,7 +108,7 @@ fun GraficoMensual(
 
     if (datos.isEmpty()) return
     val hitosPorMes = remember(hitos) { hitos.associateBy { it.mes } }
-    val fmtEje: (Double) -> String = { v -> if (dinero) solesGrafico(v, compacto = true) else entero(v) }
+    val fmtEje: (Double) -> String = { v -> if (dinero) dineroGrafico(v, moneda, compacto = true) else entero(v) }
     val maximo = datos.maxOf { maxOf(it.valor, it.proyectado ?: 0.0) }
     val marcas = remember(maximo, dinero) { marcasEje(maximo, conteo = !dinero) }
     val tope = marcas.last().takeIf { it > 0 } ?: 1.0
@@ -120,7 +123,7 @@ fun GraficoMensual(
 
     val ultimo = datos.last()
     val resumen = "Gráfico mensual de $unidad: ${datos.size} meses. " +
-        "${ultimo.etiqueta}: ${if (dinero) solesGrafico(ultimo.valor) else entero(ultimo.valor)}" +
+        "${ultimo.etiqueta}: ${if (dinero) dineroGrafico(ultimo.valor, moneda) else entero(ultimo.valor)}" +
         (if (ultimo.parcial) " (mes en curso)" else "")
 
     Column(Modifier.fillMaxWidth()) {
@@ -234,7 +237,7 @@ fun GraficoMensual(
 
         val i = sel
         if (i != null && i in datos.indices) {
-            DetalleMes(datos[i], dinero, unidad, hitosPorMes[datos[i].mes])
+            DetalleMes(datos[i], dinero, unidad, hitosPorMes[datos[i].mes], moneda)
         } else {
             Text(
                 if (forma == FormaGrafico.LINEA) "Toca un punto para ver su detalle." else "Toca una barra para ver su detalle.",
@@ -246,9 +249,9 @@ fun GraficoMensual(
 
 /** Lo que muestra el tooltip de la web, pero fijo debajo del gráfico (legible con el dedo encima). */
 @Composable
-private fun DetalleMes(d: PuntoMes, dinero: Boolean, unidad: String, hito: HitoMes?) {
+private fun DetalleMes(d: PuntoMes, dinero: Boolean, unidad: String, hito: HitoMes?, moneda: String) {
     val c = Sania.colors
-    val fmt: (Double) -> String = { v -> if (dinero) solesGrafico(v) else entero(v) }
+    val fmt: (Double) -> String = { v -> if (dinero) dineroGrafico(v, moneda) else entero(v) }
     Column(
         Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
             .background(c.chipBg).padding(horizontal = 12.dp, vertical = 8.dp),

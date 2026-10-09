@@ -280,7 +280,12 @@ fun PantallaSalud() {
                             saldoAFavorPorClinica.size == 1 -> listOf(null to saldoAFavorPorClinica.values.first())
                             else -> emptyList()
                         }
-                        avisos.forEachIndexed { i, (clinica, monto) -> item(key = "a-favor-$i") { AvisoAFavor(monto, clinica) } }
+                        // Multipaís: el crédito va en la moneda de los tratamientos de esa clínica.
+                        fun monedaAviso(clinica: String?): String =
+                            (if (clinica == null) saldos.values.firstOrNull() else
+                                tratamientos.firstOrNull { it.clinica == clinica }?.let { saldos[it.id] })?.moneda
+                                ?: pe.saniape.app.data.staff.MONEDA_POR_DEFECTO
+                        avisos.forEachIndexed { i, (clinica, monto) -> item(key = "a-favor-$i") { AvisoAFavor(monto, clinica, monedaAviso(clinica)) } }
                         items(ordenados, key = { "trat-" + it.id }) { t -> TarjetaTratamiento(t, saldos[t.id]) }
                         // Cancelados: al final, colapsados, sin deuda ni progreso.
                         if (separados.cancelados.isNotEmpty()) {
@@ -371,7 +376,7 @@ private fun momentoFoto(m: String?): String? = when (m) {
 
 /** "Tienes S/ X a favor": lo pagado de más entre todos sus tratamientos. */
 @Composable
-private fun AvisoAFavor(monto: Double, clinica: String? = null) {
+private fun AvisoAFavor(monto: Double, clinica: String? = null, moneda: String = pe.saniape.app.data.staff.MONEDA_POR_DEFECTO) {
     val c = Sania.colors
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.okBg)
@@ -382,7 +387,7 @@ private fun AvisoAFavor(monto: Double, clinica: String? = null) {
         Text("💚", fontSize = 18.sp)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text("Tienes S/ ${formato2(monto)} a favor" + (clinica?.let { " en $it" } ?: ""),
+            Text("Tienes ${pe.saniape.app.data.staff.simboloMoneda(moneda)} ${formato2(monto)} a favor" + (clinica?.let { " en $it" } ?: ""),
                 color = c.ok, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Text("Pagaste más de lo acordado. Consulta en la clínica cómo se aplica.",
                 color = c.textoSuave, fontSize = 12.sp)
@@ -503,16 +508,16 @@ private fun TarjetaTratamiento(t: Tratamiento, saldo: Saldo?) {
                 .background(c.fondo).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
                 .padding(horizontal = 12.dp, vertical = 10.dp)) {
                 Row(Modifier.fillMaxWidth()) {
-                    ColumnaMonto("COSTO", if (saldo.acordado > 0) "S/ ${formato2(saldo.acordado)}" else "—",
+                    ColumnaMonto("COSTO", if (saldo.acordado > 0) "${pe.saniape.app.data.staff.simboloMoneda(saldo.moneda)} ${formato2(saldo.acordado)}" else "—",
                         c.texto, Modifier.weight(1f))
-                    ColumnaMonto("PAGADO", "S/ ${formato2(saldo.pagado)}", c.ok, Modifier.weight(1f))
+                    ColumnaMonto("PAGADO", "${pe.saniape.app.data.staff.simboloMoneda(saldo.moneda)} ${formato2(saldo.pagado)}", c.ok, Modifier.weight(1f))
                     when {
-                        saldo.saldo > 0 -> ColumnaMonto("DEBES", "S/ ${formato2(saldo.saldo)}", c.pend, Modifier.weight(1f))
+                        saldo.saldo > 0 -> ColumnaMonto("DEBES", "${pe.saniape.app.data.staff.simboloMoneda(saldo.moneda)} ${formato2(saldo.saldo)}", c.pend, Modifier.weight(1f))
                         // Pagó de más: que lo vea (antes solo decía "Pagado ✓"). Mismas
                         // reglas que la web: con precio, facturable y no sesión suelta.
                         // El servidor ya aplicó las reglas (solo Paquete/Unidades): se usa tal cual.
                         saldo.aFavor > 0.005 ->
-                            ColumnaMonto("A FAVOR", "S/ ${formato2(saldo.aFavor)}", c.ok, Modifier.weight(1f))
+                            ColumnaMonto("A FAVOR", "${pe.saniape.app.data.staff.simboloMoneda(saldo.moneda)} ${formato2(saldo.aFavor)}", c.ok, Modifier.weight(1f))
                         saldo.acordado > 0 -> ColumnaMonto("SALDO", "Pagado ✓", c.ok, Modifier.weight(1f))
                         else -> ColumnaMonto("SALDO", "—", c.textoSuave, Modifier.weight(1f))
                     }
@@ -534,7 +539,7 @@ private fun TarjetaTratamiento(t: Tratamiento, saldo: Saldo?) {
                     if (confirmar) {
                         AlertDialog(
                             onDismissRequest = { confirmar = false },
-                            title = { Text("¿Pagar S/ ${formato2(saldo.saldo)}?") },
+                            title = { Text("¿Pagar ${pe.saniape.app.data.staff.simboloMoneda(saldo.moneda)} ${formato2(saldo.saldo)}?") },
                             text = {
                                 Text(
                                     "Es lo que debes de ${t.procedimiento}. " +
@@ -570,7 +575,7 @@ private fun TarjetaTratamiento(t: Tratamiento, saldo: Saldo?) {
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            if (pagando) "Abriendo…" else "Pagar S/ ${formato2(saldo.saldo)}",
+                            if (pagando) "Abriendo…" else "Pagar ${pe.saniape.app.data.staff.simboloMoneda(saldo.moneda)} ${formato2(saldo.saldo)}",
                             color = c.sobreNavy, fontSize = 14.sp, fontWeight = FontWeight.Bold,
                         )
                     }
@@ -598,7 +603,7 @@ private fun TarjetaTratamiento(t: Tratamiento, saldo: Saldo?) {
                                     // o "Saldo aplicado a Ortodoncia" (monto negativo, en gris).
                                     Text(p.fecha + (p.etiqueta?.let { " · $it" } ?: ""),
                                         color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                                    Text((if (p.monto < 0) "-" else "") + "S/ ${formato2(kotlin.math.abs(p.monto))}",
+                                    Text((if (p.monto < 0) "-" else "") + "${pe.saniape.app.data.staff.simboloMoneda(saldo.moneda)} ${formato2(kotlin.math.abs(p.monto))}",
                                         color = if (p.monto < 0) c.textoSuave else c.texto,
                                         fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
@@ -681,7 +686,7 @@ private fun TarjetaCancelado(t: Tratamiento, saldo: Saldo?) {
         if (saldo != null && saldo.pagado > 0.005) {
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Pagado S/ ${formato2(saldo.pagado)}", color = c.textoSuave, fontSize = 12.sp)
+                Text("Pagado ${pe.saniape.app.data.staff.simboloMoneda(saldo.moneda)} ${formato2(saldo.pagado)}", color = c.textoSuave, fontSize = 12.sp)
                 // Lo pagado y no atendido que la clínica pasó a saldo a favor (contrato
                 // portal §2.2): `aFavor` del servidor, sin liberar llega 0.
                 if (saldo.aFavor > 0.005) {

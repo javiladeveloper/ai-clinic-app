@@ -363,10 +363,10 @@ fun fechaParaControlRet(proximoControl: String?, hoy: String): String {
 
 // ── Exportación ─────────────────────────────────────────────────────────────
 
-val COLUMNAS_EXPORTAR_RET = listOf(
+val COLUMNAS_EXPORTAR_RET: List<String> get() = listOf(
     "Paciente", "DNI", "Edad", "Teléfono", "Motivo de consulta", "Diagnóstico", "Especialidad", "Servicio",
     "Inicio del tratamiento", "Estado del tratamiento", "Sesión", "Le quedan", "Última sesión", "Días sin venir",
-    "Próxima cita", "Profesional", "Saldo (S/)", "Resultado de la llamada",
+    "Próxima cita", "Profesional", "Saldo (${simboloActivo()})", "Resultado de la llamada",
 )
 
 fun filaExportable(f: FilaRetencion): List<String> = listOf(
@@ -408,7 +408,7 @@ fun htmlHojaLlamadas(clinica: String, fecha: String, filtros: List<String>, fila
     val cuerpo = filas.mapIndexed { i, f ->
         val ultima = if (f.ultimaSesion != null) "${fechaCortaRet(f.ultimaSesion)}<br><span class=\"s\">${esc(haceDias(f.diasSin))}</span>"
         else "Sin sesiones<br><span class=\"s\">inicio ${esc(haceDias(f.diasSin))}</span>"
-        val saldo = if (f.saldo > 0.005) "S/ ${(f.saldo * 100).roundToInt() / 100.0}" else "—"
+        val saldo = if (f.saldo > 0.005) "${simboloActivo()} ${(f.saldo * 100).roundToInt() / 100.0}" else "—"
         val sub = listOfNotNull(f.dni?.let { "DNI ${esc(it)}" }, f.edad?.let { "$it años" }).joinToString(" · ")
         val dx = (f.diagnostico ?: f.motivo)?.let { "<br><span class=\"dx\">${esc(it)}</span>" }.orEmpty()
         "<tr><td class=\"n\">${i + 1}</td><td><b>${esc(f.nombre)}</b>${if (sub.isNotEmpty()) "<br><span class=\"s\">$sub</span>" else ""}</td>" +

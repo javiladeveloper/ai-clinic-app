@@ -57,7 +57,8 @@ import pe.saniape.app.data.staff.etiquetaControl
 import pe.saniape.app.data.staff.modoEfectivoForm
 import pe.saniape.app.data.staff.modoHeredado
 import pe.saniape.app.data.staff.problemaFormServicio
-import pe.saniape.app.data.staff.soles
+import pe.saniape.app.data.staff.dineroActivo
+import pe.saniape.app.data.staff.simboloActivo
 import pe.saniape.app.ui.Toaster
 import pe.saniape.app.ui.clinica.pacientes.CajaSelectorForm
 import pe.saniape.app.ui.clinica.pacientes.DialogoForm
@@ -292,7 +293,7 @@ fun FormularioServicio(
                         EtqForm("Servicio de devolución")
                         val elegido = servicios.find { it.id == f.devolucionProcId }
                         CajaSelectorForm(
-                            elegido?.let { "${nombreDe(it.id)} · ${soles(it.precio)}" } ?: "Elegir servicio…",
+                            elegido?.let { "${nombreDe(it.id)} · ${dineroActivo(it.precio)}" } ?: "Elegir servicio…",
                         ) { eligiendoServicio = -1 }
                     }
                     Ayuda("La plantilla del informe psicológico se personaliza en la web (Configuración).")
@@ -303,10 +304,10 @@ fun FormularioServicio(
         Espacio()
         EtqForm(
             when {
-                evalActiva -> "Precio de la evaluación completa (S/) *"
-                conSesiones -> "Precio base por sesión (S/) *"
-                porUnidades -> "Precio de referencia (S/) *"
-                else -> "Precio (S/) *"
+                evalActiva -> "Precio de la evaluación completa (${simboloActivo()}) *"
+                conSesiones -> "Precio base por sesión (${simboloActivo()}) *"
+                porUnidades -> "Precio de referencia (${simboloActivo()}) *"
+                else -> "Precio (${simboloActivo()}) *"
             },
         )
         CampoNumero(f.precio, "100") { f = f.copy(precio = it) }
@@ -333,7 +334,7 @@ fun FormularioServicio(
                     }
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("PRECIO TOTAL (S/)", color = c.textoSuave, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Text("PRECIO TOTAL (${simboloActivo()})", color = c.textoSuave, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                         CampoNumero(p, "Ej. 400") { v -> f = f.copy(tarifarios = f.tarifarios.mapIndexed { j, t -> if (j == i) t.first to v else t }) }
                     }
                     Spacer(Modifier.width(6.dp))
@@ -351,7 +352,7 @@ fun FormularioServicio(
                     listOf("1" to "1 cara", "2" to "2 caras", "3" to "3 o más").forEach { (k, etq) ->
                         Column(Modifier.weight(1f)) {
                             Text(etq, color = c.textoSuave, fontSize = 11.sp)
-                            CampoNumero(f.precioCaras[k].orEmpty(), "S/") { v -> f = f.copy(precioCaras = f.precioCaras + (k to v)) }
+                            CampoNumero(f.precioCaras[k].orEmpty(), simboloActivo()) { v -> f = f.copy(precioCaras = f.precioCaras + (k to v)) }
                         }
                     }
                 }
@@ -370,7 +371,7 @@ fun FormularioServicio(
                     colors = coloresCampoForm(), modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(8.dp))
-                EtqForm("Precio por unidad (S/) — sugerido")
+                EtqForm("Precio por unidad (${simboloActivo()}) — sugerido")
                 CampoNumero(f.precioUnitario, "Ej. 1.50") { f = f.copy(precioUnitario = it) }
             }
         }
@@ -426,7 +427,7 @@ fun FormularioServicio(
                     Spacer(Modifier.width(4.dp))
                     Box(Modifier.width(70.dp)) { CampoNumero(p.dias, "7", decimal = false) { v -> f = f.copy(pasos = f.pasos.mapIndexed { j, x -> if (j == i) x.copy(dias = v.filter(Char::isDigit).take(3)) else x }) } }
                     Spacer(Modifier.width(4.dp))
-                    Text("días hábiles · S/", color = c.texto, fontSize = 12.sp)
+                    Text("días hábiles · ${simboloActivo()}", color = c.texto, fontSize = 12.sp)
                     Spacer(Modifier.width(4.dp))
                     // El precio EN CADENA es independiente del precio suelto del servicio.
                     Box(Modifier.weight(1f)) { CampoNumero(p.precio, "0 (incluido)") { v -> f = f.copy(pasos = f.pasos.mapIndexed { j, x -> if (j == i) x.copy(precio = v.take(8)) else x }) } }
@@ -580,7 +581,7 @@ private fun SelectorServicio(servicios: List<ServicioApp>, onElegir: (ServicioAp
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(s.nombre, color = c.texto, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                            Text(soles(s.precio), color = c.textoSuave, fontSize = 12.sp)
+                            Text(dineroActivo(s.precio), color = c.textoSuave, fontSize = 12.sp)
                         }
                     }
                 }

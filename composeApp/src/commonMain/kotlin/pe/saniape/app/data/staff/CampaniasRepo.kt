@@ -70,27 +70,27 @@ fun estadoCampania(c: CampaniaGestion, hoy: String): EstadoCampania = when {
     else -> EstadoCampania.VENCIDA
 }
 
-private fun fmtNum(n: Double): String = if (n % 1.0 == 0.0) n.toLong().toString() else {
-    val c = kotlin.math.round(n * 100).toLong()
-    "${c / 100}.${(c % 100).toString().padStart(2, '0')}"
-}
+private fun fmtNum(n: Double): String = montoCorto(n)
 
-/** Gemelo de `etiquetaCampania`: "10 sesiones a S/500", "10% de descuento"… */
-fun etiquetaCampania(c: CampaniaGestion): String = when (c.tipo) {
-    "paquete_fijo" -> "${c.cantidad ?: 0} sesiones a S/${fmtNum(c.precio ?: 0.0)}"
-    "precio_fijo" -> "S/${fmtNum(c.precio ?: 0.0)}"
+/** Gemelo de `etiquetaCampania`: "10 sesiones a S/500", "10% de descuento"… (moneda de la sede activa). */
+fun etiquetaCampania(c: CampaniaGestion, moneda: String = monedaActiva()): String = when (c.tipo) {
+    "paquete_fijo" -> "${c.cantidad ?: 0} sesiones a ${dineroCorto(c.precio ?: 0.0, moneda)}"
+    "precio_fijo" -> dineroCorto(c.precio ?: 0.0, moneda)
     "porcentaje" -> "${fmtNum(c.valor ?: 0.0)}% de descuento"
-    "monto_fijo" -> "S/${fmtNum(c.valor ?: 0.0)} de descuento"
+    "monto_fijo" -> "${dineroCorto(c.valor ?: 0.0, moneda)} de descuento"
     else -> c.nombre
 }
 
-/** Los 4 tipos con su etiqueta y ejemplo (los del formulario web). */
-val TIPOS_CAMPANIA: List<Triple<String, String, String>> = listOf(
-    Triple("paquete_fijo", "📦 Paquete promocional", "10 sesiones a S/500"),
-    Triple("precio_fijo", "🏷️ Precio de oferta", "Masajes a S/50"),
+/** Los 4 tipos con su etiqueta y ejemplo (los del formulario web), con la moneda dada. */
+fun tiposCampania(moneda: String = monedaActiva()): List<Triple<String, String, String>> = listOf(
+    Triple("paquete_fijo", "📦 Paquete promocional", "10 sesiones a ${dineroCorto(500.0, moneda)}"),
+    Triple("precio_fijo", "🏷️ Precio de oferta", "Masajes a ${dineroCorto(50.0, moneda)}"),
     Triple("porcentaje", "％ Descuento porcentual", "10% en todos los paquetes"),
-    Triple("monto_fijo", "➖ Descuento en soles", "S/30 menos en la evaluación"),
+    Triple("monto_fijo", "➖ Descuento en ${nombreMonedaPlural(moneda)}", "${dineroCorto(30.0, moneda)} menos en la evaluación"),
 )
+
+/** Los 4 tipos con la moneda de la sede activa (PEN: los de siempre). */
+val TIPOS_CAMPANIA: List<Triple<String, String, String>> get() = tiposCampania()
 
 /** Un regalo del formulario (texto tal cual se escribe). */
 data class RegaloForm(val procedimientoId: String = "", val dias: String = "1", val precio: String = "")
@@ -147,7 +147,7 @@ fun problemaFormCampania(f: FormCampania): String? {
         }
         "precio_fijo" -> if (aDec(f.precio).let { it == null || it < 0 }) return "Indica el precio de oferta."
         "porcentaje" -> if (aDec(f.valor).let { it == null || it < 0 || it > 100 }) return "El descuento debe ir entre 0 y 100%."
-        "monto_fijo" -> if (aDec(f.valor).let { it == null || it < 0 }) return "Indica cuántos soles se descuentan."
+        "monto_fijo" -> if (aDec(f.valor).let { it == null || it < 0 }) return "Indica cuántos ${nombreMonedaPlural(monedaActiva())} se descuentan."
     }
     if (f.alcance == "servicios" && f.serviciosIds.isEmpty()) return "Elige al menos un servicio, o cambia el alcance a \"Todos\"."
     if (f.alcance == "citas" && f.tipo == "paquete_fijo") {

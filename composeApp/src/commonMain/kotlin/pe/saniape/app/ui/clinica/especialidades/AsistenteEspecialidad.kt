@@ -44,6 +44,7 @@ import pe.saniape.app.ui.clinica.pacientes.DialogoForm
 import pe.saniape.app.ui.clinica.pacientes.EtqForm
 import pe.saniape.app.ui.clinica.pacientes.coloresCampoForm
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.data.staff.simboloMoneda
 
 /**
  * Una fila de la lista: el servicio sugerido (o propio) + lo que la persona tocó.
@@ -89,6 +90,7 @@ fun AsistenteEspecialidad(
     onCerrar: () -> Unit,
     onCargado: () -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val scope = rememberCoroutineScope()
 
@@ -252,7 +254,7 @@ fun AsistenteEspecialidad(
             OutlinedTextField(
                 value = propioPrecio,
                 onValueChange = { propioPrecio = filtrarPrecio(it) },
-                prefix = { Text("S/ ") },
+                prefix = { Text("${simboloMoneda(moneda)} ") },
                 placeholder = { Text("Precio") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -303,6 +305,7 @@ private fun FilaServicioUI(
     onMarcar: (Boolean) -> Unit,
     onPrecio: (String) -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val forma = RoundedCornerShape(Sania.shape.sm.dp)
     Column(
@@ -329,7 +332,7 @@ private fun FilaServicioUI(
             OutlinedTextField(
                 value = fila.precioTexto,
                 onValueChange = onPrecio,
-                prefix = { Text("S/ ") },
+                prefix = { Text("${simboloMoneda(moneda)} ") },
                 placeholder = { Text("0") },
                 singleLine = true,
                 enabled = fila.marcado,

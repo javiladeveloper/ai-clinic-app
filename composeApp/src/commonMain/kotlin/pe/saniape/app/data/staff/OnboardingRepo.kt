@@ -65,7 +65,7 @@ fun textoConfirmacionEjemplo(r: ResumenEjemplo): String {
         r.pacientes.takeIf { it.isNotEmpty() }?.let { "Paciente${if (it.size > 1) "s" else ""}: ${it.joinToString(", ")}" },
         r.citas.takeIf { it > 0 }?.let { "$it cita${if (it > 1) "s" else ""}" },
         r.tratamientos.takeIf { it.isNotEmpty() }?.let { "Tratamiento${if (it.size > 1) "s" else ""}: ${it.joinToString(", ")}" },
-        r.cobros.takeIf { it > 0 }?.let { "Cobros por S/ ${dosDecimales(it)}" },
+        r.cobros.takeIf { it > 0 }?.let { "Cobros por ${simboloActivo()} ${dosDecimales(it)}" },
     )
     return if (partes.isEmpty()) "No hay datos de ejemplo." else "${partes.joinToString(" · ")}. Nada más."
 }

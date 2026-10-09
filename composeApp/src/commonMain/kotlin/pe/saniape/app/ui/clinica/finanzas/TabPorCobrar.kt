@@ -32,7 +32,10 @@ import pe.saniape.app.data.staff.FinanzasRepo
 import pe.saniape.app.data.staff.MetodoPagoPreferido
 import pe.saniape.app.data.staff.PendienteCobro
 import pe.saniape.app.data.staff.hoyClinicaIso
-import pe.saniape.app.data.staff.soles
+import pe.saniape.app.data.staff.dineroDeFila
+import pe.saniape.app.data.staff.formatearTotalesPorMoneda
+import pe.saniape.app.data.staff.monedaDeFila
+import pe.saniape.app.data.staff.totalesPorMoneda
 import pe.saniape.app.ui.CargandoLista
 import pe.saniape.app.ui.Gestion
 import pe.saniape.app.ui.Toaster
@@ -87,7 +90,7 @@ internal fun TabPorCobrar() {
             item {
                 TarjetaFin(borde = c.pend) {
                     RotuloFin("💰 Por cobrar", color = c.pend)
-                    Text("${lista.size} atenci${if (lista.size == 1) "ón" else "ones"} sin cobrar · ${soles(lista.sumOf { it.costo })}",
+                    Text("${lista.size} atenci${if (lista.size == 1) "ón" else "ones"} sin cobrar · ${formatearTotalesPorMoneda(totalesPorMoneda(lista.map { it.costo to monedaDeFila(it.sedeId) }))}",
                         color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp, bottom = 10.dp))
                     EtqForm("Método")
                     ChipsMetodoPago(metodo) { metodo = it }
@@ -103,7 +106,7 @@ internal fun TabPorCobrar() {
                         }
                         Spacer(Modifier.width(8.dp))
                         Column(horizontalAlignment = Alignment.End) {
-                            Text(soles(p.costo), color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            Text(dineroDeFila(p.costo, p.sedeId), color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(4.dp))
                             BotonFin(if (cobrando == p.citaId) "Cobrando…" else "💵 Cobrar", color = c.ok, habilitado = cobrando == null) {
                                 cobrando = p.citaId
@@ -114,7 +117,7 @@ internal fun TabPorCobrar() {
                                         r.encolada -> { Toaster.info("Sin señal: el cobro se enviará al volver la conexión"); filas = lista.filter { it.citaId != p.citaId } }
                                         r.registrada -> {
                                             MetodoPagoPreferido.recordar(p.pacienteId, metodo)
-                                            Toaster.exito(if (r.yaEstaba) "Ya estaba cobrada — ${p.paciente}" else "Cobrado ${soles(p.costo)} — ${p.paciente}")
+                                            Toaster.exito(if (r.yaEstaba) "Ya estaba cobrada — ${p.paciente}" else "Cobrado ${dineroDeFila(p.costo, p.sedeId)} — ${p.paciente}")
                                             recarga++
                                         }
                                         else -> Toaster.error(r.rechazo?.error ?: "No se pudo cobrar")

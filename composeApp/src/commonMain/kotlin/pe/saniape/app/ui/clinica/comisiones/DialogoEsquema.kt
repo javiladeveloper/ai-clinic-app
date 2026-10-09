@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import pe.saniape.app.data.staff.AjusteForm
 import pe.saniape.app.data.staff.CatalogosCobroRepo
+import pe.saniape.app.data.staff.simboloActivo
 import pe.saniape.app.data.staff.ComisionesRepo
 import pe.saniape.app.data.staff.EsquemaComision
 import pe.saniape.app.data.staff.FormEsquema
@@ -161,7 +162,7 @@ internal fun DialogoEsquema(
             )
             Spacer(Modifier.height(Sania.dim.sm))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Solo paquetes de S/  ", color = c.textoSuave, fontSize = 13.sp)
+                Text("Solo paquetes de ${simboloActivo()}  ", color = c.textoSuave, fontSize = 13.sp)
                 CampoNumero(f.montoPaq, "cualquiera", Modifier.width(130.dp)) { f = f.copy(montoPaq = it) }
             }
             Ayuda("Si lo llenas, un paquete cobrado a otro precio (más caro o con descuento) no cuenta. Vacío = cuenta cualquier monto.")
@@ -194,7 +195,7 @@ internal fun DialogoEsquema(
                     CampoNumero(t.objetivo, if (f.porEvaluaciones) "eval." else "paq.", Modifier.width(72.dp), decimal = false) { v ->
                         f = f.copy(tramos = f.tramos.mapIndexed { j, x -> if (j == i) x.copy(objetivo = v) else x })
                     }
-                    Text(" S/", color = c.textoSuave, fontSize = 12.sp)
+                    Text(" ${simboloActivo()}", color = c.textoSuave, fontSize = 12.sp)
                     CampoNumero(t.montoBono, "bono", Modifier.width(84.dp)) { v ->
                         f = f.copy(tramos = f.tramos.mapIndexed { j, x -> if (j == i) x.copy(montoBono = v) else x })
                     }

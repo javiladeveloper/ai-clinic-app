@@ -38,6 +38,7 @@ import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.MovimientoCaja
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.tutoriales.tourAncla
+import pe.saniape.app.data.staff.simboloMoneda
 
 /**
  * 💰 Caja de HOY (esencial móvil): cuánto entró hoy y por qué método, + egresos y neto,
@@ -48,6 +49,7 @@ import pe.saniape.app.tutoriales.tourAncla
  */
 @Composable
 fun PantallaCajaHoy(ctx: ContextoStaff) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var movs by remember { mutableStateOf<List<MovimientoCaja>?>(null) }
@@ -70,7 +72,7 @@ fun PantallaCajaHoy(ctx: ContextoStaff) {
                 registrando = false
                 scope.launch {
                     val err = CajaRepo.registrarMovimiento(tipo, categoria, descripcion, monto, metodo, comprobante)
-                    if (err == null) pe.saniape.app.ui.Toaster.exito("$tipo de S/ ${formatoCaja(monto)} registrado")
+                    if (err == null) pe.saniape.app.ui.Toaster.exito("$tipo de ${simboloMoneda(moneda)} ${formatoCaja(monto)} registrado")
                     else pe.saniape.app.ui.Toaster.error(err)
                     cargar()
                 }
@@ -144,7 +146,7 @@ fun PantallaCajaHoy(ctx: ContextoStaff) {
                                         Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
                                             Text(iconoMetodo(metodo) + "  " + metodo, color = c.texto,
                                                 fontSize = 13.sp, modifier = Modifier.weight(1f))
-                                            Text("S/ ${formatoCaja(monto)}", color = c.texto,
+                                            Text("${simboloMoneda(moneda)} ${formatoCaja(monto)}", color = c.texto,
                                                 fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
@@ -180,7 +182,7 @@ fun PantallaCajaHoy(ctx: ContextoStaff) {
                                     if (sub.isNotBlank()) Text(sub, color = c.textoSuave, fontSize = 11.sp)
                                 }
                                 Text(
-                                    (if (esIn) "+" else "−") + " S/ ${formatoCaja(m.monto)}",
+                                    (if (esIn) "+" else "−") + " ${simboloMoneda(moneda)} ${formatoCaja(m.monto)}",
                                     color = if (esIn) c.ok else c.error, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                                 )
                             }
@@ -200,6 +202,7 @@ fun PantallaCajaHoy(ctx: ContextoStaff) {
 
 @Composable
 private fun CajaStat(titulo: String, monto: Double, color: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     Column(
         modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
@@ -209,7 +212,7 @@ private fun CajaStat(titulo: String, monto: Double, color: androidx.compose.ui.g
     ) {
         Text(titulo.uppercase(), color = c.textoSuave, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
         Spacer(Modifier.height(3.dp))
-        Text("S/ ${formatoCaja(monto)}", color = color, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        Text("${simboloMoneda(moneda)} ${formatoCaja(monto)}", color = color, fontSize = 15.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -230,6 +233,7 @@ private fun ModalRegistrarMovimiento(
     onCancelar: () -> Unit,
     onGuardar: (tipo: String, categoria: String, descripcion: String?, monto: Double, metodo: String?, comprobante: String?) -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     var tipo by remember { mutableStateOf("Egreso") }
     var monto by remember { mutableStateOf("") }
@@ -281,7 +285,7 @@ private fun ModalRegistrarMovimiento(
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) {
-                    pe.saniape.app.ui.clinica.pacientes.EtqForm("Monto (S/) *")
+                    pe.saniape.app.ui.clinica.pacientes.EtqForm("Monto (${simboloMoneda(moneda)}) *")
                     androidx.compose.material3.OutlinedTextField(
                         colors = pe.saniape.app.ui.clinica.pacientes.coloresCampoForm(),
                         value = monto,

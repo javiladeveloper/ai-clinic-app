@@ -56,6 +56,8 @@ data class Saldo(
     val aFavor: Double = 0.0,
     /** Clínica del tratamiento (el crédito nunca se suma entre clínicas). */
     val clinicaId: String? = null,
+    /** Multipaís: moneda de la sede del tratamiento (la manda el servidor; sin ella, soles). */
+    val moneda: String = pe.saniape.app.data.staff.MONEDA_POR_DEFECTO,
 )
 
 /**
@@ -322,7 +324,9 @@ object SaludRepo {
             id to Saldo(o.dbl("acordado"), o.dbl("pagado"), o.dbl("saldo"), o.str("estado") ?: "", pagos,
                 puedePagarOnline = o.bool("puedePagarOnline"),
                 aFavor = o.dbl("aFavor").coerceAtLeast(0.0),
-                clinicaId = o.str("clinicaId"))
+                clinicaId = o.str("clinicaId"),
+                moneda = o.str("moneda")?.takeIf { it.isNotBlank() }?.let { pe.saniape.app.data.staff.normalizarMoneda(it) }
+                    ?: pe.saniape.app.data.staff.MONEDA_POR_DEFECTO)
         }?.toMap().orEmpty()
         val porClinica = (raiz["saldoAFavorPorClinica"] as? JsonObject)?.mapNotNull { (id, v) ->
             val monto = (v as? JsonPrimitive)?.content?.toDoubleOrNull() ?: return@mapNotNull null

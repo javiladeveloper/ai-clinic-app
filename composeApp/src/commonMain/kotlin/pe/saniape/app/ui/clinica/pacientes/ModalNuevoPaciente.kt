@@ -67,7 +67,11 @@ fun ModalNuevoPaciente(
     val tpl = LocalTerminologiaPaciente.current
     val c = Sania.colors
     val scope = rememberCoroutineScope()
-    var paisDoc by remember { mutableStateOf("PE") }         // PE / CL / OTRO
+    // Multipaís: el documento por defecto es el del país de la sede (RENIEC y los
+    // 8 dígitos solo en Perú; en Bolivia es el CI). Perú: igual que siempre.
+    val paisSede = remember { pe.saniape.app.data.staff.paisActivo() }
+    val opcionesDoc = remember(paisSede) { pe.saniape.app.data.staff.opcionesDocumento(paisSede) }
+    var paisDoc by remember { mutableStateOf(opcionesDoc.first().first) }         // PE / CL / BO… / OTRO
     var sinDocumento by remember { mutableStateOf(false) }
     var dni by remember { mutableStateOf("") }
     var nombre by remember { mutableStateOf("") }
@@ -108,7 +112,7 @@ fun ModalNuevoPaciente(
     fun cargarFichaBaja(f: FichaDeBaja) {
         fun vacio(v: String) = v.isBlank()
         if (vacio(nombre)) nombre = f.nombre
-        f.dni?.let { d -> dni = d; paisDoc = if (d.length == 8 && d.all { it.isDigit() }) "PE" else "CL"; sinDocumento = false }
+        f.dni?.let { d -> dni = d; paisDoc = if (pe.saniape.app.data.staff.usaReniec(paisSede)) { if (d.length == 8 && d.all { it.isDigit() }) "PE" else "CL" } else paisSede; sinDocumento = false }
         if (vacio(telefono)) f.telefono?.let { telefono = it }
         if (vacio(edad)) f.edad?.let { edad = it.toString() }
         if (vacio(email)) f.email?.let { email = it }
@@ -261,7 +265,7 @@ fun ModalNuevoPaciente(
             // (el padrón es peruano — para RUT/pasaporte no hay búsqueda).
             EtqForm("Documento")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("PE" to "🇵🇪 DNI", "CL" to "🇨🇱 RUT", "OTRO" to "🌎 Pasaporte").forEach { (v, etq) ->
+                opcionesDoc.forEach { (v, etq) ->
                     val activo = paisDoc == v
                     Box(
                         Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp))
@@ -288,7 +292,8 @@ fun ModalNuevoPaciente(
                             avisoDni = null; existente = null
                         },
                         placeholder = { Text(when (paisDoc) {
-                            "PE" -> "8 dígitos"; "CL" -> "12345678-9"; else -> "Nº de pasaporte"
+                            "PE" -> "8 dígitos"; "CL" -> "12345678-9"; "OTRO" -> "Nº de pasaporte"
+                            else -> "Nº de ${pe.saniape.app.data.staff.nombreDocumentoNacional(paisDoc)}"
                         }, color = c.textoSuave) },
                         singleLine = true,
                         // Reactivando: el documento es la llave de su ficha ("Cambiar documento").

@@ -45,7 +45,7 @@ import pe.saniape.app.data.staff.HistoricoComisiones
 import pe.saniape.app.data.staff.PersonaComision
 import pe.saniape.app.data.staff.ReglasComisiones
 import pe.saniape.app.data.staff.hoyClinicaIso
-import pe.saniape.app.data.staff.soles
+import pe.saniape.app.data.staff.dineroActivo
 import pe.saniape.app.ui.CargandoLista
 import pe.saniape.app.ui.clinica.finanzas.ChipFin
 import pe.saniape.app.ui.clinica.finanzas.RotuloFin
@@ -113,7 +113,7 @@ internal fun TabHistorico(personal: List<PersonaComision>) {
                     Row(verticalAlignment = Alignment.Bottom) {
                         Column(Modifier.weight(1f)) {
                             RotuloFin("Total pagado")
-                            Text(soles(d.total), color = c.navy, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                            Text(dineroActivo(d.total), color = c.navy, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                         }
                         Text(
                             "${d.filas.size} pago${if (d.filas.size == 1) "" else "s"}" +
@@ -134,7 +134,7 @@ internal fun TabHistorico(personal: List<PersonaComision>) {
                         d.porProfesional.forEach { p ->
                             Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
                                 Text(p.nombre, color = c.texto, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                Text(soles(p.monto), color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text(dineroActivo(p.monto), color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
                             Barra(if (d.total > 0) (p.monto / d.total).toFloat() else 0f, c.navy)
                         }
@@ -149,7 +149,7 @@ internal fun TabHistorico(personal: List<PersonaComision>) {
                             Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(ReglasComisiones.nombreMes(m.mes), color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.width(110.dp))
                                 Box(Modifier.weight(1f)) { Barra(if (tope > 0) (m.monto / tope).toFloat() else 0f, c.lav, alto = 12) }
-                                Text(soles(m.monto), color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                Text(dineroActivo(m.monto), color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                                     textAlign = TextAlign.End, modifier = Modifier.width(96.dp))
                             }
                         }
@@ -175,7 +175,7 @@ internal fun TabHistorico(personal: List<PersonaComision>) {
                                         modifier = Modifier.padding(top = 2.dp).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.pill.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
                                 }
                             }
-                            Text(soles(f.monto), color = c.ok, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(dineroActivo(f.monto), color = c.ok, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

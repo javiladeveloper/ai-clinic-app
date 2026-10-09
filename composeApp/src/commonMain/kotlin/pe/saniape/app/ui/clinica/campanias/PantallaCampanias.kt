@@ -72,6 +72,7 @@ import pe.saniape.app.ui.clinica.pacientes.coloresCampoForm
 import pe.saniape.app.ui.conIndicador
 import pe.saniape.app.ui.fechaDMA
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.data.staff.simboloMoneda
 
 /**
  * 🎉 Campañas (Más → Administración). Gemelo de app/(app)/campanias en la web:
@@ -357,6 +358,7 @@ private fun FormularioCampania(
     inicial: CampaniaGestion?, servicios: List<ServicioApp>, hoy: String,
     onCerrar: () -> Unit, onGuardado: () -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     var f by remember { mutableStateOf(FormCampania.desde(inicial, hoy)) }
@@ -442,13 +444,13 @@ private fun FormularioCampania(
                         )
                     }
                     Column(Modifier.weight(1f)) {
-                        EtqForm("Precio del paquete (S/)")
+                        EtqForm("Precio del paquete (${simboloMoneda(moneda)})")
                         CampoDecimal(f.precio, "500") { f = f.copy(precio = it) }
                     }
                 }
-                "precio_fijo" -> { EtqForm("Precio de oferta (S/)"); CampoDecimal(f.precio, "50") { f = f.copy(precio = it) } }
+                "precio_fijo" -> { EtqForm("Precio de oferta (${simboloMoneda(moneda)})"); CampoDecimal(f.precio, "50") { f = f.copy(precio = it) } }
                 "porcentaje" -> { EtqForm("Descuento (%)"); CampoDecimal(f.valor, "10") { f = f.copy(valor = it) } }
-                else -> { EtqForm("Descuento (S/)"); CampoDecimal(f.valor, "30") { f = f.copy(valor = it) } }
+                else -> { EtqForm("Descuento (${simboloMoneda(moneda)})"); CampoDecimal(f.valor, "30") { f = f.copy(valor = it) } }
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -535,7 +537,7 @@ private fun FormularioCampania(
                             )
                         }
                         Column(Modifier.weight(1f)) {
-                            EtqForm("Precio (S/)")
+                            EtqForm("Precio (${simboloMoneda(moneda)})")
                             CampoDecimal(r.precio, "0 (gratis)") { v -> f = f.copy(regalos = f.regalos.mapIndexed { j, x -> if (j == i) x.copy(precio = v) else x }) }
                         }
                     }

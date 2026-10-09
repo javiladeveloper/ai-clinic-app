@@ -50,6 +50,7 @@ import pe.saniape.app.ui.clinica.pacientes.rememberMetodosPago
 import pe.saniape.app.ui.fechaDMA
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.tutoriales.tourAncla
+import pe.saniape.app.data.staff.simboloMoneda
 
 /**
  * "💵 Registrar cobro" de una Consulta/Evaluación (gemelo del modal de /citas web).
@@ -80,6 +81,8 @@ fun ModalCobrarCita(
     /** Cómo llama el flujo de la clínica al tipo de la cita ("Diagnóstico"…). */
     nombreTipo: String = cita.tipo ?: "Cita",
 ) {
+    // Multipaís: la moneda de la sede de la cita.
+    val moneda = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)
     val c = Sania.colors
     var modo by remember(cita.id) { mutableStateOf("cobrar") }
     var metodo by rememberMetodoPagoInicial(cita.pacienteId)
@@ -91,7 +94,7 @@ fun ModalCobrarCita(
     val total = cita.costo ?: 0.0
     val conDivision = dividido && modo != "gratis"
     val reparto = if (conDivision) repartoValido(filas, total) else null
-    val monto = textoSoles(cita.costo ?: 0.0)
+    val monto = textoSoles(cita.costo ?: 0.0, moneda)
     val tipoMin = nombreTipo.lowercase()
 
     if (mostrarFecha) {
@@ -143,7 +146,7 @@ fun ModalCobrarCita(
             listOf(
                 Triple("cobrar", "Cobrar normal", "Entra a caja como pago de la $tipoMin"),
                 Triple("abonar", "Cobrar y abonar al tratamiento", "El monto se descuenta de la deuda del tratamiento del ${LocalTerminologiaPaciente.current.paciente}"),
-                Triple("gratis", "No cobrar", "Sigue a tratamiento: la $tipoMin queda en S/ 0"),
+                Triple("gratis", "No cobrar", "Sigue a tratamiento: la $tipoMin queda en ${simboloMoneda(moneda)} 0"),
             ).forEach { (valor, titulo, detalle) ->
                 OpcionModo(titulo, detalle, activo = modo == valor) { if (!guardando) modo = valor }
             }
@@ -174,7 +177,7 @@ fun ModalCobrarCita(
             if (dividido) {
                 // Tutoriales: "cobro.medios" se cumple al escribir algún monto.
                 Column(Modifier.tourAncla("cobro.medios", valor = filas.joinToString("") { it.monto.trim() })) {
-                    PagoDividido(total = total, metodos = metodos, filas = filas, onCambiar = { filas = it }, deshabilitado = guardando)
+                    PagoDividido(total = total, metodos = metodos, filas = filas, onCambiar = { filas = it }, deshabilitado = guardando, moneda = moneda)
                 }
             }
 
@@ -199,7 +202,7 @@ fun ModalCobrarCita(
         Spacer(Modifier.height(12.dp))
         Text(
             when (modo) {
-                "gratis" -> "No entra dinero a caja: la $tipoMin queda saldada con S/ 0."
+                "gratis" -> "No entra dinero a caja: la $tipoMin queda saldada con ${simboloMoneda(moneda)} 0."
                 "abonar" -> "Entra a caja como pago del tratamiento: lo verás sumado en la ficha del ${LocalTerminologiaPaciente.current.paciente}."
                 else -> if (conDivision) "Entra a caja un ingreso por cada medio, en la fecha del pago (el arqueo por método cuadra)."
                     else "Entra a caja en la fecha del pago, con este método. Si el ${LocalTerminologiaPaciente.current.paciente} aún no paga, puedes atenderlo igual y cobrarle después."
@@ -242,10 +245,10 @@ private fun Etiqueta(texto: String) {
         modifier = Modifier.padding(bottom = 6.dp))
 }
 
-/** 40.0 → "S/ 40.00" (como formatearSoles de la web). */
-internal fun textoSoles(n: Double): String {
+/** 40.0 → "S/ 40.00" (como formatearSoles de la web), con el símbolo de la moneda de la sede. */
+internal fun textoSoles(n: Double, moneda: String = pe.saniape.app.data.staff.monedaActiva()): String {
     val centavos = kotlin.math.round(n * 100).toLong()
-    return "S/ ${centavos / 100}.${(centavos % 100).toString().padStart(2, '0')}"
+    return "${simboloMoneda(moneda)} ${centavos / 100}.${(centavos % 100).toString().padStart(2, '0')}"
 }
 
 private fun millisAIso(millis: Long): String {

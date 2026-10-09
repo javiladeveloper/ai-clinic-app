@@ -148,7 +148,11 @@ object ReportesRepo {
      * con el Bearer del staff. Las series ya vienen armadas (mes en curso marcado
      * como parcial, proyección y mismo tramo del mes anterior): la app solo pinta.
      */
-    suspend fun series(meses: Int, sedeId: String?, metodo: String?, terapeutaId: String?): ResultadoSeries {
+    suspend fun series(
+        meses: Int, sedeId: String?, metodo: String?, terapeutaId: String?,
+        /** Multipaís: en "todas las sedes" con varias monedas, la moneda a graficar (null = no se manda). */
+        moneda: String? = null,
+    ): ResultadoSeries {
         val tk = runCatching { Supabase.client.auth.currentSessionOrNull()?.accessToken }.getOrNull()
             ?: return ResultadoSeries.Error("Tu sesión expiró. Vuelve a entrar.")
         return try {
@@ -158,6 +162,7 @@ object ReportesRepo {
                 sedeId?.takeIf { it.isNotBlank() }?.let { parameter("sede", it) }
                 metodo?.takeIf { it.isNotBlank() }?.let { parameter("metodo", it) }
                 terapeutaId?.takeIf { it.isNotBlank() }?.let { parameter("terapeuta", it) }
+                moneda?.takeIf { it.isNotBlank() }?.let { parameter("moneda", it) }
             }
             val texto = resp.bodyAsText()
             if (resp.status.isSuccess()) {

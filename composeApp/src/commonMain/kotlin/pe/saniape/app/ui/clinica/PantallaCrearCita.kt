@@ -76,6 +76,7 @@ import pe.saniape.app.data.staff.hoyClinicaIso
 import pe.saniape.app.ui.ManejarAtras
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.tutoriales.tourAncla
+import pe.saniape.app.data.staff.simboloMoneda
 
 private val TIPOS = listOf("Consulta", "Evaluación", "Sesión")
 
@@ -123,6 +124,7 @@ fun PantallaCrearCita(
      */
     onGuardada: (fecha: String) -> Unit = {},
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val scope = rememberCoroutineScope()
 
@@ -704,7 +706,7 @@ fun PantallaCrearCita(
                     val precioDefault = promoAplicada?.precioCon(precioBase) ?: precioBase
                     Spacer(Modifier.height(Sania.dim.md))
                     Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                        Etiqueta("Costo (S/)")
+                        Etiqueta("Costo (${simboloMoneda(moneda)})")
                         if ((costo.toDoubleOrNull() ?: 0.0) != precioDefault) {
                             Text("Restablecer", color = c.navy, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                                 modifier = Modifier.clickable { costo = precioDefault.toString() })
@@ -718,7 +720,7 @@ fun PantallaCrearCita(
                     )
                     promoAplicada?.let { promo ->
                         Text(
-                            "🎉 ${promo.nombre} — ${promo.etiqueta()} · antes S/ ${if (precioBase % 1.0 == 0.0) precioBase.toInt() else precioBase}",
+                            "🎉 ${promo.nombre} — ${promo.etiqueta()} · antes ${simboloMoneda(moneda)} ${if (precioBase % 1.0 == 0.0) precioBase.toInt() else precioBase}",
                             color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(top = 4.dp),
                         )

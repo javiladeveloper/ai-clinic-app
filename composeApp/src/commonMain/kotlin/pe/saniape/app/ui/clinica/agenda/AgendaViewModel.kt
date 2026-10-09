@@ -950,7 +950,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                     pe.saniape.app.ui.Toaster.exito(
                         pe.saniape.app.ui.clinica.atencion.textoCobrado(
                             flujoDe(cita).nombreTipo(cita.tipo),
-                            pe.saniape.app.ui.clinica.agenda.modales.textoSoles(cita.costo ?: 0.0),
+                            pe.saniape.app.ui.clinica.agenda.modales.textoSoles(cita.costo ?: 0.0, pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)),
                             modo, fecha, cita.fecha, pagos, r.yaEstaba,
                         )
                     )

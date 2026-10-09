@@ -400,7 +400,8 @@ fun PantallaInicioStaff(
 
 /** "jueves 3 de julio" — la fecha de hoy en humano. */
 private fun fechaHumanaHoy(): String {
-    val d = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+    // La fecha de la sede activa, no la del teléfono.
+    val d = Clock.System.now().toLocalDateTime(pe.saniape.app.data.staff.ZONA_CLINICA).date
     val dias = listOf("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
     val meses = listOf("enero", "febrero", "marzo", "abril", "mayo", "junio",
         "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre")
@@ -410,7 +411,7 @@ private fun fechaHumanaHoy(): String {
 
 /** La primera cita de hoy que aún no pasó (y no está cancelada). */
 private fun proximaCita(agenda: List<CitaAgenda>): CitaAgenda? {
-    val ahora = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+    val ahora = Clock.System.now().toLocalDateTime(pe.saniape.app.data.staff.ZONA_CLINICA)
     val horaAhora = "${ahora.hour.toString().padStart(2, '0')}:${ahora.minute.toString().padStart(2, '0')}"
     return agenda
         .filter { it.estado != "Cancelada" && it.estado != "Completada" }

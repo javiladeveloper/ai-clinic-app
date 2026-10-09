@@ -60,7 +60,8 @@ import pe.saniape.app.ui.conIndicador
 import pe.saniape.app.ui.proximaHoraEnPunto
 import pe.saniape.app.ui.recordarAcciones
 import pe.saniape.app.ui.theme.Sania
-import pe.saniape.app.data.staff.soles
+import pe.saniape.app.data.staff.formatearDinero
+import pe.saniape.app.data.staff.simboloMoneda
 
 /** Pestañas de Retención (las mismas que la web). */
 private enum class VistaRet(val etiqueta: String) {
@@ -309,6 +310,7 @@ private fun MensajeCentro(emoji: String, titulo: String, texto: String) {
 /** "Cómo va": fichas compactas 2×2 (solo con reportes). */
 @Composable
 private fun KpisRetencion(r: ResumenRetencion?, cargando: Boolean) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     if (r == null) {
         if (cargando) CargandoLista(filas = 2, conAvatar = false, conMargen = false)
@@ -327,7 +329,7 @@ private fun KpisRetencion(r: ResumenRetencion?, cargando: Boolean) {
     Column(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ficha(Modifier.weight(1f), "En riesgo", r.noVuelven.toString(), c.error)
-            ficha(Modifier.weight(1f), "Dinero en riesgo", "S/ ${r.dineroRiesgo.roundToLong()}", c.pend)
+            ficha(Modifier.weight(1f), "Dinero en riesgo", "${simboloMoneda(moneda)} ${r.dineroRiesgo.roundToLong()}", c.pend)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ficha(Modifier.weight(1f), "Completan paquete", if (pct != null) "$pct%" else "—", c.ok)
@@ -350,4 +352,4 @@ internal fun CampoBusqueda(valor: String, onCambio: (String) -> Unit, placeholde
     )
 }
 
-internal fun solesRet(m: Double): String = soles(m)
+internal fun solesRet(m: Double, moneda: String = pe.saniape.app.data.staff.monedaActiva()): String = formatearDinero(m, moneda)

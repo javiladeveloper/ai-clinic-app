@@ -210,20 +210,7 @@ fun entero(n: Double): String = conMiles(n.roundToLong())
  * Soles para gráficos y titulares: "S/ 28,349" en detalle, "S/ 28.3k" en el eje
  * (compacto, desde mil).
  */
-fun solesGrafico(n: Double, compacto: Boolean = false): String {
-    if (compacto && abs(n) >= 1000) {
-        val miles = n / 1000
-        val txt = if (n % 1000 == 0.0) miles.roundToLong().toString()
-        else {
-            val decimas = (miles * 10).roundToLong()
-            val ent = decimas / 10
-            val dec = abs(decimas % 10)
-            if (dec == 0L) ent.toString() else "${if (decimas < 0 && ent == 0L) "-" else ""}$ent.$dec"
-        }
-        return "S/ ${txt}k"
-    }
-    return "S/ ${conMiles(n.roundToLong())}"
-}
+fun solesGrafico(n: Double, compacto: Boolean = false): String = dineroGrafico(n, MONEDA_POR_DEFECTO, compacto)
 
 // ── Eje y toques del gráfico ──
 

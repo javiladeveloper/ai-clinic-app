@@ -34,6 +34,7 @@ import pe.saniape.app.data.staff.textoConfirmarAlta
 import pe.saniape.app.data.staff.tituloCambioEstadoSesion
 import pe.saniape.app.data.staff.validarCambioEstadoSesion
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.data.staff.simboloMoneda
 
 /**
  * Cambiar el estado de una sesión pendiente (menú ⋯): Reprogramada pide nueva
@@ -190,13 +191,14 @@ fun DialogoCobroFallido(
     onReintentar: () -> Unit,
     onCerrar: () -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     AlertDialog(
         onDismissRequest = { if (!reintentando) onCerrar() },
         title = { Text("✓ Sesión #$numeroSesion completada", fontWeight = FontWeight.Bold) },
         text = {
             Column {
-                Text("Pero el cobro de S/ ${formatoSoles(monto)} ($metodo) NO se registró.",
+                Text("Pero el cobro de ${simboloMoneda(moneda)} ${formatoSoles(monto)} ($metodo) NO se registró.",
                     color = c.error, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
                 motivo?.takeIf { it.isNotBlank() }?.let {
                     Spacer(Modifier.height(6.dp))
@@ -258,6 +260,7 @@ fun BloqueCobroSesion(
     monto: String, onMonto: (String) -> Unit,
     metodo: String, onMetodo: (String) -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
@@ -284,7 +287,7 @@ fun BloqueCobroSesion(
     if (cobrar) {
         Spacer(Modifier.height(8.dp))
         TarjetaForm(titulo = "Cobro", icono = "💳") {
-            EtqForm("Monto (S/)")
+            EtqForm("Monto (${simboloMoneda(moneda)})")
             androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(),
                 value = monto,
                 onValueChange = { onMonto(it.filter { ch -> ch.isDigit() || ch == '.' }) },

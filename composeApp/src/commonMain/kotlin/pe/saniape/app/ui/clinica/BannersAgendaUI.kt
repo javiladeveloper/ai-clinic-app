@@ -107,7 +107,7 @@ fun BannersAgendaUI(
                                 IconoMini("📞", c.navy) { acciones.abrirUrl("tel:${tel.filter { ch -> ch.isDigit() }}") }
                                 Spacer(Modifier.width(6.dp))
                                 IconoMini("💬", androidx.compose.ui.graphics.Color(0xFF25D366)) {
-                                    val n = tel.filter { ch -> ch.isDigit() }.let { if (it.length <= 9) "51$it" else it }
+                                    val n = pe.saniape.app.data.staff.numeroWhatsApp(tel, pe.saniape.app.data.staff.paisActivo())
                                     acciones.abrirUrl("https://wa.me/$n")
                                 }
                             }
@@ -167,7 +167,7 @@ fun BannersAgendaUI(
                             IconoMini("📞", c.navy) { acciones.abrirUrl("tel:${tel.filter { ch -> ch.isDigit() }}") }
                             Spacer(Modifier.width(6.dp))
                             IconoMini("💬", androidx.compose.ui.graphics.Color(0xFF25D366)) {
-                                val n = tel.filter { ch -> ch.isDigit() }.let { if (it.length <= 9) "51$it" else it }
+                                val n = pe.saniape.app.data.staff.numeroWhatsApp(tel, pe.saniape.app.data.staff.paisActivo())
                                 acciones.abrirUrl("https://wa.me/$n")
                             }
                         }

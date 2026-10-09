@@ -59,6 +59,7 @@ import pe.saniape.app.ui.clinica.pacientes.EtqForm
 import pe.saniape.app.ui.recordarAcciones
 import pe.saniape.app.ui.reservar.recordarSolicitarUbicacion
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.data.staff.simboloMoneda
 
 private fun JsonObject.clinica() = o("clinica") ?: JsonObject(emptyMap())
 private fun JsonObject.plan() = o("plan") ?: JsonObject(emptyMap())
@@ -304,6 +305,7 @@ internal fun SeccionPortada(d: JsonObject, onVolver: () -> Unit, onCambio: () ->
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun SeccionContenido(d: JsonObject, onVolver: () -> Unit, onCambio: () -> Unit) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     val cfg = d.cfg()
@@ -372,7 +374,7 @@ internal fun SeccionContenido(d: JsonObject, onVolver: () -> Unit, onCambio: () 
             FilaInterruptor("Mostrar mis servicios", "Lista tus servicios activos (nombre, categoría y descripción).", servicios, habilitado = !guardandoToggle) { v ->
                 val antes = servicios; servicios = v; guardarToggle("mostrarServicios", v) { servicios = antes }
             }
-            FilaInterruptor("Mostrar también los precios", "Se muestran como «Desde S/ X» (el precio por sesión de cada servicio).", precios, habilitado = servicios && !guardandoToggle) { v ->
+            FilaInterruptor("Mostrar también los precios", "Se muestran como «Desde ${simboloMoneda(moneda)} X» (el precio por sesión de cada servicio).", precios, habilitado = servicios && !guardandoToggle) { v ->
                 val antes = precios; precios = v; guardarToggle("mostrarPrecios", v) { precios = antes }
             }
         }

@@ -53,7 +53,7 @@ import pe.saniape.app.data.staff.agruparPorEspecialidad
 import pe.saniape.app.data.staff.etiquetaCaras
 import pe.saniape.app.data.staff.filtrarServicios
 import pe.saniape.app.data.staff.resumenTipicos
-import pe.saniape.app.data.staff.soles
+import pe.saniape.app.data.staff.dineroActivo
 import pe.saniape.app.data.staff.sufijoPrecio
 import pe.saniape.app.data.staff.tramosCaras
 import pe.saniape.app.ui.AlertaConTeclado
@@ -356,16 +356,16 @@ private fun TarjetaServicio(s: ServicioApp, onEditar: () -> Unit, onCambiarEstad
         }
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.Bottom) {
-            Text(soles(s.precio), color = c.texto, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(dineroActivo(s.precio), color = c.texto, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             val suf = sufijoPrecio(s)
             if (suf.isNotEmpty()) { Spacer(Modifier.width(4.dp)); Text(suf, color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(bottom = 2.dp)) }
         }
         // Odontología: si cobra por caras, ESE precio manda en el presupuesto.
         val tramos = tramosCaras(s)
         val chips = buildList {
-            tramos.forEach { (k, v) -> add("🦷 ${etiquetaCaras(k)}: ${soles(v)}" to true) }
-            if (s.tarifarios.isNotEmpty()) s.tarifarios.forEach { t -> add("📦 ${t.cantidadSesiones}x ${soles(t.precioTotal)}" to false) }
-            else s.precioPaquete?.let { add("📦 Paquete: ${soles(it)}" to false) }
+            tramos.forEach { (k, v) -> add("🦷 ${etiquetaCaras(k)}: ${dineroActivo(v)}" to true) }
+            if (s.tarifarios.isNotEmpty()) s.tarifarios.forEach { t -> add("📦 ${t.cantidadSesiones}x ${dineroActivo(t.precioTotal)}" to false) }
+            else s.precioPaquete?.let { add("📦 Paquete: ${dineroActivo(it)}" to false) }
         }
         if (chips.isNotEmpty()) {
             Spacer(Modifier.height(6.dp))

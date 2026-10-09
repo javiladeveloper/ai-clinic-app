@@ -53,7 +53,7 @@ import pe.saniape.app.data.staff.MetodoPago
 import pe.saniape.app.data.staff.PersonaComision
 import pe.saniape.app.data.staff.ReglasComisiones
 import pe.saniape.app.data.staff.hoyClinicaIso
-import pe.saniape.app.data.staff.soles
+import pe.saniape.app.data.staff.dineroActivo
 import pe.saniape.app.tutoriales.PantallaTutorial
 import pe.saniape.app.ui.CargandoLista
 import pe.saniape.app.ui.Gestion
@@ -243,7 +243,7 @@ private fun TabEsquemas(ctx: ContextoStaff, personal: List<PersonaComision>) {
     anulando?.let { (pagoId, nombre, monto) ->
         ConfirmarFin(
             titulo = "Anular pago",
-            detalle = "Vas a anular el pago de ${soles(monto)} a $nombre. Se quita también el egreso de la caja, y el período vuelve a quedar abierto para pagarlo de nuevo.",
+            detalle = "Vas a anular el pago de ${dineroActivo(monto)} a $nombre. Se quita también el egreso de la caja, y el período vuelve a quedar abierto para pagarlo de nuevo.",
             textoAccion = "Sí, anular",
             onCancelar = { anulando = null },
         ) {
@@ -361,7 +361,7 @@ private fun TabEsquemas(ctx: ContextoStaff, personal: List<PersonaComision>) {
             ) {
                 Text("Total por pagar ${if (d.esPeriodoActual) "este período" else "de ese período"}:",
                     color = c.textoSuave, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Text(soles(total), color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text(dineroActivo(total), color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
         }
         Spacer(Modifier.height(Sania.dim.xl))
@@ -411,7 +411,7 @@ private fun TarjetaEsquemaAdmin(
                     ) {
                         Box(Modifier.padding(end = 5.dp).width(8.dp).height(8.dp).clip(RoundedCornerShape(4.dp)).background(color))
                         Text(t.nombre, color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Text("  ${numero(t.objetivo)} → ${soles(t.monto_bono ?: 0.0)}", color = c.textoSuave, fontSize = 12.sp)
+                        Text("  ${numero(t.objetivo)} → ${dineroActivo(t.monto_bono ?: 0.0)}", color = c.textoSuave, fontSize = 12.sp)
                     }
                 }
             }
@@ -456,7 +456,7 @@ private fun TarjetaEsquemaAdmin(
                         color = c.textoSuave, fontSize = 11.sp, textAlign = TextAlign.End, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
                 } else if (ReglasComisiones.puedePagar(a)) {
                     Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.End) {
-                        BotonFin("Pagar ${soles(a.aCobrar ?: 0.0)}", color = c.ok, habilitado = !ocupado) { onPagar(a) }
+                        BotonFin("Pagar ${dineroActivo(a.aCobrar ?: 0.0)}", color = c.ok, habilitado = !ocupado) { onPagar(a) }
                     }
                 }
             }
@@ -478,13 +478,13 @@ private fun DialogoPagar(p: EsquemaComision, a: AvanceComision, enviando: Boolea
     DialogoForm(
         titulo = "Pagar comisión",
         subtitulo = p.nombre,
-        textoAccion = if (enviando) "Pagando…" else "Pagar ${soles(monto)}",
+        textoAccion = if (enviando) "Pagando…" else "Pagar ${dineroActivo(monto)}",
         accionHabilitada = !enviando,
         onCancelar = onCerrar,
         onAccion = { if (!enviando) onPagar(metodo) },
     ) {
         Text(
-            "Vas a pagar ${soles(monto)} a ${a.nombre}" +
+            "Vas a pagar ${dineroActivo(monto)} a ${a.nombre}" +
                 (a.nivelActual?.let { " por alcanzar $it" } ?: "") +
                 " en ${p.nombre} (período ${ReglasComisiones.rangoHumano(p.desde, p.hasta)}). Se registra como egreso en la caja de hoy.",
             color = c.texto, fontSize = 14.sp,

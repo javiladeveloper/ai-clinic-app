@@ -40,7 +40,11 @@ import pe.saniape.app.data.staff.Finanzas
 import pe.saniape.app.data.staff.FinanzasRepo
 import pe.saniape.app.data.staff.SedeActiva
 import pe.saniape.app.data.staff.hoyClinicaIso
-import pe.saniape.app.data.staff.soles
+import pe.saniape.app.data.staff.formatearDinero
+import pe.saniape.app.data.staff.formatearTotalesPorMoneda
+import pe.saniape.app.data.staff.monedaActiva
+import pe.saniape.app.data.staff.monedaDeFila
+import pe.saniape.app.data.staff.simboloMoneda
 import pe.saniape.app.tutoriales.tourAncla
 import pe.saniape.app.ui.CargandoLista
 import pe.saniape.app.ui.Gestion
@@ -125,10 +129,18 @@ internal fun TabCierre() {
             }
             d == null -> CargandoLista(filas = 3, conAvatar = false, conMargen = false)
             else -> {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CifraFin("Ingresos del día", d.totalIngresos, c.ok, Modifier.weight(1f))
-                    CifraFin("Egresos del día", d.totalEgresos, c.error, Modifier.weight(1f))
-                    CifraFin("Neto", d.neto, c.navy, Modifier.weight(1f))
+                // Multipaís: la moneda del día es la de la sede; en "todas las sedes" con
+                // varias monedas, un total por moneda (nunca se suman).
+                val moneda = d.moneda ?: monedaActiva()
+                val porMoneda = d.totalesPorMoneda.takeIf { it.size > 1 }
+                if (porMoneda != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CifraFinTexto("Ingresos del día", formatearTotalesPorMoneda(porMoneda.map { it.moneda to it.ingresos }), c.ok, Modifier.weight(1f))
+                    CifraFinTexto("Egresos del día", formatearTotalesPorMoneda(porMoneda.map { it.moneda to it.egresos }), c.error, Modifier.weight(1f))
+                    CifraFinTexto("Neto", formatearTotalesPorMoneda(porMoneda.map { it.moneda to it.neto }), c.navy, Modifier.weight(1f))
+                } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CifraFin("Ingresos del día", d.totalIngresos, c.ok, Modifier.weight(1f), moneda)
+                    CifraFin("Egresos del día", d.totalEgresos, c.error, Modifier.weight(1f), moneda)
+                    CifraFin("Neto", d.neto, c.navy, Modifier.weight(1f), moneda)
                 }
                 TarjetaFin {
                     RotuloFin("Ingresos por método de pago", modifier = Modifier.padding(bottom = 8.dp))
@@ -136,7 +148,7 @@ internal fun TabCierre() {
                     d.porMetodo.forEach { (met, total) ->
                         Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
                             Text("${iconoMetodoFin(met)}  $met", color = c.texto, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                            Text(soles(total), color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(formatearDinero(total, moneda), color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -147,7 +159,7 @@ internal fun TabCierre() {
                             Text("💵 Efectivo esperado en caja", color = c.texto, fontSize = 13.sp)
                             Text("cobros en efectivo − gastos en efectivo", color = c.textoSuave, fontSize = 11.sp)
                         }
-                        Text(soles(d.esperado), color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text(formatearDinero(d.esperado, moneda), color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
                     val contadoNum = Finanzas.parsearMonto(contado)
                     if (d.cerrable) {
@@ -163,7 +175,7 @@ internal fun TabCierre() {
                             )
                         }
                     }
-                    val arqueo = contadoNum?.let { Finanzas.compararArqueo(d.esperado, it) }
+                    val arqueo = contadoNum?.let { Finanzas.compararArqueo(d.esperado, it, moneda) }
                     if (arqueo != null) {
                         Spacer(Modifier.height(8.dp))
                         val cuadra = arqueo.estado == Finanzas.EstadoArqueo.CUADRA
@@ -219,7 +231,8 @@ internal fun TabCierre() {
                                 Spacer(Modifier.width(6.dp))
                                 Text(m.descripcion, color = c.texto, fontSize = 12.sp, maxLines = 1, modifier = Modifier.weight(1f))
                                 val esIn = m.tipo == "Ingreso"
-                                Text((if (esIn) "+" else "−") + soles(m.monto).removePrefix("S/ "), color = if (esIn) c.ok else c.error,
+                                val monedaMov = if (m.sedeId != null) monedaDeFila(m.sedeId) else moneda
+                                Text((if (esIn) "+" else "−") + formatearDinero(m.monto, monedaMov).removePrefix("${simboloMoneda(monedaMov)} "), color = if (esIn) c.ok else c.error,
                                     fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }

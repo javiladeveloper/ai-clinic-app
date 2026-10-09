@@ -250,14 +250,14 @@ object Finanzas {
     data class Arqueo(val diferencia: Double, val estado: EstadoArqueo, val mensaje: String)
 
     /** Gemelo de compararArqueo (lib/cierre-caja.ts): tolerancia de un centavo. */
-    fun compararArqueo(esperado: Double, contado: Double): Arqueo {
+    fun compararArqueo(esperado: Double, contado: Double, moneda: String = monedaActiva()): Arqueo {
         val dif = r2(contado - esperado)
         val estado = when {
             kotlin.math.abs(dif) < 0.01 -> EstadoArqueo.CUADRA
             dif > 0 -> EstadoArqueo.SOBRA
             else -> EstadoArqueo.FALTA
         }
-        val abs = soles(kotlin.math.abs(dif))
+        val abs = formatearDinero(kotlin.math.abs(dif), moneda)
         val msg = when (estado) {
             EstadoArqueo.CUADRA -> "La caja cuadra"
             EstadoArqueo.SOBRA -> "Sobra $abs"

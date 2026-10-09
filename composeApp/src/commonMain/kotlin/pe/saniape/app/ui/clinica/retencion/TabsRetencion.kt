@@ -59,6 +59,7 @@ import pe.saniape.app.ui.clinica.pacientes.coloresCampoForm
 import pe.saniape.app.ui.clinica.servicios.BotonContorno
 import pe.saniape.app.ui.clinica.servicios.ChipFiltro
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.data.staff.formatearDinero
 
 // ─────────────────────────── piezas comunes ───────────────────────────
 
@@ -85,7 +86,7 @@ internal fun ContactoRet(tel: String?, acc: AccionesRet) {
     val t = tel?.trim().orEmpty()
     if (t.isEmpty()) { Text("Sin teléfono", color = c.textoSuave, fontSize = 11.sp, fontStyle = FontStyle.Italic); return }
     BotonAccion("📞 Llamar", c.chipBg, c.navy) { acc.acciones.abrirUrl("tel:${t.filter { it.isDigit() }}") }
-    enlaceWhatsApp(t)?.let { wa -> BotonAccion("💬 WhatsApp", c.okBg, c.ok) { acc.acciones.abrirUrl(wa) } }
+    enlaceWhatsAppSede(t)?.let { wa -> BotonAccion("💬 WhatsApp", c.okBg, c.ok) { acc.acciones.abrirUrl(wa) } }
 }
 
 @Composable
@@ -386,6 +387,7 @@ private fun CampoNumero(etiqueta: String, valor: Int?, modifier: Modifier, onCam
 
 @Composable
 private fun FilaLlamar(r: FilaRetencion, acc: AccionesRet) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     TarjetaRet(Modifier.clickable { acc.onFicha(r.pacienteId) }) {
         Row(verticalAlignment = Alignment.Top) {
@@ -406,7 +408,7 @@ private fun FilaLlamar(r: FilaRetencion, acc: AccionesRet) {
         UltimaSesionTxt(r)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             if (r.proximaCita != null) Text("Cita ${fechaCortaRet(r.proximaCita)}${r.proximaHora?.let { " " + it.take(5) }.orEmpty()}", color = c.ok, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            if (r.saldo > 0.005) Text("Debe ${soles(r.saldo)}", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            if (r.saldo > 0.005) Text("Debe ${formatearDinero(r.saldo, moneda)}", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             MarcaEstado(r)
         }
         Spacer(Modifier.height(6.dp))
@@ -419,6 +421,7 @@ private fun FilaLlamar(r: FilaRetencion, acc: AccionesRet) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun TabNoVuelven(acc: AccionesRet, resumen: ResumenRetencion?, kpis: @Composable () -> Unit, pie: @Composable () -> Unit) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val hoy = remember { hoyClinicaIso() }
     var data by remember { mutableStateOf<List<FilaRetencion>?>(null) }
@@ -485,7 +488,7 @@ internal fun TabNoVuelven(acc: AccionesRet, resumen: ResumenRetencion?, kpis: @C
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("hace ${r.diasSin ?: 0} días", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             if (a.situacion == SituacionPago.PAGO_TODO_NO_VOLVIO) Text("pagó todo", color = c.ok, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            else Text("debe ${soles(maxOf(0.0, r.saldo))}${if (r.pagado > 0.005) " (pagó ${soles(r.pagado)})" else ""}", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            else Text("debe ${formatearDinero(maxOf(0.0, r.saldo), moneda)}${if (r.pagado > 0.005) " (pagó ${formatearDinero(r.pagado, moneda)})" else ""}", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
                         Spacer(Modifier.height(6.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -745,6 +748,7 @@ private class LocalDateRet(val y: Int, val m: Int, val d: Int) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun TabPresupuestos(acc: AccionesRet, kpis: @Composable () -> Unit, pie: @Composable () -> Unit, onConteo: (Int) -> Unit) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val hoy = remember { hoyClinicaIso() }
     var data by remember { mutableStateOf<Pair<List<PresupuestoPendiente>, List<PresupuestoAceptado>>?>(null) }
@@ -764,7 +768,7 @@ internal fun TabPresupuestos(acc: AccionesRet, kpis: @Composable () -> Unit, pie
             val total = filas.sumOf { it.suma }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("🦷 Presupuestos sin aceptar", color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                if (total > 0) Text("${soles(total)} por cerrar", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                if (total > 0) Text("${formatearDinero(total, moneda)} por cerrar", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
             Text("${LocalTerminologiaPaciente.current.Pacientes} con piezas por tratar en el odontograma que todavía no tienen tratamiento. Llámalos o escríbeles para retomar.", color = c.textoSuave, fontSize = 12.sp)
         }
@@ -779,7 +783,7 @@ internal fun TabPresupuestos(acc: AccionesRet, kpis: @Composable () -> Unit, pie
                     Text("Evaluado ${if (dias <= 0) "hoy" else "hace $dias día${if (dias == 1) "" else "s"}"} · ${fechaCortaRet(f.desde)}", color = c.textoSuave, fontSize = 12.sp)
                     Text(f.resumen, color = c.texto, fontSize = 13.sp)
                     f.enlaceEnviado?.let { Text("🔗 Enlace enviado el ${fechaHoraLima(it)}", color = c.textoSuave, fontSize = 11.sp) }
-                    if (f.suma > 0) Text(soles(f.suma), color = c.navy, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    if (f.suma > 0) Text(formatearDinero(f.suma, moneda), color = c.navy, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(6.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         val msg = "Hola ${f.nombre.split(" ").first()}, te escribimos de la clínica sobre el presupuesto de tu tratamiento dental. ¿Pudiste revisarlo? Podemos agendarte cuando te acomode."
@@ -787,7 +791,7 @@ internal fun TabPresupuestos(acc: AccionesRet, kpis: @Composable () -> Unit, pie
                         if (t.isEmpty()) Text("Sin teléfono", color = c.textoSuave, fontSize = 11.sp, fontStyle = FontStyle.Italic)
                         else {
                             BotonAccion("📞 Llamar", c.chipBg, c.navy) { acc.acciones.abrirUrl("tel:${t.filter { it.isDigit() }}") }
-                            enlaceWhatsApp(t, msg)?.let { wa -> BotonAccion("💬 WhatsApp", c.okBg, c.ok) { acc.acciones.abrirUrl(wa) } }
+                            enlaceWhatsAppSede(t, msg)?.let { wa -> BotonAccion("💬 WhatsApp", c.okBg, c.ok) { acc.acciones.abrirUrl(wa) } }
                         }
                     }
                 }
@@ -798,7 +802,7 @@ internal fun TabPresupuestos(acc: AccionesRet, kpis: @Composable () -> Unit, pie
             items(aceptados, key = { "a-" + it.pacienteId }) { a ->
                 TarjetaRet(Modifier.clickable { acc.onFicha(a.pacienteId) }) {
                     Text(a.nombre, color = c.navy, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text("Aceptado el ${fechaHoraLima(a.aceptadoAt)}${a.total?.let { " · ${soles(it)}" }.orEmpty()}", color = c.textoSuave, fontSize = 12.sp)
+                    Text("Aceptado el ${fechaHoraLima(a.aceptadoAt)}${a.total?.let { " · ${formatearDinero(it, moneda)}" }.orEmpty()}", color = c.textoSuave, fontSize = 12.sp)
                 }
             }
         }
@@ -813,6 +817,7 @@ private fun diasDesde(fecha: String, hoy: String): Int =
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun TabCuotas(acc: AccionesRet, kpis: @Composable () -> Unit, pie: @Composable () -> Unit, onConteo: (Int) -> Unit) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val hoy = remember { hoyClinicaIso() }
     var data by remember { mutableStateOf<List<CuotaPorCobrar>?>(null) }
@@ -831,7 +836,7 @@ internal fun TabCuotas(acc: AccionesRet, kpis: @Composable () -> Unit, pie: @Com
             val atrasado = filas.filter { it.cuota.estado == EstadoCuota.ATRASADA }.sumOf { it.cuota.saldo }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("📅 Cuotas por cobrar", color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                if (atrasado > 0) Text("${soles(atrasado)} atrasado", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                if (atrasado > 0) Text("${formatearDinero(atrasado, moneda)} atrasado", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
             Text("Cuotas atrasadas y las que vencen en los próximos 7 días. Escríbele al ${LocalTerminologiaPaciente.current.paciente} para recordarle.", color = c.textoSuave, fontSize = 12.sp)
         }
@@ -853,7 +858,7 @@ internal fun TabCuotas(acc: AccionesRet, kpis: @Composable () -> Unit, pie: @Com
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(etiquetaCuota(q.numero, f.nCuotas), color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         Text("vence ${fechaCortaRet(q.vence)}", color = c.textoSuave, fontSize = 13.sp)
-                        Text(soles(q.saldo), color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(formatearDinero(q.saldo, moneda), color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                     Text(textoEstadoCuota(q), color = if (q.estado == EstadoCuota.ATRASADA) c.error else c.pend, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(6.dp))
@@ -861,9 +866,9 @@ internal fun TabCuotas(acc: AccionesRet, kpis: @Composable () -> Unit, pie: @Com
                         val t = f.telefono?.trim().orEmpty()
                         if (t.isEmpty()) Text("Sin teléfono", color = c.textoSuave, fontSize = 11.sp, fontStyle = FontStyle.Italic)
                         else {
-                            val msg = "Hola ${f.nombre.split(" ").first()}, te escribimos de la clínica para recordarte que $cual de tu tratamiento (${f.servicio}), por ${soles(q.saldo)}, $cuando. ¡Gracias!"
+                            val msg = "Hola ${f.nombre.split(" ").first()}, te escribimos de la clínica para recordarte que $cual de tu tratamiento (${f.servicio}), por ${formatearDinero(q.saldo, moneda)}, $cuando. ¡Gracias!"
                             BotonAccion("📞 Llamar", c.chipBg, c.navy) { acc.acciones.abrirUrl("tel:${t.filter { it.isDigit() }}") }
-                            enlaceWhatsApp(t, msg)?.let { wa -> BotonAccion("💬 WhatsApp", c.okBg, c.ok) { acc.acciones.abrirUrl(wa) } }
+                            enlaceWhatsAppSede(t, msg)?.let { wa -> BotonAccion("💬 WhatsApp", c.okBg, c.ok) { acc.acciones.abrirUrl(wa) } }
                         }
                     }
                 }
@@ -920,7 +925,7 @@ internal fun DialogoRedactarIA(p: PedidoIA, acciones: pe.saniape.app.ui.Acciones
         catch (e: Exception) { (e.message ?: "No se pudo generar el mensaje.").let { m -> if (m.startsWith("⚠")) m else "⚠ $m" } }
         cargando = false
     }
-    val wa = enlaceWhatsApp(p.telefono, texto)
+    val wa = enlaceWhatsAppSede(p.telefono, texto)
     DialogoForm(
         titulo = "✨ Mensaje sugerido", subtitulo = p.nombre,
         textoAccion = if (wa != null) "Abrir WhatsApp" else "Copiar",

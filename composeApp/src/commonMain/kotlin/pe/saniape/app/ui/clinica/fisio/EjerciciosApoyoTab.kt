@@ -62,7 +62,7 @@ import pe.saniape.app.data.staff.adherenciaDePlan
 import pe.saniape.app.data.staff.claveDestino
 import pe.saniape.app.data.staff.destinoPorDefecto
 import pe.saniape.app.data.staff.destinosEjercicios
-import pe.saniape.app.data.staff.enlaceWhatsApp
+import pe.saniape.app.data.staff.enlaceWhatsAppSede
 import pe.saniape.app.data.staff.etiquetaPlan
 import pe.saniape.app.data.staff.hastaDePlan
 import pe.saniape.app.data.staff.hoyClinicaIso
@@ -314,7 +314,7 @@ fun EjerciciosApoyoTab(
         scope.launch {
             val url = enlace(plan) ?: return@launch
             val texto = mensajeCompartirPlan(pacienteNombre, clinicaNombre, url, plan.activos.size)
-            val wa = enlaceWhatsApp(pacienteTelefono, texto)
+            val wa = enlaceWhatsAppSede(pacienteTelefono, texto)
             if (wa == null) {
                 acciones.copiarTexto(texto, "Ejercicios de apoyo")
                 Toaster.info("El paciente no tiene un celular válido. Copié el mensaje con el enlace.")

@@ -30,7 +30,8 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.Finanzas
-import pe.saniape.app.data.staff.soles
+import pe.saniape.app.data.staff.formatearDinero
+import pe.saniape.app.data.staff.monedaActiva
 import pe.saniape.app.ui.theme.Sania
 
 /**
@@ -38,7 +39,7 @@ import pe.saniape.app.ui.theme.Sania
  * Balance de /finanzas, dibujado con Canvas (sin librerías de gráficos).
  */
 @Composable
-fun GraficoBalance(barras: List<Finanzas.Barra>, modifier: Modifier = Modifier) {
+fun GraficoBalance(barras: List<Finanzas.Barra>, modifier: Modifier = Modifier, moneda: String = monedaActiva()) {
     val c = Sania.colors
     val medidor = rememberTextMeasurer()
     val maximo = barras.maxOfOrNull { maxOf(it.ingresos, it.egresos) } ?: 0.0
@@ -47,7 +48,7 @@ fun GraficoBalance(barras: List<Finanzas.Barra>, modifier: Modifier = Modifier) 
     val verde = c.ok
     val rojo = c.error
     val rejilla = c.borde
-    val descripcion = "Gráfico de balance: ${barras.size} barras, ingresos totales ${soles(barras.sumOf { it.ingresos })}, egresos ${soles(barras.sumOf { it.egresos })}"
+    val descripcion = "Gráfico de balance: ${barras.size} barras, ingresos totales ${formatearDinero(barras.sumOf { it.ingresos }, moneda)}, egresos ${formatearDinero(barras.sumOf { it.egresos }, moneda)}"
 
     Column(modifier) {
         Canvas(

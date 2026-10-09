@@ -61,6 +61,8 @@ fun PagoDividido(
      * con saldo ya ocupa uno de los 4 medios que acepta el servidor.
      */
     maxFilas: Int = MAX_PARTES_COBRO,
+    /** Moneda del cobro (multipaís): solo el símbolo de "Falta S/ X". */
+    moneda: String = pe.saniape.app.ui.monedaUI(),
 ) {
     val c = Sania.colors
     val lista = metodos.ifEmpty { listOf("Efectivo") }
@@ -110,7 +112,7 @@ fun PagoDividido(
             }
             Spacer(Modifier.weight(1f))
             Text(
-                estadoReparto(filas, total),
+                estadoReparto(filas, total, moneda),
                 color = when {
                     dif > 0 -> c.pend
                     dif < 0 || !cuadra -> c.error

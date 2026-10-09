@@ -33,6 +33,7 @@ import pe.saniape.app.data.staff.CitaHito
 import pe.saniape.app.data.staff.TratamientoPaciente
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.data.staff.FlujoClinica
+import pe.saniape.app.data.staff.simboloMoneda
 
 /** Un paso del recorrido (bolita + label). */
 /**
@@ -72,6 +73,7 @@ fun BarraRecorrido(
     onRegistrarAtencion: () -> Unit = {},   // Control: medicación/receta · Servicio único: registrar el servicio
     onRevertirServicio: () -> Unit = {},    // Servicio único: volver a "Por hacer" (conserva el pago)
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val esServUnico = trat.esServicioUnico
     val servRealizado = trat.servicioRealizado
@@ -217,7 +219,7 @@ fun BarraRecorrido(
                 Spacer(Modifier.height(4.dp))
                 FilaRef("Fecha", "${cita.fecha}${cita.hora?.let { " · $it" } ?: ""}")
                 cita.terapeutaNombre?.let { FilaRef("Profesional", it) }
-                if (puedePagos && cita.costo != null) FilaRef("Precio", if (cita.costo > 0) "S/ ${cita.costo}" else "Gratuita")
+                if (puedePagos && cita.costo != null) FilaRef("Precio", if (cita.costo > 0) "${simboloMoneda(moneda)} ${cita.costo}" else "Gratuita")
                 cita.notas?.takeIf { it.isNotBlank() }?.let { FilaRef("Notas", it) }
             }
             // Paso Control: próxima cita aprox + decisión del profesional (aunque no haya cita).
@@ -263,7 +265,7 @@ fun BarraRecorrido(
                 trat.diagnostico?.takeIf { it.isNotBlank() }?.let { FilaRef("Diagnóstico", it) }
                 if (puedePagos) {
                     val precio = trat.precioAcordado ?: trat.precioBase ?: 0.0
-                    FilaRef("Precio", "S/ ${if (precio % 1.0 == 0.0) precio.toInt() else precio}")
+                    FilaRef("Precio", "${simboloMoneda(moneda)} ${if (precio % 1.0 == 0.0) precio.toInt() else precio}")
                 }
                 if (!altaTrat) {
                     Spacer(Modifier.height(8.dp))

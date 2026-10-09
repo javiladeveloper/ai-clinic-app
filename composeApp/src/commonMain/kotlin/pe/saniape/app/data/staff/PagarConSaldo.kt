@@ -63,13 +63,11 @@ const val CODIGO_SIN_SALDO_QUE_LIBERAR = "SIN_SALDO_QUE_LIBERAR"
 fun esMetodoSaldo(metodo: String?): Boolean =
     metodo.orEmpty().trim().equals(METODO_SALDO_A_FAVOR, ignoreCase = true)
 
-/** "S/ 1,205.97" / "-S/ 205.97" (gemelo de formatearSoles de la web: el signo antes del símbolo). */
-fun soles(monto: Double): String {
-    val c = aCentimos(monto)
-    val abs = kotlin.math.abs(c)
-    val enteros = (abs / 100).toString().reversed().chunked(3).joinToString(",").reversed()
-    return (if (c < 0) "-" else "") + "S/ $enteros.${(abs % 100).toString().padStart(2, '0')}"
-}
+/**
+ * "S/ 1,205.97" / "-S/ 205.97" (gemelo de formatearSoles de la web: el signo antes
+ * del símbolo). Fijo en PEN: lo de una sede va con [formatearDinero] y su moneda.
+ */
+fun soles(monto: Double): String = formatearDinero(monto, MONEDA_POR_DEFECTO)
 
 /** Céntimos → texto de un campo de monto ("205.97"). */
 fun textoMonto(monto: Double): String {
@@ -128,9 +126,9 @@ sealed class ValidacionPartes {
  * Valida las partes contra el total: de 1 a 4, cada una > 0 con 2 decimales, la
  * suma exacta al céntimo y a lo sumo UNA con "Saldo a favor".
  */
-fun validarPartesConSaldo(partes: List<PartePago>, total: Double): ValidacionPartes {
+fun validarPartesConSaldo(partes: List<PartePago>, total: Double, moneda: String = MONEDA_POR_DEFECTO): ValidacionPartes {
     if (!(total > 0)) return ValidacionPartes.Error("Monto inválido")
-    val v = validarPagosDivididos(partes, total, minPartes = 1)
+    val v = validarPagosDivididos(partes, total, minPartes = 1, moneda = moneda)
     if (v is ValidacionPagos.Error) return ValidacionPartes.Error(v.mensaje)
     val ok = (v as ValidacionPagos.Ok).pagos
     val deSaldo = ok.filter { esMetodoSaldo(it.metodo) }
@@ -145,12 +143,14 @@ fun validarPartesConSaldo(partes: List<PartePago>, total: Double): ValidacionPar
  */
 fun partesDelFormulario(
     total: Double?, saldoTexto: String, usable: Double, metodoResto: String, filasResto: List<FilaPago>? = null,
+    /** Moneda de la sede del tratamiento (solo el símbolo de los textos). */
+    moneda: String = MONEDA_POR_DEFECTO,
 ): ValidacionPartes {
     if (total == null || !(total > 0)) return ValidacionPartes.Error("Indica el monto del pago.")
     val parteSaldo = montoDeTexto(saldoTexto) ?: 0.0
     if (!(parteSaldo > 0)) return ValidacionPartes.Error("Indica cuánto se paga con saldo a favor.")
     if (aCentimos(parteSaldo) > aCentimos(usable)) {
-        return ValidacionPartes.Error("Con saldo a favor puedes usar hasta ${soles(usable)}.")
+        return ValidacionPartes.Error("Con saldo a favor puedes usar hasta ${formatearDinero(usable, moneda)}.")
     }
     val restoC = aCentimos(total) - aCentimos(parteSaldo)
     if (restoC < 0) return ValidacionPartes.Error("El saldo a favor no puede ser mayor que el monto del pago.")
@@ -165,19 +165,19 @@ fun partesDelFormulario(
             if (filasResto.any { esMetodoSaldo(it.metodo) }) {
                 return ValidacionPartes.Error("El saldo a favor va en una sola parte.")
             }
-            when (val v = validarPagosDivididos(pagosDeFilas(filasResto), restoC / 100.0)) {
+            when (val v = validarPagosDivididos(pagosDeFilas(filasResto), restoC / 100.0, moneda = moneda)) {
                 is ValidacionPagos.Error -> return ValidacionPartes.Error(v.mensaje)
                 is ValidacionPagos.Ok -> listOf(saldo) + v.pagos
             }
         }
     }
-    return validarPartesConSaldo(partes, total)
+    return validarPartesConSaldo(partes, total, moneda)
 }
 
 /** "Saldo a favor S/ 205.97 + Yape S/ 284.03" (la parte con saldo primero). */
-fun resumenPartes(partes: List<PartePago>): String =
+fun resumenPartes(partes: List<PartePago>, moneda: String = MONEDA_POR_DEFECTO): String =
     partes.sortedBy { if (esMetodoSaldo(it.metodo)) 0 else 1 }
-        .joinToString(" + ") { "${it.metodo.trim()} ${soles(it.monto)}" }
+        .joinToString(" + ") { "${it.metodo.trim()} ${formatearDinero(it.monto, moneda)}" }
 
 /** El cuerpo de POST /api/staff/pago/registrar con `pagos` (sin la clave: la pone quien envía). */
 fun cuerpoPagoConSaldo(

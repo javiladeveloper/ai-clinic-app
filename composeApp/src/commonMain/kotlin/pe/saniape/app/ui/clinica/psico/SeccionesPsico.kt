@@ -53,6 +53,7 @@ import pe.saniape.app.ui.clinica.pacientes.CajaSelectorForm
 import pe.saniape.app.ui.clinica.pacientes.DialogoFecha
 import pe.saniape.app.ui.clinica.pacientes.EtqForm
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.data.staff.simboloMoneda
 
 // Formularios de los componentes 1, 2, 3, 5 y 6 (el 4, tests, en TestsPsico.kt).
 // Cada cambio va al ViewModel, que guarda solo (1,2 s después de dejar de escribir).
@@ -243,6 +244,7 @@ internal fun SeccionAnalisis(vm: EvaluacionPsicoViewModel) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun SeccionPlan(vm: EvaluacionPsicoViewModel, servicios: List<ServicioPsico>, onCrearTratamiento: (() -> Unit)?) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val ev = vm.ev ?: return
     val ro = vm.soloLectura
@@ -315,11 +317,11 @@ internal fun SeccionPlan(vm: EvaluacionPsicoViewModel, servicios: List<ServicioP
         Column {
             EtqForm("Servicio de terapia propuesto")
             val elegido = servicios.find { it.id == p.procedimientoId }
-            CajaSelectorForm(elegido?.let { s -> s.nombre + (s.precio?.let { " · S/ ${formatoMonto(it)}" } ?: "") } ?: "Elegir…") {
+            CajaSelectorForm(elegido?.let { s -> s.nombre + (s.precio?.let { " · ${simboloMoneda(moneda)} ${formatoMonto(it)}" } ?: "") } ?: "Elegir…") {
                 if (!ro) elegirServicio = true
             }
         }
-        CampoCortoPsico("Precio propuesto (S/)", precioTxt, { v ->
+        CampoCortoPsico("Precio propuesto (${simboloMoneda(moneda)})", precioTxt, { v ->
             val limpio = v.filter { it.isDigit() || it == '.' || it == ',' }.take(10)
             precioTxt = limpio
             plan { it.copy(precio = limpio.replace(',', '.').toDoubleOrNull()) }
@@ -368,7 +370,7 @@ internal fun SeccionPlan(vm: EvaluacionPsicoViewModel, servicios: List<ServicioP
                         ) {
                             Text(s?.nombre ?: "— Ninguno", color = if (s?.id == p.procedimientoId) c.navy else c.texto, fontSize = 14.sp,
                                 fontWeight = if (s?.id == p.procedimientoId) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f))
-                            s?.precio?.let { Text("S/ ${formatoMonto(it)}", color = c.teal, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                            s?.precio?.let { Text("${simboloMoneda(moneda)} ${formatoMonto(it)}", color = c.teal, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
                         }
                     }
                 }

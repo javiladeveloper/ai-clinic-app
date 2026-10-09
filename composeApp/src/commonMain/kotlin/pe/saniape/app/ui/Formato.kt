@@ -1,6 +1,7 @@
 package pe.saniape.app.ui
 
 import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 
@@ -24,12 +25,15 @@ fun hora12(hora24: String?): String {
 }
 
 /**
- * Próxima hora EN PUNTO futura (según reloj local), acotada 8am–8pm. Evita que una
- * cita/sesión nueva nazca con una hora ya pasada o fuera del horario típico. Igual que
- * proximaHora() de la web (CitaForm).
+ * Próxima hora EN PUNTO futura (en la hora de la sede activa, no la del teléfono),
+ * acotada 8am–8pm. Evita que una cita/sesión nueva nazca con una hora ya pasada o
+ * fuera del horario típico. Igual que proximaHora() de la web (CitaForm).
  */
-fun proximaHoraEnPunto(): String {
-    val ahora = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+fun proximaHoraEnPunto(
+    ahoraInstante: Instant = Clock.System.now(),
+    zona: TimeZone = pe.saniape.app.data.staff.ZONA_CLINICA,
+): String {
+    val ahora = ahoraInstante.toLocalDateTime(zona)
     var h = ahora.hour + (if (ahora.minute > 0) 1 else 0)
     if (h < 8) h = 8
     if (h > 20) h = 20

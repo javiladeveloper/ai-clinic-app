@@ -41,6 +41,7 @@ import pe.saniape.app.ui.theme.EstadosColor
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.ui.nombreDeSaludo
 import pe.saniape.app.tutoriales.tourAncla
+import pe.saniape.app.data.staff.simboloMoneda
 
 /**
  * Tarjeta de una cita en la agenda. Muestra (como la web): color por tipo, hora,
@@ -98,6 +99,8 @@ fun TarjetaCita(
     /** "↺ Anular cobro" (Admin, cobro con varios medios): lo decide la pantalla. */
     anularCobro: Boolean = false,
 ) {
+    // Multipaís: el costo va en la moneda de la sede de la cita ("todas las sedes").
+    val moneda = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)
     val c = Sania.colors
     val acciones = recordarAcciones()
     // Color del tipo desde la config global (reutilizable en toda la app).
@@ -164,7 +167,7 @@ fun TarjetaCita(
                     // WhatsApp con el RECORDATORIO de la cita prellenado (como el 📱 de la web):
                     // un toque y el mensaje sale listo para enviar.
                     IconoContacto("💬", pe.saniape.app.ui.theme.Paleta.WhatsApp) {
-                        val n = tel.filter { ch -> ch.isDigit() }.let { if (it.length <= 9) "51$it" else it }
+                        val n = pe.saniape.app.data.staff.numeroWhatsApp(tel, pe.saniape.app.data.staff.paisActivo())
                         val nombre = nombreDeSaludo(cita.pacienteNombre) ?: ""
                         val msg = "Hola $nombre 👋 Te recordamos tu cita" +
                             (cita.tipo?.let { " de ${flujo.nombreTipo(it).lowercase()}" } ?: "") +
@@ -195,7 +198,7 @@ fun TarjetaCita(
             val chips = buildList {
                 if (puedeVerCosto) {
                     when {
-                        (cita.costo ?: 0.0) > 0 -> add(Triple("S/ ${formato2(cita.costo!!)}", c.teal, c.tealBg))
+                        (cita.costo ?: 0.0) > 0 -> add(Triple("${simboloMoneda(moneda)} ${formato2(cita.costo!!)}", c.teal, c.tealBg))
                         cita.tipo == "Consulta" -> add(Triple("Gratis", c.teal, c.tealBg))
                     }
                 }
@@ -209,7 +212,7 @@ fun TarjetaCita(
                 // Sin permiso de cobrar, la deuda tiene que verse igual: el profesional
                 // necesita saber que el paciente no pagó aunque no sea él quien cobra.
                 if (!conBadgePago && cobrable && !puedeCobrar && !pagada && cita.estado == "Completada") {
-                    add(Triple("⚠ Debe ${textoSoles(cita.costo ?: 0.0)}", c.error, c.errorBg))
+                    add(Triple("⚠ Debe ${textoSoles(cita.costo ?: 0.0, moneda)}", c.error, c.errorBg))
                 }
                 if (cita.origen == "online") add(Triple("🌐 Web", c.purple, c.purpleBg))
                 if (cita.terapeutaId == null && cita.origen == "online") add(Triple("⚠ Asignar", c.pend, c.pendBg))

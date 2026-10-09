@@ -59,6 +59,8 @@ data class CitaStaff(
     val pacienteBadgeApoderado: String? = null,
     /** El servicio del tratamiento (p. ej. para saber si es una evaluación psicológica). */
     val procedimientoId: String? = null,
+    /** Multisede/multipaís: la sede de la cita (su moneda en "todas las sedes"). null = la principal. */
+    val sedeId: String? = null,
 )
 
 /**
@@ -137,7 +139,7 @@ object AgendaRepo {
     /** Columnas comunes de una cita (con joins). Una sola fuente. */
     const val SELECT_CITA =
         "id, fecha, hora, estado, tipo, costo, pagada_at, duracion, origen, confirmada_por_paciente, " +
-            "terapeuta_id, paciente_id, tratamiento_id, especialidad_id, procedimiento_id, " +
+            "terapeuta_id, paciente_id, tratamiento_id, especialidad_id, procedimiento_id, sede_id, " +
             "paciente:pacientes(nombre, telefono, edad, fecha_nacimiento, requiere_apoderado), terapeuta:terapeutas(nombre), " +
             "tratamiento:tratamientos!citas_tratamiento_id_fkey(nota_recepcion, procedimiento:procedimientos(id, nombre, especialidad_id)), " +
             "sesion:sesiones!citas_sesion_id_fkey(numero)"
@@ -179,6 +181,7 @@ object AgendaRepo {
                     fun ps(k: String) = (p[k] as? JsonPrimitive)?.content?.takeIf { it != "null" }
                     Apoderado.badgeDe(ps("fecha_nacimiento"), ps("edad")?.toIntOrNull(), ps("requiere_apoderado") == "true")
                 },
+                sedeId = s("sede_id"),
             )
     }
 

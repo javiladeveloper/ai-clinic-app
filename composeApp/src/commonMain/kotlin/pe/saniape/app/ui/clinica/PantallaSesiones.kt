@@ -59,6 +59,7 @@ import pe.saniape.app.ui.clinica.pacientes.DialogoForm
 import pe.saniape.app.ui.clinica.pacientes.EtqForm
 import pe.saniape.app.ui.clinica.pacientes.TarjetaForm
 import pe.saniape.app.ui.theme.Sania
+import pe.saniape.app.data.staff.simboloMoneda
 
 /**
  * Módulo Sesiones (lista global, fuera de la ficha). Espeja `app/(app)/sesiones`
@@ -539,6 +540,7 @@ private fun TarjetaSesion(
     onRevertir: () -> Unit,
     onReactivar: () -> Unit,
 ) {
+    val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     var menu by remember { mutableStateOf(false) }
     val (badgeFg, badgeBg) = colorEstado(s.estado, c)
@@ -600,7 +602,7 @@ private fun TarjetaSesion(
                 if (costo != null) {
                     Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.tealBg)
                         .padding(horizontal = 8.dp, vertical = 3.dp)) {
-                        Text("S/ ${fmt(costo)}", color = c.teal, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("${simboloMoneda(moneda)} ${fmt(costo)}", color = c.teal, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

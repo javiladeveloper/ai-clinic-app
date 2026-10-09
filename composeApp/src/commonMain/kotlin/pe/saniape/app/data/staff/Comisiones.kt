@@ -275,7 +275,7 @@ object ReglasComisiones {
     /** Subtítulo de la tarjeta del esquema (Admin), como la web. */
     fun subtituloEsquema(p: EsquemaComision): String = buildString {
         append(if (p.unidad == "evaluaciones") "Evaluaciones atendidas" else p.etiquetaRango)
-        p.montoPaquete?.let { append(" · solo de S/ ${numTxt(it)}") }
+        p.montoPaquete?.let { append(" · solo de ${simboloActivo()} ${numTxt(it)}") }
         if (p.soloPacientesNuevos) append(" · solo pacientes nuevos")
         append(" · ")
         append(if (p.periodoMeses == 1) "cada mes" else "cada ${p.periodoMeses} meses")
@@ -295,7 +295,7 @@ object ReglasComisiones {
 
     /** Texto del enlace de anular: un corte de arranque en 0 no es "un pago de S/ 0.00". */
     fun textoAnular(u: UltimoPagoComision): String =
-        (if (u.monto > 0) "Anular el pago de ${soles(u.monto)}" else "Deshacer el corte") +
+        (if (u.monto > 0) "Anular el pago de ${dineroActivo(u.monto)}" else "Deshacer el corte") +
             (u.hastaCorte?.let { " (al $it)" } ?: "")
 
     /** Lo que se ve grande en la fila del Admin: su % (esquema por porcentaje) o su nivel. */
@@ -304,8 +304,8 @@ object ReglasComisiones {
 
     /** Lo que se ve debajo del titular (Admin). */
     fun montoAvance(p: EsquemaComision, a: AvanceComision): String = when {
-        a.pagado != null -> "✓ pagado ${soles(a.pagado.monto)}"
-        (a.aCobrar ?: 0.0) > 0 -> soles(a.aCobrar ?: 0.0)
+        a.pagado != null -> "✓ pagado ${dineroActivo(a.pagado.monto)}"
+        (a.aCobrar ?: 0.0) > 0 -> dineroActivo(a.aCobrar ?: 0.0)
         p.tipo == "porcentaje" -> "nada acumulado aún"
         else -> "sin bono aún"
     }

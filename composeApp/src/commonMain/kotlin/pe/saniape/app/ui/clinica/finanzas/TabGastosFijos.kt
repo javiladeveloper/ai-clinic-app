@@ -38,7 +38,8 @@ import kotlinx.coroutines.launch
 import pe.saniape.app.data.staff.Finanzas
 import pe.saniape.app.data.staff.FinanzasRepo
 import pe.saniape.app.data.staff.GastoFijo
-import pe.saniape.app.data.staff.soles
+import pe.saniape.app.data.staff.dineroDeFila
+import pe.saniape.app.data.staff.simboloActivo
 import pe.saniape.app.ui.CargandoLista
 import pe.saniape.app.ui.Gestion
 import pe.saniape.app.ui.Toaster
@@ -106,7 +107,7 @@ internal fun TabGastosFijos(
                             Column(Modifier.weight(1f)) {
                                 Text(g.nombre, color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(soles(g.monto), color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    Text(dineroDeFila(g.monto, g.sedeId), color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                     Spacer(Modifier.width(6.dp))
                                     Text(g.frecuencia, color = c.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold,
                                         modifier = Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.fondo).padding(horizontal = 7.dp, vertical = 2.dp))
@@ -141,7 +142,7 @@ internal fun TabGastosFijos(
                             unicos.forEach { g ->
                                 Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(g.nombre, color = c.texto, fontSize = 12.sp, modifier = Modifier.weight(1f), maxLines = 1)
-                                    Text(soles(g.monto), color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text(dineroDeFila(g.monto, g.sedeId), color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     Text("  ✓ en caja", color = c.ok, fontSize = 11.sp)
                                     IconoAccion("🗑") { borrarDe = g }
                                 }
@@ -254,7 +255,7 @@ private fun DialogoGasto(
                 singleLine = true, modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(10.dp))
-            EtqForm("Monto (S/) *")
+            EtqForm("Monto (${simboloActivo()}) *")
             OutlinedTextField(
                 colors = coloresCampoForm(), value = monto,
                 onValueChange = { monto = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
