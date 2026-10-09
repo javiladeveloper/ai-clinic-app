@@ -1133,8 +1133,8 @@ object PacientesRepo {
      * Completado y ACUMULA la nota de "qué se hizo" en sus notas (server-side, mismo resultado
      * que la ficha web). El cobro opcional va aparte por registrarPago (pago + kardex + recálculo).
      */
-    suspend fun registrarServicio(tratamientoId: String, nota: String?): Boolean =
-        accionTratamiento(buildJsonObject {
+    suspend fun registrarServicio(tratamientoId: String, nota: String?): pe.saniape.app.data.offline.ResultadoEscritura =
+        postStaffDetalle("/api/staff/tratamiento/accion", buildJsonObject {
             put("accion", "estado"); put("tratamientoId", tratamientoId); put("estado", "Completado")
             if (!nota.isNullOrBlank()) put("notaAtencion", nota.trim())
         })

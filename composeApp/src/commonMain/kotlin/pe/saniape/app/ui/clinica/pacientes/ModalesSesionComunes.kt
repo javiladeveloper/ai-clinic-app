@@ -120,6 +120,8 @@ fun DialogoConfirmarAlta(
     saldo: Double? = null,
     /** Con permiso de pagos: en vez de "Cancelar", ir a registrar el pago. */
     onRegistrarPago: (() -> Unit)? = null,
+    /** Servicio único "en control": cuántos controles pendientes cancela el alta. */
+    controlesPendientes: Int = 0,
 ) {
     val c = Sania.colors
     val conDeuda = saldo != null && saldo > 0.005
@@ -131,6 +133,10 @@ fun DialogoConfirmarAlta(
                 if (conDeuda) {
                     Text("⚠ Tiene ${formatoSoles(saldo!!)} sin pagar. El alta no borra la deuda: queda por cobrar.",
                         color = c.error, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                }
+                pe.saniape.app.data.staff.textoControlesAlta(controlesPendientes)?.let {
+                    Text(it, color = c.pend, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
                 }
                 Text(textoConfirmarAlta(sesionesPendientes), color = c.texto, fontSize = Sania.txt.cuerpo)

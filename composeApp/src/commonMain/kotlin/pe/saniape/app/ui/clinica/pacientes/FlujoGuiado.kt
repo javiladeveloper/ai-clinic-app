@@ -77,6 +77,12 @@ fun BarraRecorrido(
      * (decisión del dueño 2026-10-08) y el recorrido lo muestra: realizado → control(es).
      */
     citasTrat: List<pe.saniape.app.data.staff.CitaCtl> = emptyList(),
+    /**
+     * ¿Ya se cargaron las citas? Un servicio único 'Activo' puede estar "en
+     * control" (ya realizado): mientras no se sepa, no se dice "Por hacer" ni se
+     * ofrece "Registrar atención".
+     */
+    citasCargadas: Boolean = true,
 ) {
     val c = Sania.colors
     val esServUnico = trat.esServicioUnico
@@ -104,8 +110,8 @@ fun BarraRecorrido(
     val tieneProxControl = !trat.proximoControl.isNullOrBlank()
     val pasoTercero = when {
         esServUnico -> Paso(
-            "servicio", if (servRealizado) "Realizado" else "Por hacer",
-            done = servRealizado, activo = !servRealizado && !altaTrat,
+            "servicio", if (servRealizado) "Realizado" else if (!citasCargadas) "…" else "Por hacer",
+            done = servRealizado, activo = !servRealizado && !altaTrat && citasCargadas,
         )
         usaSesiones -> {
             val etq = if (sesComp > sesTot) "$sesTot/$sesTot +${sesComp - sesTot}" else "$sesComp/$sesTot ses."
@@ -298,6 +304,8 @@ fun BarraRecorrido(
                                 "El tratamiento se completa al atender (o cancelar) el último.",
                             color = c.navy, fontSize = 11.sp,
                         )
+                    } else if (!servRealizado && !citasCargadas) {
+                        Text("Cargando…", color = c.textoSuave, fontSize = 11.sp)
                     } else if (!servRealizado) {
                         Box(
                             Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.navy)

@@ -61,6 +61,13 @@ class ControlesPendientesTest {
     }
 
     @Test
+    fun aviso_del_alta_dice_cuantos_controles_cancela() {
+        assertEquals(null, textoControlesAlta(0))
+        assertEquals("Se cancelará 1 control pendiente.", textoControlesAlta(1))
+        assertEquals("Se cancelarán 3 controles pendientes.", textoControlesAlta(3))
+    }
+
+    @Test
     fun paquete_por_sesiones_nunca_esta_en_control() {
         val citas = listOf(CitaCtl("c1", "Sesión", "Completada", null), ctl(1, "Pendiente"))
         assertFalse(enControl(trat(modalidad = "Paquete"), citas))
