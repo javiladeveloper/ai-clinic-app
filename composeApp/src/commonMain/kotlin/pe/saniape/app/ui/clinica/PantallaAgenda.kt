@@ -973,8 +973,7 @@ fun PantallaAgenda(
             cita = cita,
             flujo = vm.flujoDe(cita),
             puedeVerCosto = ctx.puede("pagos"),
-            verClinico = pe.saniape.app.data.staff.veClinicoEnDetalleCita(
-                ctx.puede("sesiones"), ctx.esAdmin, ctx.miTerapeutaId, ctx.modoClinico),
+            verClinico = pe.saniape.app.data.staff.veClinicoEnDetalleCita(ctx.puede("sesiones")),
             onCerrar = { detalleCita = null },
             onVerResumen = { pid -> detalleCita = null; resumenPacienteId = pid },
         )

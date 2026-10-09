@@ -122,12 +122,9 @@ class DetalleCitaTest {
 
     @Test
     fun quienVeLoClinico() {
-        assertTrue(veClinicoEnDetalleCita(true, esAdmin = true, miTerapeutaId = null, modoClinico = false))
-        assertTrue(veClinicoEnDetalleCita(true, esAdmin = false, miTerapeutaId = "t1", modoClinico = false))
-        assertTrue(veClinicoEnDetalleCita(true, esAdmin = false, miTerapeutaId = null, modoClinico = true))
-        // Recepción: gestiona pacientes, sin ficha de profesional.
-        assertFalse(veClinicoEnDetalleCita(true, esAdmin = false, miTerapeutaId = null, modoClinico = false))
-        assertFalse(veClinicoEnDetalleCita(false, esAdmin = true, miTerapeutaId = "t1", modoClinico = true))
+        // Igual que la web: lo decide el permiso `sesiones`.
+        assertTrue(veClinicoEnDetalleCita(puedeSesiones = true))
+        assertFalse(veClinicoEnDetalleCita(puedeSesiones = false))
     }
 
     // ── Lectura ──

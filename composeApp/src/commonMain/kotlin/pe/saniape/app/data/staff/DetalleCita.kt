@@ -46,16 +46,10 @@ sealed class BloqueDetalleCita {
 
 /**
  * ¿Quien mira ve lo clínico (diagnóstico, notas de la sesión) en el detalle?
- * Quien atiende: Admin, el profesional vinculado, o un rol clínico (sin gestión de
- * pacientes). Recepción (gestiona pacientes, sin ficha de profesional) ve solo las
- * observaciones de la cita, que es lo que necesita para coordinar.
+ * Misma regla que el popup de la web (`PopupCita`): el permiso `sesiones`. Quien no
+ * lo tiene ve solo las observaciones de la cita, que es lo que necesita para coordinar.
  */
-fun veClinicoEnDetalleCita(
-    puedeSesiones: Boolean,
-    esAdmin: Boolean,
-    miTerapeutaId: String?,
-    modoClinico: Boolean,
-): Boolean = puedeSesiones && (esAdmin || !miTerapeutaId.isNullOrBlank() || modoClinico)
+fun veClinicoEnDetalleCita(puedeSesiones: Boolean): Boolean = puedeSesiones
 
 /**
  * Arma los bloques del detalle. Sin datos → lista vacía (no se pinta nada).
