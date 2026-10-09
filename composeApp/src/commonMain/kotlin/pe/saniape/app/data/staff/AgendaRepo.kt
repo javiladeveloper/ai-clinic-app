@@ -461,6 +461,19 @@ object AgendaRepo {
         id to o.nested("sesion")?.str("numero")?.toIntOrNull()
     }.getOrNull()
 
+    /**
+     * Lo que el detalle de la cita muestra y la lista no trae (observaciones y, si
+     * [clinico], diagnóstico y notas de la sesión). Una consulta liviana por id, al
+     * abrir el detalle. null sin red o si falla (el detalle se ve igual, sin esto).
+     */
+    suspend fun detalleCita(citaId: String, clinico: Boolean): DatosDetalleCita? = runCatching {
+        Supabase.client.postgrest["citas"]
+            .select(Columns.raw(columnasDetalleCita(clinico))) {
+                filter { eq("id", citaId) }; limit(1)
+            }
+            .decodeList<JsonObject>().firstOrNull()?.let { parsearDetalleCita(it) } ?: DatosDetalleCita()
+    }.getOrNull()
+
     /** Terapeutas activos con sus especialidades (para filtrar por especialidad). */
     suspend fun terapeutasActivos(): List<TerapeutaRef> {
         val filas = filasConRespaldo(CacheLectura.claveCatalogo("terapeutas-activos")) {

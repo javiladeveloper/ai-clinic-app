@@ -98,6 +98,11 @@ fun TarjetaCita(
     mediosPago: String? = null,
     /** "↺ Anular cobro" (Admin, cobro con varios medios): lo decide la pantalla. */
     anularCobro: Boolean = false,
+    /**
+     * Tocar la tarjeta abre el detalle de la cita (observaciones, diagnóstico, notas
+     * de la sesión: gemelo de PopupCita web). El nombre y los botones siguen con lo suyo.
+     */
+    onAbrirDetalle: (() -> Unit)? = null,
 ) {
     // Multipaís: el costo va en la moneda de la sede de la cita ("todas las sedes").
     val moneda = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)
@@ -120,7 +125,8 @@ fun TarjetaCita(
             // del clip para que se proyecte fuera de la forma.
             .shadow(2.dp, RoundedCornerShape(Sania.shape.md.dp))
             .clip(RoundedCornerShape(Sania.shape.md.dp)).background(solape?.bg ?: c.superficie)
-            .border(1.dp, solape?.fg ?: c.borde, RoundedCornerShape(Sania.shape.md.dp)),
+            .border(1.dp, solape?.fg ?: c.borde, RoundedCornerShape(Sania.shape.md.dp))
+            .then(if (onAbrirDetalle != null) Modifier.clickable { onAbrirDetalle() } else Modifier),
     ) {
         // Barra de color lateral: el solapamiento manda (ámbar/rojo); si no, el tipo.
         Box(Modifier.width(Sania.dim.acento).fillMaxHeight()

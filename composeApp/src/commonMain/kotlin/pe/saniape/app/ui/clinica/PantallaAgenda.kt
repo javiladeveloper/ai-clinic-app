@@ -153,6 +153,8 @@ fun PantallaAgenda(
     var derivacionPendiente by remember { mutableStateOf<String?>(null) }
     // Resumen clínico (popup al tocar el nombre) + ficha completa que abre desde ahí.
     var resumenPacienteId by remember { mutableStateOf<String?>(null) }
+    // Detalle de la cita (tocar la tarjeta): observaciones + lo clínico para quien atiende.
+    var detalleCita by remember { mutableStateOf<pe.saniape.app.data.staff.CitaStaff?>(null) }
     var fichaPaciente by remember { mutableStateOf<PacienteStaff?>(null) }
     // La ficha se abre en la pestaña 🏠 Ejercicios (se cerró una sesión de fisio con "dejarle ejercicios").
     var fichaEjercicios by remember { mutableStateOf<pe.saniape.app.ui.clinica.fisio.IndicarEjercicios?>(null) }
@@ -544,6 +546,7 @@ fun PantallaAgenda(
                                     }
                                 },
                                 onVerResumen = { resumenPacienteId = it },
+                                onAbrirDetalle = { detalleCita = cita },
                                 conteoFranja = vm.conteosFranja[cita.id] ?: 1,
                                 odontologia = vm.esDental(cita),
                                 // Crear el plan desde la cita que EVALÚA (esCitaQueEvalua de la
@@ -960,6 +963,20 @@ fun PantallaAgenda(
                 )
                 pasarEval = null
             },
+        )
+    }
+
+    // Detalle de la cita (tocar la tarjeta): las observaciones (dirección del
+    // domicilio con Maps) y, para quien atiende, diagnóstico y notas de la sesión.
+    detalleCita?.let { cita ->
+        pe.saniape.app.ui.clinica.agenda.modales.DetalleCitaSheet(
+            cita = cita,
+            flujo = vm.flujoDe(cita),
+            puedeVerCosto = ctx.puede("pagos"),
+            verClinico = pe.saniape.app.data.staff.veClinicoEnDetalleCita(
+                ctx.puede("sesiones"), ctx.esAdmin, ctx.miTerapeutaId, ctx.modoClinico),
+            onCerrar = { detalleCita = null },
+            onVerResumen = { pid -> detalleCita = null; resumenPacienteId = pid },
         )
     }
 
