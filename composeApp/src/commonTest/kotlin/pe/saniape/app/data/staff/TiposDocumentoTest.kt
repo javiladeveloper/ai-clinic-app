@@ -53,11 +53,23 @@ class TiposDocumentoTest {
     }
 
     @Test
-    fun que_se_guarda() {
-        assertEquals("DNI", tipoDocumentoAGuardar("DNI", "40125874"))
-        assertNull(tipoDocumentoAGuardar("Pasaporte", " "))
-        assertNull(tipoDocumentoAGuardar("", "AB12345"))
-        assertEquals("CI", tipoDocumentoAGuardar("CI", "1234567"))
+    fun solo_se_guarda_lo_elegido_a_mano() {
+        assertEquals("DNI", tipoDocumentoAGuardar("DNI", "40125874", tocado = true))
+        assertEquals("CI", tipoDocumentoAGuardar("CI", "1234567", tocado = true))
+        // Adivinado (DNI por defecto, RUT deducido): no se guarda ni se manda.
+        assertNull(tipoDocumentoAGuardar("DNI", "40125874", tocado = false))
+        assertNull(tipoDocumentoAGuardar("RUT", "AB123456", tocado = false))
+        assertNull(tipoDocumentoAGuardar("Pasaporte", " ", tocado = true))
+        assertNull(tipoDocumentoAGuardar("", "AB12345", tocado = true))
+    }
+
+    @Test
+    fun para_mostrar_el_de_la_hc_antes_que_el_deducido() {
+        assertEquals("Pasaporte", deducirTipoDocumento("QX99880022", "PE", null, "Pasaporte"))
+        assertEquals("RUT", deducirTipoDocumento("QX99880022", "PE", "RUT", "Pasaporte"))
+        // El 'DNI' automático de la HC no manda (puede ser un CI de 8 dígitos).
+        assertEquals("CI", deducirTipoDocumento("12345678", "BO", null, "DNI"))
+        assertNull(tipoDocumentoDeHc("Sin documento"))
     }
 
     @Test
@@ -76,6 +88,18 @@ class TiposDocumentoTest {
         assertEquals("Pasaporte", etiquetaDocumentoPaciente("Pasaporte", "PE"))
         assertEquals("Carné de extranjería", etiquetaDocumentoPaciente("Carné de extranjería", "PE"))
         assertEquals("Documento", etiquetaDocumentoPaciente("Otro", "PE"))
+        // Como la web: sin tipo, un documento que no es DNI en Perú → "Documento"; la HC ayuda.
+        assertEquals("Documento", etiquetaDocumentoPaciente(null, "PE", "ZQ9988001"))
+        assertEquals("DNI", etiquetaDocumentoPaciente(null, "PE", "40125874"))
+        assertEquals("Pasaporte", etiquetaDocumentoPaciente(null, "PE", "ZQ9988001", "Pasaporte"))
+    }
+
+    @Test
+    fun dalu_no_lee_el_tipo() {
+        assertFalse(hayQueLeerTipoDocumento("40125874", multiSede = false))
+        assertTrue(hayQueLeerTipoDocumento("40125874", multiSede = true))
+        assertTrue(hayQueLeerTipoDocumento("ZQ9988001", multiSede = false))
+        assertFalse(hayQueLeerTipoDocumento(null, multiSede = true))
     }
 
     @Test
@@ -87,6 +111,16 @@ class TiposDocumentoTest {
             cambiosPaisClinica("US", "USD", "America/New_York", "EC"))
         assertTrue(cambiosPaisClinica("PE", "PEN", "America/Lima", "ZZ").isEmpty())
         assertEquals(listOf("America/Lima"), zonasDePais("PE"))
+        // Confirmación: consecuencias del cambio; sin cambios, nada.
+        val c = consecuenciasCambioRegional("PE", "PEN", "America/Lima", "BO", "BOB", "America/La_Paz").joinToString(" ")
+        assertTrue("\"CI\" (hoy \"DNI\")" in c)
+        assertTrue("+591 (hoy +51)" in c)
+        assertTrue("America/La_Paz" in c)
+        assertTrue("NO se convierten" in c)
+        assertTrue(consecuenciasCambioRegional("PE", "PEN", "America/Lima", "PE", "PEN", "America/Lima").isEmpty())
+        // Aviso persistente país ≠ moneda.
+        assertNull(avisoPaisMoneda("PE", "PEN"))
+        assertTrue(avisoPaisMoneda("BO", "PEN")!!.startsWith("País Bolivia · moneda PEN"))
         assertEquals(listOf("America/Bogota", "America/Lima"), zonasDePais("PE", "America/Bogota"))
     }
 }

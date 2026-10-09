@@ -134,8 +134,9 @@ object AltaRapidaRepo {
         val cuerpo = buildJsonObject {
             put("nombre", nombre.trim())
             put("dni", documento.trim())
-            // Tipo del documento (pasaporte, carné, CI…); sin tipo = el del país.
-            tipoDocumentoAGuardar(tipoDocumento, documento)?.let { put("tipo_documento", it) }
+            // Tipo del documento: solo si se eligió a mano (lo decide la pantalla);
+            // si no, ni la clave (null = el del país).
+            normalizarTipoDocumento(tipoDocumento)?.let { put("tipo_documento", it) }
             put("fecha_ingreso", hoyClinicaIso())
             if (sede != null) put("sede_id", sede)
             put("idempotency_key", "alta-rapida:${documento.trim()}:${nuevaIdemKey()}")

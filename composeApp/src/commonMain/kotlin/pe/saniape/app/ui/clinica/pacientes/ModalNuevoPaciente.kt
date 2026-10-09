@@ -79,6 +79,9 @@ fun ModalNuevoPaciente(
     // Pasaporte / CI / Carné de extranjería / Otro; "" = nacional genérico → NULL).
     var paisDoc by remember { mutableStateOf(opcionesDoc.first().first) }
     var verOtrosTipos by remember { mutableStateOf(false) }
+    // ¿Se ELIGIÓ el tipo a mano? Solo entonces se guarda: uno adivinado (RUT por
+    // tener letras, DNI por defecto) queda null = el del país y ni se manda.
+    var tipoTocado by remember { mutableStateOf(false) }
     val esDniPeruano = paisDoc == "DNI"
     var sinDocumento by remember { mutableStateOf(false) }
     var dni by remember { mutableStateOf("") }
@@ -107,6 +110,10 @@ fun ModalNuevoPaciente(
     var buscandoDni by remember { mutableStateOf(false) }
     var avisoDni by remember { mutableStateOf<String?>(null) }
     var existente by remember { mutableStateOf<PacienteStaff?>(null) }   // duplicado detectado
+    fun elegirTipo(v: String) {
+        if (v != paisDoc) { paisDoc = v; tipoTocado = true }
+        avisoDni = null; existente = null
+    }
     var guardando by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -120,7 +127,15 @@ fun ModalNuevoPaciente(
     fun cargarFichaBaja(f: FichaDeBaja) {
         fun vacio(v: String) = v.isBlank()
         if (vacio(nombre)) nombre = f.nombre
-        f.dni?.let { d -> dni = d; paisDoc = pe.saniape.app.data.staff.deducirTipoDocumento(d, paisSede, f.tipoDocumento); sinDocumento = false }
+        f.dni?.let { d ->
+            dni = d; sinDocumento = false; tipoTocado = false
+            paisDoc = pe.saniape.app.data.staff.deducirTipoDocumento(d, paisSede, f.tipoDocumento)
+            // Sin tipo propio y documento que no es DNI: se muestra el de su HC (como la web).
+            if (f.tipoDocumento == null && !(d.length == 8 && d.all { it.isDigit() })) scope.launch {
+                val doc = PacientesRepo.documentoDe(f.id, d)
+                if (!tipoTocado) pe.saniape.app.data.staff.tipoDocumentoDeHc(doc.tipoHc)?.let { paisDoc = it }
+            }
+        }
         if (paisDoc in extrasDoc.map { it.first }) verOtrosTipos = true
         if (vacio(telefono)) f.telefono?.let { telefono = it }
         if (vacio(edad)) f.edad?.let { edad = it.toString() }
@@ -218,7 +233,7 @@ fun ModalNuevoPaciente(
                         t("medicacion_actual", medicacion); t("tipo_patologia", tipoPatologia)
                         t("flag", flag)
                         if (fb.dni == null && !sinDocumento) t("dni", dni)
-                        if (!sinDocumento) pe.saniape.app.data.staff.tipoDocumentoAGuardar(paisDoc, fb.dni ?: dni)?.let { put("tipo_documento", it) }
+                        if (!sinDocumento) pe.saniape.app.data.staff.tipoDocumentoAGuardar(paisDoc, fb.dni ?: dni, tipoTocado)?.let { put("tipo_documento", it) }
                         edad.toIntOrNull()?.let { put("edad", it) }
                         talla.toIntOrNull()?.takeIf { it > 0 }?.let { put("talla", it) }
                         peso.toDoubleOrNull()?.takeIf { it > 0 }?.let { put("peso", it) }
@@ -260,7 +275,7 @@ fun ModalNuevoPaciente(
                     patologias = sintomas.split(",").map { it.trim() }.filter { it.isNotBlank() },
                     tipoPatologia = tipoPatologia.trim().ifBlank { null },
                     apoderado = apoderado,
-                    tipoDocumento = paisDoc,
+                    tipoDocumento = pe.saniape.app.data.staff.tipoDocumentoAGuardar(paisDoc, d, tipoTocado),
                 )
                 guardando = false
                 if (creado != null) {
@@ -285,7 +300,7 @@ fun ModalNuevoPaciente(
                             .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
                             .clickable {
                                 if (v == "+otro") verOtrosTipos = !verOtrosTipos
-                                else { paisDoc = v; verOtrosTipos = false; avisoDni = null; existente = null }
+                                else { elegirTipo(v); verOtrosTipos = false }
                             }
                             .padding(horizontal = 12.dp, vertical = 7.dp),
                     ) {
@@ -299,7 +314,7 @@ fun ModalNuevoPaciente(
             if (verOtrosTipos || extraElegido) {
                 Spacer(Modifier.height(6.dp))
                 pe.saniape.app.ui.clinica.ajustes.ChipsEleccion(extrasDoc, paisDoc) {
-                    paisDoc = it; avisoDni = null; existente = null
+                    elegirTipo(it)
                 }
             }
             if (!sinDocumento) {

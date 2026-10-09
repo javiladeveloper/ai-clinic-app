@@ -273,6 +273,42 @@ fun cambiosPaisClinica(paisActual: String, monedaActual: String, zonaActual: Str
     return out
 }
 
+/**
+ * Consecuencias de cambiar el país/zona/moneda de la CLÍNICA (confirmación
+ * explícita en Ajustes; gemelo de lib/regional-clinica.ts). Vacío = no cambia.
+ */
+fun consecuenciasCambioRegional(
+    paisActual: String, monedaActual: String, zonaActual: String,
+    pais: String, moneda: String, zona: String,
+): List<String> {
+    val out = mutableListOf<String>()
+    val cambiaPais = pais != paisActual
+    if (cambiaPais) {
+        val antes = nombreDocumentoNacional(paisActual)
+        val despues = nombreDocumentoNacional(pais)
+        out += if (antes == despues) "El documento de tus pacientes se sigue rotulando \"$despues\"."
+            else "El documento de tus pacientes se rotulará \"$despues\" (hoy \"$antes\"). Las fichas con un tipo elegido (pasaporte, carné…) conservan el suyo."
+        out += "Los teléfonos escritos sin código de país se completarán con +${prefijoTelefonico(pais)} (hoy +${prefijoTelefonico(paisActual)})."
+        out += "Los métodos de pago sugeridos pasan a ser los de ${paisPorCodigo(pais)?.nombre ?: pais}."
+    }
+    if (zona != zonaActual) out += "El \"hoy\" de la caja, la agenda, las citas y los recordatorios pasa a la hora de $zona (hoy $zonaActual)."
+    if (moneda != monedaActual) {
+        out += "Los montos se mostrarán en $moneda y NO se convierten. Solo se puede si todavía no hay cobros registrados; si los hay, la moneda se queda en $monedaActual."
+    } else if (cambiaPais) {
+        val mp = paisPorCodigo(pais)?.moneda
+        if (mp != null && mp != monedaActual) out += "La moneda se queda en $monedaActual."
+    }
+    if (out.isNotEmpty()) out += "Las sedes que tienen país propio (Ajustes → Sedes) no cambian."
+    return out
+}
+
+/** Aviso persistente cuando el país y la moneda de la clínica no coinciden ("País Bolivia · moneda PEN…"). */
+fun avisoPaisMoneda(pais: String, moneda: String): String? {
+    val p = paisPorCodigo(pais) ?: return null
+    if (p.moneda == moneda.trim().uppercase()) return null
+    return "País ${p.nombre} · moneda $moneda (la de ${p.nombre} es ${p.moneda}). Si ya hay cobros registrados la moneda no se cambia: los montos no se convierten."
+}
+
 /** "soles", "bolivianos", "dólares"… para textos como "Descuento en soles". */
 fun nombreMonedaPlural(moneda: String? = MONEDA_POR_DEFECTO): String = when (normalizarMoneda(moneda)) {
     "PEN" -> "soles"

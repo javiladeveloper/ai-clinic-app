@@ -1917,20 +1917,21 @@ private fun ModalEditarPaciente(
     val c = Sania.colors
     var nombre by remember { mutableStateOf(paciente.nombre) }
     var dni by remember { mutableStateOf(paciente.dni ?: "") }
-    // Tipo del documento (pacientes.tipo_documento): el guardado o, sin él, el
-    // deducido (Perú: 8 dígitos = DNI, si no RUT). Solo se escribe si cambia
-    // (o cambia el documento): una base sin la columna no rompe la edición.
-    val paisDoc = remember { pe.saniape.app.data.staff.paisActivo() }
+    // Tipo del documento: se MUESTRA el guardado → el de la HC → el deducido
+    // (Perú: 8 dígitos = DNI, si no RUT). Solo se escribe si se ELIGE a mano (o
+    // se borra el documento de una ficha que tenía tipo): lo adivinado no se
+    // guarda, y una base sin la columna no rompe la edición.
+    var paisDoc by remember { mutableStateOf(pe.saniape.app.data.staff.paisActivo()) }
     val opcionesTipoDoc = remember(paisDoc) { pe.saniape.app.data.staff.todasOpcionesDocumento(paisDoc) }
-    var tipoDocInicial by remember { mutableStateOf(pe.saniape.app.data.staff.deducirTipoDocumento(paciente.dni, paisDoc)) }
-    var tipoDoc by remember { mutableStateOf(tipoDocInicial) }
+    var tipoDoc by remember { mutableStateOf(pe.saniape.app.data.staff.deducirTipoDocumento(paciente.dni, paisDoc)) }
+    var tipoTocado by remember { mutableStateOf(false) }
+    var tipoGuardado by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(paciente.id) {
-        val guardado = PacientesRepo.tipoDocumentoDe(paciente.id)
-        if (guardado != null) {
-            val t = pe.saniape.app.data.staff.deducirTipoDocumento(paciente.dni, paisDoc, guardado)
-            if (tipoDoc == tipoDocInicial) tipoDoc = t
-            tipoDocInicial = t
-        }
+        val doc = PacientesRepo.documentoDe(paciente.id, paciente.dni)
+        tipoGuardado = doc.tipo
+        // El país de la SEDE del paciente (si la tiene), no el de la sede activa.
+        if (doc.sedeId != null) paisDoc = pe.saniape.app.data.staff.paisDeFila(doc.sedeId)
+        if (!tipoTocado) tipoDoc = pe.saniape.app.data.staff.deducirTipoDocumento(paciente.dni, paisDoc, doc.tipo, doc.tipoHc)
     }
     var telefono by remember { mutableStateOf(paciente.telefono ?: "") }
     var email by remember { mutableStateOf(paciente.email ?: "") }
@@ -1968,8 +1969,8 @@ private fun ModalEditarPaciente(
                 apoderado = apoderado,
                 // Solo si se cambió: no se reescribe lo que ya estaba.
                 fechaIngreso = fechaIngreso.takeIf { it != ingresoOriginal && fechaIngresoValida(it) },
-                tocarTipoDocumento = tipoDoc != tipoDocInicial || dni.trim() != (paciente.dni ?: "").trim(),
-                tipoDocumento = tipoDoc,
+                tocarTipoDocumento = tipoTocado || (dni.isBlank() && tipoGuardado != null),
+                tipoDocumento = pe.saniape.app.data.staff.tipoDocumentoAGuardar(tipoDoc, dni, tipoTocado),
             ))
         },
     ) {
@@ -1979,7 +1980,7 @@ private fun ModalEditarPaciente(
             // "soloNumero" filtraba letras y guiones: un RUT chileno o pasaporte
             // no se podía escribir (mismo bug que tenía el alta).
             EtqForm("Tipo de documento")
-            pe.saniape.app.ui.clinica.ajustes.ChipsEleccion(opcionesTipoDoc, tipoDoc) { tipoDoc = it }
+            pe.saniape.app.ui.clinica.ajustes.ChipsEleccion(opcionesTipoDoc, tipoDoc) { if (it != tipoDoc) { tipoDoc = it; tipoTocado = true } }
             Spacer(Modifier.height(6.dp))
             CampoFicha("Documento", dni) { dni = it.take(20) }
             Spacer(Modifier.height(8.dp))
@@ -2524,17 +2525,18 @@ private fun ContenidoResumen(
         ) {
             Etiqueta("Datos del ${LocalTerminologiaPaciente.current.paciente}")
             val imcTxt = paciente.imc?.let { "${formatoMonto(it)}" }
-            // Tipo del documento (pasaporte, carné, CI…): se lee aparte y solo si
-            // puede cambiar el rótulo — un DNI de 8 dígitos en Perú (DALU) no lee nada.
-            val paisDoc = pe.saniape.app.data.staff.paisActivo()
-            val dniPac = paciente.dni?.trim().orEmpty()
-            val leerTipoDoc = dniPac.isNotEmpty() && !(paisDoc == "PE" && dniPac.length == 8 && dniPac.all { it.isDigit() })
-            var tipoDocPac by remember(paciente.id) { mutableStateOf<String?>(null) }
+            // Tipo del documento (pasaporte, carné, CI…; si no, el de su HC) y la
+            // sede del paciente: se leen aparte y solo si pueden cambiar el rótulo —
+            // una clínica de un local con DNI de 8 dígitos (DALU) no lee nada.
+            val leerTipoDoc = pe.saniape.app.data.staff.hayQueLeerTipoDocumento(
+                paciente.dni, pe.saniape.app.data.staff.StaffContextoRepo.actual?.multiSede == true)
+            var docPac by remember(paciente.id) { mutableStateOf(pe.saniape.app.data.staff.DocumentoPaciente()) }
             LaunchedEffect(paciente.id, leerTipoDoc) {
-                if (leerTipoDoc) tipoDocPac = PacientesRepo.tipoDocumentoDe(paciente.id)
+                if (leerTipoDoc) docPac = PacientesRepo.documentoDe(paciente.id, paciente.dni)
             }
+            val paisDoc = pe.saniape.app.data.staff.paisDeFila(docPac.sedeId)
             val datos = listOfNotNull(
-                paciente.dni?.let { pe.saniape.app.data.staff.etiquetaDocumentoPaciente(tipoDocPac, paisDoc) to it },
+                paciente.dni?.let { pe.saniape.app.data.staff.etiquetaDocumentoPaciente(docPac.tipo, paisDoc, it, docPac.tipoHc) to it },
                 paciente.edad?.let { "Edad" to "$it años" },
                 paciente.ocupacion?.let { "Ocupación" to it },
                 paciente.talla?.let { "Talla" to "$it cm" },
