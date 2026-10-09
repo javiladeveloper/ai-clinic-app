@@ -1,0 +1,11 @@
+# Novedades de la 2.35.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Historia clínica por especialidad, tus citas en Google Calendar, registrar pacientes desde la cita y un QR para que el paciente llene sus datos.
+---
+Clínicas:
+• Historia clínica por especialidad: se ve directo en la app, ordenada según la especialidad del paciente, con su versión imprimible.
+• Mis citas en mi calendario: agrega tus citas de Sania a Google Calendar, Apple u Outlook con un enlace privado (Más).
+• Agenda de Google Calendar (Admin): mira el estado de la agenda traída desde Google y sincroniza al momento (Ajustes).
+• Crear cita: si el DNI no está registrado, lo buscas en RENIEC y registras al paciente ahí mismo.
+• Pacientes → QR: muestra un código para que el paciente nuevo llene sus datos desde su celular.
+• Reportes: una sola entrada con tres pestañas — Mes a mes, Rendimiento y Pacientes nuevos — igual que en la web.
