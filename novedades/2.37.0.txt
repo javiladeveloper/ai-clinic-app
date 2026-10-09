@@ -1,0 +1,7 @@
+# Novedades de la 2.37.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Agrega o edita las observaciones de una cita sin salir de la agenda: por ejemplo, la dirección de una atención a domicilio.
+---
+Clínicas:
+• Detalle de la cita: el bloque "Observaciones" siempre está a la vista, con "✏️ Agregar" o "✏️ Editar".
+• Si anotas una dirección, aparece destacada con "📍 Abrir en Maps".
