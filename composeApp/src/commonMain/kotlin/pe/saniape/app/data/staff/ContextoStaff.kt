@@ -198,6 +198,7 @@ data class ContextoStaff(
         "fotosEvolutivas" -> planEstado.features.fotosEvolutivas
         "recuperacion" -> planEstado.features.recuperacion
         "actividadEquipo" -> planEstado.features.actividadEquipo
+        "calendarioSync" -> planEstado.features.calendarioSync
         else -> false
     }
 
@@ -274,6 +275,12 @@ data class PlanFeatures(
     val maxEspacioDocumentosMB: Int? = null,
     /** Actividad del equipo (reporte de quién registró qué): Plus. */
     val actividadEquipo: Boolean = false,
+    /**
+     * Agenda de Google Calendar: Premium/Plus la sincronizan sola; Básico = UNA
+     * importación (lib/plan.ts `calendarioSync`). Backend sin el campo → true (lo
+     * de siempre): igual el servidor decide y responde PLAN_SIN_SYNC.
+     */
+    val calendarioSync: Boolean = true,
 )
 
 data class ClinicaRef(val id: String, val nombre: String)

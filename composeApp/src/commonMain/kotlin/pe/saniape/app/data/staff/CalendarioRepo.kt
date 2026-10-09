@@ -94,11 +94,12 @@ object CalendarioRepo {
     suspend fun sincronizar(fuenteId: String?): ResultadoEscritura =
         pedir(HttpMethod.Post, "$BASE/sincronizar", buildJsonObject { fuenteId?.let { put("fuenteId", it) } })
 
-    suspend fun vistaPrevia(fuenteId: String, config: ConfigFuenteCal, decisiones: DecisionesCal): ResultadoEscritura =
-        pedir(HttpMethod.Post, "$BASE/vista-previa", cuerpoGoogle(fuenteId, config, decisiones))
+    /** `soloPendientes`: "Reintentar las pendientes" de una fuente ya importada (no trae nada nuevo). */
+    suspend fun vistaPrevia(fuenteId: String, config: ConfigFuenteCal, decisiones: DecisionesCal, soloPendientes: Boolean = false): ResultadoEscritura =
+        pedir(HttpMethod.Post, "$BASE/vista-previa", cuerpoGoogle(fuenteId, config, decisiones, soloPendientes))
 
-    suspend fun importar(fuenteId: String, config: ConfigFuenteCal, decisiones: DecisionesCal): ResultadoEscritura =
-        pedir(HttpMethod.Post, "$BASE/importar", cuerpoGoogle(fuenteId, config, decisiones))
+    suspend fun importar(fuenteId: String, config: ConfigFuenteCal, decisiones: DecisionesCal, soloPendientes: Boolean = false): ResultadoEscritura =
+        pedir(HttpMethod.Post, "$BASE/importar", cuerpoGoogle(fuenteId, config, decisiones, soloPendientes))
 
     /** Servicios activos (para "Servicio de las citas"). */
     suspend fun procedimientosActivos(): List<Pair<String, String>> = runCatching {
