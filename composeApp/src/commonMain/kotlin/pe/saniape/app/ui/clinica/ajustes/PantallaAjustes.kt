@@ -106,6 +106,7 @@ fun PantallaAjustes(ctx: ContextoStaff, onSalir: () -> Unit, onHuboCambios: () -
             "comercial" -> SeccionComercial(d, volver, cambio)
             "horarios" -> SeccionHorarios(d, volver, cambio)
             "simultaneas" -> SeccionSimultaneas(d, volver, cambio)
+            "calendario-externo" -> SeccionCalendarioExterno(volver)
             else -> LaunchedEffect(sec) { seccion = null }
         }
         return@PantallaTutorial
@@ -185,6 +186,8 @@ private fun ListaSecciones(d: JsonObject, ctx: ContextoStaff, scroll: ScrollStat
             add(FilaSeccion("horarios", "⏰  Horarios de atención"))
             add(FilaSeccion("simultaneas", "👥  Pacientes a la misma hora",
                 cfg.s("maxSimultaneas")?.let { "Máximo $it por profesional" } ?: "Sin límite"))
+            // Traer la agenda de Google Calendar / .ics (solo el administrador).
+            if (ctx.esAdmin) add(FilaSeccion("calendario-externo", "📅  Agenda de Google Calendar", "Importa tus citas y mantenlas al día"))
         },
     )
 

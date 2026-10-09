@@ -108,6 +108,7 @@ fun ClinicaConTabs(
     var verCampanias by remember { mutableStateOf(false) }
     var verActividad by remember { mutableStateOf(false) }
     var verMiPlan by remember { mutableStateOf(false) }
+    var verMiCalendario by remember { mutableStateOf(false) }
     var verAjustes by remember { mutableStateOf(false) }
     // Ajustes guardó algo (marca, terminología, módulos…): al cerrarlo, por la vía que sea, se recarga el contexto.
     var recargarTrasAjustes by remember { mutableStateOf(false) }
@@ -160,12 +161,13 @@ fun ClinicaConTabs(
 
     // Con un flujo a pantalla completa abierto, el "atrás" es de ese flujo (tiene
     // su propio ManejarAtras, con la confirmación de salir sin guardar).
-    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verCampanias || verActividad || verMiPlan || verAjustes || horarioDe != null || tab != TabClinica.Inicio)) {
+    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verCampanias || verActividad || verMiPlan || verMiCalendario || verAjustes || horarioDe != null || tab != TabClinica.Inicio)) {
         when {
             verRetencion -> verRetencion = false
             verCampanias -> verCampanias = false
             verActividad -> verActividad = false
             verMiPlan -> verMiPlan = false
+            verMiCalendario -> verMiCalendario = false
             verAjustes -> verAjustes = false
             verServicios -> verServicios = false
             verEquipo -> verEquipo = false
@@ -252,7 +254,7 @@ fun ClinicaConTabs(
         verEquipo = false
         verComisiones = false
         verRetencion = false
-        verCampanias = false; verActividad = false; verMiPlan = false
+        verCampanias = false; verActividad = false; verMiPlan = false; verMiCalendario = false
         verAjustes = false
     }
     // "Llévame" / "Retomar" de los tutoriales y los botones de Primeros pasos.
@@ -288,7 +290,7 @@ fun ClinicaConTabs(
         urlPagina = pe.saniape.app.data.staff.OnboardingRepo.slugClinica(contexto.clinicaId)
             ?.let { pe.saniape.app.data.staff.urlPaginaClinica(it) }
     }
-    val hayOverlay = verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verCampanias || verActividad || verMiPlan || verAjustes || horarioDe != null
+    val hayOverlay = verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verCampanias || verActividad || verMiPlan || verMiCalendario || verAjustes || horarioDe != null
     val tabs = buildList {
         add(TabClinica.Inicio)
         if (verAgenda) add(TabClinica.Agenda)
@@ -379,6 +381,8 @@ fun ClinicaConTabs(
                         onAbrirMiHorario = contexto.miTerapeutaId?.takeIf { !contexto.puede("equipo") }?.let { id ->
                             { horarioVolver = "← Más"; horarioDe = id to (contexto.nombre ?: "Mi horario") }
                         },
+                        // Su enlace de calendario (ICS): solo quien tiene agenda de profesional.
+                        onAbrirMiCalendario = contexto.miTerapeutaId?.let { { verMiCalendario = true } },
                         onAbrirMiPagina = urlPagina?.let { { verMiPagina = true } },
                         // Nativo. Mismo permiso que /api/staff/servicio (sin candado de plan, como la web).
                         onAbrirServicios = if (contexto.puede("servicios")) ({ verServicios = true }) else null,
@@ -547,6 +551,14 @@ fun ClinicaConTabs(
             ) {
                 Box(Modifier.fillMaxSize().background(c.fondo)) {
                     pe.saniape.app.ui.clinica.plan.PantallaMiPlan(ctx = contexto, onSalir = { verMiPlan = false })
+                }
+            }
+            AnimatedVisibility(
+                visible = verMiCalendario && contexto.miTerapeutaId != null,
+                enter = entrarDetalle(), exit = salirDetalle(),
+            ) {
+                Box(Modifier.fillMaxSize().background(c.fondo)) {
+                    pe.saniape.app.ui.clinica.calendario.PantallaMiCalendario(onSalir = { verMiCalendario = false })
                 }
             }
             AnimatedVisibility(

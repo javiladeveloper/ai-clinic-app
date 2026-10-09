@@ -68,6 +68,8 @@ fun PantallaMasClinica(
     onAbrirProfesionales: (() -> Unit)? = null,
     // 🕒 Mi horario (el profesional vinculado, solo lectura).
     onAbrirMiHorario: (() -> Unit)? = null,
+    // 📅 Mis citas en mi calendario (enlace ICS; solo con agenda de profesional).
+    onAbrirMiCalendario: (() -> Unit)? = null,
     // 🌐 Mi página (solo si la clínica tiene página pública).
     onAbrirMiPagina: (() -> Unit)? = null,
     // 💊 Servicios nativo (solo con permiso "servicios"; null = no se muestra).
@@ -129,7 +131,7 @@ fun PantallaMasClinica(
                 Spacer(Modifier.height(Sania.dim.lg))
 
                 // Módulos clínicos sin tab propio (Sesiones, Caja…)
-                if (onAbrirSesiones != null || onAbrirCaja != null || onAbrirMiHorario != null) {
+                if (onAbrirSesiones != null || onAbrirCaja != null || onAbrirMiHorario != null || onAbrirMiCalendario != null) {
                     Text("MÓDULOS", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(Sania.dim.sm))
                     if (onAbrirSesiones != null) {
@@ -161,6 +163,9 @@ fun PantallaMasClinica(
                     }
                     if (onAbrirMiHorario != null) {
                         FilaMas("🕒  Mi horario", onClick = onAbrirMiHorario)
+                    }
+                    if (onAbrirMiCalendario != null) {
+                        FilaMas("📅  Mis citas en mi calendario", onClick = onAbrirMiCalendario)
                     }
                     Spacer(Modifier.height(Sania.dim.md))
                 }
