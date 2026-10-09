@@ -86,6 +86,21 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
         }
     }
 
+    fun recordatorios(fuenteId: String, valor: Boolean) {
+        ocupado = true
+        scope.launch {
+            val cuerpo = buildJsonObject { put("id", fuenteId); put("recordatoriosPacientes", valor) }
+            val r = guardarAjuste(porDefecto = "No se pudo guardar") {
+                AjustesRepo.enviar(HttpMethod.Patch, "/api/staff/calendario/fuente", cuerpo)
+            }
+            ocupado = false
+            if (r.registrada) {
+                Toaster.exito(if (valor) "Los pacientes recibirán su recordatorio por WhatsApp" else "Recordatorios a pacientes apagados")
+                recarga++
+            }
+        }
+    }
+
     val abrirWeb = { acciones.abrirUrl("${Supabase.SITE_URL}/configuracion/calendario") }
 
     SubPantalla("Agenda de Google Calendar", onVolver) {
@@ -93,7 +108,7 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
         if (e == null && error != null) { ErrorCarga(error) { error = null; recarga++ }; return@SubPantalla }
         if (e == null) { CargandoLista(); return@SubPantalla }
 
-        Ayuda("Trae a Sania las citas que tienes en Google Calendar (pasadas y futuras), con sus pacientes. Sania solo LEE tu calendario. Después, los cambios llegan solos cada 10 minutos. No se envía ningún aviso a pacientes por las citas importadas.")
+        Ayuda("Trae a Sania las citas que tienes en Google Calendar (pasadas y futuras), con sus pacientes. Sania solo LEE tu calendario y los cambios llegan solos cada 10 minutos. Al profesional le llegan sus avisos de agenda (1 h antes y el resumen del día), pero no uno de \"nueva cita\" por cada importada. A los pacientes solo se les escribe si enciendes \"Enviar recordatorios a los pacientes\".")
         if (!e.disponible) Aviso("La conexión con Google aún no está activada en Sania. Puedes subir un archivo .ics desde la web.")
 
         e.cuentas.forEach { cta ->
@@ -110,20 +125,32 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
                 Text(cal.profesional?.let { "Citas para $it" } ?: "Sin profesional asignado", color = c.textoSuave, fontSize = 12.5.sp)
                 Text(
                     when {
+                        cal.enCurso -> "Importando… ${cal.citas} citas hasta ahora (avanza sola cada 10 min)"
                         cal.importadoEn == null -> "Falta revisar e importar (en la web)"
                         cal.esIcs -> "Importado ${haceCuanto(ms(cal.ultimaSync), ahora)} · ${cal.citas} citas"
                         else -> "Sincronizado ${haceCuanto(ms(cal.ultimaSync), ahora)} · ${cal.citas} citas importadas"
-                    } + if (cal.sinCupo > 0) " · ${cal.sinCupo} sin cupo (se reintentan)" else "",
+                    },
                     color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                 )
+                if (cal.sinCupo > 0) Text(
+                    if (cal.esIcs) "${cal.sinCupo} sin cupo u horario: revisa el horario del profesional y vuelve a subir el archivo en la web."
+                    else "${cal.sinCupo} sin cupo u horario: se reintentan solas cada 10 minutos (revisa el horario del profesional).",
+                    color = c.textoSuave, fontSize = 12.sp,
+                )
+                if (cal.porRevisar > 0) Text("${cal.porRevisar} por revisar: no se sabe de qué paciente son. Resuélvelos en la web.", color = c.pend, fontSize = 12.sp)
                 cal.error?.let { Text("⚠ $it", color = c.error, fontSize = 12.sp) }
+                if (cal.importadoEn != null) FilaInterruptor(
+                    "Enviar recordatorios a los pacientes",
+                    "WhatsApp la mañana de la cita (si la clínica tiene WhatsApp). Apagado: estos pacientes no reciben nada de Sania.",
+                    activo = cal.recordatoriosPacientes, habilitado = !ocupado,
+                ) { recordatorios(cal.id, it) }
                 if (!cal.esIcs && cal.importadoEn != null) {
                     Boton("↻ Sincronizar ahora", habilitado = !ocupado, primario = false) { sincronizar(cal.id) }
                 }
             }
         }
 
-        if (e.calendarios.any { !it.esIcs && it.importadoEn == null } || (e.cuentas.isNotEmpty() && e.calendarios.none { !it.esIcs })) {
+        if (e.calendarios.any { !it.esIcs && it.importadoEn == null && !it.enCurso } || (e.cuentas.isNotEmpty() && e.calendarios.none { !it.esIcs })) {
             Aviso("Elige el calendario y revisa la importación en la web: ahí ves los pacientes detectados y decides qué importar.")
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
