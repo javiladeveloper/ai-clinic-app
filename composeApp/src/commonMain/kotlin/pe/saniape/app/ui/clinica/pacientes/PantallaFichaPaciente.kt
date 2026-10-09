@@ -242,6 +242,8 @@ private fun PantallaFichaPacienteContenido(
     LaunchedEffect(Unit) { procsEvalPsico = pe.saniape.app.data.staff.EvaluacionPsicoRepo.procedimientosEvaluacion() }
     // (tratamiento, apertura) del espacio abierto; y el plan a convertir en tratamiento.
     var evalPsicoAbierta by remember { mutableStateOf<Pair<String, Long>?>(null) }
+    // 📂 Historia clínica nativa (por especialidad) a pantalla completa.
+    var historiaAbierta by remember { mutableStateOf(false) }
     var planPsico by remember { mutableStateOf<Pair<String, pe.saniape.app.data.staff.PrefillPlanPsico>?>(null) }
     LaunchedEffect(pacienteInicial.id, recargarToken) {
         actualizando = true
@@ -306,6 +308,15 @@ private fun PantallaFichaPacienteContenido(
                 planPsico = evId to prefill
             } else null,
         ) }
+        return
+    }
+
+    // 📂 Historia clínica nativa a pantalla completa (encima de la ficha).
+    if (historiaAbierta) {
+        pe.saniape.app.ui.clinica.historia.PantallaHistoriaClinica(
+            pacienteId = pacienteInicial.id, pacienteNombre = pacienteInicial.nombre,
+            acciones = acciones, onSalir = { historiaAbierta = false },
+        )
         return
     }
 
@@ -738,6 +749,7 @@ private fun PantallaFichaPacienteContenido(
                         ctx = ctx, paciente = paciente, acciones = acciones,
                         onEditarClinico = { editarClinico = true },
                         procsEvalPsico = procsEvalPsico,
+                        onVerHistoria = { historiaAbierta = true },
                     )
                     // Doble candado, como la 🦷: sin recetas en el paciente no se monta.
                     "recetas" -> if (esPacienteReceta) ContenidoRecetasFicha(
@@ -2453,6 +2465,8 @@ private fun ContenidoResumen(
     onEditarClinico: () -> Unit,
     /** Servicios de evaluación psicológica: con uno, la historia puede llevar el informe (Admin/tratante). */
     procsEvalPsico: Set<String> = emptySet(),
+    /** Abre la historia clínica nativa (por especialidad). */
+    onVerHistoria: () -> Unit = {},
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -2644,32 +2658,25 @@ private fun ContenidoResumen(
             }
         }
 
-        // Historia clínica (PDF imprimible). Se pide al endpoint con Bearer y se muestra en
-        // el visor nativo (con "Imprimir / Guardar PDF"), sin pedir login en el navegador.
-        var histCargando by remember { mutableStateOf(false) }
+        // Historia clínica: pantalla NATIVA armada por el servidor (apartados por especialidad
+        // en Premium/Plus, formato estándar en Básico). Desde ahí se imprime/comparte el PDF.
+        // Con una web vieja la pantalla cae sola al HTML imprimible de siempre.
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
                 .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(14.dp),
         ) {
             Text("📂 HISTORIA CLÍNICA", color = c.textoSuave, fontSize = 10.sp,
                 fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
-            Text("Documento con antecedentes, tratamientos, sesiones y citas — listo para imprimir o guardar como PDF.",
+            Text("Filiación, antecedentes, atenciones firmadas y un apartado por especialidad — para revisar aquí o imprimir/compartir en PDF.",
                 color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
             Box(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                    .background(if (histCargando) c.borde else c.navy)
-                    .clickable(enabled = !histCargando) {
-                        scope.launch {
-                            histCargando = true
-                            val html = PacientesRepo.historiaHtml(paciente.id)
-                            histCargando = false
-                            if (html != null) acciones.abrirHtml(html, paciente.nombre)
-                        }
-                    }
+                    .background(c.navy)
+                    .clickable { onVerHistoria() }
                     .padding(vertical = 11.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(if (histCargando) "Generando…" else "Ver historia (PDF)",
+                Text("Ver historia clínica",
                     color = c.sobreNavy, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
         }

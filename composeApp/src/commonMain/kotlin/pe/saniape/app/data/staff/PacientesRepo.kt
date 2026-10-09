@@ -1748,14 +1748,38 @@ object PacientesRepo {
      * Devuelve el HTML completo (o null si falló) para mostrarlo en el visor nativo.
      * El endpoint aplica el mismo gating que la web (Reportes=Premium) y RLS de staff.
      */
-    suspend fun historiaHtml(pacienteId: String): String? = try {
+    suspend fun historiaHtml(pacienteId: String, estilo: String? = null, psico: String? = null): String? = try {
         val tk = token() ?: return null
         val resp = http.get("${Supabase.SITE_URL}/api/staff/historia/$pacienteId") {
             header("Authorization", "Bearer $tk")
+            // Lo mismo que se ve en la pantalla nativa (formato y lo protegido de psicología).
+            // La web vieja ignora estos parámetros y responde lo de siempre.
+            estilo?.let { url.parameters.append("estilo", it) }
+            psico?.let { url.parameters.append("psico", it) }
         }
         // El endpoint siempre responde HTML (incluso la página de "Función Premium").
         resp.bodyAsText().ifBlank { null }
     } catch (e: Exception) { null }
+
+    /**
+     * Historia clínica por especialidad en JSON (`?formato=json`, contrato de la web
+     * `lib/historia-tipos.ts`) para dibujarla NATIVA. Si el servidor es viejo y responde
+     * HTML, devuelve [CargaHistoriaHc.NoSoportado] y quien llama abre el HTML de siempre.
+     */
+    suspend fun historiaJson(pacienteId: String, estilo: String? = null, psico: String? = null): CargaHistoriaHc {
+        val tk = token() ?: return CargaHistoriaHc.Error("Tu sesión expiró. Vuelve a entrar.", "NO_AUTENTICADO")
+        return try {
+            val resp = http.get("${Supabase.SITE_URL}/api/staff/historia/$pacienteId") {
+                header("Authorization", "Bearer $tk")
+                url.parameters.append("formato", "json")
+                estilo?.let { url.parameters.append("estilo", it) }
+                psico?.let { url.parameters.append("psico", it) }
+            }
+            interpretarRespuestaHistoria(resp.status.value, resp.bodyAsText())
+        } catch (e: Exception) {
+            CargaHistoriaHc.Error("Sin conexión. Revisa tu internet.", "SIN_RED")
+        }
+    }
 
     /**
      * Guarda/limpia el recordatorio de recepción de un tratamiento (banner ámbar para el
