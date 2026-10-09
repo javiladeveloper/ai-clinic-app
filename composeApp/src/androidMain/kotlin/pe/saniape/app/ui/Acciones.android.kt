@@ -25,7 +25,7 @@ private class AccionesAndroid(private val context: Context) : AccionesNativas {
     }
 
     override fun abrirUrl(url: String) {
-        val u = if (url.startsWith("http")) url else "https://$url"
+        val u = if (url.startsWith("http") || url.startsWith("webcal:")) url else "https://$url"
         try {
             context.startActivity(
                 Intent(Intent.ACTION_VIEW, Uri.parse(u)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
