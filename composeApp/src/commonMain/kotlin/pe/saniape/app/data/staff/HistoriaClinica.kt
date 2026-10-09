@@ -408,6 +408,45 @@ data class DatosSignosVitalesHc(val tomas: List<TomaVitalHc> = emptyList()) : Da
 @Serializable
 data class DatosRecetasHc(val items: List<RecetaHc> = emptyList()) : DatosHc
 
+/**
+ * Gineco-obstetricia: una fila del cuadro de controles prenatales (carné
+ * perinatal). AU y LCF los lee la web de lo escrito en el examen.
+ */
+@Serializable
+data class ControlPrenatalHc(
+    val id: String = "",
+    val numero: Int = 0,
+    val fecha: String = "",
+    val hora: String? = null,
+    /** "24 sem 3 d" o null (sin FUR). */
+    val edadGestacional: String? = null,
+    /** "110/70" */
+    val presionArterial: String? = null,
+    val peso: Double? = null,
+    val alturaUterina: Double? = null,
+    val lcf: Double? = null,
+    val examen: String? = null,
+    val indicaciones: String? = null,
+    val proximoControl: String? = null,
+    val profesional: String? = null,
+)
+
+@Serializable
+data class DatosControlesPrenatalesHc(
+    /** FUR, FPP, edad gestacional hoy, N° de controles. */
+    val resumen: List<ParHc> = emptyList(),
+    val filas: List<ControlPrenatalHc> = emptyList(),
+) : DatosHc
+
+/** "EG 24 sem 3 d · PA 110/70 · 63.5 kg · AU 24 cm · LCF 140" — lo medido en un control, en una línea. */
+fun medidasControlPrenatalHc(f: ControlPrenatalHc): String = listOfNotNull(
+    f.edadGestacional?.takeIf { it.isNotBlank() }?.let { "EG $it" },
+    f.presionArterial?.takeIf { it.isNotBlank() }?.let { "PA $it" },
+    f.peso?.let { "${numeroHc(it)} kg" },
+    f.alturaUterina?.let { "AU ${numeroHc(it)} cm" },
+    f.lcf?.let { "LCF ${numeroHc(it)}" },
+).joinToString(" · ")
+
 @Serializable
 data class MedicionHc(
     val fecha: String = "",
@@ -609,6 +648,7 @@ internal fun parsearSeccionHc(el: JsonElement): SeccionHc? {
             "recetas" -> leer(DatosRecetasHc.serializer())
             "antropometria" -> leer(DatosAntropometriaHc.serializer())
             "fotos" -> leer(DatosFotosHc.serializer())
+            "controles_prenatales" -> leer(DatosControlesPrenatalesHc.serializer())
             else -> null
         }
     }.getOrNull() ?: (if (obligatoria) DatosNoLegiblesHc else return null)

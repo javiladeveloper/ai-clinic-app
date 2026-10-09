@@ -43,6 +43,7 @@ import pe.saniape.app.data.staff.DatosAntropometriaHc
 import pe.saniape.app.data.staff.DatosAtencionesHc
 import pe.saniape.app.data.staff.DatosConsentimientosHc
 import pe.saniape.app.data.staff.DatosConsultasHc
+import pe.saniape.app.data.staff.DatosControlesPrenatalesHc
 import pe.saniape.app.data.staff.DatosContactoHc
 import pe.saniape.app.data.staff.DatosDiagnosticoHc
 import pe.saniape.app.data.staff.DatosEncabezadoHc
@@ -70,6 +71,7 @@ import pe.saniape.app.data.staff.PuntoEvaHc
 import pe.saniape.app.data.staff.PuntoSerieHc
 import pe.saniape.app.data.staff.RecetaHc
 import pe.saniape.app.data.staff.SeccionHc
+import pe.saniape.app.data.staff.medidasControlPrenatalHc
 import pe.saniape.app.data.staff.TratamientoHc
 import pe.saniape.app.data.staff.hallazgosParaOdontograma
 import pe.saniape.app.data.staff.numeroHc
@@ -142,6 +144,7 @@ internal fun SeccionHistoria(s: SeccionHc, doc: HistoriaClinicaDoc, acc: Accione
             is DatosRecetasHc -> d.items.forEach { RecetaVista(it) }
             is DatosAntropometriaHc -> AntropometriaVista(d, doc.graficos)
             is DatosFotosHc -> FotosVista(d, doc.graficos)
+            is DatosControlesPrenatalesHc -> ControlesPrenatalesVista(d)
             DatosNoLegiblesHc -> Aviso("No se pudo mostrar esta sección aquí — ver el PDF (🖨 Imprimir / compartir PDF).",
                 Sania.colors.pend, Sania.colors.pendBg)
             else -> {}
@@ -629,6 +632,30 @@ private fun AntropometriaVista(d: DatosAntropometriaHc, graficos: Boolean) {
             )
             if (partes.isNotEmpty()) Text(partes.joinToString(" · "), color = c.texto, fontSize = 12.sp)
             m.notas?.takeIf { it.isNotBlank() }?.let { TextoSuave(it) }
+        }
+    }
+}
+
+// ── Gineco-obstetricia ──────────────────────────────────────────────────────
+
+/** El cuadro del carné perinatal: el resumen (FUR, FPP, EG) y una tarjeta por control. */
+@Composable
+private fun ControlesPrenatalesVista(d: DatosControlesPrenatalesHc) {
+    val c = Sania.colors
+    d.resumen.forEach { FilaPar(it) }
+    if (d.resumen.isNotEmpty() && d.filas.isNotEmpty()) Spacer(Modifier.height(6.dp))
+    d.filas.forEach { f ->
+        Column(
+            Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                .background(c.fondo).padding(horizontal = 8.dp, vertical = 6.dp),
+        ) {
+            Text("Control ${f.numero} · ${fechaHora(f.fecha, f.hora)}", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            val medidas = medidasControlPrenatalHc(f)
+            if (medidas.isNotBlank()) Text(medidas, color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            f.examen?.takeIf { it.isNotBlank() }?.let { Text(it, color = c.texto, fontSize = 12.sp) }
+            f.indicaciones?.takeIf { it.isNotBlank() }?.let { Text(it, color = c.texto, fontSize = 12.sp) }
+            val pie = listOfNotNull(f.profesional, f.proximoControl?.let { "Próximo control: ${fechaHc(it)}" })
+            if (pie.isNotEmpty()) TextoSuave(pie.joinToString(" · "))
         }
     }
 }

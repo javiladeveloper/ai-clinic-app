@@ -11,6 +11,7 @@ import pe.saniape.app.data.staff.DatosAntropometriaHc
 import pe.saniape.app.data.staff.DatosNoLegiblesHc
 import pe.saniape.app.data.staff.DatosAtencionesHc
 import pe.saniape.app.data.staff.DatosConsultasHc
+import pe.saniape.app.data.staff.DatosControlesPrenatalesHc
 import pe.saniape.app.data.staff.DatosEncabezadoHc
 import pe.saniape.app.data.staff.DatosFiliacionHc
 import pe.saniape.app.data.staff.DatosFisioEvaluacionHc
@@ -23,6 +24,7 @@ import pe.saniape.app.data.staff.HallazgoDentalHc
 import pe.saniape.app.data.staff.dineroHc
 import pe.saniape.app.data.staff.hallazgosParaOdontograma
 import pe.saniape.app.data.staff.interpretarRespuestaHistoria
+import pe.saniape.app.data.staff.medidasControlPrenatalHc
 import pe.saniape.app.data.staff.numeroHc
 import pe.saniape.app.data.staff.parametroPsicoHc
 import pe.saniape.app.data.staff.parsearHistoriaClinica
@@ -382,5 +384,23 @@ class HistoriaClinicaParseoTest {
         assertEquals("-3.4", numeroHc(-3.4))
         assertEquals("S/ 120.00", solesHc(120.0))
         assertEquals("S/ 0.50", solesHc(0.5))
+    }
+
+    @Test fun obstetriciaCuadroDeControlesPrenatales() {
+        val json = """{"version":1,"formato":"especialidad","rubros":["obstetricia"],
+          "bloques":[{"id":"obstetricia","rubro":"obstetricia","titulo":"🤰 Obstetricia","secciones":[
+            {"id":"controles_prenatales:obstetricia","tipo":"controles_prenatales","titulo":"Controles prenatales","obligatoria":false,
+             "datos":{"resumen":[{"etiqueta":"FUR","valor":"01/03/26"},{"etiqueta":"Controles registrados","valor":"2"}],
+               "filas":[
+                 {"id":"c1","numero":1,"fecha":"2026-05-10","hora":"09:00","edadGestacional":"10 sem","presionArterial":"100/60","peso":58,"alturaUterina":null,"lcf":null,"examen":"Útero grávido","indicaciones":"Ácido fólico","proximoControl":null,"profesional":"Obst. Carmen Vela"},
+                 {"id":"c2","numero":2,"fecha":"2026-08-21","hora":null,"edadGestacional":"24 sem 5 d","presionArterial":"110/70","peso":63.5,"alturaUterina":24,"lcf":140,"examen":null,"indicaciones":null,"proximoControl":"2026-09-20","profesional":null}]}}]}]}"""
+        val doc = parsearHistoriaClinica(json)!!
+        assertEquals("obstetricia", doc.bloques.single().rubro)
+        val d = assertIs<DatosControlesPrenatalesHc>(doc.secciones.single().datos)
+        assertEquals(listOf("FUR", "Controles registrados"), d.resumen.map { it.etiqueta })
+        assertEquals(2, d.filas.size)
+        assertEquals("EG 10 sem · PA 100/60 · 58 kg", medidasControlPrenatalHc(d.filas[0]))
+        assertEquals("EG 24 sem 5 d · PA 110/70 · 63.5 kg · AU 24 cm · LCF 140", medidasControlPrenatalHc(d.filas[1]))
+        assertEquals("2026-09-20", d.filas[1].proximoControl)
     }
 }
