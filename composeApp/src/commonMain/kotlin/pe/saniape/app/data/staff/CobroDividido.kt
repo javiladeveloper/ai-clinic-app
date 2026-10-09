@@ -167,7 +167,10 @@ fun etiquetaMetodos(pagos: List<PartePago>): String =
 /**
  * El cuerpo de POST /api/staff/cita/cobrar. Con [pagos] (cobro dividido) va
  * `pagos` EN LUGAR de `metodo`; 'gratis' no lleva dinero, así que nunca manda
- * `pagos`. [fecha] vacía = la de la cita.
+ * `pagos`. [fecha] vacía = HOY en Lima (lo pone el servidor). Con fecha va
+ * también `fechaElegida: true`: es la que eligió recepción o la del momento en
+ * que se actuó (cola sin señal), y el servidor la respeta. Sin esa marca, una
+ * fecha igual a la de la cita se toma como el default de la app vieja (→ hoy).
  */
 fun cuerpoCobrarCita(
     citaId: String, metodo: String, modo: String, fecha: String?, pagos: List<PartePago>? = null,
@@ -182,7 +185,7 @@ fun cuerpoCobrarCita(
         put("metodo", metodo)
     }
     put("modo", modo)
-    if (!fecha.isNullOrBlank()) put("fecha", fecha)
+    if (!fecha.isNullOrBlank()) { put("fecha", fecha); put("fechaElegida", true) }
 }
 
 /** ¿El rechazo es "incierto" (5xx / timeout de Vercel)? El cobro pudo haber entrado. */

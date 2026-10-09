@@ -6,7 +6,6 @@ import io.github.jan.supabase.postgrest.query.Order
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.data.Supabase
 
 /**
@@ -114,7 +113,9 @@ object CatalogosCobroRepo {
     /** Campañas VIGENTES de la clínica (activas y dentro de fechas), con sus servicios. */
     suspend fun campaniasVigentes(): List<CampaniaApp> {
         cacheCampanias?.let { return it }
-        val hoy = hoyIsoLocal()
+        // El día de LIMA (no el del teléfono): una campaña que vence hoy no debe
+        // caerse a las 19:00 en un celular con la zona mal puesta.
+        val hoy = hoyClinicaIso()
         val res = try {
             Supabase.client.postgrest["campanias"]
                 .select(Columns.raw("id, nombre, tipo, alcance, aplica_a, valor, precio, cantidad, fecha_inicio, fecha_fin, activo, campania_servicios(procedimiento_id)"))
@@ -163,11 +164,5 @@ object CatalogosCobroRepo {
         }
         if (mejorPrecio >= precioBase) return precioBase to null
         return redondear2(mejorPrecio) to mejor
-    }
-
-    private fun hoyIsoLocal(): String {
-        val d = kotlinx.datetime.Clock.System.now()
-            .toLocalDateTime(kotlinx.datetime.TimeZone.currentSystemDefault()).date
-        return "${d.year}-${d.monthNumber.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}"
     }
 }

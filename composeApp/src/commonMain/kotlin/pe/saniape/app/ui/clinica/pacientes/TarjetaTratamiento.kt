@@ -123,6 +123,8 @@ fun TarjetaTratamiento(
     val scope = rememberCoroutineScope()
     var expandido by remember { mutableStateOf(false) }
     var sesiones by remember { mutableStateOf<List<SesionFicha>?>(null) }
+    // Lo pagado NETO que cargó la sección de pagos (null = aún no): decide el "💳 Cobrar" por sesión.
+    var pagadoCargado by remember(t.id) { mutableStateOf<Double?>(null) }
     var accionando by remember { mutableStateOf(false) }
     var menuDe by remember { mutableStateOf<SesionFicha?>(null) }   // sesión con menú ⋯ abierto
     var cambioToken by remember { mutableStateOf(0) }   // recarga la sección de pagos tras cobros
@@ -534,6 +536,7 @@ fun TarjetaTratamiento(
                                 ses = ses, verCosto = verPagos, puedeSesiones = puedeSesionesEf,
                                 puedeCorregir = correccion,
                                 puedePagos = puedeCobrarEf, esAdmin = esAdmin, accionando = accionando,
+                                sinSaldo = t.sinSaldoCon(pagadoCargado),
                                 avisoRxPrevia = ses.pendiente && AvisoRx.dejoRx(anteriorSes),
                                 menuAbierto = menuDe?.id == ses.id,
                                 onToggleMenu = { menuDe = if (menuDe?.id == ses.id) null else ses },
@@ -586,7 +589,8 @@ fun TarjetaTratamiento(
                     if (verPagos) {
                         Spacer(Modifier.height(Sania.dim.md))
                         SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() },
-                            soloLectura = soloLectura, pacienteId = pacienteId, abrirRegistro = abrirPagoToken)
+                            soloLectura = soloLectura, pacienteId = pacienteId, abrirRegistro = abrirPagoToken,
+                            onPagado = { pagadoCargado = it })
                     }
 
                     // Dar de alta (si el tratamiento sigue en curso y puede sesiones) — con confirmación.
@@ -872,6 +876,8 @@ private fun FilaSesion(
     puedePagos: Boolean,
     esAdmin: Boolean,
     accionando: Boolean,
+    /** Tratamiento pagado completo: sin "💳 Cobrar" (las que tienen pago siguen "✓ Pagada"). */
+    sinSaldo: Boolean = false,
     avisoRxPrevia: Boolean,
     menuAbierto: Boolean,
     onToggleMenu: () -> Unit,
@@ -946,7 +952,7 @@ private fun FilaSesion(
                         Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.okBg)
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                     ) { Text("✓ Pagada", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                    completada && puedePagos -> MiniBtn("💳 Cobrar", c.teal, !accionando) { onCobrar() }
+                    completada && puedePagos && !sinSaldo -> MiniBtn("💳 Cobrar", c.teal, !accionando) { onCobrar() }
                 }
                 if (ses.pendiente) IconoBtn("✏", !accionando) { onEditar() }
                 IconoBtn("⋯", !accionando) { onToggleMenu() }
@@ -1061,6 +1067,9 @@ fun SeccionPagos(
     pacienteId: String? = null,
     /** Cada vez que sube, abre "Registrar pago" con el saldo precargado (aviso del alta). */
     abrirRegistro: Int = 0,
+    /** Lo pagado NETO, cada vez que se cargan los pagos: la tarjeta decide con eso si
+     *  ofrece "💳 Cobrar" por sesión (el estado_pago guardado puede estar viejo). */
+    onPagado: (Double) -> Unit = {},
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -1091,6 +1100,7 @@ fun SeccionPagos(
     val acordado = t.montoAcordado
     // Pagado NETO: Σ de todas las filas, también las de saldo (el "consumo" resta).
     val pagado = pagos?.let { pe.saniape.app.data.staff.pagadoNeto(it) } ?: 0.0
+    LaunchedEffect(pagos) { if (pagos != null) onPagado(pagado) }
     val saldo = acordado - pagado
     // Disponible del paciente (sin contar ESTE tratamiento): se PREGUNTA al servidor al
     // abrir "Registrar pago", solo si este tratamiento debe algo y puede recibir saldo.

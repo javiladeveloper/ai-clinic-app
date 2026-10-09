@@ -254,7 +254,7 @@ object AgendaRepo {
      * `/api/staff/cita/cobrar`. [modo]: "cobrar" (ingreso en caja como cita),
      * "abonar" (entra como pago del tratamiento del paciente) o "gratis" (la cita
      * queda en S/ 0 y saldada). [fecha] (yyyy-MM-dd) = día en que el paciente pagó
-     * de verdad (p. ej. hoy, por la evaluación de mañana); null = la de la cita.
+     * de verdad (p. ej. hoy, por la evaluación de mañana); null = hoy (Lima), lo pone el servidor.
      * El endpoint es idempotente por cita (ya cobrada → ok sin duplicar), así que
      * encolarlo sin señal es seguro.
      *

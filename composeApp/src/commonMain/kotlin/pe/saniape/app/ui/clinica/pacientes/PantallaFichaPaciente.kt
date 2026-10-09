@@ -1063,7 +1063,8 @@ fun PantallaFichaPaciente(
             anterior = anterior,
             fotosSesion = if (conFotos) fotosSesion else null,
             tecnicasSugeridas = req.tecnicasSugeridas,
-            puedePagos = ctx.puede("pagos"),
+            // Paquete ya pagado completo: no se pregunta "¿pagó esta sesión?".
+            puedePagos = ctx.puede("pagos") && !req.trat.sinSaldo,
             // Odontología: "¿Qué se le hizo hoy?" solo en tratamientos dentales.
             pacienteId = paciente.id,
             tratamientoId = req.trat.id,
