@@ -63,6 +63,7 @@ import pe.saniape.app.data.staff.mesesRecientes
 import pe.saniape.app.data.staff.porcentajeEscalon
 import pe.saniape.app.ui.ManejarAtras
 import pe.saniape.app.ui.clinica.agenda.modales.textoSoles
+import pe.saniape.app.data.staff.monedaDeFila
 import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.nombreDeSaludo
 import pe.saniape.app.ui.recordarAcciones
@@ -95,7 +96,7 @@ internal fun mensajeSeguimientoNuevo(f: FilaPacienteNuevo, clinica: String): Str
         EtapaNuevo.EVALUADO -> "$hola ¿Cómo te sientes después de tu evaluación? Si quieres, coordinamos el inicio de tu tratamiento."
         else -> {
             val servicio = f.tratamiento?.servicio?.takeIf { it.isNotBlank() }?.let { " de $it" } ?: ""
-            val deuda = f.pago?.deuda?.takeIf { it > 0 }?.let { " Queda un saldo de ${textoSoles(it)}." } ?: ""
+            val deuda = f.pago?.deuda?.takeIf { it > 0 }?.let { " Queda un saldo de ${textoSoles(it, monedaDeFila(f.sedeId))}." } ?: ""
             "$hola Te contactamos por tu tratamiento$servicio.$deuda ¿Coordinamos el pago?"
         }
     }
@@ -401,7 +402,7 @@ private fun TarjetaPacienteNuevo(f: FilaPacienteNuevo, onAbrir: () -> Unit, onWh
                     Text("Registrado ${fechaLegibleCorta(f.fechaRegistro)}", color = c.textoSuave, fontSize = Sania.txt.mini)
                 }
             }
-            f.pago?.let { BadgePago(it.estado, it.deuda) }
+            f.pago?.let { BadgePago(it.estado, it.deuda, monedaDeFila(f.sedeId)) }
         }
         Spacer(Modifier.height(8.dp))
 
@@ -458,7 +459,7 @@ private fun TarjetaPacienteNuevo(f: FilaPacienteNuevo, onAbrir: () -> Unit, onWh
 }
 
 @Composable
-private fun BadgePago(estado: String, deuda: Double?) {
+private fun BadgePago(estado: String, deuda: Double?, moneda: String) {
     val c = Sania.colors
     val (etq, fg, bg) = when (estado) {
         "pagado" -> Triple("Pagado", c.ok, c.okBg)
@@ -471,7 +472,7 @@ private fun BadgePago(estado: String, deuda: Double?) {
                 .padding(horizontal = 10.dp, vertical = 3.dp),
         ) { Text(etq, color = fg, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
         if (estado != "pagado" && deuda != null && deuda > 0) {
-            Text("debe ${textoSoles(deuda)}", color = fg, fontSize = Sania.txt.mini,
+            Text("debe ${textoSoles(deuda, moneda)}", color = fg, fontSize = Sania.txt.mini,
                 modifier = Modifier.padding(top = 2.dp))
         }
     }

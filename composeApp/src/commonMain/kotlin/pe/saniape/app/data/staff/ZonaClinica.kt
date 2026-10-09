@@ -22,6 +22,10 @@ import kotlinx.datetime.toLocalDateTime
 const val ZONA_POR_DEFECTO = "America/Lima"
 const val PAIS_POR_DEFECTO = "PE"
 
+/** País ISO-2 en mayúsculas (^[A-Z]{2}$, tras trim/uppercase); vacío o inválido → null (= el de la clínica / PE). */
+fun paisValidoONull(pais: String?): String? =
+    pais?.trim()?.uppercase()?.takeIf { p -> p.length == 2 && p.all { it in 'A'..'Z' } }
+
 /** Lima fija: el último recurso (nunca depende del contexto, sin recursión). */
 internal val TZ_LIMA: TimeZone = runCatching { TimeZone.of(ZONA_POR_DEFECTO) }
     .getOrElse { TimeZone.currentSystemDefault() }
@@ -93,7 +97,7 @@ fun ContextoStaff.zonaDeSede(sedeId: String?): String =
 
 /** País ISO-2 de una sede (sede → principal si null → clínica → PE). */
 fun ContextoStaff.paisDeSede(sedeId: String?): String =
-    sedeOPrincipal(sedeId)?.pais?.takeIf { it.isNotBlank() } ?: pais
+    paisValidoONull(sedeOPrincipal(sedeId)?.pais) ?: pais
 
 /** Monedas distintas entre la clínica y sus sedes (PEN primero). 2 o más = un total por moneda. */
 val ContextoStaff.monedasEnUso: List<String>

@@ -308,6 +308,8 @@ internal fun citaStaffDeConsulta(d: DatosConsultaApp): CitaStaff {
         especialidadId = cita.especialidad_id,
         notaRecepcion = null,
         pagadaAt = cita.pagada_at,
+        // Multipaís: el modal de cobro muestra la moneda de la sede de la cita.
+        sedeId = cita.sede_id,
     )
 }
 
@@ -319,7 +321,9 @@ internal fun citaStaffDeConsulta(d: DatosConsultaApp): CitaStaff {
 private fun BloqueCobro(vm: AtencionViewModel, d: DatosConsultaApp, ctx: ContextoStaff, onVerFicha: () -> Unit) {
     val c = Sania.colors
     val cita = d.cita
-    val monto = textoSoles(cita.costo)
+    // Multipaís: la moneda de la sede de la cita (PEN en un solo local, como siempre).
+    val moneda = pe.saniape.app.data.staff.monedaDeFila(cita.sede_id)
+    val monto = textoSoles(cita.costo, moneda)
     var abierto by remember { mutableStateOf(false) }
     // En el VM: salir del cierre y volver no rehabilita un cobro a mitad de envío.
     val cobrando = vm.accionando == "cobrar"
@@ -334,7 +338,7 @@ private fun BloqueCobro(vm: AtencionViewModel, d: DatosConsultaApp, ctx: Context
                 val tr = cita.tratamiento
                 Text(
                     "Se cobra en su tratamiento (${tr?.estado_pago?.ifBlank { null } ?: "Pendiente"}" +
-                        (tr?.precio_acordado?.takeIf { it > 0 }?.let { " · ${textoSoles(it)}" } ?: "") + ").",
+                        (tr?.precio_acordado?.takeIf { it > 0 }?.let { " · ${textoSoles(it, moneda)}" } ?: "") + ").",
                     color = c.texto, fontSize = 13.sp,
                 )
                 Text(

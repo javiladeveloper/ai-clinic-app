@@ -43,9 +43,23 @@ class MultimonedaAppTest {
         assertEquals("S/ 28.3k", dineroGrafico(28349.0, "PEN", compacto = true))
         assertEquals("S/ 2k", dineroGrafico(2000.0, "PEN", compacto = true))
         assertEquals("S/ 950", dineroGrafico(950.0, "PEN", compacto = true))
-        for (n in listOf(0.0, 999.0, 1250.0, 1550.0, -2450.0, 123456.0, 2500.5)) {
-            assertEquals(solesGrafico(n), dineroGrafico(n, "PEN"), "detalle $n")
-            assertEquals(solesGrafico(n, compacto = true), dineroGrafico(n, "PEN", compacto = true), "compacto $n")
+        // Literales = lo que daba solesGrafico() en origin/master (SeriesMensuales.kt):
+        // roundToLong (empate hacia +∞), miles con ",", compacto en décimas de mil.
+        // No se compara contra solesGrafico(): hoy delega en dineroGrafico (tautológico).
+        val graficos = listOf(
+            Triple(0.0, "S/ 0", "S/ 0"),
+            Triple(999.0, "S/ 999", "S/ 999"),
+            Triple(1250.0, "S/ 1,250", "S/ 1.3k"),
+            Triple(1550.0, "S/ 1,550", "S/ 1.6k"),
+            Triple(-2450.0, "S/ -2,450", "S/ -2.4k"),
+            Triple(123456.0, "S/ 123,456", "S/ 123.5k"),
+            Triple(2500.5, "S/ 2,501", "S/ 2.5k"),
+        )
+        for ((n, detalle, compacto) in graficos) {
+            assertEquals(detalle, dineroGrafico(n, "PEN"), "detalle $n")
+            assertEquals(compacto, dineroGrafico(n, "PEN", compacto = true), "compacto $n")
+            assertEquals(detalle, solesGrafico(n), "solesGrafico $n")
+            assertEquals(compacto, solesGrafico(n, compacto = true), "solesGrafico compacto $n")
         }
         // Céntimos del cobro dividido: sin separador de miles, como antes.
         assertEquals("S/ 20.00", solesDeCentimos(2000))
@@ -103,6 +117,56 @@ class MultimonedaAppTest {
         assertEquals("Con saldo a favor puedes usar hasta S/ 120.00.", (vPen as ValidacionPartes.Error).mensaje)
     }
 
+    @Test
+    fun historial_y_rechazos_del_saldo_con_la_moneda_del_tratamiento() {
+        val filas = listOf(
+            PagoFicha("y", 284.03, "Yape", null, "2026-10-06", null, grupoPagoId = "g"),
+            PagoFicha("u", 205.97, METODO_SALDO_A_FAVOR, null, "2026-10-06", null, saldoTipo = "uso", grupoPagoId = "g"),
+        )
+        // PEN (DALU): idéntico a master.
+        assertEquals("Saldo a favor S/ 205.97 + Yape S/ 284.03", agruparPagos(filas).single().detalle)
+        assertEquals("Saldo a favor Bs 205.97 + QR Bs 284.03",
+            agruparPagos(filas.map { if (it.id == "y") it.copy(metodo = "QR") else it }, "BOB").single().detalle)
+        val insuficiente = pe.saniape.app.data.offline.RechazoServidor("", CODIGO_SALDO_INSUFICIENTE, 409,
+            kotlinx.serialization.json.buildJsonObject { put("disponible", kotlinx.serialization.json.JsonPrimitive(50.0)) })
+        assertTrue(mensajeRechazoPagoSaldo(insuficiente).contains("ahora hay S/ 50.00 disponibles"))
+        assertTrue(mensajeRechazoPagoSaldo(insuficiente, "BOB").contains("ahora hay Bs 50.00 disponibles"))
+        val excede = pe.saniape.app.data.offline.RechazoServidor("", CODIGO_SALDO_EXCEDE_DEUDA, 409,
+            kotlinx.serialization.json.buildJsonObject { put("deuda", kotlinx.serialization.json.JsonPrimitive(80)) })
+        assertEquals("Con saldo a favor se puede pagar hasta lo que se debe de este tratamiento (S/ 80.00).",
+            mensajeOperacionSaldo(409, excede, "el cambio"))
+        assertEquals("Con saldo a favor se puede pagar hasta lo que se debe de este tratamiento (Bs 80.00).",
+            mensajeOperacionSaldo(409, excede, "el cambio", "BOB"))
+    }
+
+    @Test
+    fun pais_de_la_sede_valido_o_el_de_la_clinica() {
+        val ctx = StaffContextoRepo.parsear(obj("""
+            {"clinicaId":"c1","rol":"Admin","permisos":{},"multiSede":true,"sedePrincipalId":"s1","pais":"PE",
+             "sedes":[
+               {"id":"s1","nombre":"Tacna","es_principal":true,"pais":"pe"},
+               {"id":"s2","nombre":"La Paz","pais":"Bolivia"},
+               {"id":"s3","nombre":"Puno","pais":""},
+               {"id":"s4","nombre":"Oruro","pais":"B0"},
+               {"id":"s5","nombre":"Sucre","pais":" bo "}]}
+        """))
+        assertEquals("PE", ctx.sedes.first { it.id == "s1" }.pais)
+        assertNull(ctx.sedes.first { it.id == "s2" }.pais)
+        assertNull(ctx.sedes.first { it.id == "s3" }.pais)
+        assertNull(ctx.sedes.first { it.id == "s4" }.pais)
+        assertEquals("BO", ctx.sedes.first { it.id == "s5" }.pais)
+        // Inválido o vacío → el de la clínica → PE.
+        assertEquals("PE", paisDeFila(ctx, null, "s2"))
+        assertEquals("PE", paisDeFila(ctx, null, "s3"))
+        assertEquals("BO", paisDeFila(ctx, null, "s5"))
+        // Clínica sin país válido → PE.
+        val sinPais = StaffContextoRepo.parsear(obj("""{"clinicaId":"c","rol":"Admin","permisos":{},"pais":"Perú","sedes":[{"id":"x","nombre":"X","pais":"zz9"}]}"""))
+        assertEquals("PE", sinPais.pais)
+        assertEquals("PE", paisDeFila(sinPais, null, "x"))
+        // SedeRef armado a mano con basura: también cae a la clínica.
+        assertEquals("PE", sinPais.copy(sedes = listOf(SedeRef("y", "Y", pais = "Bolivia"))).paisDeSede("y"))
+    }
+
     // ── Moneda de cada fila: su sede → la activa → principal → clínica → PEN ──
 
     @Test
@@ -141,7 +205,8 @@ class MultimonedaAppTest {
         assertEquals(listOf("PEN" to 120.5, "BOB" to 50.5), t)
         assertEquals("S/ 120.50 · Bs 50.50", formatearTotalesPorMoneda(t))
         // Una sola moneda: igual que antes.
-        assertEquals(soles(120.5), formatearTotalesPorMoneda(totalesPorMoneda(listOf(100.0 to "PEN", 20.5 to "PEN"))))
+        assertEquals("S/ 120.50", formatearTotalesPorMoneda(totalesPorMoneda(listOf(100.0 to "PEN", 20.5 to "PEN"))))
+        assertEquals("S/ 0.00", formatearTotalesPorMoneda(emptyList()))
     }
 
     // ── Teléfono y documento por país ──

@@ -233,7 +233,11 @@ data class PagoMostrado(
  * `grupo_pago_id`) en UNA línea, la parte con saldo primero; un consumo como
  * "Saldo aplicado a <tratamiento>". Respeta el orden de llegada.
  */
-fun agruparPagos(filas: List<PagoFicha>): List<PagoMostrado> {
+fun agruparPagos(
+    filas: List<PagoFicha>,
+    /** Moneda del tratamiento (su sede): solo el símbolo del detalle. PEN = como siempre. */
+    moneda: String = MONEDA_POR_DEFECTO,
+): List<PagoMostrado> {
     data class Acum(val clave: String, val fecha: String, val consumo: Boolean, val partes: MutableList<PagoFicha>)
     val orden = mutableListOf<Acum>()
     val porGrupo = mutableMapOf<String, Acum>()
@@ -255,7 +259,7 @@ fun agruparPagos(filas: List<PagoFicha>): List<PagoMostrado> {
             val partes = a.partes.sortedBy { if (it.saldoTipo == SALDO_TIPO_USO) 0 else 1 }
             val conSaldo = partes.any { it.saldoTipo == SALDO_TIPO_USO }
             val detalle = if (partes.size > 1 || conSaldo)
-                partes.joinToString(" + ") { "${it.metodo.trim().ifEmpty { "Pago" }} ${soles(it.monto)}" } else null
+                partes.joinToString(" + ") { "${it.metodo.trim().ifEmpty { "Pago" }} ${formatearDinero(it.monto, moneda)}" } else null
             PagoMostrado(
                 clave = a.clave,
                 tipo = if (conSaldo) TipoPagoMostrado.MIXTO else TipoPagoMostrado.NORMAL,
@@ -290,18 +294,18 @@ fun numeroDelRechazo(r: RechazoServidor, campo: String): Double? = r.datos?.nume
  * El "no" del pago con saldo, legible. El servidor ya escribe en castellano; aquí
  * se completa lo que necesita decir QUÉ hacer, con su texto si no vino ninguno.
  */
-fun mensajeRechazoPagoSaldo(r: RechazoServidor): String {
+fun mensajeRechazoPagoSaldo(r: RechazoServidor, moneda: String = MONEDA_POR_DEFECTO): String {
     val delServidor = r.error.takeIf { it.isNotBlank() && !it.startsWith("HTTP ") }
     return when {
         r.codigo == CODIGO_SALDO_INSUFICIENTE -> {
             val d = numeroDelRechazo(r, "disponible")
-            if (d != null) "El saldo a favor cambió: ahora hay ${soles(d)} disponibles (otra recepción pudo usarlo). Ajusta la parte con saldo y vuelve a intentar."
+            if (d != null) "El saldo a favor cambió: ahora hay ${formatearDinero(d, moneda)} disponibles (otra recepción pudo usarlo). Ajusta la parte con saldo y vuelve a intentar."
             else delServidor ?: "El saldo a favor ya no alcanza para ese monto. Ajusta la parte con saldo y vuelve a intentar."
         }
         r.codigo == CODIGO_SALDO_EXCEDE_DEUDA -> {
             val d = numeroDelRechazo(r, "deuda")
             when {
-                d != null && d > 0.005 -> "Con saldo a favor se puede pagar hasta lo que se debe de este tratamiento (${soles(d)})."
+                d != null && d > 0.005 -> "Con saldo a favor se puede pagar hasta lo que se debe de este tratamiento (${formatearDinero(d, moneda)})."
                 d != null -> "Este tratamiento no tiene deuda: no hace falta usar saldo a favor."
                 else -> delServidor ?: "La parte con saldo pasa de lo que se debe de este tratamiento."
             }
@@ -325,13 +329,13 @@ fun mensajeRechazoPagoSaldo(r: RechazoServidor): String {
 }
 
 /** El "no" de editar/borrar un pago con saldo o de liberar/revocar (ya trae su texto del servidor). [status] 0 = sin respuesta. */
-fun mensajeOperacionSaldo(status: Int, r: RechazoServidor?, queSeHacia: String): String {
+fun mensajeOperacionSaldo(status: Int, r: RechazoServidor?, queSeHacia: String, moneda: String = MONEDA_POR_DEFECTO): String {
     val delServidor = r?.error?.takeIf { it.isNotBlank() && !it.startsWith("HTTP ") }
     return when {
         status == 0 -> "Sin conexión: no se pudo confirmar $queSeHacia. Con señal, recarga la ficha y revisa los pagos antes de reintentar."
         r?.codigo == CODIGO_SALDO_YA_APLICADO ->
             delServidor ?: "Primero deshaz el saldo aplicado a otro tratamiento: este dinero ya se usó para pagarlo."
-        r?.codigo == CODIGO_SALDO_INSUFICIENTE || r?.codigo == CODIGO_SALDO_EXCEDE_DEUDA -> mensajeRechazoPagoSaldo(r)
+        r?.codigo == CODIGO_SALDO_INSUFICIENTE || r?.codigo == CODIGO_SALDO_EXCEDE_DEUDA -> mensajeRechazoPagoSaldo(r, moneda)
         r?.codigo == CODIGO_SIN_SALDO_QUE_LIBERAR ->
             delServidor ?: "No hay nada que pasar a saldo a favor: lo pagado ya se atendió (o no se puede saber cuánto quedó sin atender)."
         r?.codigo == CODIGO_NO_CANCELADO -> "Solo se puede pasar a saldo a favor lo pagado de un tratamiento cancelado."
@@ -466,7 +470,7 @@ object PagarConSaldoRepo {
      * la clave se CONSERVA y el reintento del mismo pago la reusa: el servidor lo
      * reconoce y no gasta el saldo dos veces. Se suelta con una respuesta cierta.
      */
-    suspend fun registrar(cuerpo: JsonObject): ResultadoPagoSaldo {
+    suspend fun registrar(cuerpo: JsonObject, moneda: String = MONEDA_POR_DEFECTO): ResultadoPagoSaldo {
         val firma = cuerpo.toString()
         val clave = mutexClaves.withLock { clavesInciertas[firma] } ?: nuevoUuid()
         val (res, rechazo, respuesta) = enviar("/api/staff/pago/registrar", cuerpo, clave)
@@ -484,48 +488,50 @@ object PagarConSaldoRepo {
             ResultadoEnvio.SIN_RED -> ResultadoPagoSaldo.SinRed
             ResultadoEnvio.RECHAZADO -> {
                 val r = rechazo ?: RechazoServidor("Error del servidor", status = 500)
-                ResultadoPagoSaldo.Rechazo(mensajeRechazoPagoSaldo(r), r)
+                ResultadoPagoSaldo.Rechazo(mensajeRechazoPagoSaldo(r, moneda), r)
             }
         }
     }
 
     /** Envía y devuelve null si salió bien; si no, el texto a mostrar. */
-    private suspend fun operar(endpoint: String, cuerpo: JsonObject, queSeHacia: String): Pair<String?, JsonObject?> {
+    private suspend fun operar(
+        endpoint: String, cuerpo: JsonObject, queSeHacia: String, moneda: String = MONEDA_POR_DEFECTO,
+    ): Pair<String?, JsonObject?> {
         val (res, rechazo, respuesta) = enviar(endpoint, cuerpo, nuevoUuid())
         return when (res) {
             ResultadoEnvio.OK -> null to respuesta
-            ResultadoEnvio.SIN_RED -> mensajeOperacionSaldo(0, null, queSeHacia) to null
-            ResultadoEnvio.RECHAZADO -> mensajeOperacionSaldo(rechazo?.status ?: 500, rechazo, queSeHacia) to null
+            ResultadoEnvio.SIN_RED -> mensajeOperacionSaldo(0, null, queSeHacia, moneda) to null
+            ResultadoEnvio.RECHAZADO -> mensajeOperacionSaldo(rechazo?.status ?: 500, rechazo, queSeHacia, moneda) to null
         }
     }
 
     /** Cambia el monto de la parte pagada con saldo (solo Admin). null = hecho. */
-    suspend fun editarParteSaldo(pagoId: String, monto: Double): String? =
+    suspend fun editarParteSaldo(pagoId: String, monto: Double, moneda: String = MONEDA_POR_DEFECTO): String? =
         operar("/api/staff/pago/editar", buildJsonObject {
             put("pagoId", pagoId); put("monto", aCentimos(monto) / 100.0)
-        }, "el cambio").first
+        }, "el cambio", moneda).first
 
     /**
      * Borra un pago (solo Admin). [borrarGrupo] = el pago mixto COMPLETO: la parte
      * con saldo vuelve a sus tratamientos de origen; las reales se llevan su
      * ingreso y su comisión. null = hecho. Un parcial ya trae su texto.
      */
-    suspend fun borrar(pagoId: String, borrarGrupo: Boolean): String? =
+    suspend fun borrar(pagoId: String, borrarGrupo: Boolean, moneda: String = MONEDA_POR_DEFECTO): String? =
         operar("/api/staff/pago/borrar", buildJsonObject {
             put("pagoId", pagoId); if (borrarGrupo) put("borrarGrupo", true)
-        }, "el borrado").first
+        }, "el borrado", moneda).first
 
     /** "Pasar lo pagado no atendido a saldo a favor" (solo Admin). */
-    suspend fun liberar(tratamientoId: String): Pair<LiberacionSaldo?, String?> {
+    suspend fun liberar(tratamientoId: String, moneda: String = MONEDA_POR_DEFECTO): Pair<LiberacionSaldo?, String?> {
         val (error, json) = operar("/api/staff/tratamiento/liberar-saldo",
-            buildJsonObject { put("tratamientoId", tratamientoId) }, "el cambio")
+            buildJsonObject { put("tratamientoId", tratamientoId) }, "el cambio", moneda)
         return if (error != null) null to error else (parsearLiberacion(json) ?: LiberacionSaldo(0.0, null, null, false)) to null
     }
 
     /** Deshacer la liberación (solo Admin). null = hecho. */
-    suspend fun revocar(tratamientoId: String): String? =
+    suspend fun revocar(tratamientoId: String, moneda: String = MONEDA_POR_DEFECTO): String? =
         operar("/api/staff/tratamiento/revocar-saldo",
-            buildJsonObject { put("tratamientoId", tratamientoId) }, "el cambio").first
+            buildJsonObject { put("tratamientoId", tratamientoId) }, "el cambio", moneda).first
 
     /**
      * Elimina un tratamiento (solo Admin) decidiendo qué pasa con su dinero

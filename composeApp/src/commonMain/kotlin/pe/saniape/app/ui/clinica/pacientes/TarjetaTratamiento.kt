@@ -1151,7 +1151,7 @@ fun SeccionPagos(
     // como "Saldo aplicado a …" (sin acciones). Los pagos simples, como siempre.
     pagos?.takeIf { it.isNotEmpty() }?.let { lista ->
         Spacer(Modifier.height(8.dp))
-        pe.saniape.app.data.staff.agruparPagos(lista).forEach { g ->
+        pe.saniape.app.data.staff.agruparPagos(lista, moneda).forEach { g ->
             if (g.agrupado) {
                 FilaPagoAgrupado(g, esAdmin, soloLectura, onCambio)
                 return@forEach
@@ -1319,6 +1319,7 @@ fun SeccionPagos(
                         val r = pe.saniape.app.ui.conIndicador(pe.saniape.app.ui.Gestion.GUARDANDO) {
                             pe.saniape.app.data.staff.PagarConSaldoRepo.registrar(
                                 pe.saniape.app.data.staff.cuerpoPagoConSaldo(t.id, m, v.partes, notaPago.trim().ifBlank { null }, recordar = false),
+                                moneda = moneda,
                             )
                         }
                         guardando = false

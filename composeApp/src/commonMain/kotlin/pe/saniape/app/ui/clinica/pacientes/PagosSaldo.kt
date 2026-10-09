@@ -307,7 +307,7 @@ fun FilaPagoAgrupado(
                     if (m == null || m <= 0 || guardando) return@BotonChico
                     guardando = true
                     scope.launch {
-                        val err = conIndicador(Gestion.ACTUALIZANDO) { PagarConSaldoRepo.editarParteSaldo(uso.id, m) }
+                        val err = conIndicador(Gestion.ACTUALIZANDO) { PagarConSaldoRepo.editarParteSaldo(uso.id, m, moneda) }
                         guardando = false
                         if (err == null) { editandoSaldo = false; Toaster.exito("Pago actualizado"); onCambio() }
                         else Toaster.error(err)
@@ -336,7 +336,7 @@ fun FilaPagoAgrupado(
                         guardando = true
                         scope.launch {
                             val err = conIndicador(Gestion.ELIMINANDO) {
-                                PagarConSaldoRepo.borrar(g.partes.first().id, borrarGrupo = true)
+                                PagarConSaldoRepo.borrar(g.partes.first().id, borrarGrupo = true, moneda = moneda)
                             }
                             guardando = false
                             confirmarBorrar = false
@@ -404,7 +404,7 @@ fun AvisoSaldoCancelado(
                         modifier = Modifier.padding(top = 4.dp).clickable(enabled = !trabajando) {
                             trabajando = true
                             scope.launch {
-                                val err = conIndicador(Gestion.ACTUALIZANDO) { PagarConSaldoRepo.revocar(t.id) }
+                                val err = conIndicador(Gestion.ACTUALIZANDO) { PagarConSaldoRepo.revocar(t.id, moneda) }
                                 trabajando = false
                                 if (err == null) Toaster.exito("Se deshizo: ese dinero ya no es saldo a favor")
                                 else Toaster.error(err)
@@ -450,7 +450,7 @@ fun AvisoSaldoCancelado(
                 TextButton(enabled = !trabajando, onClick = {
                     trabajando = true
                     scope.launch {
-                        val (r, err) = conIndicador(Gestion.GUARDANDO) { PagarConSaldoRepo.liberar(t.id) }
+                        val (r, err) = conIndicador(Gestion.GUARDANDO) { PagarConSaldoRepo.liberar(t.id, moneda) }
                         trabajando = false
                         confirmar = false
                         if (err == null) Toaster.exito("${formatearDinero(r?.monto ?: noAtendido, moneda)} pasaron a saldo a favor del ${tpl.paciente}")

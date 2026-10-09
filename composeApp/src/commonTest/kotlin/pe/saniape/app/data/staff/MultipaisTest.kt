@@ -17,13 +17,38 @@ class MultipaisTest {
 
     @Test
     fun pen_es_identico_a_soles() {
-        val casos = listOf(0.0, -0.0, 1.0, 0.1, 0.005, -0.004, 12.345, 99.999, 1234.5, -553.0, -0.5, 1205.97, 999999.99, 1e6, 123456789.5, -98765.4321)
-        for (n in casos) assertEquals(soles(n), formatearDinero(n, "PEN"), "monto $n")
-        for (n in casos) assertEquals(soles(n), formatearDinero(n, null), "monto $n (sin moneda)")
-        assertEquals("S/ 1,234.50", formatearDinero(1234.5, "PEN"))
-        assertEquals("-S/ 553.00", formatearDinero(-553.0, "PEN"))
+        // Literales = lo que daba soles() en origin/master (PagarConSaldo.kt):
+        //   c = kotlin.math.round(monto * 100).toLong()  (empate → PAR, como Math.rint)
+        //   (if (c < 0) "-" else "") + "S/ " + miles(|c| / 100) + "." + 2 dígitos
+        // Ya no se compara contra soles(): hoy soles() ES formatearDinero (sería tautológico).
+        val casos = listOf(
+            0.0 to "S/ 0.00",
+            -0.0 to "S/ 0.00",
+            Double.NaN to "S/ 0.00",            // round(NaN).toLong() = 0
+            1.0 to "S/ 1.00",
+            0.1 to "S/ 0.10",
+            0.005 to "S/ 0.00",                 // 0.5 céntimos → empate al par (0)
+            -0.004 to "S/ 0.00",                // -0.4 → -0 → sin signo
+            -0.5 to "-S/ 0.50",
+            2.675 to "S/ 2.68",                 // 2.675 * 100 = 267.5 exacto en double → par 268
+            12.345 to "S/ 12.34",               // 1234.5 → empate al par (1234)
+            99.999 to "S/ 100.00",
+            1234.5 to "S/ 1,234.50",
+            -553.0 to "-S/ 553.00",
+            1205.97 to "S/ 1,205.97",
+            999999.99 to "S/ 999,999.99",
+            999999.995 to "S/ 1,000,000.00",    // 99999999.5 → par 100000000
+            1e6 to "S/ 1,000,000.00",
+            123456789.5 to "S/ 123,456,789.50",
+            -98765.4321 to "-S/ 98,765.43",
+        )
+        for ((n, esperado) in casos) {
+            assertEquals(esperado, formatearDinero(n, "PEN"), "monto $n")
+            assertEquals(esperado, formatearDinero(n, null), "monto $n (sin moneda)")
+            assertEquals(esperado, formatearDinero(n, ""), "monto $n (moneda vacía)")
+            assertEquals(esperado, soles(n), "soles($n)")
+        }
         assertEquals("S/ 0.00", formatearDinero(null, "PEN"))
-        assertEquals("S/ 0.00", formatearDinero(Double.NaN, "PEN"))
     }
 
     @Test

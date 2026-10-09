@@ -371,8 +371,9 @@ internal fun servicioControlDe(d: DatosConsultaApp): ServicioPlan? {
         ?: d.servicios.firstOrNull { it.tipo_cita == tipo && (esp == null || it.especialidad_id == esp) }
 }
 
-private fun conPrecio(s: ServicioPlan): String =
-    s.nombre + (s.precio?.takeIf { it > 0 }?.let { " · ${textoSoles(it)}" } ?: "")
+/** "Masaje · S/ 80.00", con la moneda de la sede de la cita (PEN en un solo local, como siempre). */
+private fun conPrecio(s: ServicioPlan, d: DatosConsultaApp): String =
+    s.nombre + (s.precio?.takeIf { it > 0 }?.let { " · ${textoSoles(it, pe.saniape.app.data.staff.monedaDeFila(d.cita.sede_id))}" } ?: "")
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -448,12 +449,12 @@ private fun BloqueProcedimiento(vm: AtencionViewModel, d: DatosConsultaApp, solo
         if (!soloLectura) {
             EtqForm("Procedimiento (servicio del catálogo)")
             Box {
-                CajaSelectorForm(elegido?.let { conPrecio(it) } ?: "— Elegir —") { if (procedimientos.isNotEmpty()) menu = true }
+                CajaSelectorForm(elegido?.let { conPrecio(it, d) } ?: "— Elegir —") { if (procedimientos.isNotEmpty()) menu = true }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     procedimientos.forEach { s ->
                         DropdownMenuItem(
                             text = {
-                                Text(conPrecio(s) + if (s.plantillas.any { it.activo }) " · requiere consentimiento" else "",
+                                Text(conPrecio(s, d) + if (s.plantillas.any { it.activo }) " · requiere consentimiento" else "",
                                     fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             },
                             onClick = { procId = s.id; menu = false },
@@ -539,7 +540,7 @@ private fun BloqueControl(vm: AtencionViewModel, d: DatosConsultaApp, soloLectur
                 )
                 servicioControl?.let {
                     Spacer(Modifier.height(6.dp))
-                    Text("Servicio: ${conPrecio(it)}", color = c.textoSuave, fontSize = 12.sp)
+                    Text("Servicio: ${conPrecio(it, d)}", color = c.textoSuave, fontSize = 12.sp)
                 }
                 Spacer(Modifier.height(10.dp))
                 BotonChico(

@@ -213,7 +213,8 @@ object StaffContextoRepo {
                     esPrincipal = s.bool("es_principal"),
                     moneda = s.str("moneda"),
                     zona = s.str("zona"),
-                    pais = s.str("pais"),
+                    // ISO-2 válido o null (= el de la clínica → PE), como moneda/zona.
+                    pais = paisValidoONull(s.str("pais")),
                 )
             },
             sedePrincipalId = o.str("sedePrincipalId"),
@@ -230,7 +231,7 @@ object StaffContextoRepo {
             // Multipaís (aditivo): sin los campos (o con basura) → PEN/America/Lima/PE.
             moneda = o.str("moneda")?.takeIf { it.isNotBlank() }?.let(::normalizarMoneda) ?: MONEDA_POR_DEFECTO,
             zona = o.str("zona")?.takeIf { esZonaValida(it) } ?: ZONA_POR_DEFECTO,
-            pais = o.str("pais")?.trim()?.uppercase()?.takeIf { p -> p.length == 2 && p.all { it in 'A'..'Z' } } ?: PAIS_POR_DEFECTO,
+            pais = paisValidoONull(o.str("pais")) ?: PAIS_POR_DEFECTO,
         )
     }
 
