@@ -21,6 +21,7 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -99,7 +100,14 @@ fun ModalCobrarCita(
     val tipoMin = nombreTipo.lowercase()
 
     if (mostrarFecha) {
-        val estado = rememberDatePickerState(initialSelectedDateMillis = pe.saniape.app.data.staff.isoAMillisUtc(fecha))
+        // Nunca una caja futura (el servidor también lo rechaza): hasta HOY en Lima.
+        val topeMillis = pe.saniape.app.data.staff.isoAMillisUtc(pe.saniape.app.ui.clinica.agenda.hoyIso()) ?: Long.MAX_VALUE
+        val estado = rememberDatePickerState(
+            initialSelectedDateMillis = pe.saniape.app.data.staff.isoAMillisUtc(fecha),
+            selectableDates = object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean = utcTimeMillis <= topeMillis
+            },
+        )
         DatePickerDialog(
             onDismissRequest = { mostrarFecha = false },
             confirmButton = {

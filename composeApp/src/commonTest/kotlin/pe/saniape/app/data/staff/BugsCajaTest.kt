@@ -1,6 +1,7 @@
 package pe.saniape.app.data.staff
 
 import kotlinx.datetime.Instant
+import kotlinx.serialization.json.jsonPrimitive
 import pe.saniape.app.ui.clinica.atencion.textoCobrado
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -49,5 +50,41 @@ class BugsCajaTest {
         assertEquals("Cobrado S/ 40.00", textoCobrado("Evaluación", "S/ 40.00", "cobrar", "2026-10-07", "2026-10-07"))
         // Recepción eligió otro día (el paciente pagó ayer).
         assertEquals("Cobrado S/ 40.00 (fechado el 06/10)", textoCobrado("Evaluación", "S/ 40.00", "cobrar", "2026-10-06", "2026-10-07"))
+    }
+
+    // ── Revisión: con los pagos cargados manda lo pagado, no el estado_pago guardado ──
+
+    @Test
+    fun conPagosCargadosMandaLoPagadoNoElEstadoGuardado() {
+        // estado_pago viejo "Pagado" pero el precio subió a 700 y se pagaron 500: se cobra.
+        assertFalse(tratamientoSinSaldo(700.0, 500.0, "Pagado"))
+        // estado_pago viejo "Parcial" pero ya se pagó todo: no se cobra.
+        assertTrue(tratamientoSinSaldo(500.0, 500.0, "Parcial"))
+        assertTrue(tratamientoSinSaldo(500.0, 499.996, null))
+        // Sin precio acordado nunca queda saldado.
+        assertFalse(tratamientoSinSaldo(0.0, 100.0, "Pagado"))
+        // Sin pagos cargados: el estado guardado de respaldo.
+        assertTrue(tratamientoSinSaldo(500.0, null, "Pagado"))
+        assertTrue(trat("Parcial").sinSaldoCon(500.0))
+        assertFalse(trat("Pagado").sinSaldoCon(100.0))
+    }
+
+    @Test
+    fun montoAcordadoDeUnidadesComoLaWeb() {
+        val u = trat(null, modalidad = "Unidades").copy(precioPaquete = null, cantidadUnidades = 4000, precioUnitario = 1.5)
+        assertEquals(6000.0, u.montoAcordado)
+        assertEquals(400.0, u.copy(precioAcordado = 400.0).montoAcordado)
+    }
+
+    // ── Revisión: la app nueva marca la fecha como elegida ──
+
+    @Test
+    fun cobrarConFechaMandaFechaElegida() {
+        val c = cuerpoCobrarCita("c1", "Yape", "cobrar", "2026-10-07")
+        assertEquals("2026-10-07", c["fecha"]!!.jsonPrimitive.content)
+        assertEquals("true", c["fechaElegida"]!!.jsonPrimitive.content)
+        val sin = cuerpoCobrarCita("c1", "Yape", "cobrar", null)
+        assertFalse("fecha" in sin)
+        assertFalse("fechaElegida" in sin)
     }
 }

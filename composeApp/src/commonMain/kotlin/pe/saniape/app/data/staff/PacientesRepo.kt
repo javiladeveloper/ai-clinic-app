@@ -128,17 +128,28 @@ data class TratamientoPaciente(
     /**
      * Pagado COMPLETO (pagado ≥ acordado): no se ofrece "💳 Cobrar" por sesión
      * (DALU 2026-10-08: un paquete pagado por adelantado seguía ofreciendo cobrar
-     * cada sesión). Es el `estado_pago` que mantiene el servidor con la regla de
-     * la web (lib/pagos → estadoPago / tratamientoSaldado): sin precio acordado
-     * nunca queda "Pagado", así que ahí se sigue cobrando por sesión.
+     * cada sesión). Sin los pagos a mano, el `estado_pago` que mantiene el
+     * servidor con la regla de la web (lib/pagos → estadoPago): sin precio
+     * acordado nunca queda "Pagado", así que ahí se sigue cobrando por sesión.
      */
-    val sinSaldo: Boolean get() = estadoPago == "Pagado"
+    val sinSaldo: Boolean get() = sinSaldoCon(null)
 
-    /** Monto total acordado del tratamiento (igual que la web). */
+    /**
+     * Lo mismo, con lo [pagado] NETO ya cargado (la sección de pagos de la
+     * tarjeta): manda sobre `estado_pago`, que puede estar desactualizado si se
+     * editó el precio. null = no se cargaron → `estado_pago` de respaldo.
+     */
+    fun sinSaldoCon(pagado: Double?): Boolean = tratamientoSinSaldo(montoAcordado, pagado, estadoPago)
+
+    /** Monto total acordado del tratamiento (igual que la web, lib/pagos → montoAcordado). */
     val montoAcordado: Double
         get() = precioAcordado
-            ?: if (modalidad == "Paquete") (precioPaquete ?: 0.0)
-            else (precioPorSesion ?: 0.0) * totalSesiones
+            ?: when (modalidad) {
+                "Paquete" -> precioPaquete ?: 0.0
+                // Unidades: cantidad × precio unitario (4000 folículos × 1.50).
+                "Unidades" -> (cantidadUnidades ?: 0) * (precioUnitario ?: 0.0)
+                else -> (precioPorSesion ?: 0.0) * totalSesiones
+            }
 
     /** Es una Consulta (especialidad sin sesiones): no muestra contador/acciones de sesión. */
     val esConsulta: Boolean get() = !usaSesiones
@@ -990,22 +1001,27 @@ object PacientesRepo {
     /** Como [cobrarSesion], con el detalle del rechazo (no lo muestra): para reintentar SOLO el cobro. */
     suspend fun cobrarSesionDetalle(
         tratamientoId: String, sesionId: String, monto: Double, metodo: String, notas: String? = null,
+        /** Día del cobro: el del momento en que se actúa (Lima), no el del envío. */
+        fecha: String = hoyClinicaIso(),
     ): pe.saniape.app.data.offline.ResultadoEscritura = postStaffDetalle("/api/staff/pago/registrar", buildJsonObject {
         put("tratamientoId", tratamientoId)
         put("sesionId", sesionId)
         put("monto", monto)
         put("metodo", metodo)
+        put("fecha", fecha)
         if (!notas.isNullOrBlank()) put("notas", notas)
     })
 
     /** Cobrar una sesión (pago vinculado a la sesión) — reusa el endpoint de pago. */
     suspend fun cobrarSesion(
         tratamientoId: String, sesionId: String, monto: Double, metodo: String, notas: String? = null,
+        fecha: String = hoyClinicaIso(),
     ): Boolean = postStaff("/api/staff/pago/registrar", buildJsonObject {
         put("tratamientoId", tratamientoId)
         put("sesionId", sesionId)
         put("monto", monto)
         put("metodo", metodo)
+        put("fecha", fecha)
         if (!notas.isNullOrBlank()) put("notas", notas)
     })
 
@@ -1740,3 +1756,10 @@ object PacientesRepo {
         true
     } catch (e: Exception) { false }
 }
+/**
+ * ¿Tratamiento pagado completo? (gemelo de tratamientoSaldado en lib/pagos de la web:
+ * pagado ≥ acordado − medio céntimo, y sin precio acordado NUNCA). Con [pagado] null
+ * (no se cargaron los pagos) decide el `estado_pago` guardado.
+ */
+fun tratamientoSinSaldo(acordado: Double, pagado: Double?, estadoPago: String?): Boolean =
+    if (pagado != null) acordado > 0.0 && pagado >= acordado - 0.005 else estadoPago == "Pagado"
