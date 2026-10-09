@@ -251,6 +251,64 @@ fun errorRegionalSede(v: RegionalSedeForm): String? {
     return null
 }
 
+/** Zonas que se ofrecen para un país (la guardada, aunque no esté en el catálogo, también). */
+fun zonasDePais(codigo: String?, zonaActual: String? = null): List<String> {
+    val zonas = paisPorCodigo(codigo)?.zonas ?: ZONAS_SOPORTADAS
+    val z = zonaActual?.trim().orEmpty()
+    return if (z.isNotEmpty() && z !in zonas) listOf(z) + zonas else zonas
+}
+
+/**
+ * País/moneda/zona de la CLÍNICA (Ajustes → Perfil comercial): lo que se manda a
+ * PATCH /api/staff/clinica/regional — solo lo que cambia. Al elegir un país se
+ * proponen su moneda y su primera zona (gemelo de proponerRegionalDePais +
+ * cambiosRegionalClinica de lib/multipais.ts).
+ */
+fun cambiosPaisClinica(paisActual: String, monedaActual: String, zonaActual: String, nuevoPais: String): Map<String, String> {
+    val p = paisPorCodigo(nuevoPais) ?: return emptyMap()
+    val out = linkedMapOf<String, String>()
+    if (p.codigo != paisActual.trim().uppercase()) out["pais"] = p.codigo
+    if (p.moneda != monedaActual.trim().uppercase()) out["moneda"] = p.moneda
+    if (p.zonas.first() != zonaActual.trim()) out["zona"] = p.zonas.first()
+    return out
+}
+
+/**
+ * Consecuencias de cambiar el país/zona/moneda de la CLÍNICA (confirmación
+ * explícita en Ajustes; gemelo de lib/regional-clinica.ts). Vacío = no cambia.
+ */
+fun consecuenciasCambioRegional(
+    paisActual: String, monedaActual: String, zonaActual: String,
+    pais: String, moneda: String, zona: String,
+): List<String> {
+    val out = mutableListOf<String>()
+    val cambiaPais = pais != paisActual
+    if (cambiaPais) {
+        val antes = nombreDocumentoNacional(paisActual)
+        val despues = nombreDocumentoNacional(pais)
+        out += if (antes == despues) "El documento de tus pacientes se sigue rotulando \"$despues\"."
+            else "El documento de tus pacientes se rotulará \"$despues\" (hoy \"$antes\"). Las fichas con un tipo elegido (pasaporte, carné…) conservan el suyo."
+        out += "Los teléfonos escritos sin código de país se completarán con +${prefijoTelefonico(pais)} (hoy +${prefijoTelefonico(paisActual)})."
+        out += "Los métodos de pago sugeridos pasan a ser los de ${paisPorCodigo(pais)?.nombre ?: pais}."
+    }
+    if (zona != zonaActual) out += "El \"hoy\" de la caja, la agenda, las citas y los recordatorios pasa a la hora de $zona (hoy $zonaActual)."
+    if (moneda != monedaActual) {
+        out += "Los montos se mostrarán en $moneda y NO se convierten. Solo se puede si todavía no hay cobros registrados; si los hay, la moneda se queda en $monedaActual."
+    } else if (cambiaPais) {
+        val mp = paisPorCodigo(pais)?.moneda
+        if (mp != null && mp != monedaActual) out += "La moneda se queda en $monedaActual."
+    }
+    if (out.isNotEmpty()) out += "Las sedes que tienen país propio (Ajustes → Sedes) no cambian."
+    return out
+}
+
+/** Aviso persistente cuando el país y la moneda de la clínica no coinciden ("País Bolivia · moneda PEN…"). */
+fun avisoPaisMoneda(pais: String, moneda: String): String? {
+    val p = paisPorCodigo(pais) ?: return null
+    if (p.moneda == moneda.trim().uppercase()) return null
+    return "País ${p.nombre} · moneda $moneda (la de ${p.nombre} es ${p.moneda}). Si ya hay cobros registrados la moneda no se cambia: los montos no se convierten."
+}
+
 /** "soles", "bolivianos", "dólares"… para textos como "Descuento en soles". */
 fun nombreMonedaPlural(moneda: String? = MONEDA_POR_DEFECTO): String = when (normalizarMoneda(moneda)) {
     "PEN" -> "soles"
@@ -268,18 +326,7 @@ fun banderaPais(pais: String?): String {
     return p.map { ch -> "\uD83C" + (0xDDE6 + (ch - 'A')).toChar() }.joinToString("")
 }
 
-/**
- * Documentos que se ofrecen al registrar un paciente, el primero por defecto.
- * Perú: DNI (busca en RENIEC) / RUT / pasaporte, como siempre. Otro país: su
- * documento nacional (Bolivia: CI) y pasaporte, sin búsqueda en RENIEC.
- */
-fun opcionesDocumento(pais: String?): List<Pair<String, String>> {
-    val p = pais?.trim()?.uppercase().orEmpty().ifEmpty { PAIS_POR_DEFECTO }
-    return when (p) {
-        PAIS_POR_DEFECTO -> listOf("PE" to "🇵🇪 DNI", "CL" to "🇨🇱 RUT", "OTRO" to "🌎 Pasaporte")
-        else -> listOf(p to "${banderaPais(p)} ${nombreDocumentoNacional(p)}", "OTRO" to "🌎 Pasaporte")
-    }
-}
+// opcionesDocumento(): ver TiposDocumento.kt (tipos que se guardan en pacientes.tipo_documento).
 
 /** [enlaceWhatsApp] con el país de la sede activa (mismo orden de parámetros). Perú: idéntico. */
 fun enlaceWhatsAppSede(contacto: String?, texto: String? = null, pais: String? = paisActivo()): String? =

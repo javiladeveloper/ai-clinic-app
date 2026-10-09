@@ -336,6 +336,9 @@ data class EvaluacionRef(
     val terapeutaId: String?, val especialidadId: String?,   // para autocompletar al venir de evaluación
 )
 
+/** Tipo del documento de un paciente, el de su HC y su sede (ver PacientesRepo.documentoDe). */
+data class DocumentoPaciente(val tipo: String? = null, val tipoHc: String? = null, val sedeId: String? = null)
+
 /** Un paciente para la lista del staff (con sus tratamientos anidados). */
 data class PacienteStaff(
     val id: String,
@@ -662,6 +665,8 @@ object PacientesRepo {
         apoderado: DatosApoderado = DatosApoderado(),
         /** YYYY-MM-DD. Se manda siempre: un alta sin señal que sincroniza mañana ingresó HOY. */
         fechaIngreso: String? = null,
+        /** pacientes.tipo_documento ELEGIDO a mano (ver tipoDocumentoAGuardar); null = no se manda. */
+        tipoDocumento: String? = null,
     ): PacienteStaff? {
         // Se ENCOLA contra /api/staff/paciente/crear (que hace dedup por DNI e
         // idempotencia) en vez de insertar directo: así no se pierde sin señal ni
@@ -673,6 +678,7 @@ object PacientesRepo {
         val cuerpo = buildJsonObject {
             put("nombre", nombre.trim())
             textoOpc("dni", dni)
+            textoOpc("tipo_documento", normalizarTipoDocumento(tipoDocumento))
             textoOpc("telefono", telefono)
             if (edad != null) put("edad", edad)
             textoOpc("diagnostico", diagnostico)
@@ -761,6 +767,9 @@ object PacientesRepo {
         apoderado: DatosApoderado? = null,
         /** YYYY-MM-DD; null = no se toca (DALU 2026-10-07: corregir el ingreso). */
         fechaIngreso: String? = null,
+        /** true = se escribe [tipoDocumento] (null lo limpia); false = no se toca. */
+        tocarTipoDocumento: Boolean = false,
+        tipoDocumento: String? = null,
     ): Boolean = try {
         Supabase.client.postgrest["pacientes"].update({
             set("nombre", nombre)
@@ -780,9 +789,34 @@ object PacientesRepo {
             }
             if (apoderado != null) setApoderado(apoderado)
             if (fechaIngreso != null) set("fecha_ingreso", fechaIngreso)
+            if (tocarTipoDocumento) set("tipo_documento", normalizarTipoDocumento(tipoDocumento))
         }) { filter { eq("id", id) } }
         true
     } catch (_: Exception) { false }
+
+    /**
+     * Lo que rotula el documento de un paciente: su tipo (pacientes.tipo_documento),
+     * su sede (para el país) y, si no tiene tipo y el documento no es un DNI, el
+     * tipo de la filiación de la HC (como la web). Lecturas aparte, a prueba de
+     * fallos (una base sin la columna devuelve todo null): el listado de
+     * pacientes no depende de ellas.
+     */
+    suspend fun documentoDe(id: String, dni: String?): DocumentoPaciente {
+        fun JsonObject.txt(k: String) = (this[k] as? JsonPrimitive)?.content?.takeIf { it != "null" && it.isNotBlank() }
+        val fila = runCatching {
+            Supabase.client.postgrest["pacientes"]
+                .select(Columns.raw("tipo_documento, sede_id")) { filter { eq("id", id) } }
+                .decodeList<JsonObject>().firstOrNull()
+        }.getOrNull()
+        val tipo = fila?.txt("tipo_documento")
+        val d = dni?.trim().orEmpty()
+        val tipoHc = if (tipo == null && d.isNotEmpty() && !(d.length == 8 && d.all { it.isDigit() })) runCatching {
+            Supabase.client.postgrest["historias_clinicas"]
+                .select(Columns.raw("tipo_documento")) { filter { eq("paciente_id", id) }; limit(1) }
+                .decodeList<JsonObject>().firstOrNull()?.txt("tipo_documento")
+        }.getOrNull() else null
+        return DocumentoPaciente(tipo = tipo, tipoHc = tipoHc, sedeId = fila?.txt("sede_id"))
+    }
 
     private fun io.github.jan.supabase.postgrest.query.PostgrestUpdate.setApoderado(d: DatosApoderado) {
         fun txt(k: String, v: String) = set(k, v.trim().ifBlank { null })

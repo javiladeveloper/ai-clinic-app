@@ -793,34 +793,85 @@ internal fun SeccionComercial(d: JsonObject, onVolver: () -> Unit, onCambio: () 
     var razon by remember { mutableStateOf(cfg.t("razonSocial")) }
     var ruc by remember { mutableStateOf(cfg.t("ruc")) }
     var direccion by remember { mutableStateOf(cfg.t("direccion")) }
-    // La moneda de la clínica (clinicas.moneda) ya no va en "comercial": la cambia
-    // SOLO el Admin con PATCH /api/staff/clinica/regional (el servidor la protege).
-    var moneda by remember { mutableStateOf(cfg.t("moneda").ifBlank { "PEN" }) }
-    var cambiandoMoneda by remember { mutableStateOf(false) }
+    // País, moneda y zona horaria de la clínica (clinicas.*): las cambia SOLO el
+    // Admin con PATCH /api/staff/clinica/regional (el servidor las protege).
+    // Tocar un chip NO guarda: se elige, "Guardar país, moneda y zona" y una
+    // confirmación con las consecuencias (documento, prefijo, "hoy", moneda).
+    var monedaGuardada by remember { mutableStateOf(cfg.t("moneda").ifBlank { "PEN" }) }
+    var paisGuardado by remember { mutableStateOf(cfg.t("pais").ifBlank { "PE" }) }
+    var zonaGuardada by remember { mutableStateOf(cfg.t("zona").ifBlank { "America/Lima" }) }
+    var moneda by remember { mutableStateOf(monedaGuardada) }
+    var pais by remember { mutableStateOf(paisGuardado) }
+    var zona by remember { mutableStateOf(zonaGuardada) }
+    var guardandoRegional by remember { mutableStateOf(false) }
+    var confirmar by remember { mutableStateOf<List<String>?>(null) }
     val puedeCambiarMoneda = d.b("esAdmin") && !d.b("soloLectura") &&
         (pe.saniape.app.data.staff.StaffContextoRepo.actual?.esAdmin ?: true)
     var guardando by remember { mutableStateOf(false) }
 
-    fun cambiarMoneda(nueva: String) {
-        if (nueva == moneda || cambiandoMoneda) return
-        val anterior = moneda
-        moneda = nueva
-        cambiandoMoneda = true
+    /** Al elegir un país se proponen su moneda y su zona (se pueden cambiar antes de guardar). */
+    fun elegirPais(nuevo: String) {
+        if (nuevo == pais) return
+        pais = nuevo
+        pe.saniape.app.data.staff.paisPorCodigo(nuevo)?.let { moneda = it.moneda; zona = it.zonas.first() }
+    }
+
+    val cambios: Map<String, String> = buildMap {
+        if (pais != paisGuardado) put("pais", pais)
+        if (moneda != monedaGuardada) put("moneda", moneda)
+        if (zona != zonaGuardada) put("zona", zona)
+    }
+
+    /** Aplica lo que respondió el servidor y refresca el contexto regional de la app. */
+    suspend fun aplicarRegional(cuerpo: JsonObject?) {
+        cuerpo?.t("pais")?.ifBlank { null }?.let { paisGuardado = it }
+        cuerpo?.t("moneda")?.ifBlank { null }?.let { monedaGuardada = it }
+        cuerpo?.t("zona")?.ifBlank { null }?.let { zonaGuardada = it }
+        pais = paisGuardado; moneda = monedaGuardada; zona = zonaGuardada
+        runCatching { pe.saniape.app.data.staff.StaffContextoRepo.cargar() }
+        onCambio()
+    }
+
+    /**
+     * Guarda lo elegido (ya confirmado). Con cobros registrados la moneda no
+     * cambia (409 MONEDA_CON_COBROS): se guardan el país y la zona solos y se
+     * dice claro que la moneda quedó como estaba.
+     */
+    fun guardarRegional() {
+        val envio = cambios
+        if (envio.isEmpty() || guardandoRegional) return
+        guardandoRegional = true
         scope.launch {
-            val r = guardarAjuste(porDefecto = "No se pudo cambiar la moneda.") {
-                AjustesRepo.cambiarRegionalClinica(buildJsonObject { put("moneda", nueva) })
+            val r = pe.saniape.app.ui.conIndicador {
+                AjustesRepo.cambiarRegionalClinica(buildJsonObject { envio.forEach { (k, v) -> put(k, v) } })
             }
             if (r.registrada) {
-                moneda = r.cuerpo?.t("moneda")?.ifBlank { null } ?: nueva
-                // Contexto regional al día: los montos de toda la app ya salen en la moneda nueva.
-                runCatching { pe.saniape.app.data.staff.StaffContextoRepo.cargar() }
-                Toaster.exito("Moneda actualizada")
-                onCambio()
+                aplicarRegional(r.cuerpo)
+                Toaster.exito("País, moneda y zona actualizados")
+            } else if (r.rechazo?.codigo == "MONEDA_CON_COBROS" && ("pais" in envio || "zona" in envio)) {
+                val r2 = guardarAjuste(porDefecto = "No se pudo cambiar el país ni la zona horaria.") {
+                    AjustesRepo.cambiarRegionalClinica(buildJsonObject { envio.filterKeys { it != "moneda" }.forEach { (k, v) -> put(k, v) } })
+                }
+                if (r2.registrada) {
+                    aplicarRegional(r2.cuerpo)
+                    Toaster.exito("País y zona guardados. La moneda sigue en $monedaGuardada: ya hay cobros registrados y cambiarla no convierte los montos.")
+                }
             } else {
-                moneda = anterior // guardarAjuste ya mostró el error del servidor
+                Toaster.error(r.rechazo?.error ?: "No se pudo cambiar el país, la moneda o la zona horaria.")
             }
-            cambiandoMoneda = false
+            guardandoRegional = false
         }
+    }
+
+    confirmar?.let { lista ->
+        AlertaConTeclado(
+            onDismissRequest = { confirmar = null },
+            title = { Text("¿Cambiar país, zona horaria o moneda?", fontWeight = FontWeight.Bold) },
+            text = { Text("Esto cambia en toda la clínica:\n\n" + lista.joinToString("\n\n") { "• $it" }) },
+            confirmButton = { TextButton(onClick = { confirmar = null; guardarRegional() }) { Text("Sí, cambiar", fontWeight = FontWeight.Bold) } },
+            dismissButton = { TextButton(onClick = { confirmar = null }) { Text("Cancelar", color = Sania.colors.textoSuave) } },
+            containerColor = Sania.colors.superficie,
+        )
     }
 
     SubPantalla("Perfil comercial", onVolver) {
@@ -828,14 +879,6 @@ internal fun SeccionComercial(d: JsonObject, onVolver: () -> Unit, onCambio: () 
             Campo("Razón social", razon, { razon = it }, max = 200)
             Campo("RUC / NIT / Tax ID", ruc, { ruc = it }, placeholder = "Ej. 20123456789", teclado = KeyboardType.Number, max = 30)
             Campo("Dirección física", direccion, { direccion = it }, placeholder = "Av. Principal 123, Ciudad", max = 300)
-            EtqForm("Moneda principal")
-            if (puedeCambiarMoneda) {
-                ChipsEleccion(monedas, moneda, deshabilitados = if (cambiandoMoneda) monedas.map { it.first }.toSet() else emptySet()) { cambiarMoneda(it) }
-                Ayuda("Cambiar la moneda no convierte los montos ya registrados.")
-            } else {
-                ChipsEleccion(monedas, moneda, deshabilitados = monedas.map { it.first }.toSet()) { }
-                Ayuda("Solo el administrador puede cambiarla.")
-            }
         }
         Boton(if (guardando) "Guardando…" else "Guardar perfil comercial", habilitado = !guardando) {
             guardando = true
@@ -845,6 +888,36 @@ internal fun SeccionComercial(d: JsonObject, onVolver: () -> Unit, onCambio: () 
                 }
                 guardando = false
                 if (r.registrada) { Toaster.exito("Guardado"); onCambio() }
+            }
+        }
+        // País, moneda y zona horaria (multipaís). Solo el Admin.
+        Tarjeta {
+            val bloqueados = !puedeCambiarMoneda || guardandoRegional
+            val paises = pe.saniape.app.data.staff.PAISES_SOPORTADOS.map { it.codigo to it.nombre }
+                .let { l -> if (l.none { it.first == pais }) l + (pais to pais) else l }
+            val zonas = pe.saniape.app.data.staff.zonasDePais(pais, zona).map { it to it }
+            // País y moneda guardados que no coinciden: se dice siempre.
+            pe.saniape.app.data.staff.avisoPaisMoneda(paisGuardado, monedaGuardada)?.let {
+                Text(it, color = Sania.colors.pend, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+            EtqForm("País")
+            ChipsEleccion(paises, pais, deshabilitados = if (bloqueados) paises.map { it.first }.toSet() else emptySet()) { elegirPais(it) }
+            EtqForm("Moneda principal")
+            ChipsEleccion(monedas, moneda, deshabilitados = if (bloqueados) monedas.map { it.first }.toSet() else emptySet()) { moneda = it }
+            EtqForm("Zona horaria")
+            ChipsEleccion(zonas, zona, deshabilitados = if (bloqueados) zonas.map { it.first }.toSet() else emptySet()) { zona = it }
+            Ayuda(
+                if (puedeCambiarMoneda) "El país define el documento de tus pacientes (DNI, CI…), el prefijo de los teléfonos y los métodos de pago sugeridos. Al elegirlo se proponen su moneda y su zona horaria; puedes cambiarlas. Cambiar la moneda no convierte los montos ya registrados. Si tienes sedes en otros países, cada sede tiene lo suyo (Ajustes → Sedes)."
+                else "Solo el administrador puede cambiar el país, la moneda y la zona horaria."
+            )
+        }
+        if (puedeCambiarMoneda && cambios.isNotEmpty()) {
+            Boton(if (guardandoRegional) "Guardando…" else "Guardar país, moneda y zona", habilitado = !guardandoRegional) {
+                confirmar = pe.saniape.app.data.staff.consecuenciasCambioRegional(
+                    paisGuardado, monedaGuardada, zonaGuardada, pais, moneda, zona)
+            }
+            Boton("Descartar cambios", primario = false, habilitado = !guardandoRegional) {
+                pais = paisGuardado; moneda = monedaGuardada; zona = zonaGuardada
             }
         }
     }

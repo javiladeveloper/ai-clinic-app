@@ -64,6 +64,15 @@ internal fun PanelAltaRapida(
     var baja by remember(documento) { mutableStateOf<FichaDeBaja?>(null) }
     var reactivando by remember(documento) { mutableStateOf(false) }
     val conPadron = consultaPadron(documento, pais)
+    // Documento que no es un DNI peruano: su tipo se elige. Se MUESTRA el que se
+    // deduce (RUT en Perú como siempre, CI en Bolivia…), pero solo se guarda si
+    // se elige a mano: lo adivinado queda null = el del país.
+    val tiposAlta = remember(pais) {
+        pe.saniape.app.data.staff.todasOpcionesDocumento(pais)
+            .filter { !(pe.saniape.app.data.staff.usaReniec(pais) && it.first == "DNI") }
+    }
+    var tipoElegido by remember(documento) { mutableStateOf<String?>(null) }
+    val tipoManual = tipoElegido ?: pe.saniape.app.data.staff.deducirTipoDocumento(documento, pais)
 
     // ¿Es alguien que se dio de baja y vuelve? Consulta chica a la base propia
     // (no al padrón), con pausa para no disparar una por tecla.
@@ -72,11 +81,11 @@ internal fun PanelAltaRapida(
         baja = ReactivarRepo.porDocumento(documento)
     }
 
-    fun registrar(nombre: String) {
+    fun registrar(nombre: String, tipo: String?) {
         if (nombre.isBlank() || hallazgo == HallazgoPadron.Creando) return
         hallazgo = HallazgoPadron.Creando
         scope.launch {
-            val r = AltaRapidaRepo.registrar(nombre, documento)
+            val r = AltaRapidaRepo.registrar(nombre, documento, tipo)
             when {
                 !r.ok -> hallazgo = HallazgoPadron.Error(r.error ?: "No se pudo registrar.")
                 r.inactivo -> {
@@ -144,8 +153,10 @@ internal fun PanelAltaRapida(
                         else "Escribe su nombre y queda registrado al agendar.",
                         color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp, bottom = 6.dp),
                     )
+                    pe.saniape.app.ui.clinica.ajustes.ChipsEleccion(tiposAlta, tipoManual) { tipoElegido = it }
+                    Spacer(Modifier.height(6.dp))
                     CampoNombreManual(nombreManual) { nombreManual = it }
-                    BotonPanel("✓ Registrar $documento", c.ok, habilitado = nombreManual.isNotBlank()) { registrar(nombreManual) }
+                    BotonPanel("✓ Registrar $documento", c.ok, habilitado = nombreManual.isNotBlank()) { registrar(nombreManual, tipoElegido) }
                 }
             }
             HallazgoPadron.Buscando -> Text("Buscando en RENIEC…", color = c.textoSuave, fontSize = 13.sp)
@@ -155,7 +166,7 @@ internal fun PanelAltaRapida(
                 Text(h.nombre, color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 Text("DNI $documento", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    BotonPanel("✓ Es correcto, registrar", c.ok, modifier = Modifier.weight(1f)) { registrar(h.nombre) }
+                    BotonPanel("✓ Es correcto, registrar", c.ok, modifier = Modifier.weight(1f)) { registrar(h.nombre, null) }
                     BotonPanel("Cancelar", null) { hallazgo = null }
                 }
             }
@@ -163,7 +174,7 @@ internal fun PanelAltaRapida(
                 Text("RENIEC no devolvió datos para $documento.", color = c.pend, fontSize = 13.sp,
                     fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
                 CampoNombreManual(nombreManual) { nombreManual = it }
-                BotonPanel("✓ Registrar con este nombre", c.ok, habilitado = nombreManual.isNotBlank()) { registrar(nombreManual) }
+                BotonPanel("✓ Registrar con este nombre", c.ok, habilitado = nombreManual.isNotBlank()) { registrar(nombreManual, null) }
             }
             is HallazgoPadron.Error -> Text(h.mensaje, color = c.error, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         }
