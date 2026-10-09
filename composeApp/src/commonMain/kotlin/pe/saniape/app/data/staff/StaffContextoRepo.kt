@@ -211,6 +211,9 @@ object StaffContextoRepo {
                     direccion = s.str("direccion"),
                     distrito = s.str("distrito"),
                     esPrincipal = s.bool("es_principal"),
+                    moneda = s.str("moneda"),
+                    zona = s.str("zona"),
+                    pais = s.str("pais"),
                 )
             },
             sedePrincipalId = o.str("sedePrincipalId"),
@@ -224,6 +227,10 @@ object StaffContextoRepo {
             onboardingCompleto = o.boolOrNull("onboardingCompleto") ?: true,
             primerosPasos = o.str("primerosPasos"),
             primerosPasosActivos = o.bool("primerosPasosActivos"),
+            // Multipaís (aditivo): sin los campos (o con basura) → PEN/America/Lima/PE.
+            moneda = o.str("moneda")?.takeIf { it.isNotBlank() }?.let(::normalizarMoneda) ?: MONEDA_POR_DEFECTO,
+            zona = o.str("zona")?.takeIf { esZonaValida(it) } ?: ZONA_POR_DEFECTO,
+            pais = o.str("pais")?.trim()?.uppercase()?.takeIf { p -> p.length == 2 && p.all { it in 'A'..'Z' } } ?: PAIS_POR_DEFECTO,
         )
     }
 

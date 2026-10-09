@@ -158,6 +158,15 @@ data class ContextoStaff(
     val primerosPasos: String? = null,
     /** Visible o minimizado: solo entonces hay tarjeta y píldoras. */
     val primerosPasosActivos: Boolean = false,
+    /**
+     * Multipaís: moneda ISO 4217, zona IANA y país ISO-2 POR DEFECTO de la clínica
+     * (clinicas.*). Un backend viejo no los manda → PEN/America/Lima/PE (como
+     * siempre). Para una sede: `ctx.monedaDeSede(id)` / `ctx.zonaDeSede(id)`
+     * (ZonaClinica.kt). Formatear: `formatearDinero(monto, ctx.monedaDeSede(id))`.
+     */
+    val moneda: String = MONEDA_POR_DEFECTO,
+    val zona: String = ZONA_POR_DEFECTO,
+    val pais: String = PAIS_POR_DEFECTO,
 ) {
     /** Permiso granular (mismo significado que puede() en la web). */
     fun puede(key: String): Boolean = when (key) {
@@ -276,4 +285,8 @@ data class SedeRef(
     val direccion: String? = null,
     val distrito: String? = null,
     val esPrincipal: Boolean = false,
+    /** Multipaís: ya resueltos por la web (sede → clínica). null = backend viejo → los de la clínica. */
+    val moneda: String? = null,
+    val zona: String? = null,
+    val pais: String? = null,
 )

@@ -17,13 +17,13 @@ import kotlinx.datetime.toLocalDateTime
 // ── Fecha de la clínica ──
 
 /**
- * Zona horaria de las clínicas (gemela de `getLocalToday()` de la web, que
- * fuerza America/Lima). Con la del teléfono, un celular con la zona mal puesta
- * (o en UTC) proponía "mañana" a partir de las 19:00 — el mismo bug que dejaba
- * los cobros de la noche fechados al día siguiente en la web.
+ * Zona horaria de la clínica: la de la SEDE ACTIVA (multipaís: sede → principal
+ * → clínica → America/Lima; ver ZonaClinica.kt). Nunca la del teléfono: un
+ * celular con la zona mal puesta (o en UTC) proponía "mañana" a partir de las
+ * 19:00 — el mismo bug que dejaba los cobros de la noche fechados al día
+ * siguiente en la web. Sin contexto cargado (tests, login) → Lima.
  */
-val ZONA_CLINICA: TimeZone = runCatching { TimeZone.of("America/Lima") }
-    .getOrElse { TimeZone.currentSystemDefault() }
+val ZONA_CLINICA: TimeZone get() = zonaActiva()
 
 /** "Hoy" (AAAA-MM-DD) en la zona de la clínica. [ahora] inyectable para los tests. */
 fun hoyClinicaIso(ahora: Instant = Clock.System.now()): String =
