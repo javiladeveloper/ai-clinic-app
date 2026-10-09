@@ -95,7 +95,7 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
             }
             ocupado = false
             if (r.registrada) {
-                Toaster.exito(if (valor) "Los pacientes recibirán su recordatorio por WhatsApp" else "Recordatorios a pacientes apagados")
+                Toaster.exito(if (valor) "Los pacientes recibirán sus recordatorios" else "Recordatorios a pacientes apagados (WhatsApp y notificaciones)")
                 recarga++
             }
         }
@@ -108,7 +108,7 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
         if (e == null && error != null) { ErrorCarga(error) { error = null; recarga++ }; return@SubPantalla }
         if (e == null) { CargandoLista(); return@SubPantalla }
 
-        Ayuda("Trae a Sania las citas que tienes en Google Calendar (pasadas y futuras), con sus pacientes. Sania solo LEE tu calendario y los cambios llegan solos cada 10 minutos. Al profesional le llegan sus avisos de agenda (1 h antes y el resumen del día), pero no uno de \"nueva cita\" por cada importada. A los pacientes solo se les escribe si enciendes \"Enviar recordatorios a los pacientes\".")
+        Ayuda("Trae a Sania las citas que tienes en Google Calendar (pasadas y futuras), con sus pacientes. Sania solo LEE tu calendario y los cambios llegan solos cada 10 minutos. Al profesional le llegan sus avisos de agenda (1 h antes y el resumen del día), pero no uno de \"nueva cita\" por cada importada. A los pacientes (WhatsApp y notificaciones de su app) solo si enciendes \"Enviar recordatorios a los pacientes\".")
         if (!e.disponible) Aviso("La conexión con Google aún no está activada en Sania. Puedes subir un archivo .ics desde la web.")
 
         e.cuentas.forEach { cta ->
@@ -134,14 +134,14 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
                 )
                 if (cal.sinCupo > 0) Text(
                     if (cal.esIcs) "${cal.sinCupo} sin cupo u horario: revisa el horario del profesional y vuelve a subir el archivo en la web."
-                    else "${cal.sinCupo} sin cupo u horario: se reintentan solas cada 10 minutos (revisa el horario del profesional).",
+                    else "${cal.sinCupo} sin cupo u horario: se reintentan solas, cada vez con más espera (revisa el horario del profesional).",
                     color = c.textoSuave, fontSize = 12.sp,
                 )
                 if (cal.porRevisar > 0) Text("${cal.porRevisar} por revisar: no se sabe de qué paciente son. Resuélvelos en la web.", color = c.pend, fontSize = 12.sp)
                 cal.error?.let { Text("⚠ $it", color = c.error, fontSize = 12.sp) }
                 if (cal.importadoEn != null) FilaInterruptor(
                     "Enviar recordatorios a los pacientes",
-                    "WhatsApp la mañana de la cita (si la clínica tiene WhatsApp). Apagado: estos pacientes no reciben nada de Sania.",
+                    "WhatsApp la mañana de la cita (si la clínica tiene WhatsApp) y notificaciones si usan la app del paciente. Apagado: a estos pacientes no les llega nada de Sania.",
                     activo = cal.recordatoriosPacientes, habilitado = !ocupado,
                 ) { recordatorios(cal.id, it) }
                 if (!cal.esIcs && cal.importadoEn != null) {
