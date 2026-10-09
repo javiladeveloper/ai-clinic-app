@@ -52,6 +52,8 @@ import pe.saniape.app.data.staff.Franja
 import pe.saniape.app.data.staff.HorarioProfesional
 import pe.saniape.app.data.staff.HorarioProfesionalRepo
 import pe.saniape.app.data.staff.ProfesionalItem
+import pe.saniape.app.data.staff.EspecialidadProfesionalRepo
+import pe.saniape.app.data.staff.ReglasEspecialidadProfesional
 import pe.saniape.app.data.staff.SedesAgendaRepo
 import pe.saniape.app.data.staff.finDespuesDeInicio
 import pe.saniape.app.tutoriales.PantallaTutorial
@@ -78,6 +80,10 @@ fun PantallaProfesionales(ctx: ContextoStaff, onSalir: () -> Unit, onAbrir: (Pro
         } catch (_: Exception) { if (lista == null) fallo = true }
     }
     val titulo = pluralPersonal(ctx.terminologiaProfesional)
+    var corrigiendo by remember { mutableStateOf<ProfesionalItem?>(null) }
+    corrigiendo?.let { p ->
+        DialogoEspecialidadesProfesional(p, onCerrar = { corrigiendo = null }, onGuardado = { corrigiendo = null; recarga++ })
+    }
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             Cabecera("← Más", titulo, onSalir) { BotonAyuda("Profesionales") }
@@ -107,6 +113,13 @@ fun PantallaProfesionales(ctx: ContextoStaff, onSalir: () -> Unit, onAbrir: (Pro
                                 Text(p.nombre, color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
                                 val sub = listOfNotNull(p.especialidad, p.turno).joinToString(" · ")
                                 if (sub.isNotBlank()) Text(sub, color = c.textoSuave, fontSize = 12.sp)
+                                if (p.sinEspecialidad) {
+                                    Text(
+                                        "⚠ ${ReglasEspecialidadProfesional.AVISO} · Corregir",
+                                        color = c.pend, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(top = 4.dp).clickable { corrigiendo = p },
+                                    )
+                                }
                             }
                             Text("🕒 Horario →", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
@@ -431,4 +444,66 @@ private fun Boton(texto: String, lleno: Boolean, habilitado: Boolean = true, mod
             .clickable(enabled = habilitado, onClick = onClick).padding(horizontal = 14.dp, vertical = 11.dp),
         contentAlignment = Alignment.Center,
     ) { Text(texto, color = if (lleno) c.sobreNavy else if (habilitado) c.navy else c.textoSuave, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+}
+
+/**
+ * "Corregir" del aviso "Sin especialidad": marca las especialidades del
+ * profesional (mínimo una, como en la web). Las reglas las valida el servidor.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DialogoEspecialidadesProfesional(p: ProfesionalItem, onCerrar: () -> Unit, onGuardado: () -> Unit) {
+    val c = Sania.colors
+    val scope = rememberCoroutineScope()
+    var datos by remember { mutableStateOf<pe.saniape.app.data.staff.EspecialidadesDeProfesional?>(null) }
+    var elegidas by remember { mutableStateOf(setOf<String>()) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var guardando by remember { mutableStateOf(false) }
+    LaunchedEffect(p.id) {
+        when (val r = EspecialidadProfesionalRepo.cargar(p.id)) {
+            is EspecialidadProfesionalRepo.R.Ok -> {
+                datos = r.datos
+                // Una sola especialidad en la clínica: viene marcada.
+                elegidas = r.datos.seleccionadas.toSet().ifEmpty { r.datos.disponibles.singleOrNull()?.let { setOf(it.id) } ?: emptySet() }
+            }
+            is EspecialidadProfesionalRepo.R.Error -> error = r.mensaje
+        }
+    }
+    AlertDialog(
+        onDismissRequest = { if (!guardando) onCerrar() },
+        title = { Text("Especialidades de ${p.nombre}", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(ReglasEspecialidadProfesional.AYUDA, color = c.textoSuave, fontSize = 12.sp)
+                val d = datos
+                when {
+                    d == null && error == null -> CircularProgressIndicator(color = c.navy)
+                    d != null && d.disponibles.isEmpty() -> Text("La clínica no tiene especialidades activas.", color = c.textoSuave, fontSize = 13.sp)
+                    d != null -> FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        d.disponibles.forEach { e ->
+                            Chip(e.nombre, e.id in elegidas) { elegidas = if (e.id in elegidas) elegidas - e.id else elegidas + e.id }
+                        }
+                    }
+                }
+                error?.let { Aviso(it, c.error, c.errorBg) }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = datos != null && !guardando,
+                onClick = {
+                    val falta = ReglasEspecialidadProfesional.errorAlGuardar(datos?.disponibles?.size ?: 0, elegidas.size)
+                    if (falta != null) { error = falta; return@TextButton }
+                    guardando = true; error = null
+                    scope.launch {
+                        when (val r = EspecialidadProfesionalRepo.guardar(p.id, elegidas.toList())) {
+                            is EspecialidadProfesionalRepo.R.Ok -> { Toaster.exito("Especialidades guardadas"); onGuardado() }
+                            is EspecialidadProfesionalRepo.R.Error -> { error = r.mensaje; guardando = false }
+                        }
+                    }
+                },
+            ) { Text(if (guardando) "Guardando…" else "Guardar", color = c.navy, fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = { TextButton(enabled = !guardando, onClick = onCerrar) { Text("Cancelar", color = c.textoSuave) } },
+    )
 }
