@@ -791,7 +791,7 @@ fun TarjetaTratamiento(
                 accionando = true
                 scope.launch {
                     // 1) Marca Completado + acumula la nota (server-side).
-                    val rServicio = PacientesRepo.registrarServicio(t.id, nota)
+                    val rServicio = PacientesRepo.registrarServicio(t.id, nota, conPago = cobrar && monto != null && monto > 0)
                     // Parcial (409): el servicio SÍ quedó registrado, pero sus controles no
                     // se agendaron (cupo lleno…). Se avisa y el resto (técnicas, cobro) sigue.
                     val parcialServicio = !rServicio.registrada && rServicio.rechazo?.datos
