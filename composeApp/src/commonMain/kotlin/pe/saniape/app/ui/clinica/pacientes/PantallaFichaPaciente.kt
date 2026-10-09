@@ -2140,6 +2140,7 @@ private fun ContenidoAtenciones(
             recargaToken = recargaToken,
             consultaDone = citaC != null, evalDone = citaE != null,
             citaConsulta = citaC, citaEvaluacion = citaE,
+            citasTrat = hitos?.citasPorTrat?.get(t.id).orEmpty(),
             onEditarCita = onEditarCita,
             onCompletarSesion = onCompletarSesion,
             onCambioRealizado = onRecargar,

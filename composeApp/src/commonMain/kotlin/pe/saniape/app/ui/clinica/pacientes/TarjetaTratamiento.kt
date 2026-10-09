@@ -114,6 +114,8 @@ fun TarjetaTratamiento(
      */
     esEvaluacionPsico: Boolean = false,
     bloqueEvaluacionPsico: (@Composable () -> Unit)? = null,
+    /** Citas de ESTE tratamiento (de los hitos): controles post-tratamiento y "En control". */
+    citasTrat: List<pe.saniape.app.data.staff.CitaCtl> = emptyList(),
 ) {
     val tpl = LocalTerminologiaPaciente.current
     // Permisos EFECTIVOS: el rol decide (puede()), y la baja del paciente los apaga.
@@ -211,6 +213,7 @@ fun TarjetaTratamiento(
     // Acento de color por tipo: sesiones/servicio = teal, consulta médica = morado.
     val acento = if (t.esConsulta && !t.esServicioUnico) c.purple else c.teal
     val cerrado = t.estado == "Alta" || t.estado == "Cancelado" || t.estado == "Suspendido"
+    val tratEnControl = pe.saniape.app.data.staff.enControl(t, citasTrat)
 
     // La barra de acento se DIBUJA detrás (drawBehind), no es un Box con
     // fillMaxHeight dentro de un Row con height(IntrinsicSize.Min): las medidas
@@ -262,7 +265,14 @@ fun TarjetaTratamiento(
                             modifier = Modifier.padding(top = 2.dp))
                     }
                 }
-                Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(estado.bg)
+                // Servicio único / unidades realizado con controles pendientes: sigue
+                // abierto (Activo) y se dice "En control" (decisión del dueño 2026-10-08).
+                if (tratEnControl) {
+                    Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.infoBg)
+                        .padding(horizontal = 8.dp, vertical = 3.dp)) {
+                        Text("🔁 En control", color = c.info, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                } else Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(estado.bg)
                     .padding(horizontal = 8.dp, vertical = 3.dp)) {
                     Text(t.estado ?: "—", color = estado.fg, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
@@ -291,7 +301,7 @@ fun TarjetaTratamiento(
         if (t.estado == "Activo" || t.estado == "Completado" || t.estado == "Alta") {
             Spacer(Modifier.height(10.dp))
             BarraRecorrido(
-                trat = t, flujo = flujo, consultaDone = consultaDone, evalDone = evalDone,
+                trat = t, flujo = flujo, consultaDone = consultaDone, evalDone = evalDone, citasTrat = citasTrat,
                 citaConsulta = citaConsulta, citaEvaluacion = citaEvaluacion,
                 puedePagos = verPagos, expandido = expandido, onEditarCita = onEditarCita,
                 onToggleSesiones = { expandido = !expandido },
@@ -478,7 +488,9 @@ fun TarjetaTratamiento(
                 // Alta a la vista también sin sesiones (2026-10-02: "en algunos
                 // procedimientos no encontré dar de alta" — estaba solo dentro del
                 // paso "Control"). El servicio único se cierra una vez realizado.
-                if (!terminado && puedeSesionesEf && (!t.esServicioUnico || t.estado == "Completado")) {
+                // En control (realizado, con controles pendientes) también: el alta lo
+                // cierra y cancela los controles que faltan (como la web).
+                if (!terminado && puedeSesionesEf && (!t.esServicioUnico || t.estado == "Completado" || tratEnControl)) {
                     Spacer(Modifier.height(Sania.dim.sm))
                     BtnDarAlta(habilitado = !accionando) { confirmarAlta = true }
                 }

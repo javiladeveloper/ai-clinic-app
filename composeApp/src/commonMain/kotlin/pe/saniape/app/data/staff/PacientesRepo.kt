@@ -85,6 +85,13 @@ data class TratamientoPaciente(
     /** Tamaño del paquete ORIGINAL (no null = se amplió): el "Nuevo paquete" lo repite. */
     val sesionesBase: Int? = null,
     val citaOrigenId: String? = null,
+    /**
+     * Escalera de controles post-tratamiento: arranca al completarse la atención
+     * (servicio único / unidades). Señal de "ya se realizó" cuando el tratamiento
+     * sigue abierto "en control" (ver ControlesPendientes.kt).
+     */
+    val controlAnclaje: String? = null,
+    val controlIndice: Int = 0,
     /** Cerrado por abandono (estado Suspendido + no_volvio). */
     val noVolvio: Boolean = false,
     val motivoCierre: String? = null,
@@ -316,6 +323,11 @@ data class HitosPaciente(
     val citasFuturasPendientes: List<Pair<String, String?>> = emptyList(),
     /** sesionId → citaId (no canceladas): el "¿ya pagó?" al completar una sesión desde la ficha. */
     val citaPorSesion: Map<String, String> = emptyMap(),
+    /**
+     * Citas de cada tratamiento (tratamientoId → citas): sus CONTROLES post-
+     * tratamiento y la etapa "En control" del servicio único / unidades.
+     */
+    val citasPorTrat: Map<String, List<CitaCtl>> = emptyMap(),
 )
 
 /** Una evaluación completada del paciente (origen de un tratamiento). */
@@ -484,7 +496,7 @@ object PacientesRepo {
             cantidad_unidades, precio_unitario,
             diagnostico, medicacion, proximo_control, nota_recepcion, tecnicas_sugeridas,
             procedimiento_id, sesiones_base, cita_origen_id, no_volvio, motivo_cierre, cerrado_at,
-            fecha_inicio, created_at, saldo_liberado_at, saldo_liberado_por,
+            fecha_inicio, created_at, saldo_liberado_at, saldo_liberado_por, control_anclaje, control_indice,
             ses_estados:sesiones!sesiones_tratamiento_id_fkey(estado),
             citas_estados:citas!citas_tratamiento_id_fkey(estado),
             procedimiento:procedimientos(nombre, especialidad_id, modo_cobro, precio, unidad_label, especialidad:especialidades(nombre, usa_sesiones)),
@@ -1515,6 +1527,12 @@ object PacientesRepo {
                 .filter { it.str("estado") != "Cancelada" }
                 .mapNotNull { f -> val s = f.str("sesion_id"); val c = f.str("id"); if (s != null && c != null) s to c else null }
                 .toMap(),
+            citasPorTrat = filas
+                .mapNotNull { f ->
+                    val tid = f.str("tratamiento_id") ?: return@mapNotNull null
+                    tid to CitaCtl(f.str("id") ?: "", f.str("tipo"), f.str("estado"), f.str("notas"))
+                }
+                .groupBy({ it.first }, { it.second }),
         )
     }
 
@@ -1594,6 +1612,8 @@ object PacientesRepo {
                 procedimientoId = t.str("procedimiento_id"),
                 sesionesBase = t.int("sesiones_base"),
                 citaOrigenId = t.str("cita_origen_id"),
+                controlAnclaje = t.str("control_anclaje"),
+                controlIndice = t.int("control_indice") ?: 0,
                 noVolvio = t.bool("no_volvio") == true,
                 motivoCierre = t.str("motivo_cierre"),
                 cerradoAt = t.str("cerrado_at"),
