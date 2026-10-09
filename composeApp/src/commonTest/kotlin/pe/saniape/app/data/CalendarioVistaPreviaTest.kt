@@ -340,4 +340,14 @@ class CalendarioVistaPreviaTest {
         assertEquals("#d50000", hexColor("11")); assertEquals("#9aa3c7", hexColor("raro"))
         assertEquals("mar 20 oct 26", fechaCortaCal("2026-10-20"))
     }
+
+    @Test fun falloDeImportarYCelular() {
+        val f = pe.saniape.app.data.staff.FalloImportar.POSIBLE_EN_CURSO
+        assertEquals(f, pe.saniape.app.data.staff.falloImportar("SIN_RED", 0))
+        assertEquals(f, pe.saniape.app.data.staff.falloImportar("OCUPADO", 409))
+        assertEquals(f, pe.saniape.app.data.staff.falloImportar(null, 504))
+        assertEquals(pe.saniape.app.data.staff.FalloImportar.RECONECTAR, pe.saniape.app.data.staff.falloImportar("RECONECTAR", 409))
+        assertEquals(pe.saniape.app.data.staff.FalloImportar.OTRO, pe.saniape.app.data.staff.falloImportar(null, 400))
+        assertEquals("+51 (952) 123-456", pe.saniape.app.data.staff.soloCaracteresCelular("+51 (952) 123-456abc."))
+    }
 }

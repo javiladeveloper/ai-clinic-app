@@ -77,7 +77,8 @@ internal data class VistaAbierta(
     val config: pe.saniape.app.data.staff.ConfigFuenteCal,
     val decisiones: DecisionesCal,
     val profesional: String?,
-    val n: Int,
+    /** Lo marcado a mano (se conserva al actualizar). */
+    val trabajo: TrabajoVista,
 )
 
 /** Qué selector de profesional está abierto. */
@@ -104,12 +105,18 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
     var confirmarDesconectar by remember { mutableStateOf<CuentaCalendario?>(null) }
     var vista by remember { mutableStateOf<VistaAbierta?>(null) }
     var cargandoVista by remember { mutableStateOf(false) }
+    var reconectar by remember { mutableStateOf<String?>(null) }
 
     // Al volver del navegador (Google) se relee solo.
     LaunchedEffect(recarga, Reanudacion.contador) {
         val r = CalendarioRepo.estado()
         val o = r.cuerpo
-        if (r.registrada && o != null) { estado = estadoCalendarioDe(o); error = null }
+        if (r.registrada && o != null) {
+            val nuevo = estadoCalendarioDe(o)
+            estado = nuevo; error = null
+            // Con la vista previa abierta, su calendario queda al día (profesional, estado).
+            vista?.let { v -> nuevo.calendarios.find { it.id == v.fuente.id }?.let { f -> vista = v.copy(fuente = f, profesional = f.profesional) } }
+        }
         else if (estado == null) error = r.rechazo?.error ?: "No se pudo leer el estado"
     }
     LaunchedEffect(Unit) {
@@ -188,11 +195,14 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
         val r = pe.saniape.app.ui.conIndicador(Gestion.CARGANDO) { CalendarioRepo.vistaPrevia(f.id, config, decisiones) }
         val o = r.cuerpo
         if (!r.registrada || o == null) {
-            Toaster.error(r.rechazo?.error ?: "No se pudo leer el calendario")
+            if (r.codigo == "RECONECTAR") reconectar = r.rechazo?.error ?: "Vuelve a conectar la cuenta de Google."
+            else Toaster.error(r.rechazo?.error ?: "No se pudo leer el calendario")
             return false
         }
         val profesional = estado?.calendarios?.find { it.id == f.id }?.profesional ?: f.profesional
-        vista = VistaAbierta(f, vistaPreviaDe(o), config, decisiones, profesional, (vista?.n ?: 0) + 1)
+        // Actualizar conserva lo marcado, la pestaña y el desplazamiento.
+        val trabajo = vista?.takeIf { it.fuente.id == f.id }?.trabajo ?: TrabajoVista(config, decisiones)
+        vista = VistaAbierta(f, vistaPreviaDe(o), config, decisiones, profesional, trabajo)
         return true
     }
 
@@ -202,16 +212,27 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
     }
 
     // ── Vista previa a pantalla completa ──
+    // Google revocó el permiso (409 RECONECTAR): mismo flujo de "Conectar".
+    reconectar?.let { msg ->
+        AlertaConTeclado(
+            onDismissRequest = { reconectar = null },
+            title = { Text("Volver a conectar", fontWeight = FontWeight.Bold) },
+            text = { Text(msg) },
+            confirmButton = { TextButton(onClick = { reconectar = null; conectar() }) { Text("Volver a conectar", color = c.navy, fontWeight = FontWeight.Bold) } },
+            dismissButton = { TextButton(onClick = { reconectar = null }) { Text("Cancelar", color = c.textoSuave) } },
+            containerColor = c.superficie,
+        )
+    }
+
     vista?.let { v ->
-        androidx.compose.runtime.key(v.n) {
-            VistaPreviaCalendario(
-                abierta = v,
-                procedimientos = procedimientos,
-                onActualizar = { config, decisiones -> pedirVista(v.fuente, config, decisiones) },
-                onImportado = { recarga++ },
-                onCerrar = { vista = null },
-            )
-        }
+        VistaPreviaCalendario(
+            abierta = v,
+            procedimientos = procedimientos,
+            onActualizar = { config, decisiones -> pedirVista(v.fuente, config, decisiones) },
+            onImportado = { recarga++ },
+            onReconectar = { reconectar = it },
+            onCerrar = { vista = null },
+        )
         return
     }
 

@@ -78,6 +78,9 @@ import pe.saniape.app.data.staff.corregirPaciente
 import pe.saniape.app.data.staff.direccionDe
 import pe.saniape.app.data.staff.duracionTxt
 import pe.saniape.app.data.staff.esCitaMarcada
+import pe.saniape.app.data.staff.FalloImportar
+import pe.saniape.app.data.staff.falloImportar
+import pe.saniape.app.data.staff.soloCaracteresCelular
 import pe.saniape.app.data.staff.esEditable
 import pe.saniape.app.data.staff.estadoCabecera
 import pe.saniape.app.data.staff.eventosDePestana
@@ -108,6 +111,19 @@ import pe.saniape.app.ui.conIndicador
 import pe.saniape.app.ui.theme.Sania
 
 /**
+ * Lo que la persona va marcando en la vista previa, fuera de la pantalla: lo
+ * guarda la sección (no se pierde al actualizar; las rotaciones no recrean la
+ * actividad: ver configChanges en el AndroidManifest).
+ */
+@androidx.compose.runtime.Stable
+internal class TrabajoVista(config: ConfigFuenteCal, decisiones: DecisionesCal) {
+    var config by mutableStateOf(config)
+    var dec by mutableStateOf(decisiones)
+    var pestana by mutableStateOf(PestanaEventos.REVISAR)
+    val lista = androidx.compose.foundation.lazy.LazyListState()
+}
+
+/**
  * Revisión ANTES de importar un calendario de Google — gemelo nativo de
  * `components/calendario/VistaPreviaCalendario.tsx`. La persona decide (qué es
  * cita, de qué paciente es cada evento dudoso, fichas nuevas o existentes,
@@ -123,14 +139,18 @@ internal fun VistaPreviaCalendario(
     procedimientos: List<Pair<String, String>>,
     onActualizar: suspend (ConfigFuenteCal, DecisionesCal) -> Boolean,
     onImportado: () -> Unit,
+    onReconectar: (String) -> Unit,
     onCerrar: () -> Unit,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     val datos = abierta.datos
-    var config by remember { mutableStateOf(abierta.config) }
-    var dec by remember { mutableStateOf(abierta.decisiones) }
-    var pestana by remember { mutableStateOf(PestanaEventos.REVISAR) }
+    // Lo que la persona marca vive en el holder de la sección (sobrevive a
+    // "Actualizar vista previa", que conserva pestaña y desplazamiento).
+    val t = abierta.trabajo
+    var config by t::config
+    var dec by t::dec
+    var pestana by t::pestana
     var trabajando by remember { mutableStateOf<String?>(null) }
     var resultado by remember { mutableStateOf<ResultadoImportacion?>(null) }
     var editando by remember { mutableStateOf<FilaPaciente?>(null) }
@@ -149,11 +169,13 @@ internal fun VistaPreviaCalendario(
     val aCrear = remember(datos, dec) { citasAImportar(datos, dec) }
 
     fun actualizar() {
+        if (trabajando != null) return
         trabajando = "actualizar"
         scope.launch { try { onActualizar(config, dec) } finally { trabajando = null } }
     }
 
     fun importar() {
+        if (trabajando != null) return
         trabajando = "importar"
         scope.launch {
             try {
@@ -164,7 +186,17 @@ internal fun VistaPreviaCalendario(
                     resultado = ri
                     Toaster.exito(toastImportacion(ri))
                     onImportado()
-                } else Toaster.error(res.rechazo?.error ?: "No se pudo importar")
+                } else when (falloImportar(res.codigo, res.rechazo?.status ?: 0)) {
+                    // Sin respuesta a tiempo u ocupado: el servidor guardó las decisiones y
+                    // puede seguir importando. Sin reintento automático (daría OCUPADO).
+                    FalloImportar.POSIBLE_EN_CURSO -> {
+                        Toaster.info("Puede que siga importando en el servidor: revisa en unos minutos")
+                        onImportado()
+                        onCerrar()
+                    }
+                    FalloImportar.RECONECTAR -> onReconectar(res.rechazo?.error ?: "Vuelve a conectar la cuenta de Google.")
+                    FalloImportar.OTRO -> Toaster.error(res.rechazo?.error ?: "No se pudo importar")
+                }
             } finally { trabajando = null }
         }
     }
@@ -217,6 +249,7 @@ internal fun VistaPreviaCalendario(
             CabeceraAjustes("← Agenda de Google Calendar", "Revisa antes de importar", { if (trabajando != "importar") onCerrar() })
             LazyColumn(
                 Modifier.fillMaxSize(),
+                state = t.lista,
                 contentPadding = PaddingValues(Sania.dim.lg),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
@@ -570,7 +603,7 @@ private fun DialogoCorregirPaciente(f: FilaPaciente, dec: DecisionesCal, onListo
                 Campo("Celular", ficha?.first ?: "", {}, placeholder = "—", habilitado = false)
                 Campo("Dirección", ficha?.second ?: "", {}, placeholder = "—", habilitado = false)
             } else {
-                Campo("Celular", tel, { tel = it }, placeholder = "Sin celular", teclado = KeyboardType.Phone, max = 20)
+                Campo("Celular", tel, { tel = soloCaracteresCelular(it) }, placeholder = "Sin celular", teclado = KeyboardType.Phone, max = 20)
                 Campo("Dirección", dir, { dir = it }, placeholder = "Sin dirección", max = 200)
                 Ayuda("Dirección para la atención a domicilio. Vacío = sin dato.", c.textoSuave)
             }

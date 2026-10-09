@@ -566,3 +566,21 @@ fun textoPie(aCrear: Int, revisar: Int): String =
 fun toastImportacion(r: ResultadoImportacion): String =
     if (r.enCurso) "Van ${r.creadas} ${if (r.creadas == 1) "cita" else "citas"}: sigue importando"
     else "Listo: ${r.creadas} ${if (r.creadas == 1) "cita importada" else "citas importadas"}"
+
+/** Cómo tomar un fallo de "Importar". */
+enum class FalloImportar {
+    /** Sin respuesta a tiempo (corte, 504) u OCUPADO: el servidor puede seguir importando. */
+    POSIBLE_EN_CURSO,
+    /** Google revocó el permiso: hay que volver a conectar la cuenta. */
+    RECONECTAR,
+    OTRO,
+}
+
+fun falloImportar(codigo: String?, status: Int): FalloImportar = when {
+    codigo == "RECONECTAR" -> FalloImportar.RECONECTAR
+    codigo == "SIN_RED" || codigo == "OCUPADO" || status == 504 || status == 408 -> FalloImportar.POSIBLE_EN_CURSO
+    else -> FalloImportar.OTRO
+}
+
+/** Celular escrito a mano: solo dígitos, espacios y + ( ) - (como acepta el servidor). */
+fun soloCaracteresCelular(s: String): String = s.filter { it.isDigit() || it in " +()-" }
