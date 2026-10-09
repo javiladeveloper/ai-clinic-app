@@ -793,21 +793,55 @@ internal fun SeccionComercial(d: JsonObject, onVolver: () -> Unit, onCambio: () 
     var razon by remember { mutableStateOf(cfg.t("razonSocial")) }
     var ruc by remember { mutableStateOf(cfg.t("ruc")) }
     var direccion by remember { mutableStateOf(cfg.t("direccion")) }
+    // La moneda de la clínica (clinicas.moneda) ya no va en "comercial": la cambia
+    // SOLO el Admin con PATCH /api/staff/clinica/regional (el servidor la protege).
     var moneda by remember { mutableStateOf(cfg.t("moneda").ifBlank { "PEN" }) }
+    var cambiandoMoneda by remember { mutableStateOf(false) }
+    val puedeCambiarMoneda = d.b("esAdmin") && !d.b("soloLectura") &&
+        (pe.saniape.app.data.staff.StaffContextoRepo.actual?.esAdmin ?: true)
     var guardando by remember { mutableStateOf(false) }
+
+    fun cambiarMoneda(nueva: String) {
+        if (nueva == moneda || cambiandoMoneda) return
+        val anterior = moneda
+        moneda = nueva
+        cambiandoMoneda = true
+        scope.launch {
+            val r = guardarAjuste(porDefecto = "No se pudo cambiar la moneda.") {
+                AjustesRepo.cambiarRegionalClinica(buildJsonObject { put("moneda", nueva) })
+            }
+            if (r.registrada) {
+                moneda = r.cuerpo?.t("moneda")?.ifBlank { null } ?: nueva
+                // Contexto regional al día: los montos de toda la app ya salen en la moneda nueva.
+                runCatching { pe.saniape.app.data.staff.StaffContextoRepo.cargar() }
+                Toaster.exito("Moneda actualizada")
+                onCambio()
+            } else {
+                moneda = anterior // guardarAjuste ya mostró el error del servidor
+            }
+            cambiandoMoneda = false
+        }
+    }
+
     SubPantalla("Perfil comercial", onVolver) {
         Tarjeta {
             Campo("Razón social", razon, { razon = it }, max = 200)
             Campo("RUC / NIT / Tax ID", ruc, { ruc = it }, placeholder = "Ej. 20123456789", teclado = KeyboardType.Number, max = 30)
             Campo("Dirección física", direccion, { direccion = it }, placeholder = "Av. Principal 123, Ciudad", max = 300)
             EtqForm("Moneda principal")
-            ChipsEleccion(monedas, moneda) { moneda = it }
+            if (puedeCambiarMoneda) {
+                ChipsEleccion(monedas, moneda, deshabilitados = if (cambiandoMoneda) monedas.map { it.first }.toSet() else emptySet()) { cambiarMoneda(it) }
+                Ayuda("Cambiar la moneda no convierte los montos ya registrados.")
+            } else {
+                ChipsEleccion(monedas, moneda, deshabilitados = monedas.map { it.first }.toSet()) { }
+                Ayuda("Solo el administrador puede cambiarla.")
+            }
         }
         Boton(if (guardando) "Guardando…" else "Guardar perfil comercial", habilitado = !guardando) {
             guardando = true
             scope.launch {
                 val r = guardarAjuste {
-                    AjustesRepo.guardarSeccion("comercial", buildJsonObject { put("razonSocial", razon); put("ruc", ruc); put("direccion", direccion); put("moneda", moneda) })
+                    AjustesRepo.guardarSeccion("comercial", buildJsonObject { put("razonSocial", razon); put("ruc", ruc); put("direccion", direccion) })
                 }
                 guardando = false
                 if (r.registrada) { Toaster.exito("Guardado"); onCambio() }

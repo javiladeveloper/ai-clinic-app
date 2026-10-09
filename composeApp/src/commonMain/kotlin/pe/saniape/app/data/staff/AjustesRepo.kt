@@ -112,6 +112,15 @@ object AjustesRepo {
     suspend fun guardarSeccion(seccion: String, datos: JsonObject): ResultadoEscritura =
         enviar(HttpMethod.Put, BASE, buildJsonObject { put("seccion", seccion); put("datos", datos) })
 
+    /**
+     * País / moneda / zona POR DEFECTO de la clínica (PATCH /api/staff/clinica/regional;
+     * solo Admin, sin soporte de solo lectura). Body: solo lo que cambia, p. ej.
+     * {"moneda":"BOB"}. 200 → { ok, pais, moneda, zona }; 400/403 → { error };
+     * 409 MONEDA_CON_COBROS si ya hay cobros. La sección "comercial" ya no la guarda.
+     */
+    suspend fun cambiarRegionalClinica(cambios: JsonObject): ResultadoEscritura =
+        enviar(HttpMethod.Patch, "/api/staff/clinica/regional", cambios)
+
     /** Catálogos chicos (métodos de pago, categorías, tipos de imagen, campos, equipos, hallazgos). */
     suspend fun catalogo(tabla: String): Pair<JsonObject?, String?> = leerObjeto("$BASE/catalogo?tabla=$tabla")
 
