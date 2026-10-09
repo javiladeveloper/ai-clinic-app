@@ -1,0 +1,9 @@
+# Novedades de la 2.39.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Historia clínica por especialidad (ginecología y obstetricia con control prenatal), tipo de documento del paciente y país de la clínica.
+---
+Clínicas:
+• Historia clínica: Ginecología y Obstetricia tienen su propio apartado; Obstetricia muestra el cuadro de controles prenatales (FUR, fecha probable de parto, edad gestacional, presión, peso, altura uterina y latidos fetales).
+• Pacientes: elige el tipo de documento (DNI, carné de extranjería, pasaporte, CI, RUT u otro); la ficha y los impresos lo rotulan bien.
+• Ajustes (Admin): país y zona horaria de la clínica, con confirmación antes de guardar.
+• Google Calendar: en el plan Básico la agenda se importa una vez y puedes reintentar las citas que quedaron pendientes; en Premium y Plus se sincroniza sola.
