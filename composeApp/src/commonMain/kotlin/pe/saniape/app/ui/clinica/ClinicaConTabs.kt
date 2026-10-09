@@ -96,9 +96,10 @@ fun ClinicaConTabs(
     var verCaja by remember { mutableStateOf(false) }
     var verFinanzas by remember { mutableStateOf(false) }
     var verEspecialidades by remember { mutableStateOf(false) }
-    var verPacientesPeriodo by remember { mutableStateOf(false) }
-    var verPacientesNuevos by remember { mutableStateOf(false) }
-    var verReportes by remember { mutableStateOf(false) }
+    // Reportes es UNA puerta con tres pestañas (como la web); null = cerrado.
+    var vistaReportes by remember { mutableStateOf<pe.saniape.app.ui.clinica.reportes.VistaReportes?>(null) }
+    var ultimaVistaReportes by remember { mutableStateOf(pe.saniape.app.ui.clinica.reportes.VistaReportes.MesAMes) }
+    val verReportes = vistaReportes != null
     // Profesionales (lista + horario) y el horario propio en solo lectura.
     var verProfesionales by remember { mutableStateOf(false) }
     var verServicios by remember { mutableStateOf(false) }
@@ -161,7 +162,7 @@ fun ClinicaConTabs(
 
     // Con un flujo a pantalla completa abierto, el "atrás" es de ese flujo (tiene
     // su propio ManejarAtras, con la confirmación de salir sin guardar).
-    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verCampanias || verActividad || verMiPlan || verMiCalendario || verAjustes || horarioDe != null || tab != TabClinica.Inicio)) {
+    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verEspecialidades || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verCampanias || verActividad || verMiPlan || verMiCalendario || verAjustes || horarioDe != null || tab != TabClinica.Inicio)) {
         when {
             verRetencion -> verRetencion = false
             verCampanias -> verCampanias = false
@@ -178,9 +179,7 @@ fun ClinicaConTabs(
             verCaja -> verCaja = false
             verFinanzas -> verFinanzas = false
             verEspecialidades -> verEspecialidades = false
-            verPacientesPeriodo -> verPacientesPeriodo = false
-            verPacientesNuevos -> verPacientesNuevos = false
-            verReportes -> verReportes = false
+            verReportes -> vistaReportes = null
             else -> tab = TabClinica.Inicio
         }
     }
@@ -246,10 +245,10 @@ fun ClinicaConTabs(
     val verPacientes = contexto.puede("pacientes") || contexto.modoClinico
 
     fun cerrarOverlays() {
-        verSesiones = false; verCaja = false; verEspecialidades = false; verPacientesPeriodo = false
+        verSesiones = false; verCaja = false; verEspecialidades = false
         verFinanzas = false
-        verPacientesNuevos = false; verProfesionales = false; horarioDe = null
-        verReportes = false
+        verProfesionales = false; horarioDe = null
+        vistaReportes = null
         verServicios = false
         verEquipo = false
         verComisiones = false
@@ -290,7 +289,7 @@ fun ClinicaConTabs(
         urlPagina = pe.saniape.app.data.staff.OnboardingRepo.slugClinica(contexto.clinicaId)
             ?.let { pe.saniape.app.data.staff.urlPaginaClinica(it) }
     }
-    val hayOverlay = verSesiones || verCaja || verEspecialidades || verPacientesPeriodo || verPacientesNuevos || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verCampanias || verActividad || verMiPlan || verMiCalendario || verAjustes || horarioDe != null
+    val hayOverlay = verSesiones || verCaja || verEspecialidades || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verCampanias || verActividad || verMiPlan || verMiCalendario || verAjustes || horarioDe != null
     val tabs = buildList {
         add(TabClinica.Inicio)
         if (verAgenda) add(TabClinica.Agenda)
@@ -369,12 +368,8 @@ fun ClinicaConTabs(
                         onAbrirCaja = if (contexto.puede("pagos")) ({ verCaja = true }) else null,
                         // Nativo (crear + asistente). Mismo permiso que /api/staff/especialidad/*.
                         onAbrirEspecialidades = if (contexto.puede("equipo")) ({ verEspecialidades = true }) else null,
-                        // Nativo. Mismo permiso que /api/reportes/rendimiento (el plan lo valida el servidor).
-                        onAbrirPacientesPeriodo = if (contexto.puede("reportes")) ({ verPacientesPeriodo = true }) else null,
-                        // Nativo. Mismo permiso que /api/staff/pacientes-nuevos (el plan lo valida el servidor).
-                        onAbrirPacientesNuevos = if (contexto.puede("reportes")) ({ verPacientesNuevos = true }) else null,
                         // 📈 Reportes nativo (mes a mes). Mismo permiso que /api/reportes/series.
-                        onAbrirReportes = if (contexto.puede("reportes")) ({ verReportes = true }) else null,
+                        onAbrirReportes = if (contexto.puede("reportes")) ({ vistaReportes = pe.saniape.app.ui.clinica.reportes.VistaReportes.MesAMes }) else null,
                         // (nombre del personal) → lista + horario: solo con permiso "equipo" (como la web).
                         onAbrirProfesionales = if (contexto.puede("equipo")) ({ verProfesionales = true }) else null,
                         // El propio profesional ve SU horario en solo lectura.
@@ -448,36 +443,22 @@ fun ClinicaConTabs(
                 visible = verReportes && contexto.puede("reportes"),
                 enter = entrarDetalle(), exit = salirDetalle(),
             ) {
+                // Una sola capa: saltar de pestaña cambia el contenido, no apila pantallas.
+                // `ultimaVistaReportes` mantiene el contenido mientras corre la animación de salida.
+                LaunchedEffect(vistaReportes) { vistaReportes?.let { ultimaVistaReportes = it } }
+                val irVista: (pe.saniape.app.ui.clinica.reportes.VistaReportes) -> Unit = { vistaReportes = it }
                 Box(Modifier.fillMaxSize().background(c.fondo)) {
-                    pe.saniape.app.ui.clinica.reportes.PantallaReportes(
-                        ctx = contexto,
-                        onSalir = { verReportes = false },
-                        // Las otras dos vistas de la web se abren encima; al salir vuelven acá.
-                        onAbrirPacientesPeriodo = { verPacientesPeriodo = true },
-                        onAbrirPacientesNuevos = { verPacientesNuevos = true },
-                    )
-                }
-            }
-            AnimatedVisibility(
-                visible = verPacientesPeriodo && contexto.puede("reportes"),
-                enter = entrarDetalle(), exit = salirDetalle(),
-            ) {
-                Box(Modifier.fillMaxSize().background(c.fondo)) {
-                    PantallaPacientesPeriodo(
-                        ctx = contexto,
-                        onSalir = { verPacientesPeriodo = false },
-                    )
-                }
-            }
-            AnimatedVisibility(
-                visible = verPacientesNuevos && contexto.puede("reportes"),
-                enter = entrarDetalle(), exit = salirDetalle(),
-            ) {
-                Box(Modifier.fillMaxSize().background(c.fondo)) {
-                    PantallaPacientesNuevos(
-                        ctx = contexto,
-                        onSalir = { verPacientesNuevos = false },
-                    )
+                    when (vistaReportes ?: ultimaVistaReportes) {
+                        pe.saniape.app.ui.clinica.reportes.VistaReportes.MesAMes -> pe.saniape.app.ui.clinica.reportes.PantallaReportes(
+                            ctx = contexto, onSalir = { vistaReportes = null }, onVista = irVista,
+                        )
+                        pe.saniape.app.ui.clinica.reportes.VistaReportes.Rendimiento -> PantallaPacientesPeriodo(
+                            ctx = contexto, onSalir = { vistaReportes = null }, onVista = irVista,
+                        )
+                        pe.saniape.app.ui.clinica.reportes.VistaReportes.Nuevos -> PantallaPacientesNuevos(
+                            ctx = contexto, onSalir = { vistaReportes = null }, onVista = irVista,
+                        )
+                    }
                 }
             }
             AnimatedVisibility(

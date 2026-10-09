@@ -58,11 +58,7 @@ fun PantallaMasClinica(
     onAbrirCaja: (() -> Unit)? = null,
     // 🩺 Especialidades nativa (solo con permiso "equipo"; null = no se muestra).
     onAbrirEspecialidades: (() -> Unit)? = null,
-    // 📊 Pacientes del período nativo (solo con permiso "reportes"; null = no se muestra).
-    onAbrirPacientesPeriodo: (() -> Unit)? = null,
-    // 🌱 Pacientes nuevos nativo (solo con permiso "reportes"; null = no se muestra).
-    onAbrirPacientesNuevos: (() -> Unit)? = null,
-    // 📈 Reportes nativo (mes a mes; solo con permiso "reportes"; null = no se muestra).
+    // 📈 Reportes nativo (una sola puerta: Mes a mes / Rendimiento / nuevos van en pestañas; solo con permiso "reportes").
     onAbrirReportes: (() -> Unit)? = null,
     // 🩺 (nombre del personal): lista + horario semanal (solo con permiso "equipo").
     onAbrirProfesionales: (() -> Unit)? = null,
@@ -171,40 +167,10 @@ fun PantallaMasClinica(
                 }
 
                 // Reportes (con permiso "reportes"; el plan lo valida el servidor).
-                if (onAbrirReportes != null || onAbrirPacientesPeriodo != null || onAbrirPacientesNuevos != null) {
+                if (onAbrirReportes != null) {
                     Text("REPORTES", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(Sania.dim.sm))
-                    // 📈 Reportes (mes a mes): nativo, antes se abría en la web.
-                    if (onAbrirReportes != null) FilaMas("📈  Reportes", onClick = onAbrirReportes)
-                    // 📊 Pacientes del período (con permiso de reportes): atendidos,
-                    // evaluados y cuántos compraron paquete. El plan lo valida el servidor.
-                    if (onAbrirPacientesPeriodo != null) {
-                        Row(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                                .clickable { onAbrirPacientesPeriodo() }.padding(Sania.dim.lg),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text("📊  ${contexto.terminologiaPaciente.Pacientes} del período", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
-                            Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
-                        }
-                        Spacer(Modifier.height(Sania.dim.sm))
-                    }
-                    // 🌱 Pacientes nuevos (con permiso de reportes): quién se registró en el
-                    // mes, quién vino a evaluación, quién empezó tratamiento y quién pagó.
-                    if (onAbrirPacientesNuevos != null) {
-                        Row(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                                .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                                .clickable { onAbrirPacientesNuevos() }.padding(Sania.dim.lg),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text("🌱  ${contexto.terminologiaPaciente.Pacientes} nuevos", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
-                            Text("→", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
-                        }
-                    }
+                    FilaMas("📈  Reportes", onClick = onAbrirReportes)
                     Spacer(Modifier.height(Sania.dim.lg))
                 }
 

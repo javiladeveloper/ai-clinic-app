@@ -94,7 +94,7 @@ import pe.saniape.app.ui.theme.Sania
  * del mes con su comparación honesta, "qué pasó cada mes" y exportar a CSV.
  *
  * Las otras dos vistas de la web (Rendimiento y Pacientes nuevos) ya son
- * nativas: aquí se abren con [onAbrirPacientesPeriodo] / [onAbrirPacientesNuevos].
+ * nativas: se saltan con la fila de pestañas ([FilaVistasReportes], [onVista]).
  *
  * Permiso `reportes` (lo decide el padre) + plan con reportes (Premium): sin
  * plan, el mismo aviso 💎 que muestran los otros reportes de la app.
@@ -103,8 +103,7 @@ import pe.saniape.app.ui.theme.Sania
 fun PantallaReportes(
     ctx: ContextoStaff,
     onSalir: () -> Unit,
-    onAbrirPacientesPeriodo: (() -> Unit)? = null,
-    onAbrirPacientesNuevos: (() -> Unit)? = null,
+    onVista: (VistaReportes) -> Unit = {},
 ) = pe.saniape.app.tutoriales.PantallaTutorial("Reportes") {
     val c = Sania.colors
     val acciones = recordarAcciones()
@@ -204,14 +203,7 @@ fun PantallaReportes(
                     .padding(horizontal = Sania.dim.lg, vertical = Sania.dim.md),
             ) {
                 // Las tres vistas de la web: Mes a mes (esta), Rendimiento y Pacientes nuevos.
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    ChipFiltro("📈 Mes a mes", activo = true) {}
-                    onAbrirPacientesPeriodo?.let { ChipFiltro("🎯 ${ctx.terminologiaPaciente.Pacientes} del período", activo = false, onClick = it) }
-                    onAbrirPacientesNuevos?.let { ChipFiltro("🌱 ${ctx.terminologiaPaciente.Pacientes} nuevos", activo = false, onClick = it) }
-                }
+                FilaVistasReportes(ctx, VistaReportes.MesAMes, onVista)
                 Spacer(Modifier.height(Sania.dim.md))
 
                 if (!conPlan) {
@@ -685,5 +677,21 @@ private fun MensajeReportes(emoji: String, texto: String, textoAccion: String? =
                     .clickable { onAccion() }.padding(horizontal = 20.dp, vertical = 10.dp),
             ) { Text(textoAccion, color = c.sobreNavy, fontWeight = FontWeight.Bold) }
         }
+    }
+}
+
+/** Las tres pestañas de la página Reportes de la web. */
+enum class VistaReportes { MesAMes, Rendimiento, Nuevos }
+
+/** Fila de pestañas compartida por las tres vistas (igual que la web): la activa va marcada. */
+@Composable
+fun FilaVistasReportes(ctx: ContextoStaff, actual: VistaReportes, onVista: (VistaReportes) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        ChipFiltro("📈 Mes a mes", activo = actual == VistaReportes.MesAMes) { onVista(VistaReportes.MesAMes) }
+        ChipFiltro("🎯 Rendimiento", activo = actual == VistaReportes.Rendimiento) { onVista(VistaReportes.Rendimiento) }
+        ChipFiltro("🌱 ${ctx.terminologiaPaciente.Pacientes} nuevos", activo = actual == VistaReportes.Nuevos) { onVista(VistaReportes.Nuevos) }
     }
 }
