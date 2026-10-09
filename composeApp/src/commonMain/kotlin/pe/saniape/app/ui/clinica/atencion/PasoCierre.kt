@@ -369,7 +369,7 @@ private fun BloqueCobro(vm: AtencionViewModel, d: DatosConsultaApp, ctx: Context
                         if (r.registrada) {
                             abierto = false
                             // Encolada: enviarOEncolar ya avisó "se registrará al volver la señal".
-                            if (!r.encolada) Toaster.exito(textoCobrado(nombreTipo, monto, modo, fecha, cita.fecha, pagos, r.yaEstaba))
+                            if (!r.encolada) Toaster.exito(textoCobrado(nombreTipo, monto, modo, fecha, pe.saniape.app.data.staff.hoyClinicaIso(), pagos, r.yaEstaba))
                             vm.recargar()
                         } else {
                             r.rechazo?.let { Toaster.error(pe.saniape.app.data.staff.mensajeRechazoCobro(it, pagos != null)) }
@@ -385,18 +385,20 @@ private fun BloqueCobro(vm: AtencionViewModel, d: DatosConsultaApp, ctx: Context
 
 /**
  * El toast del cobro, el mismo en la agenda y en la consulta guiada: "Cobrado
- * S/ 80.00 (fechado el 29/09)", "Cobrado S/ 40.00 (Efectivo + Yape)". Si la cita
+ * S/ 80.00 (fechado el 29/09)", "Cobrado S/ 40.00 (Efectivo + Yape)". El "fechado
+ * el" sale cuando la fecha del pago no es [fechaHoy] (desde 2026-10-08 el cobro
+ * va por defecto a la caja de HOY; antes se comparaba con el día de la cita). Si la cita
  * [yaEstaba] cobrada (otra persona, el auto-cobro…), se dice eso: el servidor no
  * registró el cobro de nuevo.
  */
 internal fun textoCobrado(
-    nombreTipo: String, monto: String, modo: String, fechaPago: String, fechaCita: String,
+    nombreTipo: String, monto: String, modo: String, fechaPago: String, fechaHoy: String,
     pagos: List<pe.saniape.app.data.staff.PartePago>? = null, yaEstaba: Boolean = false,
 ): String {
     if (yaEstaba) return "Esta ${nombreTipo.lowercase()} ya estaba cobrada: no se registró de nuevo"
     val medios = pagos?.takeIf { it.isNotEmpty() && modo != "gratis" }
         ?.let { " (${pe.saniape.app.data.staff.etiquetaMetodos(it)})" }.orEmpty()
-    val fechada = if (modo != "gratis" && fechaPago.take(10) != fechaCita.take(10)) {
+    val fechada = if (modo != "gratis" && fechaPago.take(10) != fechaHoy.take(10)) {
         val p = fechaPago.take(10).split("-")
         if (p.size == 3) " (fechado el ${p[2]}/${p[1]})" else ""
     } else ""

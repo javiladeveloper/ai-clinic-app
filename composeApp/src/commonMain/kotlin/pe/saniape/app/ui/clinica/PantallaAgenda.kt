@@ -693,7 +693,10 @@ fun PantallaAgenda(
                     metodo = metodoCobro,
                 )
             }
-            val conCobro = !evalua && cita.tipo == "Sesión" && cita.tratamientoId != null && ctx.puede("pagos")
+            // Sin saldo (paquete pagado completo, o esta sesión suelta ya pagada: el
+            // "¿Ya pagó?" del servidor dice "pagado") no se pregunta "¿pagó esta sesión?".
+            val conCobro = !evalua && cita.tipo == "Sesión" && cita.tratamientoId != null && ctx.puede("pagos") &&
+                vm.estadosPago[cita.id]?.estado != "pagado"
             // 📷 Fotos de la sesión: Sesión de un tratamiento + plan con fotos + clínica sin apagarlas.
             val fotosSesion = remember(cita.id) { pe.saniape.app.ui.clinica.pacientes.FotosSesionPendientes() }
             val conFotos = !evalua && cita.tipo == "Sesión" && cita.tratamientoId != null && cita.pacienteId != null &&

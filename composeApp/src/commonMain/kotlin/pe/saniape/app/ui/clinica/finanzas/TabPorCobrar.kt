@@ -111,7 +111,7 @@ internal fun TabPorCobrar() {
                             BotonFin(if (cobrando == p.citaId) "Cobrando…" else "💵 Cobrar", color = c.ok, habilitado = cobrando == null) {
                                 cobrando = p.citaId
                                 scope.launch {
-                                    val r = conIndicador(Gestion.GUARDANDO) { AgendaRepo.cobrarCita(p.citaId, metodo, "cobrar", null) }
+                                    val r = conIndicador(Gestion.GUARDANDO) { AgendaRepo.cobrarCita(p.citaId, metodo, "cobrar", hoyClinicaIso()) }
                                     cobrando = null
                                     when {
                                         r.encolada -> { Toaster.info("Sin señal: el cobro se enviará al volver la conexión"); filas = lista.filter { it.citaId != p.citaId } }

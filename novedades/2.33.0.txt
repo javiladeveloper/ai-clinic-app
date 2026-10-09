@@ -1,0 +1,9 @@
+# Novedades de la 2.33.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Mejoras de caja y atención: el cobro entra a la caja del día en que se cobra, un paquete pagado ya no pide cobrar cada sesión, y los tratamientos con controles (por ejemplo, toxina con control a los 15 días) quedan abiertos hasta el último control. Además, un aviso cuando un profesional no tiene especialidad.
+---
+Clínicas:
+• Caja: cobrar hoy una cita de otro día entra a la caja de hoy (la descripción indica el día de la atención). No se puede cobrar con fecha futura ni en un día con la caja ya cerrada.
+• Un paquete pagado completo ya no muestra "💳 Cobrar" en cada sesión.
+• Tratamientos con controles después del servicio: quedan "🔁 En control" hasta completar el último control; al dar de alta se te avisa cuántos controles se cancelan.
+• Profesionales: si alguno no tiene especialidad no se le pueden agendar citas; ahora lo ves con un aviso y lo corriges con un toque en Más → Profesionales.

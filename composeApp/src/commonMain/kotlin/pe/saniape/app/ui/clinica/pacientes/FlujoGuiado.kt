@@ -72,11 +72,28 @@ fun BarraRecorrido(
     onDarAlta: () -> Unit = {},             // en Control: el caso se cierra (alta)
     onRegistrarAtencion: () -> Unit = {},   // Control: medicación/receta · Servicio único: registrar el servicio
     onRevertirServicio: () -> Unit = {},    // Servicio único: volver a "Por hacer" (conserva el pago)
+    /**
+     * Las citas de ESTE tratamiento: sus CONTROLES post-tratamiento (servicio único /
+     * unidades). Con controles pendientes el tratamiento sigue abierto "En control"
+     * (decisión del dueño 2026-10-08) y el recorrido lo muestra: realizado → control(es).
+     */
+    citasTrat: List<pe.saniape.app.data.staff.CitaCtl> = emptyList(),
+    /**
+     * ¿Ya se cargaron las citas? Un servicio único 'Activo' puede estar "en
+     * control" (ya realizado): mientras no se sepa, no se dice "Por hacer" ni se
+     * ofrece "Registrar atención".
+     */
+    citasCargadas: Boolean = true,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val esServUnico = trat.esServicioUnico
-    val servRealizado = trat.servicioRealizado
+    // Con controles pendientes sigue 'Activo' pero el servicio YA se hizo.
+    val servRealizado = pe.saniape.app.data.staff.realizadoParaRecorrido(trat, citasTrat)
+    val esUnidades = trat.tipo == pe.saniape.app.data.staff.TipoTratamiento.UNIDADES
+    val controles = if (esServUnico || esUnidades) pe.saniape.app.data.staff.resumenControles(citasTrat) else null
+    val hayControles = controles != null && controles.total > 0
+    val enControl = pe.saniape.app.data.staff.enControl(trat, citasTrat)
     val servPagado = trat.estadoPago == "Pagado"
     val usaSesiones = !trat.esConsulta && !esServUnico
     val sesComp = trat.sesionesCompletadas
@@ -95,17 +112,29 @@ fun BarraRecorrido(
     val tieneProxControl = !trat.proximoControl.isNullOrBlank()
     val pasoTercero = when {
         esServUnico -> Paso(
-            "servicio", if (servRealizado) "Realizado" else "Por hacer",
-            done = servRealizado, activo = !servRealizado && !altaTrat,
+            "servicio", if (servRealizado) "Realizado" else if (!citasCargadas) "…" else "Por hacer",
+            done = servRealizado, activo = !servRealizado && !altaTrat && citasCargadas,
         )
         usaSesiones -> {
             val etq = if (sesComp > sesTot) "$sesTot/$sesTot +${sesComp - sesTot}" else "$sesComp/$sesTot ses."
             Paso("sesiones", etq, done = completo, activo = !completo && !altaTrat)
         }
+        // Unidades con controles post-intervención: "Control" se completa recién con el último.
+        esUnidades && hayControles -> {
+            val intervenido = atendido || trat.sesionesCompletadas > 0 || trat.estado == "Completado" || altaTrat
+            Paso("control", pe.saniape.app.data.staff.etiquetaControles(controles!!),
+                done = intervenido && controles.pendientes == 0,
+                activo = intervenido && controles.pendientes > 0 && !altaTrat)
+        }
         else -> Paso("control", "Control", done = atendido, activo = !altaTrat && tieneProxControl)
     }
+    // Servicio único con controles: etapa propia entre "Realizado" y "Pagado".
+    val pasoControlServ = if (esServUnico && hayControles) Paso(
+        "serv-control", pe.saniape.app.data.staff.etiquetaControles(controles!!),
+        done = servRealizado && controles.pendientes == 0, activo = enControl && !altaTrat,
+    ) else null
     val pasoCuarto =
-        if (esServUnico) Paso("pagado", "Pagado", done = servPagado, activo = servRealizado && !servPagado)
+        if (esServUnico) Paso("pagado", "Pagado", done = servPagado, activo = servRealizado && !servPagado && !enControl)
         else Paso("alta", flujo.labelAlta, done = altaTrat, activo = false)
     // Las etapas de entrada se ocultan si este flujo NO las usa Y no están
     // cumplidas. Un hito histórico ya cumplido NUNCA se borra: una clínica que
@@ -118,6 +147,7 @@ fun BarraRecorrido(
         Paso("evaluacion", flujo.labelEvaluacion, done = evalDone, activo = false)
             .takeIf { flujo.usaEvaluacion || evalDone },
         pasoTercero,
+        pasoControlServ,
         pasoCuarto,
     )
     // Cada bolita puede abrir su nube de referencia si hay una cita-hito asociada:
@@ -269,7 +299,16 @@ fun BarraRecorrido(
                 }
                 if (!altaTrat) {
                     Spacer(Modifier.height(8.dp))
-                    if (!servRealizado) {
+                    if (enControl && controles != null) {
+                        // Realizado y con controles por atender: se completa con el último.
+                        Text(
+                            "🔁 En control: ${if (controles.pendientes == 1) "queda 1 control" else "quedan ${controles.pendientes} controles"}. " +
+                                "El tratamiento se completa al atender (o cancelar) el último.",
+                            color = c.navy, fontSize = 11.sp,
+                        )
+                    } else if (!servRealizado && !citasCargadas) {
+                        Text("Cargando…", color = c.textoSuave, fontSize = 11.sp)
+                    } else if (!servRealizado) {
                         Box(
                             Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.navy)
                                 .clickable { onRegistrarAtencion() }.padding(vertical = 9.dp),

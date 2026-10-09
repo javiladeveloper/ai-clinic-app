@@ -71,6 +71,8 @@ data class ProfesionalItem(
     val nombre: String,
     val especialidad: String?,
     val turno: String?,
+    /** Sin ninguna fila en `terapeuta_especialidades`: la agenda lo rechaza ("Ya no hay cupo"). */
+    val sinEspecialidad: Boolean = false,
 )
 
 /** HH:MM (también acepta HH:MM:SS) → "HH:MM". */
@@ -194,7 +196,7 @@ object HorarioProfesionalRepo {
     /** Profesionales activos de la clínica (lectura directa con RLS). */
     suspend fun listar(): List<ProfesionalItem> =
         Supabase.client.postgrest["terapeutas"]
-            .select(Columns.list("id, nombre, especialidad, turno, estado")) {
+            .select(Columns.list("id, nombre, especialidad, turno, estado, esps:terapeuta_especialidades(especialidad_id)")) {
                 order("nombre", Order.ASCENDING)
             }
             .decodeList<JsonObject>()
@@ -206,6 +208,10 @@ object HorarioProfesionalRepo {
                     nombre = (o["nombre"] as? JsonPrimitive)?.contentOrNull ?: "Profesional",
                     especialidad = (o["especialidad"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() },
                     turno = (o["turno"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() },
+                    sinEspecialidad = ReglasEspecialidadProfesional.sinEspecialidad(
+                        (o["estado"] as? JsonPrimitive)?.contentOrNull,
+                        (o["esps"] as? kotlinx.serialization.json.JsonArray)?.size ?: 1, // sin el dato, no se avisa
+                    ),
                 )
             }
 }

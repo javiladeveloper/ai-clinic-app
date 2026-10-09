@@ -115,6 +115,10 @@ fun TarjetaTratamiento(
      */
     esEvaluacionPsico: Boolean = false,
     bloqueEvaluacionPsico: (@Composable () -> Unit)? = null,
+    /** Citas de ESTE tratamiento (de los hitos): controles post-tratamiento y "En control". */
+    citasTrat: List<pe.saniape.app.data.staff.CitaCtl> = emptyList(),
+    /** ¿Ya llegaron los hitos (y con ellos [citasTrat])? Mientras no, no se afirma "Por hacer". */
+    hitosCargados: Boolean = true,
 ) {
     val tpl = LocalTerminologiaPaciente.current
     // Permisos EFECTIVOS: el rol decide (puede()), y la baja del paciente los apaga.
@@ -125,6 +129,8 @@ fun TarjetaTratamiento(
     val scope = rememberCoroutineScope()
     var expandido by remember { mutableStateOf(false) }
     var sesiones by remember { mutableStateOf<List<SesionFicha>?>(null) }
+    // Lo pagado NETO que cargó la sección de pagos (null = aún no): decide el "💳 Cobrar" por sesión.
+    var pagadoCargado by remember(t.id) { mutableStateOf<Double?>(null) }
     var accionando by remember { mutableStateOf(false) }
     var menuDe by remember { mutableStateOf<SesionFicha?>(null) }   // sesión con menú ⋯ abierto
     var cambioToken by remember { mutableStateOf(0) }   // recarga la sección de pagos tras cobros
@@ -211,6 +217,7 @@ fun TarjetaTratamiento(
     // Acento de color por tipo: sesiones/servicio = teal, consulta médica = morado.
     val acento = if (t.esConsulta && !t.esServicioUnico) c.purple else c.teal
     val cerrado = t.estado == "Alta" || t.estado == "Cancelado" || t.estado == "Suspendido"
+    val tratEnControl = pe.saniape.app.data.staff.enControl(t, citasTrat)
 
     // La barra de acento se DIBUJA detrás (drawBehind), no es un Box con
     // fillMaxHeight dentro de un Row con height(IntrinsicSize.Min): las medidas
@@ -262,7 +269,14 @@ fun TarjetaTratamiento(
                             modifier = Modifier.padding(top = 2.dp))
                     }
                 }
-                Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(estado.bg)
+                // Servicio único / unidades realizado con controles pendientes: sigue
+                // abierto (Activo) y se dice "En control" (decisión del dueño 2026-10-08).
+                if (tratEnControl) {
+                    Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.infoBg)
+                        .padding(horizontal = 8.dp, vertical = 3.dp)) {
+                        Text("🔁 En control", color = c.info, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                } else Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(estado.bg)
                     .padding(horizontal = 8.dp, vertical = 3.dp)) {
                     Text(t.estado ?: "—", color = estado.fg, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
@@ -291,7 +305,8 @@ fun TarjetaTratamiento(
         if (t.estado == "Activo" || t.estado == "Completado" || t.estado == "Alta") {
             Spacer(Modifier.height(10.dp))
             BarraRecorrido(
-                trat = t, flujo = flujo, consultaDone = consultaDone, evalDone = evalDone,
+                trat = t, flujo = flujo, consultaDone = consultaDone, evalDone = evalDone, citasTrat = citasTrat,
+                citasCargadas = hitosCargados,
                 citaConsulta = citaConsulta, citaEvaluacion = citaEvaluacion,
                 puedePagos = verPagos, expandido = expandido, onEditarCita = onEditarCita,
                 onToggleSesiones = { expandido = !expandido },
@@ -478,7 +493,9 @@ fun TarjetaTratamiento(
                 // Alta a la vista también sin sesiones (2026-10-02: "en algunos
                 // procedimientos no encontré dar de alta" — estaba solo dentro del
                 // paso "Control"). El servicio único se cierra una vez realizado.
-                if (!terminado && puedeSesionesEf && (!t.esServicioUnico || t.estado == "Completado")) {
+                // En control (realizado, con controles pendientes) también: el alta lo
+                // cierra y cancela los controles que faltan (como la web).
+                if (!terminado && puedeSesionesEf && (!t.esServicioUnico || t.estado == "Completado" || tratEnControl)) {
                     Spacer(Modifier.height(Sania.dim.sm))
                     BtnDarAlta(habilitado = !accionando) { confirmarAlta = true }
                 }
@@ -536,6 +553,7 @@ fun TarjetaTratamiento(
                                 ses = ses, verCosto = verPagos, puedeSesiones = puedeSesionesEf,
                                 puedeCorregir = correccion,
                                 puedePagos = puedeCobrarEf, esAdmin = esAdmin, accionando = accionando,
+                                sinSaldo = t.sinSaldoCon(pagadoCargado),
                                 avisoRxPrevia = ses.pendiente && AvisoRx.dejoRx(anteriorSes),
                                 menuAbierto = menuDe?.id == ses.id,
                                 onToggleMenu = { menuDe = if (menuDe?.id == ses.id) null else ses },
@@ -588,7 +606,8 @@ fun TarjetaTratamiento(
                     if (verPagos) {
                         Spacer(Modifier.height(Sania.dim.md))
                         SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() },
-                            soloLectura = soloLectura, pacienteId = pacienteId, abrirRegistro = abrirPagoToken)
+                            soloLectura = soloLectura, pacienteId = pacienteId, abrirRegistro = abrirPagoToken,
+                            onPagado = { pagadoCargado = it })
                     }
 
                     // Dar de alta (si el tratamiento sigue en curso y puede sesiones) — con confirmación.
@@ -636,6 +655,7 @@ fun TarjetaTratamiento(
             // Si las sesiones no se cargaron (tarjeta sin expandir), mensaje genérico.
             sesionesPendientes = sesiones?.count { it.pendiente },
             saldo = saldoAlta,
+            controlesPendientes = if (t.esServicioUnico) pe.saniape.app.data.staff.resumenControles(citasTrat).pendientes else 0,
             onRegistrarPago = if (verPagos && !soloLectura) {
                 { confirmarAlta = false; expandido = true; abrirPagoToken++ }
             } else null,
@@ -777,7 +797,12 @@ fun TarjetaTratamiento(
                 accionando = true
                 scope.launch {
                     // 1) Marca Completado + acumula la nota (server-side).
-                    val okServicio = PacientesRepo.registrarServicio(t.id, nota)
+                    val rServicio = PacientesRepo.registrarServicio(t.id, nota, conPago = cobrar && monto != null && monto > 0)
+                    // Parcial (409): el servicio SÍ quedó registrado, pero sus controles no
+                    // se agendaron (cupo lleno…). Se avisa y el resto (técnicas, cobro) sigue.
+                    val parcialServicio = !rServicio.registrada && rServicio.rechazo?.datos
+                        ?.get("parcial")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content == "true" } == true
+                    val okServicio = rServicio.registrada || parcialServicio
                     // 2) Aprender las técnicas usadas (se sugieren en futuras atenciones).
                     if (okServicio && !nota.isNullOrBlank()) {
                         pe.saniape.app.data.staff.TecnicasRepo.registrar(nota, t.especialidadId, pacienteNombre)
@@ -789,7 +814,11 @@ fun TarjetaTratamiento(
                         if (okCobro) pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(pacienteId, metodo)
                     }
                     when {
-                        !okServicio -> pe.saniape.app.ui.Toaster.error("No se pudo registrar la atención")
+                        !okServicio -> pe.saniape.app.ui.Toaster.error(rServicio.rechazo?.error ?: "No se pudo registrar la atención")
+                        parcialServicio -> pe.saniape.app.ui.Toaster.error(
+                            (rServicio.rechazo?.datos?.get("causa") as? kotlinx.serialization.json.JsonPrimitive)?.content
+                                ?: "Atención registrada, pero no se agendaron sus controles. Agéndalos desde la agenda.",
+                        )
                         !okCobro -> pe.saniape.app.ui.Toaster.error("Atención registrada, pero el cobro falló. Revisa caja.")
                         else -> pe.saniape.app.ui.Toaster.exito("Atención registrada")
                     }
@@ -875,6 +904,8 @@ private fun FilaSesion(
     puedePagos: Boolean,
     esAdmin: Boolean,
     accionando: Boolean,
+    /** Tratamiento pagado completo: sin "💳 Cobrar" (las que tienen pago siguen "✓ Pagada"). */
+    sinSaldo: Boolean = false,
     avisoRxPrevia: Boolean,
     menuAbierto: Boolean,
     onToggleMenu: () -> Unit,
@@ -950,7 +981,7 @@ private fun FilaSesion(
                         Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.okBg)
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                     ) { Text("✓ Pagada", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                    completada && puedePagos -> MiniBtn("💳 Cobrar", c.teal, !accionando) { onCobrar() }
+                    completada && puedePagos && !sinSaldo -> MiniBtn("💳 Cobrar", c.teal, !accionando) { onCobrar() }
                 }
                 if (ses.pendiente) IconoBtn("✏", !accionando) { onEditar() }
                 IconoBtn("⋯", !accionando) { onToggleMenu() }
@@ -1065,6 +1096,9 @@ fun SeccionPagos(
     pacienteId: String? = null,
     /** Cada vez que sube, abre "Registrar pago" con el saldo precargado (aviso del alta). */
     abrirRegistro: Int = 0,
+    /** Lo pagado NETO, cada vez que se cargan los pagos: la tarjeta decide con eso si
+     *  ofrece "💳 Cobrar" por sesión (el estado_pago guardado puede estar viejo). */
+    onPagado: (Double) -> Unit = {},
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
@@ -1096,6 +1130,7 @@ fun SeccionPagos(
     val acordado = t.montoAcordado
     // Pagado NETO: Σ de todas las filas, también las de saldo (el "consumo" resta).
     val pagado = pagos?.let { pe.saniape.app.data.staff.pagadoNeto(it) } ?: 0.0
+    LaunchedEffect(pagos) { if (pagos != null) onPagado(pagado) }
     val saldo = acordado - pagado
     // Disponible del paciente (sin contar ESTE tratamiento): se PREGUNTA al servidor al
     // abrir "Registrar pago", solo si este tratamiento debe algo y puede recibir saldo.

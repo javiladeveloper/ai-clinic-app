@@ -85,6 +85,13 @@ data class TratamientoPaciente(
     /** Tamaño del paquete ORIGINAL (no null = se amplió): el "Nuevo paquete" lo repite. */
     val sesionesBase: Int? = null,
     val citaOrigenId: String? = null,
+    /**
+     * Escalera de controles post-tratamiento: arranca al completarse la atención
+     * (servicio único / unidades). Señal de "ya se realizó" cuando el tratamiento
+     * sigue abierto "en control" (ver ControlesPendientes.kt).
+     */
+    val controlAnclaje: String? = null,
+    val controlIndice: Int = 0,
     /** Cerrado por abandono (estado Suspendido + no_volvio). */
     val noVolvio: Boolean = false,
     val motivoCierre: String? = null,
@@ -125,11 +132,31 @@ data class TratamientoPaciente(
         )
     }
 
-    /** Monto total acordado del tratamiento (igual que la web). */
+    /**
+     * Pagado COMPLETO (pagado ≥ acordado): no se ofrece "💳 Cobrar" por sesión
+     * (DALU 2026-10-08: un paquete pagado por adelantado seguía ofreciendo cobrar
+     * cada sesión). Sin los pagos a mano, el `estado_pago` que mantiene el
+     * servidor con la regla de la web (lib/pagos → estadoPago): sin precio
+     * acordado nunca queda "Pagado", así que ahí se sigue cobrando por sesión.
+     */
+    val sinSaldo: Boolean get() = sinSaldoCon(null)
+
+    /**
+     * Lo mismo, con lo [pagado] NETO ya cargado (la sección de pagos de la
+     * tarjeta): manda sobre `estado_pago`, que puede estar desactualizado si se
+     * editó el precio. null = no se cargaron → `estado_pago` de respaldo.
+     */
+    fun sinSaldoCon(pagado: Double?): Boolean = tratamientoSinSaldo(montoAcordado, pagado, estadoPago)
+
+    /** Monto total acordado del tratamiento (igual que la web, lib/pagos → montoAcordado). */
     val montoAcordado: Double
         get() = precioAcordado
-            ?: if (modalidad == "Paquete") (precioPaquete ?: 0.0)
-            else (precioPorSesion ?: 0.0) * totalSesiones
+            ?: when (modalidad) {
+                "Paquete" -> precioPaquete ?: 0.0
+                // Unidades: cantidad × precio unitario (4000 folículos × 1.50).
+                "Unidades" -> (cantidadUnidades ?: 0) * (precioUnitario ?: 0.0)
+                else -> (precioPorSesion ?: 0.0) * totalSesiones
+            }
 
     /** Es una Consulta (especialidad sin sesiones): no muestra contador/acciones de sesión. */
     val esConsulta: Boolean get() = !usaSesiones
@@ -296,6 +323,11 @@ data class HitosPaciente(
     val citasFuturasPendientes: List<Pair<String, String?>> = emptyList(),
     /** sesionId → citaId (no canceladas): el "¿ya pagó?" al completar una sesión desde la ficha. */
     val citaPorSesion: Map<String, String> = emptyMap(),
+    /**
+     * Citas de cada tratamiento (tratamientoId → citas): sus CONTROLES post-
+     * tratamiento y la etapa "En control" del servicio único / unidades.
+     */
+    val citasPorTrat: Map<String, List<CitaCtl>> = emptyMap(),
 )
 
 /** Una evaluación completada del paciente (origen de un tratamiento). */
@@ -464,7 +496,7 @@ object PacientesRepo {
             cantidad_unidades, precio_unitario,
             diagnostico, medicacion, proximo_control, nota_recepcion, tecnicas_sugeridas,
             procedimiento_id, sesiones_base, cita_origen_id, no_volvio, motivo_cierre, cerrado_at,
-            fecha_inicio, created_at, saldo_liberado_at, saldo_liberado_por,
+            fecha_inicio, created_at, saldo_liberado_at, saldo_liberado_por, control_anclaje, control_indice,
             ses_estados:sesiones!sesiones_tratamiento_id_fkey(estado),
             citas_estados:citas!citas_tratamiento_id_fkey(estado),
             procedimiento:procedimientos(nombre, especialidad_id, modo_cobro, precio, unidad_label, especialidad:especialidades(nombre, usa_sesiones)),
@@ -981,22 +1013,27 @@ object PacientesRepo {
     /** Como [cobrarSesion], con el detalle del rechazo (no lo muestra): para reintentar SOLO el cobro. */
     suspend fun cobrarSesionDetalle(
         tratamientoId: String, sesionId: String, monto: Double, metodo: String, notas: String? = null,
+        /** Día del cobro: el del momento en que se actúa (Lima), no el del envío. */
+        fecha: String = hoyClinicaIso(),
     ): pe.saniape.app.data.offline.ResultadoEscritura = postStaffDetalle("/api/staff/pago/registrar", buildJsonObject {
         put("tratamientoId", tratamientoId)
         put("sesionId", sesionId)
         put("monto", monto)
         put("metodo", metodo)
+        put("fecha", fecha)
         if (!notas.isNullOrBlank()) put("notas", notas)
     })
 
     /** Cobrar una sesión (pago vinculado a la sesión) — reusa el endpoint de pago. */
     suspend fun cobrarSesion(
         tratamientoId: String, sesionId: String, monto: Double, metodo: String, notas: String? = null,
+        fecha: String = hoyClinicaIso(),
     ): Boolean = postStaff("/api/staff/pago/registrar", buildJsonObject {
         put("tratamientoId", tratamientoId)
         put("sesionId", sesionId)
         put("monto", monto)
         put("metodo", metodo)
+        put("fecha", fecha)
         if (!notas.isNullOrBlank()) put("notas", notas)
     })
 
@@ -1121,9 +1158,17 @@ object PacientesRepo {
      * Completado y ACUMULA la nota de "qué se hizo" en sus notas (server-side, mismo resultado
      * que la ficha web). El cobro opcional va aparte por registrarPago (pago + kardex + recálculo).
      */
-    suspend fun registrarServicio(tratamientoId: String, nota: String?): Boolean =
-        accionTratamiento(buildJsonObject {
+    suspend fun registrarServicio(
+        tratamientoId: String, nota: String?,
+        /**
+         * ¿El cobro va aparte (registrarPago)? El servidor, si completa la cita del
+         * servicio, NO la auto-cobra en ese caso: un solo cobro, nunca dos.
+         */
+        conPago: Boolean,
+    ): pe.saniape.app.data.offline.ResultadoEscritura =
+        postStaffDetalle("/api/staff/tratamiento/accion", buildJsonObject {
             put("accion", "estado"); put("tratamientoId", tratamientoId); put("estado", "Completado")
+            put("conPago", conPago)
             if (!nota.isNullOrBlank()) put("notaAtencion", nota.trim())
         })
 
@@ -1490,6 +1535,12 @@ object PacientesRepo {
                 .filter { it.str("estado") != "Cancelada" }
                 .mapNotNull { f -> val s = f.str("sesion_id"); val c = f.str("id"); if (s != null && c != null) s to c else null }
                 .toMap(),
+            citasPorTrat = filas
+                .mapNotNull { f ->
+                    val tid = f.str("tratamiento_id") ?: return@mapNotNull null
+                    tid to CitaCtl(f.str("id") ?: "", f.str("tipo"), f.str("estado"), f.str("notas"))
+                }
+                .groupBy({ it.first }, { it.second }),
         )
     }
 
@@ -1569,6 +1620,8 @@ object PacientesRepo {
                 procedimientoId = t.str("procedimiento_id"),
                 sesionesBase = t.int("sesiones_base"),
                 citaOrigenId = t.str("cita_origen_id"),
+                controlAnclaje = t.str("control_anclaje"),
+                controlIndice = t.int("control_indice") ?: 0,
                 noVolvio = t.bool("no_volvio") == true,
                 motivoCierre = t.str("motivo_cierre"),
                 cerradoAt = t.str("cerrado_at"),
@@ -1731,3 +1784,10 @@ object PacientesRepo {
         true
     } catch (e: Exception) { false }
 }
+/**
+ * ¿Tratamiento pagado completo? (gemelo de tratamientoSaldado en lib/pagos de la web:
+ * pagado ≥ acordado − medio céntimo, y sin precio acordado NUNCA). Con [pagado] null
+ * (no se cargaron los pagos) decide el `estado_pago` guardado.
+ */
+fun tratamientoSinSaldo(acordado: Double, pagado: Double?, estadoPago: String?): Boolean =
+    if (pagado != null) acordado > 0.0 && pagado >= acordado - 0.005 else estadoPago == "Pagado"

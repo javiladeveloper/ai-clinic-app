@@ -399,6 +399,9 @@ internal fun SeccionHistoriaClinica(d: JsonObject, onVolver: () -> Unit) {
         }
         Tarjeta("Consentimiento informado por procedimiento") {
             Ayuda("Se imprime para firma manuscrita y huella del paciente (la norma no acepta la firma electrónica del paciente para esto). La biblioteca es un punto de partida en lenguaje sencillo: revísala con tu criterio clínico antes de usarla.")
+            // Lo que el código hace de verdad (asegurarConsentimientosDeCita en la web):
+            // agendar desde la agenda NO lo genera. Gemelo de CUANDO_SE_GENERA_CONSENTIMIENTO.
+            Ayuda("Asocia cada plantilla a su servicio: el consentimiento se genera solo, pendiente de firma, cuando el médico indica ese procedimiento en la consulta guiada o abre su atención (▶ Atender). Agendarlo desde la agenda no lo genera: aparece al atenderlo.")
             if (esAdmin) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val faltan = dd.i("faltanBiblioteca") ?: 0
                 if (faltan > 0) Boton("📚 Agregar biblioteca ($faltan)", primario = false, habilitado = !ocupado, modifier = Modifier.weight(1f)) {

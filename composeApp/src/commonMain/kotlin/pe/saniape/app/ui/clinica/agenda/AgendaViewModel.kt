@@ -930,7 +930,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     /**
      * Cobrar una Consulta/Evaluación (gemelo del "💵 Registrar cobro" de /citas web):
      * [modo] "cobrar" | "abonar" | "gratis"; [fecha] (yyyy-MM-dd) = día en que el
-     * paciente pagó (por defecto el de la cita); [pagos] = cobro dividido en varios
+     * paciente pagó (por defecto HOY, Lima: la caja del día en que se cobra); [pagos] = cobro dividido en varios
      * medios (null = un solo [metodo]). [onFin] recibe true si quedó registrado (en
      * el servidor o en la cola): solo entonces se cierra el modal, así un rechazo
      * (p. ej. sin tratamiento al cual abonar, o un cobro incierto que se repite con
@@ -951,7 +951,8 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                         pe.saniape.app.ui.clinica.atencion.textoCobrado(
                             flujoDe(cita).nombreTipo(cita.tipo),
                             pe.saniape.app.ui.clinica.agenda.modales.textoSoles(cita.costo ?: 0.0, pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)),
-                            modo, fecha, cita.fecha, pagos, r.yaEstaba,
+                            // Bugs caja 2026-10-08: "fechado el…" solo si no es HOY (de la sede activa).
+                            modo, fecha, hoyIso(), pagos, r.yaEstaba,
                         )
                     )
                 }
