@@ -534,6 +534,7 @@ fun TarjetaTratamiento(
                                 ses = ses, verCosto = verPagos, puedeSesiones = puedeSesionesEf,
                                 puedeCorregir = correccion,
                                 puedePagos = puedeCobrarEf, esAdmin = esAdmin, accionando = accionando,
+                                sinSaldo = t.sinSaldo,
                                 avisoRxPrevia = ses.pendiente && AvisoRx.dejoRx(anteriorSes),
                                 menuAbierto = menuDe?.id == ses.id,
                                 onToggleMenu = { menuDe = if (menuDe?.id == ses.id) null else ses },
@@ -872,6 +873,8 @@ private fun FilaSesion(
     puedePagos: Boolean,
     esAdmin: Boolean,
     accionando: Boolean,
+    /** Tratamiento pagado completo: sin "💳 Cobrar" (las que tienen pago siguen "✓ Pagada"). */
+    sinSaldo: Boolean = false,
     avisoRxPrevia: Boolean,
     menuAbierto: Boolean,
     onToggleMenu: () -> Unit,
@@ -946,7 +949,7 @@ private fun FilaSesion(
                         Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.okBg)
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                     ) { Text("✓ Pagada", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                    completada && puedePagos -> MiniBtn("💳 Cobrar", c.teal, !accionando) { onCobrar() }
+                    completada && puedePagos && !sinSaldo -> MiniBtn("💳 Cobrar", c.teal, !accionando) { onCobrar() }
                 }
                 if (ses.pendiente) IconoBtn("✏", !accionando) { onEditar() }
                 IconoBtn("⋯", !accionando) { onToggleMenu() }

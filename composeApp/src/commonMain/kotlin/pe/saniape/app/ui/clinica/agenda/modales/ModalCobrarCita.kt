@@ -55,9 +55,10 @@ import pe.saniape.app.tutoriales.tourAncla
  * "💵 Registrar cobro" de una Consulta/Evaluación (gemelo del modal de /citas web).
  *
  * Pide el MÉTODO (antes todo se anotaba como efectivo y el arqueo salía mal) y la
- * FECHA DEL PAGO: por defecto el día de la cita, pero recepción la cambia cuando el
- * paciente pagó otro día (caso DALU 30/09/2026: pagó hoy la evaluación de mañana, y
- * el ingreso debe caer en la caja del día en que de verdad entró el dinero).
+ * FECHA DEL PAGO: por defecto HOY (Lima) — el cobro entra a la caja del día en que
+ * se cobra (decisión del dueño 2026-10-08; antes era el día de la cita y el arqueo
+ * de hoy no cuadraba con el cajón). Recepción la cambia solo si el paciente pagó
+ * otro día.
  *
  * Tres destinos del cobro (Renova 2026-08-26): cobrar normal, abonarlo al
  * tratamiento del paciente, o no cobrar (la cita queda en S/ 0 y saldada).
@@ -83,7 +84,10 @@ fun ModalCobrarCita(
     val c = Sania.colors
     var modo by remember(cita.id) { mutableStateOf("cobrar") }
     var metodo by rememberMetodoPagoInicial(cita.pacienteId)
-    var fecha by remember(cita.id) { mutableStateOf(cita.fecha.take(10).ifBlank { pe.saniape.app.ui.clinica.agenda.hoyIso() }) }
+    // Por defecto HOY (Lima): el cobro entra a la caja del día en que se cobra
+    // (decisión del dueño 2026-10-08), no la de la cita. Se cambia solo si el
+    // paciente pagó otro día.
+    var fecha by remember(cita.id) { mutableStateOf(pe.saniape.app.ui.clinica.agenda.hoyIso()) }
     var mostrarFecha by remember { mutableStateOf(false) }
     val metodos = rememberMetodosPago()
     var dividido by remember(cita.id) { mutableStateOf(false) }
@@ -191,7 +195,7 @@ fun ModalCobrarCita(
                 Text("▾", color = c.navy)
             }
             Text(
-                "Por defecto, el día de la cita. Cámbiala si el ${LocalTerminologiaPaciente.current.paciente} pagó otro día (p. ej. pagó hoy una evaluación de mañana).",
+                "Por defecto, hoy: el cobro entra a la caja del día en que se cobra. Cámbiala solo si el ${LocalTerminologiaPaciente.current.paciente} pagó otro día.",
                 color = c.textoSuave, fontSize = 11.sp, lineHeight = 14.sp, modifier = Modifier.padding(top = 4.dp),
             )
         }

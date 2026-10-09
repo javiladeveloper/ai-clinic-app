@@ -125,6 +125,15 @@ data class TratamientoPaciente(
         )
     }
 
+    /**
+     * Pagado COMPLETO (pagado ≥ acordado): no se ofrece "💳 Cobrar" por sesión
+     * (DALU 2026-10-08: un paquete pagado por adelantado seguía ofreciendo cobrar
+     * cada sesión). Es el `estado_pago` que mantiene el servidor con la regla de
+     * la web (lib/pagos → estadoPago / tratamientoSaldado): sin precio acordado
+     * nunca queda "Pagado", así que ahí se sigue cobrando por sesión.
+     */
+    val sinSaldo: Boolean get() = estadoPago == "Pagado"
+
     /** Monto total acordado del tratamiento (igual que la web). */
     val montoAcordado: Double
         get() = precioAcordado
