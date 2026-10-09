@@ -116,6 +116,8 @@ fun TarjetaTratamiento(
     bloqueEvaluacionPsico: (@Composable () -> Unit)? = null,
     /** Citas de ESTE tratamiento (de los hitos): controles post-tratamiento y "En control". */
     citasTrat: List<pe.saniape.app.data.staff.CitaCtl> = emptyList(),
+    /** ¿Ya llegaron los hitos (y con ellos [citasTrat])? Mientras no, no se afirma "Por hacer". */
+    hitosCargados: Boolean = true,
 ) {
     val tpl = LocalTerminologiaPaciente.current
     // Permisos EFECTIVOS: el rol decide (puede()), y la baja del paciente los apaga.
@@ -302,6 +304,7 @@ fun TarjetaTratamiento(
             Spacer(Modifier.height(10.dp))
             BarraRecorrido(
                 trat = t, flujo = flujo, consultaDone = consultaDone, evalDone = evalDone, citasTrat = citasTrat,
+                citasCargadas = hitosCargados,
                 citaConsulta = citaConsulta, citaEvaluacion = citaEvaluacion,
                 puedePagos = verPagos, expandido = expandido, onEditarCita = onEditarCita,
                 onToggleSesiones = { expandido = !expandido },
@@ -650,6 +653,7 @@ fun TarjetaTratamiento(
             // Si las sesiones no se cargaron (tarjeta sin expandir), mensaje genérico.
             sesionesPendientes = sesiones?.count { it.pendiente },
             saldo = saldoAlta,
+            controlesPendientes = if (t.esServicioUnico) pe.saniape.app.data.staff.resumenControles(citasTrat).pendientes else 0,
             onRegistrarPago = if (verPagos && !soloLectura) {
                 { confirmarAlta = false; expandido = true; abrirPagoToken++ }
             } else null,
@@ -791,7 +795,12 @@ fun TarjetaTratamiento(
                 accionando = true
                 scope.launch {
                     // 1) Marca Completado + acumula la nota (server-side).
-                    val okServicio = PacientesRepo.registrarServicio(t.id, nota)
+                    val rServicio = PacientesRepo.registrarServicio(t.id, nota, conPago = cobrar && monto != null && monto > 0)
+                    // Parcial (409): el servicio SÍ quedó registrado, pero sus controles no
+                    // se agendaron (cupo lleno…). Se avisa y el resto (técnicas, cobro) sigue.
+                    val parcialServicio = !rServicio.registrada && rServicio.rechazo?.datos
+                        ?.get("parcial")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content == "true" } == true
+                    val okServicio = rServicio.registrada || parcialServicio
                     // 2) Aprender las técnicas usadas (se sugieren en futuras atenciones).
                     if (okServicio && !nota.isNullOrBlank()) {
                         pe.saniape.app.data.staff.TecnicasRepo.registrar(nota, t.especialidadId, pacienteNombre)
@@ -803,7 +812,11 @@ fun TarjetaTratamiento(
                         if (okCobro) pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(pacienteId, metodo)
                     }
                     when {
-                        !okServicio -> pe.saniape.app.ui.Toaster.error("No se pudo registrar la atención")
+                        !okServicio -> pe.saniape.app.ui.Toaster.error(rServicio.rechazo?.error ?: "No se pudo registrar la atención")
+                        parcialServicio -> pe.saniape.app.ui.Toaster.error(
+                            (rServicio.rechazo?.datos?.get("causa") as? kotlinx.serialization.json.JsonPrimitive)?.content
+                                ?: "Atención registrada, pero no se agendaron sus controles. Agéndalos desde la agenda.",
+                        )
                         !okCobro -> pe.saniape.app.ui.Toaster.error("Atención registrada, pero el cobro falló. Revisa caja.")
                         else -> pe.saniape.app.ui.Toaster.exito("Atención registrada")
                     }

@@ -1158,9 +1158,17 @@ object PacientesRepo {
      * Completado y ACUMULA la nota de "qué se hizo" en sus notas (server-side, mismo resultado
      * que la ficha web). El cobro opcional va aparte por registrarPago (pago + kardex + recálculo).
      */
-    suspend fun registrarServicio(tratamientoId: String, nota: String?): Boolean =
-        accionTratamiento(buildJsonObject {
+    suspend fun registrarServicio(
+        tratamientoId: String, nota: String?,
+        /**
+         * ¿El cobro va aparte (registrarPago)? El servidor, si completa la cita del
+         * servicio, NO la auto-cobra en ese caso: un solo cobro, nunca dos.
+         */
+        conPago: Boolean,
+    ): pe.saniape.app.data.offline.ResultadoEscritura =
+        postStaffDetalle("/api/staff/tratamiento/accion", buildJsonObject {
             put("accion", "estado"); put("tratamientoId", tratamientoId); put("estado", "Completado")
+            put("conPago", conPago)
             if (!nota.isNullOrBlank()) put("notaAtencion", nota.trim())
         })
 

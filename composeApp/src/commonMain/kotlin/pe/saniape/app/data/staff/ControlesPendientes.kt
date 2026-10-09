@@ -63,6 +63,13 @@ fun enControl(t: TratamientoPaciente, citas: List<CitaCtl>): Boolean {
     return resumenControles(citas).pendientes > 0 && servicioRealizadoSegun(t, citas)
 }
 
+/** Aviso del alta de un servicio "en control": el alta cancela sus controles pendientes. */
+fun textoControlesAlta(pendientes: Int): String? = when {
+    pendientes <= 0 -> null
+    pendientes == 1 -> "Se cancelará 1 control pendiente."
+    else -> "Se cancelarán $pendientes controles pendientes."
+}
+
 /** "Control", "Controles" o el avance "Control 1/2" (como etiquetaControles de la web). */
 fun etiquetaControles(r: ResumenControles): String =
     if (r.pendientes == 0) (if (r.total > 1) "Controles" else "Control")
