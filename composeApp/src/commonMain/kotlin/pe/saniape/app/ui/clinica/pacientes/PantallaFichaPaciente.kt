@@ -1220,12 +1220,12 @@ private fun PantallaFichaPacienteContenido(
                     )
                     val ok = r.registrada
                     if (ok) pe.saniape.app.ui.Toaster.exito("Sesión #${ses.numero} completada")
+                    else pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo completar la sesión")
                     // 📝 "¿Le dejas indicaciones?" DESPUÉS del éxito (completar sigue siendo un
                     // viaje). Sin señal (en la cola) no: la receta necesita red.
                     if (ok && !r.encolada && recetaAplicaTrat(req.trat)) {
                         pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.ofrecer(prefillRecetaSesion(req.trat, ses))
                     }
-                    else pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo completar la sesión")
                     // Fotos de la sesión: en segundo plano, ligadas a esta sesión y su
                     // tratamiento. Sin señal (encolada) o sin completar: se avisa.
                     fotosTrasCompletar(ok, r.encolada, paciente.id, req.trat.id, fotosElegidas, fotosVisibles,
