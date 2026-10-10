@@ -156,15 +156,41 @@ internal fun PasoVitales(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura
     }
 }
 
-/** Paso "Examen físico" / "Examen estomatológico" (solo consulta). */
+/**
+ * Paso "Examen físico" / "Examen estomatológico" (solo consulta). En
+ * PSIQUIATRÍA (vm.psiq) va primero el "Examen mental" con sus frases y las
+ * "📋 Escalas"; el examen físico pasa a opcional (como ConsultaGuiada.tsx).
+ */
 @Composable
 internal fun PasoExamen(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura: Boolean) {
     val dental = d.flags.dental
+    val psiq = vm.psiq
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (psiq) {
+            CampoTextoClinico(
+                label = "Examen mental",
+                valor = vm.borrador.examenMental.orEmpty(), onChange = { vm.examenMental(it) },
+                frases = frasesExamenMental(d), soloLectura = soloLectura, minLineas = 7,
+                placeholder = "Porte, conciencia, atención, lenguaje, afecto, pensamiento, percepción, juicio, riesgo…",
+                porLinea = true,
+            )
+            EscalasConsulta(
+                valor = vm.borrador.escalas.orEmpty(),
+                instrumentos = vm.instrumentos,
+                soloLectura = soloLectura,
+                sexo = pe.saniape.app.data.staff.sexoHc(d.cita.paciente),
+                onReintentarInstrumentos = { vm.cargarInstrumentos() },
+                onChange = { vm.escalas(it) },
+            )
+        }
         CampoTextoClinico(
-            label = if (dental) "Examen clínico estomatológico (extra e intraoral)" else "Examen físico: general y regional",
+            label = when {
+                dental -> "Examen clínico estomatológico (extra e intraoral)"
+                psiq -> "Examen físico (opcional)"
+                else -> "Examen físico: general y regional"
+            },
             valor = vm.borrador.textos["examen_fisico"].orEmpty(), onChange = { vm.texto("examen_fisico", it) },
-            frases = frasesDe(d, "examen"), soloLectura = soloLectura, minLineas = 6,
+            frases = frasesDe(d, "examen"), soloLectura = soloLectura, minLineas = if (psiq) 3 else 6,
             placeholder = if (dental) "Ej. Tejidos blandos sin alteraciones; pieza 36 con cavidad profunda…"
             else "Ej. BEG, LOTEP. Orofaringe congestiva, amígdalas hipertróficas con exudado…",
             porLinea = true,
@@ -503,6 +529,43 @@ internal fun frasesDe(d: DatosConsultaApp, campo: String): List<FraseFrecuenteAp
     return d.frases.filter { it.campo == clave && it.texto.isNotBlank() }
         .distinctBy { normalizarFrase(it.texto) }
         .sortedByDescending { it.usos }
+}
+
+/**
+ * Frases base del examen mental (EXAMEN_MENTAL de lib/frases-clinicas.ts): el
+ * bloque "normal" y cada componente por separado.
+ */
+internal val FRASES_BASE_EXAMEN_MENTAL: List<String> = run {
+    val porte = "Porte y actitud: aseado, colaborador, contacto visual adecuado"
+    val conciencia = "Lúcido, orientado en tiempo, espacio y persona"
+    val atencion = "Atención y concentración conservadas"
+    val lenguaje = "Lenguaje fluido, coherente, de tono y velocidad normales"
+    val afecto = "Afecto eutímico, resonante, congruente con el discurso"
+    val pensamiento = "Pensamiento de curso y contenido normales, sin ideas delusivas"
+    val percepcion = "Sin alteraciones sensoperceptivas"
+    val riesgo = "Niega ideación suicida u homicida"
+    val juicio = "Juicio y conciencia de enfermedad conservados"
+    listOf(
+        listOf(porte, conciencia, atencion, lenguaje, afecto, pensamiento, percepcion, riesgo, juicio).joinToString("\n"),
+        porte, conciencia, atencion, lenguaje,
+        "Afecto hipotímico, ansioso", afecto, pensamiento,
+        "Ideas de minusvalía y desesperanza", percepcion, riesgo,
+        "Refiere ideación suicida pasiva, sin plan ni intento", juicio,
+    )
+}
+
+/**
+ * Chips del examen mental (chipsYOpciones de la web, simplificado): la base de
+ * psiquiatría y, después, lo que aprendió la clínica bajo la clave
+ * 'examen_mental' que no esté ya en la base, lo más usado primero.
+ */
+internal fun frasesExamenMental(d: DatosConsultaApp): List<FraseFrecuenteApp> {
+    val base = FRASES_BASE_EXAMEN_MENTAL.map { FraseFrecuenteApp("examen_mental", it, 0) }
+    val enBase = FRASES_BASE_EXAMEN_MENTAL.flatMap { it.split('\n') }.map { normalizarFrase(it) }.toSet()
+    val aprendidas = d.frases.filter { it.campo == "examen_mental" && it.texto.isNotBlank() && normalizarFrase(it.texto) !in enBase }
+        .distinctBy { normalizarFrase(it.texto) }
+        .sortedByDescending { it.usos }
+    return base + aprendidas
 }
 
 /**

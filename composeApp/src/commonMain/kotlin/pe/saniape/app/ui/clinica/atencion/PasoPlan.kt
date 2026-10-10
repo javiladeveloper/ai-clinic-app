@@ -218,7 +218,12 @@ private fun BloqueExamenes(vm: AtencionViewModel, d: DatosConsultaApp, soloLectu
     var nuevo by remember { mutableStateOf("") }
     // A qué examen va el archivo que se está eligiendo (el selector devuelve solo el archivo).
     var indicePendiente by remember { mutableStateOf<Int?>(null) }
-    val frecuentes = if (d.flags.dental) EXAMENES_FRECUENTES_ODONTOLOGIA else EXAMENES_FRECUENTES_MEDICINA
+    val frecuentes = when {
+        d.flags.dental -> EXAMENES_FRECUENTES_ODONTOLOGIA
+        // Psiquiatría: laboratorio basal y de control de psicofármacos (PlanAtencion.tsx).
+        vm.psiq -> pe.saniape.app.data.staff.EXAMENES_FRECUENTES_PSIQUIATRIA
+        else -> EXAMENES_FRECUENTES_MEDICINA
+    }
 
     fun agregar(nombre: String) {
         val n = nombre.trim()

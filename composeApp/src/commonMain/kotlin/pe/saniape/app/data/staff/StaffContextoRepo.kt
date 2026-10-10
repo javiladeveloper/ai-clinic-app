@@ -91,6 +91,7 @@ object StaffContextoRepo {
             // Con el interruptor apagado el mapa no cuenta aunque viniera lleno.
             mapaMedico = if (flujoMedico) MapaClinico(ids("especialidadesMedicas"), o.bool("soloMedico")) else MapaClinico(),
             mapaReceta = if (recetas) MapaClinico(ids("especialidadesReceta"), o.bool("soloReceta")) else MapaClinico(),
+            documentosMedicos = o.boolOrNull("documentosMedicos"),
         )
     }
 

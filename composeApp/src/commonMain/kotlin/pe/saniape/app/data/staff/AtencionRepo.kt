@@ -118,13 +118,15 @@ object AtencionRepo {
     }
 
     /** Buscador CIE-10 (máx. 30). `q` < 2 letras = los frecuentes del rubro. Vacío si falla. */
-    suspend fun buscarCie10(q: String, dental: Boolean): List<DiagnosticoCie> {
+    suspend fun buscarCie10(q: String, dental: Boolean, psiq: Boolean = false): List<DiagnosticoCie> {
         val tk = token() ?: return emptyList()
         return try {
             val resp = http.get("${Supabase.SITE_URL}/api/staff/cie10") {
                 header("Authorization", "Bearer $tk")
                 parameter("q", q.take(80))
                 if (dental) parameter("dental", "1")
+                // Psiquiatría: frecuentes del capítulo F (un servidor que no lo conoce manda los de medicina).
+                else if (psiq) parameter("psiq", "1")
             }
             if (resp.status.value !in 200..299) emptyList() else parsearCie10(resp.bodyAsText())
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
@@ -154,11 +156,13 @@ object AtencionRepo {
      * HTML imprimible. [tipo]: `indicaciones` (id = CITA), `receta` o
      * `consentimiento` (id = el documento). null si no se pudo.
      */
-    suspend fun htmlImprimible(tipo: String, id: String): String? {
+    suspend fun htmlImprimible(tipo: String, id: String, tam: String? = null): String? {
         val tk = token() ?: return null
         return try {
             val resp = http.get("${Supabase.SITE_URL}/api/staff/imprimir/${tipo.encodeURLPathPart()}/${id.encodeURLPathPart()}") {
                 header("Authorization", "Bearer $tk")
+                // Informe / descanso / orden: A4 o A5 (sin `tam`, el que el servidor elige por tipo).
+                if (tam == "A4" || tam == "A5") parameter("tam", tam)
             }
             if (resp.status.value in 200..299) resp.bodyAsText() else null
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
@@ -263,6 +267,22 @@ object AtencionRepo {
     suspend fun emitirReceta(cuerpo: JsonObject): ResultadoEscritura =
         postJson("/api/staff/receta/emitir", cuerpo)
 
+    /**
+     * Informe médico, descanso médico u orden de exámenes ([cuerpo] =
+     * cuerpoEmitirInforme, con su `claveCliente`). `cuerpo.informe` = la fila
+     * emitida; `cuerpo.repetido` = ya se había emitido con esa clave;
+     * `cuerpo.seguimiento.creadas` = exámenes que quedaron en seguimiento (Plus).
+     */
+    suspend fun emitirInforme(cuerpo: JsonObject): ResultadoEscritura =
+        postJson("/api/staff/informe/emitir", cuerpo)
+
+    /** Anula un documento médico (queda en el historial). Solo quien lo emitió o el Admin. */
+    suspend fun anularInforme(id: String, motivo: String): ResultadoEscritura =
+        postJson("/api/staff/informe/anular", buildJsonObject {
+            put("id", id)
+            put("motivo", motivo.trim())
+        })
+
     private suspend fun postJson(endpoint: String, cuerpo: JsonObject): ResultadoEscritura {
         val tk = token() ?: return sinSesion
         return try {
@@ -328,6 +348,9 @@ object AtencionRepo {
             if ("perimetro_abdominal" in b.vitales) put("perimetro_abdominal", vital(b.vitales["perimetro_abdominal"]))
             put("diagnosticos", json.encodeToJsonElement(b.diagnosticos))
             put("examenes", json.encodeToJsonElement(b.examenes))
+            // Psiquiatría (solo si la atención lo es: si no, no se tocan esas columnas).
+            b.examenMental?.let { put("examen_mental", it) }
+            b.escalas?.let { put("escalas", jsonEscalas(it)) }
         }
         return buildJsonObject {
             put("citaId", citaId)

@@ -49,6 +49,8 @@ data class EscalaInstrumentoPsico(
     val bandas: List<BandaCortePsico> = emptyList(),
     /** Cortes por sexo ("F" / "M"), solo AUDIT-C. */
     val bandasSexo: Map<String, List<BandaCortePsico>>? = null,
+    /** Subescala que, si da positivo, se suma a la categoría global (SRQ, PSC-17). */
+    val enGlobal: Boolean = false,
 )
 
 data class AlertaItemPsico(val item: Int, val desde: Int, val mensaje: String)
@@ -164,6 +166,7 @@ private fun leerEscalaInstrumento(o: JsonObject?): EscalaInstrumentoPsico? {
         max = o.numI("max") ?: 0.0,
         bandas = leerBandas(o?.get("bandas")),
         bandasSexo = sexo?.let { s -> listOf("F", "M").associateWith { leerBandas(s[it]) }.filterValues { it.isNotEmpty() }.ifEmpty { null } },
+        enGlobal = o.siI("enGlobal", false),
     )
 }
 

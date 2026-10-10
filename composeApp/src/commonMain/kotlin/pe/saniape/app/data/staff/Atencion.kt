@@ -73,6 +73,9 @@ data class AtencionClinicaApp(
     val imc: Double? = null,
     val perimetro_abdominal: Double? = null,
     val examen_fisico: String? = null,
+    /** Psiquiatría: examen mental (texto) y escalas aplicadas (el servidor las recalcula al guardar). */
+    val examen_mental: String? = null,
+    val escalas: List<kotlinx.serialization.json.JsonElement> = emptyList(),
     val diagnosticos: List<DiagnosticoCie> = emptyList(),
     val examenes: List<ExamenSolicitado> = emptyList(),
     val plan_trabajo: String? = null,
@@ -95,7 +98,16 @@ data class PacienteConsultaApp(
     val alergias: String? = null,
     val antecedentes: String? = null,
     val medicacion_actual: String? = null,
+    /** La HC resumida (`historia`): objeto o lista de uno. Se usa el `sexo` (cortes del AUDIT-C). */
+    val historia: kotlinx.serialization.json.JsonElement? = null,
 )
+
+/** 'F' | 'M' de la filiación de la HC (hcDeCola de la web), o null. */
+fun sexoHc(p: PacienteConsultaApp?): String? {
+    val h = p?.historia ?: return null
+    val o = (h as? JsonObject) ?: ((h as? kotlinx.serialization.json.JsonArray)?.firstOrNull() as? JsonObject) ?: return null
+    return (o["sexo"] as? JsonPrimitive)?.content?.takeIf { it == "F" || it == "M" }
+}
 
 @Serializable
 data class NombreRef(val id: String? = null, val nombre: String = "")
@@ -379,6 +391,12 @@ data class BorradorAtencion(
     val vitales: Map<String, String> = emptyMap(),
     val diagnosticos: List<DiagnosticoCie> = emptyList(),
     val examenes: List<ExamenSolicitado> = emptyList(),
+    /**
+     * Psiquiatría: examen mental y escalas. null = la atención NO es de
+     * psiquiatría: no se mandan y el servidor no toca esas columnas (como la web).
+     */
+    val examenMental: String? = null,
+    val escalas: List<EscalaAplicadaApp>? = null,
 )
 
 // ── Reglas puras (gemelas de lib/atencion-medica.ts) ─────────────────────────

@@ -85,6 +85,12 @@ data class ModulosClinicos(
     val mapaMedico: MapaClinico = MapaClinico(),
     /** Especialidades que ven "💊 Recetas" (`mapaReceta`). */
     val mapaReceta: MapaClinico = MapaClinico(),
+    /**
+     * Informe / descanso / orden de exámenes (`documentosMedicosActivos` de la
+     * web, ya resuelto). null = el servidor no lo manda todavía: la app lo deduce
+     * (ver documentosMedicosActivos en InformesMedicos.kt).
+     */
+    val documentosMedicos: Boolean? = null,
 ) {
     /**
      * ¿La agenda de hoy lleva sala de espera? Como /citas web: con el triaje de

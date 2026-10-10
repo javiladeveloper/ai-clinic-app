@@ -16,7 +16,22 @@ import pe.saniape.app.data.staff.DatosConsultaApp
 import pe.saniape.app.data.staff.DiagnosticoCie
 import pe.saniape.app.data.staff.ExamenSolicitado
 import pe.saniape.app.data.staff.PasoAtencion
+import pe.saniape.app.data.staff.EscalaAplicadaApp
+import pe.saniape.app.data.staff.EvaluacionPsicoRepo
+import pe.saniape.app.data.staff.ExamenOrden
+import pe.saniape.app.data.staff.FuenteAtencion
+import pe.saniape.app.data.staff.InformesMedicosRepo
+import pe.saniape.app.data.staff.InstrumentoPsico
+import pe.saniape.app.data.staff.MAX_ESCALAS
+import pe.saniape.app.data.staff.PrefillInforme
+import pe.saniape.app.data.staff.atencionEsPsiquiatria
+import pe.saniape.app.data.staff.escalasDelServidorSiCoinciden
+import pe.saniape.app.data.staff.leerEscalasAtencion
+import pe.saniape.app.data.staff.prefillDesdeAtencion
+import pe.saniape.app.data.staff.textoEscalas
 import pe.saniape.app.ui.Toaster
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 /**
  * ViewModel de la consulta guiada (gemelo de ConsultaGuiada.tsx en la web).
@@ -73,6 +88,17 @@ class AtencionViewModel(
      */
     var accionando by mutableStateOf<String?>(null); private set
 
+    /**
+     * La atención es de PSIQUIATRÍA (esPsiq de la web: por el nombre de la
+     * especialidad de la cita). Enciende "Examen mental" y "📋 Escalas", y solo
+     * entonces se mandan esas columnas al guardar.
+     */
+    var psiq by mutableStateOf(false); private set
+    /** Definiciones de las escalas (PHQ-9, GAD-7…). null = cargando o no disponibles. */
+    var instrumentos by mutableStateOf<List<InstrumentoPsico>?>(null); private set
+    /** Informe / descanso / orden abierto desde el cierre: (tipo, prellenado). */
+    var documentoAbierto by mutableStateOf<Pair<String, PrefillInforme>?>(null); private set
+
     val pasos: List<PasoAtencion> get() = datos?.flags?.pasos ?: emptyList()
     val pasoActual: PasoAtencion? get() = pasos.getOrNull(paso)
     /** Sin datos todavía = solo lectura (no se edita lo que no cargó). */
@@ -104,11 +130,19 @@ class AtencionViewModel(
         viewModelScope.launch {
             cargando = true
             error = null
-            when (val r = AtencionRepo.cargar(citaId)) {
+            // Las especialidades (¿psiquiatría?) en paralelo con la consulta.
+            val (carga, esps) = coroutineScope {
+                val c = async { AtencionRepo.cargar(citaId) }
+                val e = async { InformesMedicosRepo.especialidades() }
+                c.await() to e.await()
+            }
+            when (val r = carga) {
                 is AtencionRepo.Carga.Ok -> {
                     val d = r.datos
                     datos = d
-                    borrador = borradorDesde(d, miTerapeutaId)
+                    psiq = !d.flags.esProcedimiento && atencionEsPsiquiatria(esps, d.flags.especialidadId, d.flags.dental)
+                    borrador = borradorDesde(d, miTerapeutaId, psiq)
+                    if (psiq && instrumentos == null) cargarInstrumentos()
                     triajePrestado = if (d.flags.soloLectura) null else pe.saniape.app.data.staff.triajeDeHoyAplicable(d)
                     triajeUsado = false
                     sucio = false
@@ -152,6 +186,16 @@ class AtencionViewModel(
         triajeUsado = true
     }
     fun diagnosticos(l: List<DiagnosticoCie>) = editar { it.copy(diagnosticos = l) }
+    /** Psiquiatría: examen mental. Sin psiquiatría no hace nada (no se manda). */
+    fun examenMental(v: String) { if (psiq) editar { it.copy(examenMental = v) } }
+    fun escalas(l: List<EscalaAplicadaApp>) { if (psiq) editar { it.copy(escalas = l.take(MAX_ESCALAS)) } }
+
+    /** Definiciones de las escalas (las mismas de la evaluación psicológica). */
+    fun cargarInstrumentos() {
+        viewModelScope.launch {
+            instrumentos = (EvaluacionPsicoRepo.instrumentos() as? EvaluacionPsicoRepo.Instrumentos.Ok)?.lista
+        }
+    }
     fun examenes(l: List<ExamenSolicitado>) = editar { it.copy(examenes = l) }
     fun terapeuta(id: String?) = editar { it.copy(terapeutaId = id) }
 
@@ -190,9 +234,16 @@ class AtencionViewModel(
                 if (r.registrada) {
                     // Lo precargado ya viajó; si el usuario siguió escribiendo mientras se guardaba, sigue sucio.
                     sucioPorPrefill = false
-                    if (borrador == enviado) sucio = false
+                    val sinCambiosNuevos = borrador == enviado
+                    if (sinCambiosNuevos) sucio = false
                     if (avisarExito) Toaster.exito("Guardado en la historia clínica")
                     recargarDatos()
+                    // Escalas: lo que vale es el cálculo del servidor (mismas respuestas).
+                    val enviadas = enviado.escalas
+                    if (sinCambiosNuevos && borrador == enviado && enviadas != null) {
+                        escalasDelServidorSiCoinciden(enviadas, leerEscalasAtencion(datos?.atencion?.escalas))
+                            ?.let { borrador = borrador.copy(escalas = it) }
+                    }
                 } else if (avisarError) {
                     Toaster.error(r.rechazo?.error ?: "No se pudo guardar la atención.")
                 }
@@ -282,6 +333,42 @@ class AtencionViewModel(
         return false
     }
 
+    // ── Informe / descanso / orden de exámenes ───────────────────────────────
+
+    /**
+     * Abre el documento prellenado con la atención (abrirDocumento de la web):
+     * guarda antes (así queda atado a la atención) y arma el borrador desde lo
+     * escrito; las escalas, con el cálculo del servidor.
+     */
+    fun abrirDocumento(tipo: String) {
+        lanzar("documento") {
+            if (!guardarAntes()) return@lanzar
+            val d = datos ?: return@lanzar
+            val b = borrador
+            val pac = d.cita.paciente
+            val escalasTexto = if (psiq) {
+                val servidor = leerEscalasAtencion(d.atencion?.escalas)
+                textoEscalas(escalasDelServidorSiCoinciden(b.escalas.orEmpty(), servidor) ?: b.escalas.orEmpty())
+            } else null
+            val base = prefillDesdeAtencion(
+                FuenteAtencion(
+                    motivoConsulta = b.textos["motivo_consulta"], tiempoEnfermedad = b.textos["tiempo_enfermedad"],
+                    relato = b.textos["relato"], examenFisico = b.textos["examen_fisico"],
+                    examenMental = if (psiq) b.examenMental else null, escalasTexto = escalasTexto,
+                    diagnosticos = b.diagnosticos, tratamiento = b.textos["tratamiento"], planTrabajo = b.textos["plan_trabajo"],
+                    examenes = b.examenes.map { ExamenOrden(it.nombre, it.indicacion) },
+                ),
+                antecedentes = pac?.antecedentes, alergias = pac?.alergias, medicacionActual = pac?.medicacion_actual,
+            )
+            documentoAbierto = tipo to base.copy(
+                psiq = psiq, citaId = d.cita.id, atencionId = d.atencion?.id, tratamientoId = d.cita.tratamiento_id,
+                terapeutaId = b.terapeutaId ?: d.cita.terapeuta_id,
+            )
+        }
+    }
+
+    fun cerrarDocumento() { documentoAbierto = null }
+
     // ── Cierre ───────────────────────────────────────────────────────────────
 
     /** "✓ Terminar atención": guarda → termina → [terminada]. */
@@ -292,7 +379,10 @@ class AtencionViewModel(
             try {
                 if (!guardarInterno(avisarExito = false, avisarError = true)) return@launch
                 val esProc = datos?.flags?.esProcedimiento == true
-                val textos = borrador.textos.filterKeys { it in camposFrases(esProc) }
+                // Psiquiatría: el examen mental aprende bajo su propia clave (un servidor viejo lo ignora).
+                val mental = if (psiq && !esProc) borrador.examenMental?.takeIf { it.isNotBlank() } else null
+                val textos = borrador.textos.filterKeys { it in camposFrases(esProc) } +
+                    (if (mental != null) mapOf("examen_mental" to mental) else emptyMap())
                 val nota = notaProcedimiento?.trim()?.takeIf { it.isNotEmpty() }
                 val r = AtencionRepo.terminar(citaId, nota, textos)
                 if (r.registrada) {
@@ -351,7 +441,7 @@ internal fun motivoSugeridoAplica(d: DatosConsultaApp): Boolean =
  * vitales) porque `guardar` reemplaza la atención completa. El profesional que
  * atiende, como la web: el de la atención → el de la cita → [miTerapeutaId].
  */
-internal fun borradorDesde(d: DatosConsultaApp, miTerapeutaId: String? = null): BorradorAtencion {
+internal fun borradorDesde(d: DatosConsultaApp, miTerapeutaId: String? = null, psiq: Boolean = false): BorradorAtencion {
     val a = d.atencion
     val textos = mapOf(
         "motivo_consulta" to (a?.motivo_consulta ?: ""),
@@ -382,5 +472,8 @@ internal fun borradorDesde(d: DatosConsultaApp, miTerapeutaId: String? = null): 
         vitales = vitales,
         diagnosticos = a?.diagnosticos?.takeIf { it.isNotEmpty() } ?: d.diagnosticosSugeridos,
         examenes = a?.examenes ?: emptyList(),
+        // Psiquiatría: siempre presentes (aunque vacíos) para que viajen al guardar.
+        examenMental = if (psiq) a?.examen_mental.orEmpty() else null,
+        escalas = if (psiq) leerEscalasAtencion(a?.escalas) else null,
     )
 }
