@@ -112,6 +112,11 @@ fun OdontogramaVista(
      * lo marcado" para "✓ Completar evaluación" (29/09/2026). null = fuera de ella.
      */
     registroPresupuesto: RegistroPresupuesto? = null,
+    /**
+     * Tras "Crear tratamiento(s)" del presupuesto: ofrecer agendar la primera cita
+     * del tratamiento creado. null = no se ofrece (nadie arriba puede abrir la agenda).
+     */
+    onOfrecerAgendar: ((pe.saniape.app.ui.clinica.pacientes.OfertaPrimeraCita) -> Unit)? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -316,6 +321,7 @@ fun OdontogramaVista(
         if (mostrarPresupuesto) PresupuestoOdontograma(
             mapaDental = mapaDental,
             registro = registroPresupuesto,
+            onOfrecerAgendar = onOfrecerAgendar,
             pacienteId = pacienteId,
             citaId = citaId,
             hallazgos = hallazgos,

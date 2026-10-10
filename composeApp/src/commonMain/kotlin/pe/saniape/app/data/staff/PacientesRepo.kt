@@ -247,6 +247,8 @@ data class ProcedimientoRef(
     val precioUnitarioSugerido: Double? = null,  // precio por unidad sugerido (modo unidades)
     /** Odontología: tramos de precio por caras {"1","2","3"} → precio. null = precio único. */
     val precioPorCaras: Map<String, Double>? = null,
+    /** Protocolo de controles (días tras la intervención). Con protocolo, él programa el próximo control. */
+    val controlesDias: List<Int> = emptyList(),
 )
 
 /** Un profesional con sus especialidades (para filtrar servicios). */
@@ -275,6 +277,10 @@ data class PlantillaRef(
     val precioUnitario: Double?,
     val diagnostico: String?,
     val tecnicasSesion: String?,   // "A + B" — precarga las técnicas de cada sesión
+    /** Medicación / cuidados base → `medicacion` del tratamiento al crear. */
+    val indicaciones: String? = null,
+    /** "Control en X días" → `proximo_control` = hoy (de la sede) + X al crear. */
+    val controlDias: Int? = null,
 )
 
 /** Una especialidad de la clínica. */
@@ -1105,6 +1111,14 @@ object PacientesRepo {
     ): Boolean = accionTratamiento(cuerpoCrearTratamiento(pacienteId = pacienteId, procedimientoId = procedimientoId, terapeutaId = terapeutaId, modalidad = modalidad, totalSesiones = totalSesiones, precioPaquete = precioPaquete, precioPorSesion = precioPorSesion, precioAcordado = precioAcordado, diagnostico = diagnostico, citaOrigenId = citaOrigenId, medicacion = medicacion, proximoControl = proximoControl, cantidadUnidades = cantidadUnidades, precioUnitario = precioUnitario, tecnicasSugeridas = tecnicasSugeridas, campaniaId = campaniaId, motivoPrecio = motivoPrecio, fechaInicio = fechaInicio, hallazgoIds = hallazgoIds, primeraFecha = primeraFecha, primeraHora = primeraHora))
 
     /**
+     * Como [crearTratamiento], pero con el detalle (no muestra el rechazo): quien
+     * llama lee el `id` del tratamiento creado (para ofrecer agendar su primera
+     * cita) o, si quedó en la cola offline, sabe que aún no lo hay.
+     */
+    suspend fun crearTratamientoDetalle(cuerpo: JsonObject): pe.saniape.app.data.offline.ResultadoEscritura =
+        postStaffDetalle("/api/staff/tratamiento/accion", cuerpo)
+
+    /**
      * El cuerpo de `accion: crear` (una sola fuente): lo usa [crearTratamiento]
      * (con la cola offline) y la evaluación psicológica, que lo manda directo
      * porque necesita el `id` del tratamiento creado para atarlo al plan.
@@ -1271,7 +1285,7 @@ object PacientesRepo {
             .select(Columns.raw(
                 "id, nombre, procedimiento_id, terapeuta_id, modalidad, total_sesiones, " +
                     "precio_paquete, precio_por_sesion, cantidad_unidades, precio_unitario, " +
-                    "diagnostico, tecnicas_sesion, usos"
+                    "diagnostico, tecnicas_sesion, indicaciones, control_dias, usos"
             )) {
                 filter { eq("estado", "Activo") }
                 order("usos", Order.DESCENDING)
@@ -1292,12 +1306,30 @@ object PacientesRepo {
                 precioUnitario = o.dbl("precio_unitario"),
                 diagnostico = o.str("diagnostico"),
                 tecnicasSesion = o.str("tecnicas_sesion"),
+                indicaciones = o.str("indicaciones"),
+                controlDias = o.int("control_dias"),
             )
         }
     }
 
-    /** Cuenta un uso de la plantilla (ordena "más usadas primero"). Fire-and-forget. */
+    /**
+     * Cuenta un uso de la plantilla (ordena "más usadas primero"). Se llama SOLO
+     * tras crear el tratamiento. Primero la RPC atómica del servidor
+     * ([RPC_USO_PLANTILLA], `usos = usos + 1` en un UPDATE: dos creaciones a la
+     * vez no se pisan); si la base aún no la tiene, el camino de antes (leer y
+     * escribir). Nunca muestra error: es solo un orden de la lista.
+     */
     suspend fun contarUsoPlantilla(plantillaId: String) {
+        try {
+            Supabase.client.postgrest.rpc(RPC_USO_PLANTILLA, buildJsonObject { put("p_id", plantillaId) })
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (esFaltaFuncion(e.message)) contarUsoPlantillaLegacy(plantillaId)
+        }
+    }
+
+    private suspend fun contarUsoPlantillaLegacy(plantillaId: String) {
         runCatching {
             val actual = Supabase.client.postgrest["plantillas_tratamiento"]
                 .select(Columns.raw("usos")) { filter { eq("id", plantillaId) } }
@@ -1307,6 +1339,56 @@ object PacientesRepo {
             ) { filter { eq("id", plantillaId) } }
         }
     }
+
+    /**
+     * Multisede: precios y servicios apagados de UNA sede (`sede_procedimientos`).
+     * Mapa servicio → (precio propio o null = el del servicio, activo). Vacío si
+     * la sede no configuró nada o no se pudo leer (se usa el precio del servicio).
+     */
+    suspend fun serviciosDeSede(sedeId: String): Map<String, Pair<Double?, Boolean>> = runCatching {
+        Supabase.client.postgrest["sede_procedimientos"]
+            .select(Columns.raw("procedimiento_id, precio, activo")) { filter { eq("sede_id", sedeId) } }
+            .decodeList<JsonObject>()
+            .mapNotNull { o ->
+                val pid = o.str("procedimiento_id") ?: return@mapNotNull null
+                pid to (o.dbl("precio") to (o.bool("activo") ?: true))
+            }.toMap()
+    }.getOrDefault(emptyMap())
+
+    /** Sede de una cita (la de origen decide la sede del tratamiento). null = sin sede / no se pudo leer. */
+    suspend fun sedeDeCita(citaId: String): String? = runCatching {
+        Supabase.client.postgrest["citas"]
+            .select(Columns.raw("sede_id")) { filter { eq("id", citaId) } }
+            .decodeList<JsonObject>().firstOrNull()?.str("sede_id")
+    }.getOrNull()
+
+    /**
+     * Horario de atención crudo (JSON): el propio de la sede si tiene, si no el de
+     * la clínica (`configuracion.horarios_atencion`). null = nada guardado / sin
+     * señal (rige el de por defecto).
+     */
+    suspend fun horarioAtencionCrudo(sedeId: String?): String? {
+        if (sedeId != null) runCatching {
+            Supabase.client.postgrest["sedes"]
+                .select(Columns.raw("horarios_atencion")) { filter { eq("id", sedeId) } }
+                .decodeList<JsonObject>().firstOrNull()?.get("horarios_atencion")
+        }.getOrNull()?.let { v ->
+            val txt = (v as? JsonPrimitive)?.content?.takeIf { it != "null" } ?: v.toString().takeIf { it != "null" }
+            if (!txt.isNullOrBlank()) return txt
+        }
+        return runCatching {
+            Supabase.client.postgrest["configuracion"]
+                .select(Columns.list("valor")) { filter { eq("clave", "horarios_atencion") } }
+                .decodeList<JsonObject>().firstOrNull()?.str("valor")
+        }.getOrNull()
+    }
+
+    /** Sede del tratamiento (la pone el servidor al crearlo). null = sin sede / no se pudo leer. */
+    suspend fun sedeDeTratamiento(tratamientoId: String): String? = runCatching {
+        Supabase.client.postgrest["tratamientos"]
+            .select(Columns.raw("sede_id")) { filter { eq("id", tratamientoId) } }
+            .decodeList<JsonObject>().firstOrNull()?.str("sede_id")
+    }.getOrNull()
 
     /** Definiciones de campos personalizados del paciente (por clínica, RLS aísla). */
     suspend fun camposPaciente(): List<CampoPaciente> {
@@ -1356,7 +1438,7 @@ object PacientesRepo {
         val filas = Supabase.client.postgrest["procedimientos"]
             .select(Columns.raw(
                 "id, nombre, precio, precio_paquete, especialidad_id, " +
-                    "modo_cobro, unidad_label, precio_unitario_sugerido, " +
+                    "modo_cobro, unidad_label, precio_unitario_sugerido, controles_dias, " +
                     "especialidad:especialidades(usa_sesiones), " +
                     "tarifarios:tarifario_paquetes(id, cantidad_sesiones, precio_total, estado)"
             )) {
@@ -1386,6 +1468,8 @@ object PacientesRepo {
                 modoCobro = o.str("modo_cobro"),
                 unidadLabel = o.str("unidad_label"),
                 precioUnitarioSugerido = o.dbl("precio_unitario_sugerido"),
+                controlesDias = (o["controles_dias"] as? JsonArray)
+                    ?.mapNotNull { (it as? JsonPrimitive)?.content?.toIntOrNull() }.orEmpty(),
             )
         }
     }

@@ -210,6 +210,14 @@ fun PantallaAgenda(
     var tratDiag by remember { mutableStateOf<String?>(null) }
     var tratPac by remember { mutableStateOf<PacienteStaff?>(null) }
     var tratForm by remember { mutableStateOf(false) }
+    // Tras crear un tratamiento sin su primera cita: ofrecer agendarla.
+    var ofertaPrimera by remember { mutableStateOf<pe.saniape.app.ui.clinica.pacientes.OfertaPrimeraCita?>(null) }
+    // Evaluación dental que no se pudo completar sola (falta quién atendió o el
+    // diagnóstico): la oferta espera a que se cierre la ventana de completar.
+    var ofertaTrasCompletar by remember { mutableStateOf<pe.saniape.app.ui.clinica.pacientes.OfertaPrimeraCita?>(null) }
+    LaunchedEffect(completar) {
+        if (completar == null) ofertaTrasCompletar?.let { ofertaPrimera = it; ofertaTrasCompletar = null }
+    }
     fun cerrarTratamiento() { tratCita = null; tratDiag = null; tratPac = null; tratForm = false }
     fun abrirTratamientoDeCita(cita: CitaStaff, diagnostico: String?) {
         val pid = cita.pacienteId ?: return
@@ -284,6 +292,9 @@ fun PantallaAgenda(
                 completandoEval = false
                 cerrar()
                 revisada = RevisionHecha(cita.id, diag, tratamientoResuelto = true)
+                // El tratamiento ya existe: su primera cita se ofrece igual, al cerrar esta ventana.
+                (res as? pe.saniape.app.ui.clinica.odontologia.ResultadoTratamientoEvaluacion.Creado)
+                    ?.oferta?.let { of -> ofertaTrasCompletar = of.copy(pacienteNombre = cita.pacienteNombre) }
                 completar = cita
                 val falta = if (terId == null) "indica quién atendió" else "escribe el diagnóstico"
                 pe.saniape.app.ui.Toaster.info(
@@ -301,7 +312,12 @@ fun PantallaAgenda(
                 ofrecerPlan = false,
                 alTerminar = { ok ->
                     completandoEval = false
-                    if (ok) cerrar()
+                    if (ok) {
+                        cerrar()
+                        // Evaluación dental con tratamiento(s) creado(s): agendar su primera cita.
+                        (res as? pe.saniape.app.ui.clinica.odontologia.ResultadoTratamientoEvaluacion.Creado)
+                            ?.oferta?.let { of -> ofertaPrimera = of.copy(pacienteNombre = cita.pacienteNombre) }
+                    }
                     // El error del servidor ya se mostró (vm.ejecutar); aquí,
                     // que el tratamiento SÍ quedó y no se duplicará al reintentar.
                     else if (creados) pe.saniape.app.ui.Toaster.info(
@@ -657,7 +673,7 @@ fun PantallaAgenda(
                 onGuardar = { nuevo ->
                     planPsico = null
                     scope.launch {
-                        pe.saniape.app.ui.clinica.pacientes.crearTratamientoDelPlan(pid, nuevo, evId, cita.pacienteNombre)
+                        ofertaPrimera = pe.saniape.app.ui.clinica.pacientes.crearTratamientoDelPlan(pid, nuevo, evId, cita.pacienteNombre).oferta
                         vm.refrescar()
                     }
                 },
@@ -847,7 +863,11 @@ fun PantallaAgenda(
                 onAccion = { odontogramaCita = null },
                 textoCancelar = "Cerrar",
             ) {
-                pe.saniape.app.ui.clinica.odontologia.OdontogramaVista(pacienteId = pac, citaId = cita.id, mapaDental = ctx.mapaDental)
+                pe.saniape.app.ui.clinica.odontologia.OdontogramaVista(
+                    pacienteId = pac, citaId = cita.id, mapaDental = ctx.mapaDental,
+                    // Tras "Crear tratamiento(s)": agendar la primera cita (cierra el odontograma).
+                    onOfrecerAgendar = { of -> odontogramaCita = null; ofertaPrimera = of.copy(pacienteNombre = cita.pacienteNombre) },
+                )
             }
         }
     }
@@ -1087,12 +1107,20 @@ fun PantallaAgenda(
             onGuardar = { nuevo ->
                 cerrarTratamiento()
                 scope.launch {
-                    val ok = pe.saniape.app.ui.clinica.pacientes.guardarTratamientoNuevo(pidTrat, nuevo, citaTrat.pacienteNombre)
-                    if (ok) pe.saniape.app.ui.Toaster.exito("Tratamiento creado")
-                    else pe.saniape.app.ui.Toaster.error("No se pudo crear el tratamiento")
+                    // Toast, plantilla y diagnóstico van adentro; sin primera cita, se ofrece agendarla.
+                    ofertaPrimera = pe.saniape.app.ui.clinica.pacientes.guardarTratamientoNuevo(pidTrat, nuevo, citaTrat.pacienteNombre).oferta
                     vm.refrescar()
                 }
             },
+        )
+    }
+    // Tratamiento creado sin su primera cita: "📅 Agendar la primera sesión" → el
+    // formulario nativo de crear cita, prellenado.
+    ofertaPrimera?.let { of ->
+        pe.saniape.app.ui.clinica.pacientes.DialogoAgendarPrimera(
+            oferta = of,
+            onAgendar = { pf -> ofertaPrimera = null; prefillEval = pf },
+            onCerrar = { ofertaPrimera = null },
         )
     }
 
