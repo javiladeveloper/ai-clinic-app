@@ -51,6 +51,8 @@ import pe.saniape.app.data.staff.TerapeutaConEsp
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.tutoriales.tourAncla
 import pe.saniape.app.data.staff.simboloMoneda
+import pe.saniape.app.data.staff.monedaDeSede
+import pe.saniape.app.data.staff.zonaDeSede
 
 /** Resultado del form de tratamiento (lo que se envía al endpoint crear). */
 data class TratamientoNuevo(
@@ -85,6 +87,8 @@ data class TratamientoNuevo(
      */
     val diagnosticoAprender: String? = null,
     val especialidadDiagnostico: String? = null,
+    /** Tipo del tratamiento (decide qué cita ofrecer agendar tras crearlo). */
+    val tipo: pe.saniape.app.data.staff.TipoTratamientoNuevo = pe.saniape.app.data.staff.TipoTratamientoNuevo.SESIONES,
 )
 
 /** Tras crear el tratamiento con éxito: aprende su diagnóstico (en segundo plano, una vez). */
@@ -147,10 +151,25 @@ fun ModalCrearTratamiento(
     var precioUnitario by remember { mutableStateOf("") }     // modo unidades
     var diagnostico by remember { mutableStateOf(diagnosticoPrevio ?: "") }
     // Plantillas ("combos" de la clínica): elegir una autocompleta servicio + comercial + clínico.
+    // Se aplica AL INSTANTE (también si su servicio ya estaba elegido) sobre los
+    // valores frescos del servicio: lo que no trae queda como lo pone el servicio.
     var plantillas by remember { mutableStateOf<List<PlantillaRef>>(emptyList()) }
     var plantilla by remember { mutableStateOf<PlantillaRef?>(null) }
-    // La plantilla se aplica DESPUÉS del prefill del servicio (LaunchedEffect) para no ser pisada.
-    var plantillaPend by remember { mutableStateOf<PlantillaRef?>(null) }
+    // Lo que había ANTES de la primera plantilla: "Sin plantilla" (o una que no
+    // trae diagnóstico/profesional) vuelve a esto.
+    var dxSinPlantilla by remember { mutableStateOf(diagnosticoPrevio ?: "") }
+    var terSinPlantilla by remember { mutableStateOf<TerapeutaConEsp?>(null) }
+    // Indicaciones → medicación y "control en X días" → próximo control (de la plantilla).
+    var medicacion by remember { mutableStateOf("") }
+    var proximoControl by remember { mutableStateOf<String?>(null) }
+    var mostrarFechaControl by remember { mutableStateOf(false) }
+    // Aviso si los precios de la plantilla no se copiaron (moneda / precio de la sede).
+    var avisoPlantilla by remember { mutableStateOf<String?>(null) }
+    // Servicio cuyos precios ya se pusieron: el autollenado no vuelve a pisarlos
+    // (la plantilla los pone ella misma; ver elegirPlantilla).
+    var autollenadoDe by remember { mutableStateOf<String?>(null) }
+    // Multisede: precio propio / servicio apagado en la sede donde se venderá.
+    var serviciosSede by remember { mutableStateOf<Map<String, Pair<Double?, Boolean>>>(emptyMap()) }
     // Igual que la plantilla: la renovación se aplica DESPUÉS del prefill del servicio.
     var renovPend by remember { mutableStateOf(renovacion) }
     // El plan de la evaluación psicológica, igual: después del prefill del servicio.
@@ -164,14 +183,36 @@ fun ModalCrearTratamiento(
     // Cuándo empieza (pasada si ya venía atendiéndose, futura si está programado). Default hoy.
     var fechaInicio by remember { mutableStateOf(pe.saniape.app.ui.clinica.agenda.hoyIso()) }
     var mostrarFechaInicio by remember { mutableStateOf(false) }
-    // Primera sesión en el mismo paso: arranca apagada (no todos dejan fecha al salir).
-    var conPrimera by remember { mutableStateOf(false) }
+    // Primera sesión en el mismo paso: arranca MARCADA (requisito del dueño, como la
+    // web): recepción negocia y agenda en el mismo momento. Si se desmarca, se
+    // ofrece agendarla al terminar de crear.
+    var conPrimera by remember { mutableStateOf(true) }
     var fechaPrimera by remember { mutableStateOf(pe.saniape.app.ui.clinica.agenda.hoyIso()) }
-    var horaPrimera by remember { mutableStateOf("09:00") }
+    var horaPrimera by remember { mutableStateOf(pe.saniape.app.ui.proximaHoraEnPunto()) }
     var mostrarFechaPrimera by remember { mutableStateOf(false) }
     var mostrarHoraPrimera by remember { mutableStateOf(false) }
 
+    // ── Multipaís / multisede: dónde se venderá y en qué moneda ──
+    // La sede del tratamiento la pone el servidor (cita de origen → sede activa del
+    // usuario → la del profesional → la principal); acá se estima con la activa
+    // (o la principal). Las plantillas son de la clínica: sus montos están en la
+    // moneda de la clínica.
+    val ctxStaff = pe.saniape.app.data.staff.StaffContextoRepo.actual
+    val sedeDestino = remember {
+        ctxStaff?.takeIf { it.multiSede }?.let {
+            pe.saniape.app.data.staff.SedeActiva.estado.value.sedeId.ifBlank { null } ?: it.sedePrincipalId
+        }
+    }
+    val monedaClinica = ctxStaff?.moneda ?: pe.saniape.app.data.staff.MONEDA_POR_DEFECTO
+    val monedaSede = ctxStaff?.monedaDeSede(sedeDestino) ?: moneda
+    val monedasDestino = setOf(moneda, monedaSede)
+    fun hoySede(): String = ctxStaff?.let { pe.saniape.app.data.staff.hoyEnIso(it.zonaDeSede(sedeDestino)) }
+        ?: pe.saniape.app.data.staff.hoyClinicaIso()
+    fun precioSedeDe(procId: String?): Double? = procId?.let { serviciosSede[it]?.first }
+
     LaunchedEffect(pacienteId) {
+        // Antes que nada (la renovación elige servicio acá abajo y su prefill lo usa).
+        if (sedeDestino != null) serviciosSede = PacientesRepo.serviciosDeSede(sedeDestino)
         campanias = runCatching { pe.saniape.app.data.staff.CatalogosCobroRepo.campaniasVigentes() }.getOrDefault(emptyList())
         procedimientos = runCatching { PacientesRepo.procedimientos() }.getOrDefault(emptyList())
         terapeutas = runCatching { PacientesRepo.terapeutasConEspecialidad() }.getOrDefault(emptyList())
@@ -238,60 +279,118 @@ fun ModalCrearTratamiento(
         }
     }
 
-    // Al elegir servicio: autocompletar precios + tarifario (si hay).
+    // Pone los campos comerciales de una vez (prefill del servicio / plantilla).
+    fun ponerCampos(f: pe.saniape.app.data.staff.CamposComerciales) {
+        modalidad = f.modalidad; totalSesiones = f.totalSesiones
+        precioPaquete = f.precioPaquete; precioPorSesion = f.precioPorSesion
+        cantidadUnidades = f.cantidadUnidades; precioUnitario = f.precioUnitario
+        precioAcordado = f.precioAcordado
+    }
+
+    // Al elegir servicio: autocompletar precios + tarifario (si hay). Una vez por
+    // servicio elegido: si ya se pusieron (p. ej. los puso la plantilla), no se pisan.
     LaunchedEffect(proc?.id) {
-        campaniaAplicada = null   // otra promo puede aplicar al nuevo servicio
-        proc?.let { p ->
-            precioPorSesion = p.precio.toString()
-            val tar10 = p.tarifarios.firstOrNull { it.cantidadSesiones == 10 } ?: p.tarifarios.firstOrNull()
-            if (tar10 != null) {
-                totalSesiones = tar10.cantidadSesiones.toString()
-                precioPaquete = tar10.precioTotal.toString()
-            } else {
-                precioPaquete = p.precioPaquete?.toString() ?: ""
-                totalSesiones = "10"
-            }
-            // Modo unidades: prellenar el precio por unidad sugerido.
-            precioUnitario = (p.precioUnitarioSugerido ?: p.precio).toString()
+        val p = proc
+        if (p != null && autollenadoDe != p.id) {
+            autollenadoDe = p.id
+            campaniaAplicada = null   // otra promo puede aplicar al nuevo servicio
             // Servicio único: el acordado NO se prellena (igual que la web): el precio base se
-            // muestra aparte y como ayuda en el campo; vacío = se cobra el base. Antes se
-            // escribía el base en el campo y parecía un precio que nadie había puesto.
-            precioAcordado = ""
-            // Plantilla elegida: SUS valores comerciales mandan sobre el prefill del servicio.
+            // muestra aparte y como ayuda en el campo; vacío = se cobra el base. Cambiar de
+            // servicio conserva la cantidad de unidades y la elección Paquete/Suelta.
+            var f = pe.saniape.app.data.staff.camposDeServicio(p, precioSedeDe(p.id), modalidad)
+                .copy(cantidadUnidades = cantidadUnidades)
+            // "Nuevo paquete": SUS valores mandan sobre el prefill del servicio.
             renovPend?.let { r ->
-                r.modalidad?.takeIf { it == "Paquete" || it == "Sesión suelta" }?.let { modalidad = it }
-                (r.sesionesBase ?: r.totalSesiones).takeIf { it > 0 }?.let { totalSesiones = it.toString() }
-                r.precioPaquete?.let { precioPaquete = it.toString() }
-                r.precioPorSesion?.let { precioPorSesion = it.toString() }
+                r.modalidad?.takeIf { it == "Paquete" || it == "Sesión suelta" }?.let { f = f.copy(modalidad = it) }
+                (r.sesionesBase ?: r.totalSesiones).takeIf { it > 0 }?.let { f = f.copy(totalSesiones = it.toString()) }
+                r.precioPaquete?.let { f = f.copy(precioPaquete = it.toString()) }
+                r.precioPorSesion?.let { f = f.copy(precioPorSesion = it.toString()) }
                 renovPend = null
             }
             planPend?.let { pp ->
-                modalidad = "Paquete"
-                pp.totalSesiones?.takeIf { it > 0 }?.let { totalSesiones = it.toString() }
-                pp.precioPaquete?.let { precioPaquete = formatoNum(it) }
+                f = f.copy(modalidad = "Paquete")
+                pp.totalSesiones?.takeIf { it > 0 }?.let { f = f.copy(totalSesiones = it.toString()) }
+                pp.precioPaquete?.let { f = f.copy(precioPaquete = formatoNum(it)) }
                 planPend = null
             }
-            plantillaPend?.let { pl ->
-                pl.modalidad?.takeIf { it == "Paquete" || it == "Sesión suelta" }?.let { modalidad = it }
-                pl.totalSesiones?.let { totalSesiones = it.toString() }
-                pl.precioPaquete?.let { precioPaquete = it.toString() }
-                pl.precioPorSesion?.let { precioPorSesion = it.toString() }
-                pl.cantidadUnidades?.let { cantidadUnidades = it.toString() }
-                pl.precioUnitario?.let { precioUnitario = it.toString() }
-                plantillaPend = null
+            ponerCampos(f)
+        }
+    }
+
+    /**
+     * Elegir plantilla (o "Sin plantilla" = null). Se aplica YA, aunque su servicio
+     * sea el que ya estaba elegido (antes quedaba pendiente y caía sobre el SIGUIENTE
+     * servicio). Parte de los valores frescos del servicio: lo que la plantilla no
+     * trae vuelve a lo del servicio, no a lo de la plantilla anterior.
+     */
+    fun elegirPlantilla(pl: PlantillaRef?) {
+        if (pl == null && plantilla == null) return
+        if (plantilla == null) { dxSinPlantilla = diagnostico; terSinPlantilla = terapeuta }
+        plantilla = pl
+        // Servicio: el de la plantilla (las que se ofrecen siempre tienen uno activo);
+        // "Sin plantilla" conserva el que estaba elegido.
+        val pr = pl?.procedimientoId?.let { id -> procedimientos.find { it.id == id } } ?: proc
+        if (pl != null) pr?.especialidadId?.let { eId -> especialidad = especialidades.find { it.id == eId } ?: especialidad }
+        val avisos = mutableListOf<String>()
+        if (miTerapeutaId == null) {
+            // El de la plantilla si sigue activo; si no, el que había antes de las plantillas.
+            val sugerido = pl?.terapeutaId?.let { tId -> terapeutas.find { it.id == tId } }
+            if (pl?.terapeutaId != null && sugerido == null) avisos += "El profesional sugerido por la plantilla ya no está activo."
+            terapeuta = sugerido ?: terSinPlantilla
+            // Quien no atiende ese servicio no queda puesto (la misma regla que filtra los servicios).
+            val t = terapeuta
+            if (pl != null && pr != null && t != null &&
+                !pe.saniape.app.data.staff.profesionalAtiende(pr.especialidadId, t.especialidadIds)
+            ) {
+                avisos += "${t.nombre} no atiende \"${pr.nombre}\": elige quién lo atenderá."
+                terapeuta = null
             }
         }
+        diagnostico = pl?.diagnostico?.takeIf { it.isNotBlank() } ?: dxSinPlantilla
+        medicacion = pe.saniape.app.data.staff.medicacionDePlantilla(pl?.indicaciones).orEmpty()
+        proximoControl = pe.saniape.app.data.staff.proximoControlDePlantilla(
+            pl?.controlDias, hoySede(), servicioConProtocolo = pr?.controlesDias?.isNotEmpty() == true,
+        )
+        motivoPrecio = ""
+        if (pr != null) {
+            val ps = precioSedeDe(pr.id)
+            val base = pe.saniape.app.data.staff.camposDeServicio(pr, ps)
+            val aplicada = if (pl == null) pe.saniape.app.data.staff.PlantillaAplicada(base, preciosOmitidos = false)
+            else pe.saniape.app.data.staff.aplicarPlantilla(
+                base, pl, pe.saniape.app.data.staff.tipoTratamientoDe(pr, ps), pr.tarifarios,
+                mismaMoneda = pe.saniape.app.data.staff.mismaMonedaQueLaClinica(monedaClinica, monedasDestino),
+                precioSede = ps,
+            )
+            ponerCampos(aplicada.campos)
+            pe.saniape.app.data.staff.avisoPreciosPlantilla(
+                aplicada.preciosOmitidos, monedaClinica,
+                monedasDestino.firstOrNull {
+                    pe.saniape.app.data.staff.normalizarMoneda(it) != pe.saniape.app.data.staff.normalizarMoneda(monedaClinica)
+                } ?: monedaSede,
+                ps,
+            )?.let { avisos += it }
+            campaniaAplicada = null
+            autollenadoDe = pr.id   // el autollenado del servicio ya no la pisa
+            proc = pr
+        }
+        avisoPlantilla = avisos.joinToString("\n").ifBlank { null }
     }
 
     // TIPO del tratamiento a crear (mismo criterio que la web / TipoTratamiento):
     //  - UNIDADES:       servicio con modo_cobro 'unidades' (injerto, botox × cantidad)
     //  - SERVICIO ÚNICO: modo_cobro 'simple' con precio > 0 (blanqueamiento, profilaxis)
-    //  - CONSULTA:       especialidad sin sesiones (medicina/nutrición)
+    //  - CONSULTA:       modo 'simple' sin precio (medicina/nutrición)
     //  - SESIONES:       el resto (fisio, ortodoncia…)
-    val esUnidades = proc?.modoCobro == "unidades"
-    val esServUnico = !esUnidades && proc?.modoCobro == "simple" && (proc?.precio ?: 0.0) > 0.0
-    val esConsulta = proc != null && !esUnidades && !esServUnico && proc?.usaSesiones == false
-    val usaSesiones = proc != null && !esUnidades && !esServUnico && !esConsulta
+    //  (Modo de cobro EFECTIVO del servicio: el del procedimiento o el heredado de
+    //  su especialidad — pe.saniape.app.data.staff.tipoTratamientoDe.)
+    val precioSede = precioSedeDe(proc?.id)
+    // Precio base del servicio EN LA SEDE donde se vende (el propio de la sede si tiene).
+    val precioBase = precioSede ?: proc?.precio ?: 0.0
+    val tipoTrat = proc?.let { pe.saniape.app.data.staff.tipoTratamientoDe(it, precioSede) }
+    val esUnidades = tipoTrat == pe.saniape.app.data.staff.TipoTratamientoNuevo.UNIDADES
+    val esServUnico = tipoTrat == pe.saniape.app.data.staff.TipoTratamientoNuevo.SERVICIO_UNICO
+    val esConsulta = tipoTrat == pe.saniape.app.data.staff.TipoTratamientoNuevo.CONSULTA
+    val usaSesiones = tipoTrat == pe.saniape.app.data.staff.TipoTratamientoNuevo.SESIONES
     // Unidades: exige cantidad y precio por unidad (> 0) para poder crear.
     // Paquete SIN precio: nacía en S/ 0 y la ficha decía "nada que cobrar" (demo
     // dental, 28/09/2026: el servicio no tenía precio de paquete y nadie lo
@@ -299,13 +398,14 @@ fun ModalCrearTratamiento(
     val faltaPrecioPaquete = usaSesiones && modalidad == "Paquete" &&
         precioPaquete.isBlank() && precioAcordado.isBlank()
     // Pista: N sesiones × precio por sesión (no se rellena solo: el paquete suele llevar descuento).
-    val referenciaPaquete = if (usaSesiones) (totalSesiones.toIntOrNull() ?: 10) * (proc?.precio ?: 0.0) else 0.0
+    val referenciaPaquete = if (usaSesiones) (totalSesiones.toIntOrNull() ?: 10) * precioBase else 0.0
     val puedeCrear = proc != null && !faltaPrecioPaquete && (!esUnidades ||
         ((cantidadUnidades.toIntOrNull() ?: 0) > 0 && (precioUnitario.toDoubleOrNull() ?: 0.0) > 0.0))
 
     if (mostrarFechaInicio) DialogoFecha(onElegir = { fechaInicio = it }, onCerrar = { mostrarFechaInicio = false })
     if (mostrarFechaPrimera) DialogoFecha(onElegir = { fechaPrimera = it }, onCerrar = { mostrarFechaPrimera = false }, inicial = fechaPrimera)
     if (mostrarHoraPrimera) DialogoHora(horaPrimera, onElegir = { horaPrimera = it }, onCerrar = { mostrarHoraPrimera = false })
+    if (mostrarFechaControl) DialogoFecha(onElegir = { proximoControl = it }, onCerrar = { mostrarFechaControl = false }, inicial = proximoControl ?: hoySede())
 
     // Crear: la misma acción desde el pie y desde la cabecera (con teclado).
     var enviado by remember { mutableStateOf(false) }
@@ -323,31 +423,36 @@ fun ModalCrearTratamiento(
                             }
                             // Unidades: si no se negoció un acordado, el total = cantidad × precio.
                             val totalUnidades = (cantidadUnidades.toIntOrNull() ?: 0) * (precioUnitario.toDoubleOrNull() ?: 0.0)
+                            val tipoFinal = tipoTrat ?: pe.saniape.app.data.staff.tipoTratamientoDe(p, precioSede)
+                            // Nunca una modalidad que contradiga el modo de cobro del servicio.
+                            val modalidadFinal = pe.saniape.app.data.staff.modalidadAGuardar(tipoFinal, modalidad)
                             onGuardar(
                                 TratamientoNuevo(
                                     procedimientoId = p.id,
                                     terapeutaId = if (miTerapeutaId != null) miTerapeutaId else terapeuta?.id,
-                                    modalidad = when {
-                                        esUnidades -> "Unidades"
-                                        esServUnico || esConsulta -> "Consulta"
-                                        else -> modalidad
-                                    },
-                                    totalSesiones = if (usaSesiones && modalidad == "Paquete") totalSesiones.toIntOrNull() ?: 10
+                                    modalidad = modalidadFinal,
+                                    totalSesiones = if (usaSesiones && modalidadFinal == "Paquete") totalSesiones.toIntOrNull() ?: 10
                                         else if (usaSesiones) 1 else null,
-                                    precioPaquete = if (usaSesiones && modalidad == "Paquete") precioPaquete.toDoubleOrNull() else null,
-                                    precioPorSesion = if (usaSesiones && modalidad == "Sesión suelta") precioPorSesion.toDoubleOrNull() else null,
+                                    precioPaquete = if (usaSesiones && modalidadFinal == "Paquete") precioPaquete.toDoubleOrNull() else null,
+                                    // Suelta vacía = el precio del servicio en la sede (como la web:
+                                    // precioPorSesionAGuardar); antes valía 0.
+                                    precioPorSesion = if (usaSesiones && modalidadFinal == "Sesión suelta")
+                                        precioPorSesion.toDoubleOrNull() ?: precioBase else null,
                                     // Vacío = precio de lista (igual que la web): unidades → cantidad ×
                                     // precio; servicio único → el precio base del servicio.
                                     precioAcordado = precioAcordado.toDoubleOrNull()
                                         ?: if (esUnidades && totalUnidades > 0) totalUnidades
-                                        else if (esServUnico) p.precio else null,
+                                        else if (esServUnico) precioBase else null,
                                     diagnostico = diagnostico.trim().ifBlank { null },
                                     // La cita de la agenda cuenta aunque no esté en la lista
                                     // (una Consulta que evalúa, en flujos sin Evaluación).
                                     citaOrigenId = evaluacion?.id ?: citaOrigenId,
-                                    // Medicación y próximo control NO se piden al crear (se llenan al editar tras atender).
-                                    medicacion = null,
-                                    proximoControl = null,
+                                    // Medicación y próximo control: solo los que trae la plantilla
+                                    // (indicaciones / "control en X días"), en todos los tipos. Sin
+                                    // plantilla se llenan al editar, tras atender.
+                                    medicacion = medicacion.trim().ifBlank { null },
+                                    // Con protocolo de controles, el próximo lo programa el protocolo.
+                                    proximoControl = proximoControl.takeIf { p.controlesDias.isEmpty() },
                                     cantidadUnidades = if (esUnidades) cantidadUnidades.toIntOrNull() else null,
                                     precioUnitario = if (esUnidades) precioUnitario.toDoubleOrNull() else null,
                                     tecnicasSugeridas = plantilla?.tecnicasSesion?.takeIf { it.isNotBlank() },
@@ -356,6 +461,7 @@ fun ModalCrearTratamiento(
                                     motivoPrecio = motivoPrecio.trim().ifBlank { null },
                                     primeraFecha = if (usaSesiones && conPrimera) fechaPrimera else null,
                                     primeraHora = if (usaSesiones && conPrimera) horaPrimera else null,
+                                    tipo = tipoFinal,
                                     diagnosticoAprender = dxAprender,
                                     especialidadDiagnostico = p.especialidadId,
                                     fechaInicio = if (esUnidades) null else fechaInicio,
@@ -405,22 +511,21 @@ fun ModalCrearTratamiento(
                 // Bloque 1 · ATENCIÓN ─────────────────────────────────────
                 Tarjeta(titulo = "Atención", icono = "🩺") {
                     // ⚡ Plantilla ("combo" de la clínica): autocompleta servicio + comercial + clínico.
-                    if (plantillas.isNotEmpty()) {
+                    // Solo las que tienen un servicio ACTIVO (las copiadas de la biblioteca nacen
+                    // sin servicio hasta que la clínica le asigna uno) y no apagado en la sede.
+                    val ofrecibles = pe.saniape.app.data.staff.plantillasOfrecibles(
+                        plantillas, procedimientos,
+                        apagadosEnSede = serviciosSede.filterValues { !it.second }.keys,
+                    )
+                    if (ofrecibles.isNotEmpty()) {
                         Etq("⚡ Usar plantilla (opcional)")
-                        SelectorLista(plantillas, plantilla, { it.nombre }, "Armar manualmente…") { pl ->
-                            plantilla = pl
-                            plantillaPend = pl
-                            // Servicio de la plantilla → dispara el prefill y luego se aplican sus valores.
-                            pl.procedimientoId?.let { pid ->
-                                procedimientos.find { it.id == pid }?.let { pr ->
-                                    proc = pr
-                                    pr.especialidadId?.let { eId -> especialidad = especialidades.find { it.id == eId } ?: especialidad }
-                                }
-                            }
-                            if (miTerapeutaId == null) pl.terapeutaId?.let { tId ->
-                                terapeuta = terapeutas.find { it.id == tId } ?: terapeuta
-                            }
-                            pl.diagnostico?.takeIf { it.isNotBlank() }?.let { diagnostico = it }
+                        SelectorLista(listOf<PlantillaRef?>(null) + ofrecibles, plantilla,
+                            { it?.nombre ?: "Sin plantilla — armar manualmente" }, "Armar manualmente…") { pl ->
+                            elegirPlantilla(pl)
+                        }
+                        avisoPlantilla?.let { av ->
+                            Text("⚠ $av", color = c.error, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 4.dp))
                         }
                         Spacer(Modifier.height(10.dp))
                     }
@@ -512,12 +617,8 @@ fun ModalCrearTratamiento(
                                         // Quitar = volver a los precios del servicio (mismo prefill).
                                         campaniaAplicada = null
                                         proc?.let { p ->
-                                            precioPorSesion = p.precio.toString()
-                                            val tar = p.tarifarios.firstOrNull { it.cantidadSesiones == 10 } ?: p.tarifarios.firstOrNull()
-                                            if (tar != null) { totalSesiones = tar.cantidadSesiones.toString(); precioPaquete = tar.precioTotal.toString() }
-                                            else { precioPaquete = p.precioPaquete?.toString() ?: ""; totalSesiones = "10" }
-                                            precioUnitario = (p.precioUnitarioSugerido ?: p.precio).toString()
-                                            precioAcordado = ""
+                                            ponerCampos(pe.saniape.app.data.staff.camposDeServicio(p, precioSedeDe(p.id), modalidad)
+                                                .copy(cantidadUnidades = cantidadUnidades))
                                         }
                                     }.padding(4.dp))
                             }
@@ -553,10 +654,10 @@ fun ModalCrearTratamiento(
                                                     else -> precioAcordado = (camp.precio ?: 0.0).toString()
                                                 }
                                                 else -> when {   // porcentaje / monto_fijo: descuentan el base
-                                                    esUnidades -> { precioUnitario = camp.precioCon(precioUnitario.toDoubleOrNull() ?: p.precio).toString(); precioAcordado = "" }
+                                                    esUnidades -> { precioUnitario = camp.precioCon(precioUnitario.toDoubleOrNull() ?: precioBase).toString(); precioAcordado = "" }
                                                     usaSesiones && modalidad == "Paquete" -> { precioPaquete = camp.precioCon(precioPaquete.toDoubleOrNull() ?: 0.0).toString(); precioAcordado = "" }
-                                                    usaSesiones -> { precioPorSesion = camp.precioCon(precioPorSesion.toDoubleOrNull() ?: p.precio).toString(); precioAcordado = "" }
-                                                    else -> precioAcordado = camp.precioCon(p.precio).toString()
+                                                    usaSesiones -> { precioPorSesion = camp.precioCon(precioPorSesion.toDoubleOrNull() ?: precioBase).toString(); precioAcordado = "" }
+                                                    else -> precioAcordado = camp.precioCon(precioBase).toString()
                                                 }
                                             }
                                             campaniaAplicada = camp
@@ -596,10 +697,10 @@ fun ModalCrearTratamiento(
                     Spacer(Modifier.height(12.dp))
                     Tarjeta(titulo = "Servicio único", icono = "✨") {
                         Etq("Precio base del servicio")
-                        SelectorBox("${simboloMoneda(moneda)} ${proc?.precio ?: 0.0}", bloqueado = true) {}
+                        SelectorBox("${simboloMoneda(moneda)} $precioBase", bloqueado = true) {}
                         Spacer(Modifier.height(10.dp))
                         Etq("Precio acordado (${simboloMoneda(moneda)}) — opcional")
-                        CampoNum(precioAcordado, ayuda = "${simboloMoneda(moneda)} ${formatoNum(proc?.precio ?: 0.0)} (precio de lista)") { precioAcordado = it }
+                        CampoNum(precioAcordado, ayuda = "${simboloMoneda(moneda)} ${formatoNum(precioBase)} (precio de lista)") { precioAcordado = it }
                         Text("Vacío = se cobra el precio de lista; escríbelo solo si se negoció otro. " +
                             "El servicio se registra al realizarse (paso “Por hacer”).",
                             color = c.textoSuave, fontSize = 10.sp)
@@ -663,7 +764,7 @@ fun ModalCrearTratamiento(
                 val referencia = when {
                     esUnidades -> (cantidadUnidades.toIntOrNull() ?: 0) * (precioUnitario.toDoubleOrNull() ?: 0.0)
                     usaSesiones && modalidad == "Paquete" -> precioPaquete.toDoubleOrNull() ?: 0.0
-                    else -> proc?.precio ?: 0.0
+                    else -> precioBase
                 }
                 val acordadoNum = precioAcordado.toDoubleOrNull() ?: 0.0
                 val hayDescuento = referencia > 0 && acordadoNum > 0 && (referencia - acordadoNum) > 0.005
@@ -676,6 +777,34 @@ fun ModalCrearTratamiento(
                             singleLine = true, modifier = Modifier.fillMaxWidth())
                         Text("Queda registrado: ${simboloMoneda(moneda)} ${formatoNum(referencia)} → ${simboloMoneda(moneda)} ${formatoNum(acordadoNum)}",
                             color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
+                    }
+                }
+
+                // Indicaciones y control que trajo la plantilla (editables; se guardan al crear
+                // como medicación y próximo control, en cualquier tipo de tratamiento).
+                if (proc != null && (medicacion.isNotBlank() || proximoControl != null)) {
+                    Spacer(Modifier.height(12.dp))
+                    Tarjeta(titulo = "Indicaciones de la plantilla", icono = "💊") {
+                        Etq("Medicación / cuidados")
+                        OutlinedTextField(colors = coloresCampoForm(), value = medicacion,
+                            onValueChange = { medicacion = it.take(2000) }, minLines = 2,
+                            modifier = Modifier.fillMaxWidth())
+                        if (proc?.controlesDias?.isNotEmpty() == true) {
+                            Text("Los controles los programa el protocolo del servicio.",
+                                color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp))
+                        } else {
+                        Spacer(Modifier.height(10.dp))
+                        Etq("Próximo control")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.weight(1f)) {
+                                CajaSelectorForm(proximoControl ?: "Sin fecha") { mostrarFechaControl = true }
+                            }
+                            if (proximoControl != null) {
+                                Text("✕", color = c.textoSuave, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.clickable { proximoControl = null }.padding(horizontal = 10.dp, vertical = 6.dp))
+                            }
+                        }
+                        }
                     }
                 }
 
@@ -701,6 +830,10 @@ fun ModalCrearTratamiento(
                                 color = if (conPrimera) c.navy else c.textoSuave)
                             Spacer(Modifier.width(8.dp))
                             Text("Agendarla ahora", color = c.texto, fontWeight = FontWeight.SemiBold)
+                        }
+                        if (!conPrimera) {
+                            Text("Sin fecha todavía: al crear te ofreceremos agendarla.",
+                                color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
                         }
                         if (conPrimera) {
                             Spacer(Modifier.height(8.dp))
@@ -741,27 +874,122 @@ fun ModalCrearTratamiento(
     }
 }
 
+/** El cuerpo de `accion: crear` para un [TratamientoNuevo] (una sola fuente). */
+private fun cuerpoDe(pacienteId: String, nuevo: TratamientoNuevo) = PacientesRepo.cuerpoCrearTratamiento(
+    pacienteId = pacienteId, procedimientoId = nuevo.procedimientoId,
+    terapeutaId = nuevo.terapeutaId, modalidad = nuevo.modalidad,
+    totalSesiones = nuevo.totalSesiones, precioPaquete = nuevo.precioPaquete,
+    precioPorSesion = nuevo.precioPorSesion, precioAcordado = nuevo.precioAcordado,
+    diagnostico = nuevo.diagnostico, citaOrigenId = nuevo.citaOrigenId,
+    medicacion = nuevo.medicacion, proximoControl = nuevo.proximoControl,
+    cantidadUnidades = nuevo.cantidadUnidades, precioUnitario = nuevo.precioUnitario,
+    tecnicasSugeridas = nuevo.tecnicasSugeridas,
+    campaniaId = nuevo.campaniaId, motivoPrecio = nuevo.motivoPrecio,
+    fechaInicio = nuevo.fechaInicio,
+    primeraFecha = nuevo.primeraFecha, primeraHora = nuevo.primeraHora,
+)
+
 /**
- * Guarda el tratamiento del form (mismo endpoint y campos que la ficha). Para los
- * otros lugares que lo crean (agenda); cuenta el uso de la plantilla si hubo.
+ * Tras crear un tratamiento SIN su primera sesión (se desmarcó "Agendarla ahora",
+ * o el tipo no la tiene: unidades / servicio único / consulta): agendar su
+ * primera cita, prellenada con el profesional, la especialidad, el tratamiento
+ * (servicio y "Sesión #N") y su sede. Requisito del dueño: siempre se ofrece.
  */
-suspend fun guardarTratamientoNuevo(pacienteId: String, nuevo: TratamientoNuevo, nombrePaciente: String? = null): Boolean {
-    val ok = PacientesRepo.crearTratamiento(
-        pacienteId = pacienteId, procedimientoId = nuevo.procedimientoId,
-        terapeutaId = nuevo.terapeutaId, modalidad = nuevo.modalidad,
-        totalSesiones = nuevo.totalSesiones, precioPaquete = nuevo.precioPaquete,
-        precioPorSesion = nuevo.precioPorSesion, precioAcordado = nuevo.precioAcordado,
-        diagnostico = nuevo.diagnostico, citaOrigenId = nuevo.citaOrigenId,
-        medicacion = nuevo.medicacion, proximoControl = nuevo.proximoControl,
-        cantidadUnidades = nuevo.cantidadUnidades, precioUnitario = nuevo.precioUnitario,
-        tecnicasSugeridas = nuevo.tecnicasSugeridas,
-        campaniaId = nuevo.campaniaId, motivoPrecio = nuevo.motivoPrecio,
-        fechaInicio = nuevo.fechaInicio,
-        primeraFecha = nuevo.primeraFecha, primeraHora = nuevo.primeraHora,
+data class OfertaPrimeraCita(
+    val tratamientoId: String,
+    val pacienteId: String,
+    val pacienteNombre: String?,
+    val tipo: pe.saniape.app.data.staff.TipoTratamientoNuevo,
+    val terapeutaId: String?,
+    val especialidadId: String?,
+    /** La sede que el servidor le puso al tratamiento (multisede); null = la de siempre. */
+    val sedeId: String?,
+) {
+    val titulo: String get() = pe.saniape.app.data.staff.textoAgendarPrimera(tipo)
+
+    /** El formulario nativo de crear cita, prellenado. */
+    fun prefill(): pe.saniape.app.ui.clinica.PrefillCita {
+        val hoy = pe.saniape.app.data.staff.hoyClinicaIso()
+        return pe.saniape.app.ui.clinica.PrefillCita(
+            tipo = pe.saniape.app.data.staff.tipoCitaPrimera(tipo),
+            pacienteId = pacienteId, pacienteNombre = pacienteNombre,
+            fecha = hoy, hora = pe.saniape.app.ui.proximaHoraEnPunto(),
+            terapeutaId = terapeutaId, especialidadId = especialidadId,
+            tratamientoId = tratamientoId, sedeId = sedeId,
+        )
+    }
+}
+
+/** Lo que dejó crear un tratamiento: si quedó creado y, si corresponde, la oferta de agendar. */
+data class ResultadoCrearTratamiento(val creado: Boolean, val oferta: OfertaPrimeraCita? = null)
+
+/** El id del tratamiento creado: de la respuesta, o del rechazo PARCIAL (se creó, falló lo demás). */
+private fun idCreado(r: pe.saniape.app.data.offline.ResultadoEscritura): String? =
+    if (r.registrada) pe.saniape.app.data.staff.idDeRespuesta(r.cuerpo)
+    else r.rechazo?.datos?.let { d ->
+        (d["tratamientoId"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it.isNotBlank() && it != "null" }
+            ?: pe.saniape.app.data.staff.idDeRespuesta(d)
+    }
+
+/** Después de crear (con id): contar la plantilla, aprender el diagnóstico y armar la oferta. */
+private suspend fun trasCrear(
+    pacienteId: String, nuevo: TratamientoNuevo, nombrePaciente: String?, id: String?, primeraAgendada: Boolean,
+    respuesta: kotlinx.serialization.json.JsonObject? = null,
+): OfertaPrimeraCita? {
+    // El contador de la plantilla cuenta SOLO tratamientos guardados.
+    nuevo.plantillaId?.let { runCatching { PacientesRepo.contarUsoPlantilla(it) } }
+    aprenderDiagnosticoDe(nuevo, nombrePaciente)
+    if (!pe.saniape.app.data.staff.ofrecerAgendarTrasCrear(id, primeraAgendada) || id == null) return null
+    return ofertaPrimeraCitaDe(
+        tratamientoId = id, pacienteId = pacienteId, pacienteNombre = nombrePaciente, tipo = nuevo.tipo,
+        terapeutaId = nuevo.terapeutaId, especialidadId = nuevo.especialidadDiagnostico,
+        respuesta = respuesta,
     )
-    if (ok) nuevo.plantillaId?.let { runCatching { PacientesRepo.contarUsoPlantilla(it) } }
-    if (ok) aprenderDiagnosticoDe(nuevo, nombrePaciente)
-    return ok
+}
+
+/** La oferta de agendar para un tratamiento recién creado (con multisede, lee su sede). */
+suspend fun ofertaPrimeraCitaDe(
+    tratamientoId: String, pacienteId: String, pacienteNombre: String?,
+    tipo: pe.saniape.app.data.staff.TipoTratamientoNuevo, terapeutaId: String?, especialidadId: String?,
+    /** La respuesta del crear: el servidor nuevo devuelve `sedeId` (sin él, se lee aparte). */
+    respuesta: kotlinx.serialization.json.JsonObject? = null,
+): OfertaPrimeraCita {
+    val multiSede = pe.saniape.app.data.staff.StaffContextoRepo.actual?.multiSede == true
+    val sede = when {
+        !multiSede -> null
+        respuesta?.containsKey("sedeId") == true ->
+            (respuesta["sedeId"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it.isNotBlank() && it != "null" }
+        else -> PacientesRepo.sedeDeTratamiento(tratamientoId)
+    }
+    return OfertaPrimeraCita(
+        tratamientoId = tratamientoId, pacienteId = pacienteId, pacienteNombre = pacienteNombre, tipo = tipo,
+        terapeutaId = terapeutaId, especialidadId = especialidadId, sedeId = sede,
+    )
+}
+
+/**
+ * Guarda el tratamiento del form (mismo endpoint y campos en TODOS los lugares
+ * que lo crean: ficha, agenda, nuevo paquete). Avisa con su toast, cuenta el uso
+ * de la plantilla y devuelve la oferta de agendar la primera cita si no se agendó.
+ */
+suspend fun guardarTratamientoNuevo(pacienteId: String, nuevo: TratamientoNuevo, nombrePaciente: String? = null): ResultadoCrearTratamiento {
+    val r = PacientesRepo.crearTratamientoDetalle(cuerpoDe(pacienteId, nuevo))
+    val id = idCreado(r)
+    if (!r.registrada && id == null) {
+        pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo crear el tratamiento")
+        return ResultadoCrearTratamiento(creado = false)
+    }
+    when {
+        // Parcial: el tratamiento existe, falló su primera sesión (o sus regalos): el texto del servidor lo dice.
+        !r.registrada -> pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "El tratamiento se creó, pero no todo se guardó")
+        r.encolada -> Unit   // la cola ya avisó ("se registrará al volver la señal")
+        nuevo.primeraFecha != null -> pe.saniape.app.ui.Toaster.exito("Tratamiento creado con su primera sesión")
+        else -> pe.saniape.app.ui.Toaster.exito("Tratamiento creado")
+    }
+    // En la cola offline aún no hay id: no hay qué agendar todavía.
+    val oferta = trasCrear(pacienteId, nuevo, nombrePaciente, if (r.encolada) null else id,
+        primeraAgendada = r.registrada && nuevo.primeraFecha != null, respuesta = r.cuerpo ?: r.rechazo?.datos)
+    return ResultadoCrearTratamiento(creado = true, oferta = oferta)
 }
 
 /**
@@ -769,36 +997,58 @@ suspend fun guardarTratamientoNuevo(pacienteId: String, nuevo: TratamientoNuevo,
  * camino de SIEMPRE (`/api/staff/tratamiento/accion`, `crear`) pero directo,
  * para leer el `id` y atarlo al plan (`/plan-tratamiento`: "✓ Tratamiento
  * creado" y los objetivos a objetivos_tratamiento). Sin señal no se crea (no
- * habría id que atar). Devuelve true si el tratamiento quedó creado.
+ * habría id que atar).
  */
 suspend fun crearTratamientoDelPlan(
     pacienteId: String, nuevo: TratamientoNuevo, evaluacionId: String, nombrePaciente: String? = null,
-): Boolean {
-    val cuerpo = PacientesRepo.cuerpoCrearTratamiento(
-        pacienteId = pacienteId, procedimientoId = nuevo.procedimientoId,
-        terapeutaId = nuevo.terapeutaId, modalidad = nuevo.modalidad,
-        totalSesiones = nuevo.totalSesiones, precioPaquete = nuevo.precioPaquete,
-        precioPorSesion = nuevo.precioPorSesion, precioAcordado = nuevo.precioAcordado,
-        diagnostico = nuevo.diagnostico, citaOrigenId = nuevo.citaOrigenId,
-        medicacion = nuevo.medicacion, proximoControl = nuevo.proximoControl,
-        cantidadUnidades = nuevo.cantidadUnidades, precioUnitario = nuevo.precioUnitario,
-        tecnicasSugeridas = nuevo.tecnicasSugeridas,
-        campaniaId = nuevo.campaniaId, motivoPrecio = nuevo.motivoPrecio,
-        fechaInicio = nuevo.fechaInicio,
-        primeraFecha = nuevo.primeraFecha, primeraHora = nuevo.primeraHora,
-    )
+): ResultadoCrearTratamiento {
+    val cuerpo = cuerpoDe(pacienteId, nuevo)
     val r = pe.saniape.app.ui.conIndicador { pe.saniape.app.data.staff.EvaluacionPsicoRepo.crearTratamientoConId(cuerpo) }
     if (!r.registrada) {
         pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo crear el tratamiento")
-        return false
+        return ResultadoCrearTratamiento(creado = false)
     }
-    nuevo.plantillaId?.let { runCatching { PacientesRepo.contarUsoPlantilla(it) } }
-    aprenderDiagnosticoDe(nuevo, nombrePaciente)
     val id = pe.saniape.app.data.staff.idDeRespuesta(r.cuerpo)
     val atado = id != null && pe.saniape.app.data.staff.EvaluacionPsicoRepo.vincularPlan(evaluacionId, id).registrada
     if (atado) pe.saniape.app.ui.Toaster.exito("Tratamiento creado con el plan de la evaluación")
     else pe.saniape.app.ui.Toaster.error("Se creó el tratamiento, pero no se pudo marcar en el plan de la evaluación")
-    return true
+    val oferta = trasCrear(pacienteId, nuevo, nombrePaciente, id, primeraAgendada = nuevo.primeraFecha != null, respuesta = r.cuerpo)
+    return ResultadoCrearTratamiento(creado = true, oferta = oferta)
+}
+
+/**
+ * "📅 Agendar la primera sesión / la cita": se ofrece al terminar de crear un
+ * tratamiento sin su primera cita. "Agendar" abre el formulario nativo de crear
+ * cita, prellenado ([OfertaPrimeraCita.prefill]).
+ */
+@Composable
+fun DialogoAgendarPrimera(
+    oferta: OfertaPrimeraCita,
+    onAgendar: (pe.saniape.app.ui.clinica.PrefillCita) -> Unit,
+    onCerrar: () -> Unit,
+) {
+    val c = Sania.colors
+    val sesiones = oferta.tipo == pe.saniape.app.data.staff.TipoTratamientoNuevo.SESIONES
+    AlertDialog(
+        onDismissRequest = onCerrar,
+        title = { Text(oferta.titulo, fontWeight = FontWeight.Bold) },
+        text = {
+            Text(
+                if (sesiones) "El tratamiento quedó creado sin sesiones agendadas. ¿Agendamos la primera ahora? " +
+                    "Se abre la cita con el profesional y el tratamiento ya puestos; eliges fecha y hora."
+                else "El tratamiento quedó creado. ¿Agendamos su cita ahora? Se abre con el profesional y el " +
+                    "tratamiento ya puestos; eliges fecha y hora.",
+                color = c.textoSuave, fontSize = 13.sp,
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onAgendar(oferta.prefill()) }) {
+                Text("Agendar", color = c.navy, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = { TextButton(onClick = onCerrar) { Text("Ahora no", color = c.textoSuave) } },
+        containerColor = c.superficie,
+    )
 }
 
 /** "80" o "79.50" — para mostrar montos sin colas de decimales. */

@@ -103,6 +103,8 @@ data class PrefillCita(
     val citaOrigenId: String? = null,
     val especialidadId: String? = null,   // pre-seleccionar especialidad (p.ej. derivación destino)
     val tratamientoId: String? = null,    // enlazar la cita al tratamiento que la origina (control)
+    /** Multisede: la sede del tratamiento (su primera cita va ahí si el usuario puede agendar en ella). */
+    val sedeId: String? = null,
 )
 
 /**
@@ -211,7 +213,9 @@ fun PantallaCrearCita(
         else sedeEstado.sedeId.ifEmpty { null }
             ?: sedeEstado.principalId?.takeIf { p -> sedeEstado.sedes.any { it.id == p } }
             ?: sedeEstado.sedes.firstOrNull()?.id
-    var sedeId by remember { mutableStateOf(sedePorDefecto()) }
+    var sedeId by remember {
+        mutableStateOf(prefill?.sedeId?.takeIf { s -> sedeEstado.multiSede && sedeEstado.sedes.any { it.id == s } } ?: sedePorDefecto())
+    }
     // Pacientes por sede: la cita ES del paciente, así que va en SU sede. Si se
     // agendara en otra, el personal de la sede del paciente no la vería y el de la
     // otra tampoco (no ve al paciente). Se fuerza y se dice; el selector queda

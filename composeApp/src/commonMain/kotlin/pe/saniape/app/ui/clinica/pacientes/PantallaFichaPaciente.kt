@@ -134,6 +134,8 @@ private fun PantallaFichaPacienteContenido(
     var editandoPaciente by remember { mutableStateOf(false) }
     var menuPaciente by remember { mutableStateOf(false) }
     var crearSesionEn by remember { mutableStateOf<TratamientoPaciente?>(null) }
+    // Tras crear un tratamiento sin su primera cita: "📅 Agendar la primera sesión".
+    var ofertaPrimera by remember { mutableStateOf<OfertaPrimeraCita?>(null) }
     var creandoTratamiento by remember { mutableStateOf(false) }
     var ampliarTratamiento by remember { mutableStateOf<TratamientoPaciente?>(null) }
     var editarTratamiento by remember { mutableStateOf<TratamientoPaciente?>(null) }
@@ -831,6 +833,8 @@ private fun PantallaFichaPacienteContenido(
                             mapaDental = ctx.mapaDental,
                             // Paciente dado de baja: se mira, no se marca.
                             soloLectura = paciente.estado == "Inactivo",
+                            // Tras "Crear tratamiento(s)": agendar la primera cita.
+                            onOfrecerAgendar = { of -> ofertaPrimera = of.copy(pacienteNombre = paciente.nombre) },
                         )
                     }
                 } }
@@ -853,23 +857,9 @@ private fun PantallaFichaPacienteContenido(
                 creandoTratamiento = false
                 renovarDesde = null
                 scope.launch {
-                    val ok = PacientesRepo.crearTratamiento(
-                        pacienteId = paciente.id, procedimientoId = nuevo.procedimientoId,
-                        terapeutaId = nuevo.terapeutaId, modalidad = nuevo.modalidad,
-                        totalSesiones = nuevo.totalSesiones, precioPaquete = nuevo.precioPaquete,
-                        precioPorSesion = nuevo.precioPorSesion, precioAcordado = nuevo.precioAcordado,
-                        diagnostico = nuevo.diagnostico, citaOrigenId = nuevo.citaOrigenId,
-                        medicacion = nuevo.medicacion, proximoControl = nuevo.proximoControl,
-                        cantidadUnidades = nuevo.cantidadUnidades, precioUnitario = nuevo.precioUnitario,
-                        tecnicasSugeridas = nuevo.tecnicasSugeridas,
-                        campaniaId = nuevo.campaniaId, motivoPrecio = nuevo.motivoPrecio,
-                        fechaInicio = nuevo.fechaInicio,
-                        primeraFecha = nuevo.primeraFecha, primeraHora = nuevo.primeraHora,
-                    )
-                    if (ok) pe.saniape.app.ui.Toaster.exito(if (nuevo.primeraFecha != null) "Tratamiento creado con su primera sesión" else "Tratamiento creado") else pe.saniape.app.ui.Toaster.error("No se pudo crear el tratamiento")
-                    if (ok) aprenderDiagnosticoDe(nuevo, paciente.nombre)
-                    // Si se usó una plantilla, contar el uso (ordena "más usadas primero").
-                    nuevo.plantillaId?.let { PacientesRepo.contarUsoPlantilla(it) }
+                    // Toast, contador de la plantilla y diagnóstico aprendido van adentro.
+                    val r = guardarTratamientoNuevo(paciente.id, nuevo, paciente.nombre)
+                    ofertaPrimera = r.oferta
                     recargar()
                 }
             },
@@ -888,10 +878,19 @@ private fun PantallaFichaPacienteContenido(
             onGuardar = { nuevo ->
                 planPsico = null
                 scope.launch {
-                    crearTratamientoDelPlan(paciente.id, nuevo, evId, paciente.nombre)
+                    ofertaPrimera = crearTratamientoDelPlan(paciente.id, nuevo, evId, paciente.nombre).oferta
                     recargar()
                 }
             },
+        )
+    }
+
+    // Tratamiento creado sin su primera cita: ofrecer agendarla (formulario nativo prellenado).
+    ofertaPrimera?.let { of ->
+        DialogoAgendarPrimera(
+            oferta = of,
+            onAgendar = { pf -> ofertaPrimera = null; crearCita = pf },
+            onCerrar = { ofertaPrimera = null },
         )
     }
 

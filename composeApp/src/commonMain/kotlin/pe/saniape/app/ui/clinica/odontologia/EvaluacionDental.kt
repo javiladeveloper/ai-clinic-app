@@ -16,7 +16,11 @@ import pe.saniape.app.data.staff.OdontogramaRepo
 /** Lo que pasó con el tratamiento al completar la evaluación. */
 sealed interface ResultadoTratamientoEvaluacion {
     /** Se creó ahora, con el presupuesto a la vista. */
-    data class Creado(val cuantos: Int) : ResultadoTratamientoEvaluacion
+    data class Creado(
+        val cuantos: Int,
+        /** Agendar la primera cita del (primer) tratamiento creado; null = sin id (cola offline). */
+        val oferta: pe.saniape.app.ui.clinica.pacientes.OfertaPrimeraCita? = null,
+    ) : ResultadoTratamientoEvaluacion
     /** Ya había uno de esta evaluación (cita_origen_id): no se duplica. */
     data object YaExistia : ResultadoTratamientoEvaluacion
     /** Boca sana, o todo lo pendiente ya tiene tratamiento. */

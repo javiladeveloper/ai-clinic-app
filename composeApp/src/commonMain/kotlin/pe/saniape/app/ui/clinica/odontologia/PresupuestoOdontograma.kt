@@ -71,6 +71,8 @@ internal fun PresupuestoOdontograma(
      * "Crear N tratamiento(s)". null = fuera de la revisión (ficha, sesiones).
      */
     registro: RegistroPresupuesto? = null,
+    /** Tras crear con el botón del presupuesto: ofrecer agendar la primera cita. */
+    onOfrecerAgendar: ((pe.saniape.app.ui.clinica.pacientes.OfertaPrimeraCita) -> Unit)? = null,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
@@ -147,8 +149,8 @@ internal fun PresupuestoOdontograma(
             val planes = elegidas.map { planTratamiento(it, procPorId[it.procedimientoId]) }
             val cuantos = planes.size + extrasAhora.size
             creando = true
-            val fallidos = try {
-                crearTodo(pacienteId, citaId, planes, extrasAhora)
+            val (fallidos, oferta) = try {
+                crearTodo(pacienteId, citaId, planes, extrasAhora, procPorId)
             } finally {
                 creando = false
             }
@@ -164,7 +166,7 @@ internal fun PresupuestoOdontograma(
             }
             extras = emptyList()
             precios = emptyMap()
-            ResultadoTratamientoEvaluacion.Creado(cuantos)
+            ResultadoTratamientoEvaluacion.Creado(cuantos, oferta)
         }
         val listo = serviciosCargados && !soloLectura
         androidx.compose.runtime.SideEffect { registro.crear = if (listo) crearMarcados else null }
@@ -290,9 +292,10 @@ internal fun PresupuestoOdontograma(
                                 lineas.filter { it.procedimientoId in marcadas }
                                     .map { planTratamiento(it, procPorId[it.procedimientoId]) }
                             scope.launch {
-                                val fallidos = crearTodo(
+                                val (fallidos, oferta) = crearTodo(
                                     pacienteId, citaId, planes,
                                     extras.map { it.copy(precio = precioExtra(it)) },
+                                    procPorId,
                                 )
                                 creando = false
                                 if (fallidos == 0) {
@@ -300,6 +303,8 @@ internal fun PresupuestoOdontograma(
                                     extras = emptyList()
                                     precios = emptyMap()
                                     onCambio()
+                                    // Siempre se ofrece agendar la primera cita (requisito del dueño).
+                                    oferta?.let { of -> onOfrecerAgendar?.invoke(of) }
                                 } else {
                                     Toaster.error("$fallidos no se pudieron crear. Revisa y reintenta.")
                                     onCambio()
@@ -373,40 +378,67 @@ internal fun PresupuestoOdontograma(
 
 /**
  * Crea un tratamiento por plan y uno por cada servicio extra. Devuelve cuántos
- * fallaron: si fallan algunos, los que sí se crearon quedan (no se deshacen),
- * y como los hallazgos ya atados dejan de aparecer, reintentar solo toca lo que
- * faltó.
+ * fallaron (si fallan algunos, los que sí se crearon quedan —no se deshacen— y
+ * como los hallazgos ya atados dejan de aparecer, reintentar solo toca lo que
+ * faltó) y la oferta de agendar la primera cita del PRIMER tratamiento creado
+ * (null si quedó en la cola offline: aún no hay id).
+ *
+ * Modalidad: "Paquete" (no "Sesiones", que la base no acepta: el servidor la
+ * normalizaba) y la sesión suelta lleva su precio (= lo presupuestado), como
+ * `tratamientoDeItem` de la web: sin él, completar la sesión cobraba el precio
+ * de lista y quedaba saldo fantasma.
  */
 private suspend fun crearTodo(
     pacienteId: String,
     citaId: String?,
     planes: List<PlanTratamiento>,
     extras: List<ProcedimientoRef>,
-): Int {
+    procPorId: Map<String, ProcedimientoRef>,
+): Pair<Int, pe.saniape.app.ui.clinica.pacientes.OfertaPrimeraCita?> {
     var fallidos = 0
+    // id creado + su servicio + la respuesta (trae su sede)
+    var primero: Triple<String, ProcedimientoRef?, kotlinx.serialization.json.JsonObject?>? = null
+    suspend fun crear(cuerpo: kotlinx.serialization.json.JsonObject, proc: ProcedimientoRef?) {
+        val r = PacientesRepo.crearTratamientoDetalle(cuerpo)
+        if (!r.registrada) {
+            fallidos++
+            r.rechazo?.let { Toaster.error(it.error) }
+            return
+        }
+        val id = pe.saniape.app.data.staff.idDeRespuesta(r.cuerpo)
+        if (primero == null && id != null && !r.encolada) primero = Triple(id, proc, r.cuerpo)
+    }
     for (p in planes) {
-        val ok = PacientesRepo.crearTratamiento(
+        val modalidad = if (p.modalidad == "Sesiones") "Paquete" else p.modalidad
+        crear(PacientesRepo.cuerpoCrearTratamiento(
             pacienteId = pacienteId, procedimientoId = p.procedimientoId, terapeutaId = null,
-            modalidad = p.modalidad, totalSesiones = p.totalSesiones, precioPaquete = p.precioPaquete,
-            precioPorSesion = null, precioAcordado = p.precioAcordado, diagnostico = p.diagnostico,
+            modalidad = modalidad, totalSesiones = p.totalSesiones, precioPaquete = p.precioPaquete,
+            precioPorSesion = if (modalidad == "Sesión suelta") p.precioAcordado else null,
+            precioAcordado = p.precioAcordado, diagnostico = p.diagnostico,
             citaOrigenId = citaId, cantidadUnidades = p.cantidadUnidades, precioUnitario = p.precioUnitario,
             hallazgoIds = p.hallazgoIds,
-        )
-        if (!ok) fallidos++
+        ), procPorId[p.procedimientoId])
     }
     for (e in extras) {
         val porSesiones = e.modoCobro == "sesiones"
-        val ok = PacientesRepo.crearTratamiento(
+        crear(PacientesRepo.cuerpoCrearTratamiento(
             pacienteId = pacienteId, procedimientoId = e.id, terapeutaId = null,
-            modalidad = if (porSesiones) "Sesiones" else "Sesión suelta",
+            modalidad = if (porSesiones) "Paquete" else "Sesión suelta",
             totalSesiones = if (porSesiones) (e.tarifarios.firstOrNull()?.cantidadSesiones ?: 1) else 1,
             precioPaquete = if (porSesiones) e.precio else null,
-            precioPorSesion = null, precioAcordado = e.precio,
+            precioPorSesion = if (porSesiones) null else e.precio, precioAcordado = e.precio,
             diagnostico = "${e.nombre} (Tratamiento complementario)", citaOrigenId = citaId,
-        )
-        if (!ok) fallidos++
+        ), e)
     }
-    return fallidos
+    val oferta = primero?.let { (id, proc, resp) ->
+        pe.saniape.app.ui.clinica.pacientes.ofertaPrimeraCitaDe(
+            tratamientoId = id, pacienteId = pacienteId, pacienteNombre = null,
+            tipo = proc?.let { pe.saniape.app.data.staff.tipoTratamientoDe(it) }
+                ?: pe.saniape.app.data.staff.TipoTratamientoNuevo.SESIONES,
+            terapeutaId = null, especialidadId = proc?.especialidadId, respuesta = resp,
+        )
+    }
+    return fallidos to oferta
 }
 
 @Composable
