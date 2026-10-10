@@ -1,0 +1,9 @@
+# Novedades de la 2.41.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Receta o indicaciones al completar una sesión, plantillas de tratamiento arregladas y agendar la primera sesión al crear un tratamiento.
+---
+Clínicas:
+• Al completar una sesión o cita: "📝 Dar receta / indicaciones" ya vinculada a esa atención, con el profesional y el diagnóstico prellenados. También desde el menú de la sesión completada; si ya tiene, ves su número para reimprimirla.
+• Plantillas de tratamiento: se aplican al instante, no arrastran datos de otra plantilla y guardan indicaciones y próximo control.
+• Al crear un tratamiento te ofrecemos agendar la primera sesión o la cita, con los datos ya puestos (nunca en una hora pasada).
+• Sedes en otra moneda: el precio se escribe en la moneda de la sede.
