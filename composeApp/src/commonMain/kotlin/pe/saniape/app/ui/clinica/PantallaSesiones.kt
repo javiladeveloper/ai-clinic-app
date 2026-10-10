@@ -187,7 +187,8 @@ fun PantallaSesiones(
     LaunchedEffect(sesiones, recetasEmitidas) {
         val conReceta = sesiones.filter { it.estado == "Completada" && recetaAplica(it) }
         if (conReceta.isEmpty()) { recetasPorSesion = emptyMap(); return@LaunchedEffect }
-        val r = pe.saniape.app.data.staff.RecetaAtencionRepo.recientesConSesion() ?: return@LaunchedEffect
+        // Solo las sesiones completadas que admiten receta, por su id (sin traer recetas de más).
+        val r = pe.saniape.app.data.staff.RecetaAtencionRepo.deSesiones(conReceta.map { it.id }) ?: return@LaunchedEffect
         recetasPorSesion = conReceta.mapNotNull { s ->
             pe.saniape.app.data.staff.recetaDeAtencion(r, null, s.id)?.let { s.id to it }
         }.toMap()

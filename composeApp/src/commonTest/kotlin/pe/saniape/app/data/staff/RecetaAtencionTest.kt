@@ -225,6 +225,25 @@ class RecetaAtencionTest {
         assertFalse(aRecetaVinculada(fila("Emitida", prescribe = null))!!.esIndicaciones)
     }
 
+    @Test
+    fun filaLivianaSinLosJsonbEnteros() {
+        // Lo que devuelve COLUMNAS: primer_dci (items->0->>dci) y prescribe (prescriptor->>prescribe).
+        fun fila(dci: String?, prescribe: String?) = buildJsonObject {
+            put("id", "r9"); put("numero", 3); put("estado", "Emitida")
+            put("cita_id", JsonNull); put("sesion_id", "s1"); put("tratamiento_id", "t1")
+            put("primer_dci", dci?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("prescribe", prescribe?.let { JsonPrimitive(it) } ?: JsonNull)
+        }
+        assertFalse(aRecetaVinculada(fila("Ibuprofeno", "true"))!!.esIndicaciones)
+        assertTrue(aRecetaVinculada(fila(null, "true"))!!.esIndicaciones)        // sin productos
+        assertTrue(aRecetaVinculada(fila("Árnica gel", "false"))!!.esIndicaciones) // no prescribe
+        assertFalse(aRecetaVinculada(fila("Ibuprofeno", null))!!.esIndicaciones)
+        assertEquals("s1", aRecetaVinculada(fila("x", null))!!.sesionId)
+        // Las columnas pedidas no traen los jsonb completos.
+        assertFalse(Regex("(^|, )items(,|$)").containsMatchIn(RecetaAtencionRepo.COLUMNAS))
+        assertFalse(Regex("(^|, )prescriptor(,|$)").containsMatchIn(RecetaAtencionRepo.COLUMNAS))
+    }
+
     // ── La receta viaja atada a la sesión ──
 
     @Test

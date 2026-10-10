@@ -111,6 +111,8 @@ fun PantallaAtencion(
         if (vm.sucio && !vm.soloLectura) confirmarSalir = true else onSalir()
     }
     ManejarAtras(activo = true) { intentarSalir() }
+    // Pantalla completa: la barra "📝 Dar receta" (de otra atención) no va encima.
+    pe.saniape.app.ui.clinica.recetas.OcultarOfertaReceta()
 
     // Terminada → de vuelta a la agenda. Correcto aunque `terminada` no se
     // reinicie: el VM es nuevo en cada apertura (key con [apertura]).

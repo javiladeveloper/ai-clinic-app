@@ -161,6 +161,8 @@ fun PantallaAgenda(
     var cargandoFicha by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val acciones = pe.saniape.app.ui.recordarAcciones()
+    // "📝 Dar…" de una tarjeta consultando si ya tiene receta (un doble toque no abre dos).
+    var buscandoReceta by remember { mutableStateOf(false) }
     // Se emitió una receta (desde la barra o el menú): el indicador de las tarjetas se actualiza.
     val recetasEmitidas = pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.emitidas
     LaunchedEffect(recetasEmitidas) { if (recetasEmitidas > 0) vm.cargarRecetasVinculadas(forzar = true) }
@@ -547,9 +549,17 @@ fun PantallaAgenda(
                                         AccionTarjeta.EvaluacionPsico -> evalPsico = cita to kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
                                         AccionTarjeta.AnularCobro -> anularCobroCita = cita
                                         // 📝 Ya tiene receta → verla/imprimirla; si no → darla, prellenada.
-                                        // (Si ya tiene, el aviso: 🖨 Ver / reimprimir · Emitir otra.)
-                                        AccionTarjeta.Receta -> vm.prefillReceta(cita)?.let {
-                                            pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.abrir(it, yaTiene = vm.recetasPorCita[cita.id])
+                                        // Primero se confirma si ya tiene (aunque el indicador no haya
+                                        // cargado): si tiene, el aviso 🖨 Ver / reimprimir · Emitir otra.
+                                        AccionTarjeta.Receta -> vm.prefillReceta(cita)?.let { pf ->
+                                            if (!buscandoReceta) {
+                                                buscandoReceta = true
+                                                scope.launch {
+                                                    try {
+                                                        pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.abrir(pf, yaTiene = vm.recetaVinculadaDe(cita))
+                                                    } finally { buscandoReceta = false }
+                                                }
+                                            }
                                         }
                                     }
                                 },

@@ -254,7 +254,8 @@ private fun PantallaFichaPacienteContenido(
     val recetasEmitidas = pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.emitidas
     var recetasVinc by remember(paciente.id) { mutableStateOf<List<pe.saniape.app.data.staff.RecetaVinculada>>(emptyList()) }
     LaunchedEffect(paciente.id, esPacienteReceta, recargarToken, recetasEmitidas) {
-        if (esPacienteReceta) pe.saniape.app.data.staff.RecetaAtencionRepo.vinculadasDe(listOf(paciente.id))?.let { recetasVinc = it }
+        // Las de este paciente atadas a una cita o sesión (columnas livianas, por su índice).
+        if (esPacienteReceta) pe.saniape.app.data.staff.RecetaAtencionRepo.atadasDelPaciente(paciente.id)?.let { recetasVinc = it }
     }
     // ¿Este tratamiento puede llevar receta / indicaciones? (módulo + permiso + especialidad).
     val recetaAplicaTrat = { t: TratamientoPaciente ->

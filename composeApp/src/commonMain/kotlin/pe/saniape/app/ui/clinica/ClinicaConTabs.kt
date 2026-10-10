@@ -126,6 +126,10 @@ fun ClinicaConTabs(
     // sin barra de tabs. Tocar un tab destruía el flujo sin su "¿salir sin guardar?".
     var pantallaCompleta by remember { mutableStateOf(false) }
 
+    // Al salir del panel de clínica (al portal, cerrar sesión): nada de recetas pendiente.
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.reiniciar() }
+    }
     LaunchedEffect(intento) {
         cargando = true; error = null
         when (val r = StaffContextoRepo.cargar()) {
@@ -135,6 +139,8 @@ fun ClinicaConTabs(
                 // Sin multisede no hace nada.
                 pe.saniape.app.data.staff.SedesAgendaRepo.limpiarCache()
                 pe.saniape.app.data.staff.SedeActiva.iniciar(r.contexto)
+                // Otra clínica: la oferta/emisión de receta de la anterior no sigue abierta.
+                if (ctx?.clinicaId != r.contexto.clinicaId) pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.reiniciar()
                 ctx = r.contexto
                 // Tutoriales: solo pide el catálogo si la clínica tiene Primeros pasos
                 // (las nuevas) o hay uno en pausa guardado. DALU no paga nada.
@@ -596,7 +602,17 @@ fun ClinicaConTabs(
     CentroAyuda()
     // "📝 Dar receta / indicaciones" tras completar una atención (agenda, ficha,
     // Sesiones): la barra de la oferta y la emisión, para todas las pantallas.
-    pe.saniape.app.ui.clinica.recetas.HostRecetaTrasAtencion(contexto)
+    pe.saniape.app.ui.clinica.recetas.HostRecetaTrasAtencion(contexto, oculta = pantallaCompleta)
+    // Al navegar (otra pestaña, un módulo de "Más", la ficha del buscador) la oferta
+    // de la pantalla anterior ya no corresponde: se descarta (sigue en el menú).
+    val claveNavegacion = Triple(tab, hayOverlay, fichaBuscada?.id)
+    var navegacionPrevia by remember { mutableStateOf(claveNavegacion) }
+    LaunchedEffect(claveNavegacion) {
+        if (claveNavegacion != navegacionPrevia) {
+            navegacionPrevia = claveNavegacion
+            pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.descartar()
+        }
+    }
     }
     urlPagina?.let { url -> if (verMiPagina) DialogoMiPagina(url) { verMiPagina = false } }
     }

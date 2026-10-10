@@ -267,8 +267,12 @@ private fun JsonObject.s(k: String): String? =
 internal fun aRecetaVinculada(o: JsonObject): RecetaVinculada? {
     val id = o.s("id") ?: return null
     if (o.s("estado") == "Anulada") return null
+    // Liviano: `primer_dci` (items->0->>dci) y `prescribe` (prescriptor->>prescribe) en vez
+    // de los jsonb enteros. Se aceptan también las columnas completas (fila de otra lectura).
     val items = o["items"] as? kotlinx.serialization.json.JsonArray
-    val prescribe = ((o["prescriptor"] as? JsonObject)?.get("prescribe") as? JsonPrimitive)?.content
+    val sinItems = if ("primer_dci" in o) o.s("primer_dci") == null else items != null && items.isEmpty()
+    val prescribe = o.s("prescribe")
+        ?: ((o["prescriptor"] as? JsonObject)?.get("prescribe") as? JsonPrimitive)?.content
     return RecetaVinculada(
         id = id,
         numero = o.s("numero")?.toDoubleOrNull()?.toInt(),
@@ -276,7 +280,7 @@ internal fun aRecetaVinculada(o: JsonObject): RecetaVinculada? {
         sesionId = o.s("sesion_id"),
         tratamientoId = o.s("tratamiento_id"),
         // Sin la columna (fila rara) no se adivina: cuenta como receta.
-        esIndicaciones = (items != null && items.isEmpty()) || prescribe == "false",
+        esIndicaciones = sinItems || prescribe == "false",
     )
 }
 
@@ -285,48 +289,97 @@ internal fun aRecetaVinculada(o: JsonObject): RecetaVinculada? {
  * (sin red → vacío / null): un indicador que no carga no rompe la pantalla.
  */
 object RecetaAtencionRepo {
-    private const val COLUMNAS = "id, numero, estado, cita_id, sesion_id, tratamiento_id, items, prescriptor"
+    /**
+     * Solo lo que el indicador usa: sin los jsonb enteros (`items`/`prescriptor`),
+     * apenas si hay un primer producto y si el prescriptor prescribe.
+     */
+    internal const val COLUMNAS =
+        "id, numero, estado, cita_id, sesion_id, tratamiento_id, " +
+            "primer_dci:items->0->>dci, prescribe:prescriptor->>prescribe"
 
     /** Tope de pacientes por consulta `in.(…)` (la URL no crece sin límite). */
     private const val MAX_IDS = 80
 
     /**
-     * Recetas vigentes (no anuladas) de estos pacientes que quedaron atadas a una
-     * cita o sesión. Por `paciente_id` (tiene índice). null = no se pudo leer.
+     * Recetas vigentes (no anuladas) de estas ATENCIONES: las de [citaIds] o
+     * [sesionIds] de estos pacientes (por `paciente_id`, que tiene índice). Sin
+     * ids de atenciones no hay nada que buscar. null = no se pudo leer.
      */
-    suspend fun vinculadasDe(pacienteIds: Collection<String>): List<RecetaVinculada>? {
-        val ids = pacienteIds.filter { it.isNotBlank() }.distinct()
-        if (ids.isEmpty()) return emptyList()
+    suspend fun vinculadasDe(
+        pacienteIds: Collection<String>,
+        citaIds: Collection<String> = emptyList(),
+        sesionIds: Collection<String> = emptyList(),
+    ): List<RecetaVinculada>? {
+        val pacs = pacienteIds.filter { it.isNotBlank() }.distinct()
+        val citas = citaIds.filter { it.isNotBlank() }.distinct()
+        val sesiones = sesionIds.filter { it.isNotBlank() }.distinct()
+        if (pacs.isEmpty() || (citas.isEmpty() && sesiones.isEmpty())) return emptyList()
         return runCatching {
-            ids.chunked(MAX_IDS).flatMap { lote ->
+            pacs.chunked(MAX_IDS).flatMap { lote ->
                 Supabase.client.postgrest["recetas"]
                     .select(Columns.raw(COLUMNAS)) {
-                        filter { isIn("paciente_id", lote) }
+                        filter {
+                            isIn("paciente_id", lote)
+                            neq("estado", "Anulada")
+                            or {
+                                if (citas.isNotEmpty()) isIn("cita_id", citas)
+                                if (sesiones.isNotEmpty()) isIn("sesion_id", sesiones)
+                            }
+                        }
                         order("numero", Order.DESCENDING)
                         limit(500)
                     }
                     .decodeList<JsonObject>()
                     .mapNotNull { aRecetaVinculada(it) }
-                    .filter { it.citaId != null || it.sesionId != null || it.tratamientoId != null }
             }
         }.getOrNull()
     }
 
     /**
-     * Las más recientes de la clínica atadas a una sesión (para la lista global
-     * de Sesiones, que mezcla muchos pacientes). null = no se pudo leer.
+     * Las de UN paciente que quedaron atadas a una cita o una sesión (la ficha:
+     * sus sesiones se cargan por tratamiento, así que se filtra por el vínculo y
+     * no por ids). Por `paciente_id` (índice). null = no se pudo leer.
      */
-    suspend fun recientesConSesion(limite: Int = 400): List<RecetaVinculada>? = runCatching {
+    suspend fun atadasDelPaciente(pacienteId: String): List<RecetaVinculada>? = runCatching {
         Supabase.client.postgrest["recetas"]
             .select(Columns.raw(COLUMNAS)) {
-                filter { neq("estado", "Anulada") }
+                filter {
+                    eq("paciente_id", pacienteId)
+                    neq("estado", "Anulada")
+                    or {
+                        filterNot("cita_id", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, "null")
+                        filterNot("sesion_id", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, "null")
+                    }
+                }
                 order("numero", Order.DESCENDING)
-                limit(limite.toLong())
+                limit(300)
             }
             .decodeList<JsonObject>()
             .mapNotNull { aRecetaVinculada(it) }
-            .filter { it.sesionId != null || it.citaId != null }
     }.getOrNull()
+
+    /**
+     * Las recetas de estas SESIONES (lista global de Sesiones: solo las
+     * completadas visibles, por `sesion_id`). null = no se pudo leer.
+     */
+    suspend fun deSesiones(sesionIds: Collection<String>): List<RecetaVinculada>? {
+        val ids = sesionIds.filter { it.isNotBlank() }.distinct()
+        if (ids.isEmpty()) return emptyList()
+        return runCatching {
+            ids.chunked(MAX_IDS).flatMap { lote ->
+                Supabase.client.postgrest["recetas"]
+                    .select(Columns.raw(COLUMNAS)) {
+                        filter {
+                            isIn("sesion_id", lote)
+                            neq("estado", "Anulada")
+                        }
+                        order("numero", Order.DESCENDING)
+                    }
+                    .decodeList<JsonObject>()
+                    .mapNotNull { aRecetaVinculada(it) }
+            }
+        }.getOrNull()
+    }
 
     /**
      * Completa el prellenado al ABRIR la receta (nunca al completar): la sesión de

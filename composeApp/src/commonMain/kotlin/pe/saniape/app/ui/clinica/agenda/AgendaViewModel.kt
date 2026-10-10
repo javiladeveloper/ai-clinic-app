@@ -567,8 +567,11 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         recetasJob?.cancel()
         if (completadas.isEmpty()) { recetasPorCita = emptyMap(); recetasLeidasDe = ids; return }
         recetasJob = viewModelScope.launch {
-            val r = pe.saniape.app.data.staff.RecetaAtencionRepo
-                .vinculadasDe(completadas.mapNotNull { it.pacienteId }) ?: return@launch
+            val r = pe.saniape.app.data.staff.RecetaAtencionRepo.vinculadasDe(
+                completadas.mapNotNull { it.pacienteId },
+                citaIds = completadas.map { it.id },
+                sesionIds = completadas.mapNotNull { it.sesionId },
+            ) ?: return@launch
             recetasPorCita = completadas.mapNotNull { c ->
                 // La dada desde la agenda lleva su cita_id; la de la ficha, su sesion_id.
                 pe.saniape.app.data.staff.recetaDeAtencion(r, c.id, c.sesionId)?.let { c.id to it }
@@ -581,6 +584,22 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
      * "¿Ya pagó?" por cita (badge de la tarjeta), lo arma el servidor. UNA
      * petición por lista cargada (no por tarjeta). Vacío = no se muestra nada.
      */
+    /**
+     * La receta de ESTA cita antes de abrir la emisión: si el indicador ya la
+     * leyó, de ahí; si no (recién completada, lectura en curso o fallida), se
+     * pregunta solo por ella. Así "📝 Dar…" nunca emite una segunda sin el aviso.
+     * null también si no se pudo leer (se abre igual: el servidor no lo impide).
+     */
+    suspend fun recetaVinculadaDe(cita: CitaStaff): pe.saniape.app.data.staff.RecetaVinculada? {
+        if (recetasLeidasDe?.contains(cita.id) == true) return recetasPorCita[cita.id]
+        val pac = cita.pacienteId ?: return null
+        val sesion = cita.sesionId ?: AgendaRepo.sesionDeCita(cita.id)?.first
+        val r = pe.saniape.app.data.staff.RecetaAtencionRepo.vinculadasDe(
+            listOf(pac), citaIds = listOf(cita.id), sesionIds = listOfNotNull(sesion),
+        ) ?: return null
+        return pe.saniape.app.data.staff.recetaDeAtencion(r, cita.id, sesion)
+    }
+
     var estadosPago by mutableStateOf<Map<String, pe.saniape.app.data.staff.EstadoPagoCita>>(emptyMap()); private set
     private var estadosPagoJob: kotlinx.coroutines.Job? = null
 

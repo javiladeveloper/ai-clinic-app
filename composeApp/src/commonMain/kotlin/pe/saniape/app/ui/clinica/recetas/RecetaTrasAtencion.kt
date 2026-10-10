@@ -74,6 +74,19 @@ object RecetaTrasAtencion {
     private val abiertaEstado = mutableStateOf<PrefillRecetaAtencion?>(null)
     private val existenteEstado = mutableStateOf<Pair<PrefillRecetaAtencion, RecetaVinculada>?>(null)
     private val emitidasEstado = mutableStateOf(0)
+    private val ocultadoresEstado = mutableStateOf(0)
+
+    /** Cuántas pantallas completas (crear cita, consulta guiada…) están abiertas: la barra no va encima. */
+    internal val ocultadores: Int get() = ocultadoresEstado.value
+    internal fun ocultar() { ocultadoresEstado.value++ }
+    internal fun mostrar() { ocultadoresEstado.value = (ocultadoresEstado.value - 1).coerceAtLeast(0) }
+
+    /** Otra clínica (o salir): nada de la anterior queda ofrecido ni abierto. */
+    fun reiniciar() {
+        ofertaEstado.value = null
+        abiertaEstado.value = null
+        existenteEstado.value = null
+    }
 
     /** La oferta en la barra (null = nada). */
     val oferta: PrefillRecetaAtencion? get() = ofertaEstado.value
@@ -115,6 +128,21 @@ object RecetaTrasAtencion {
     internal fun marcarEmitida() { emitidasEstado.value++ }
 }
 
+/** Vida de la oferta en pantalla: si no se usa, queda en el menú de la atención. */
+internal const val VIDA_OFERTA_MS = 25_000L
+
+/**
+ * Montar en una pantalla COMPLETA (formulario que tapa la pantalla, no un
+ * diálogo): mientras esté, la barra de la oferta no se dibuja encima.
+ */
+@Composable
+fun OcultarOfertaReceta() {
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        RecetaTrasAtencion.ocultar()
+        onDispose { RecetaTrasAtencion.mostrar() }
+    }
+}
+
 /** Pide el HTML imprimible de la receta y lo abre en el visor nativo. false si no se pudo. */
 suspend fun abrirRecetaImpresa(acciones: AccionesNativas, recetaId: String, titulo: String): Boolean {
     val html = AtencionRepo.htmlImprimible("receta", recetaId) ?: return false
@@ -127,7 +155,11 @@ suspend fun abrirRecetaImpresa(acciones: AccionesNativas, recetaId: String, titu
  * emisión y el "¿Imprimir ahora?" tras emitir.
  */
 @Composable
-fun HostRecetaTrasAtencion(ctx: ContextoStaff) {
+fun HostRecetaTrasAtencion(
+    ctx: ContextoStaff,
+    /** Hay un flujo a pantalla completa abierto (agenda: crear cita, ▶ Atender): sin barra. */
+    oculta: Boolean = false,
+) {
     val modulos = ctx.modulosClinicos
     // Doble candado: sin el módulo (o sin permiso) no se muestra nada aunque
     // alguien hubiera llamado a ofrecer().
@@ -149,15 +181,15 @@ fun HostRecetaTrasAtencion(ctx: ContextoStaff) {
             // Primero se lee el "✓ Sesión completada" del toast; después la oferta.
             delay(2_600)
             visible = true
-            // Una oferta vieja no queda colgada para siempre (sigue en el menú de la atención).
-            delay(90_000)
+            // Una oferta vieja no queda colgada (sigue en el menú de la atención).
+            delay(VIDA_OFERTA_MS)
             if (RecetaTrasAtencion.oferta === oferta) RecetaTrasAtencion.descartar()
         }
     }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         AnimatedVisibility(
-            visible = visible && oferta != null,
+            visible = visible && oferta != null && !oculta && RecetaTrasAtencion.ocultadores == 0,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
         ) {

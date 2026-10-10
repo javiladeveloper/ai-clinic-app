@@ -130,6 +130,8 @@ fun PantallaCrearCita(
 
     // El botón/gesto "Atrás" del sistema cierra el formulario (app nativa).
     ManejarAtras(activo = true, onAtras = onCancelar)
+    // Formulario a pantalla completa: la barra "📝 Dar indicaciones" no va encima.
+    pe.saniape.app.ui.clinica.recetas.OcultarOfertaReceta()
 
     var pacientes by remember { mutableStateOf<List<RefNombre>>(emptyList()) }
     var terapeutas by remember { mutableStateOf<List<TerapeutaRef>>(emptyList()) }
