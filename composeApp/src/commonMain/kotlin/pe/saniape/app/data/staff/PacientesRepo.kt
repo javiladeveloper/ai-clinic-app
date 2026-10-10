@@ -1355,6 +1355,34 @@ object PacientesRepo {
             }.toMap()
     }.getOrDefault(emptyMap())
 
+    /** Sede de una cita (la de origen decide la sede del tratamiento). null = sin sede / no se pudo leer. */
+    suspend fun sedeDeCita(citaId: String): String? = runCatching {
+        Supabase.client.postgrest["citas"]
+            .select(Columns.raw("sede_id")) { filter { eq("id", citaId) } }
+            .decodeList<JsonObject>().firstOrNull()?.str("sede_id")
+    }.getOrNull()
+
+    /**
+     * Horario de atención crudo (JSON): el propio de la sede si tiene, si no el de
+     * la clínica (`configuracion.horarios_atencion`). null = nada guardado / sin
+     * señal (rige el de por defecto).
+     */
+    suspend fun horarioAtencionCrudo(sedeId: String?): String? {
+        if (sedeId != null) runCatching {
+            Supabase.client.postgrest["sedes"]
+                .select(Columns.raw("horarios_atencion")) { filter { eq("id", sedeId) } }
+                .decodeList<JsonObject>().firstOrNull()?.get("horarios_atencion")
+        }.getOrNull()?.let { v ->
+            val txt = (v as? JsonPrimitive)?.content?.takeIf { it != "null" } ?: v.toString().takeIf { it != "null" }
+            if (!txt.isNullOrBlank()) return txt
+        }
+        return runCatching {
+            Supabase.client.postgrest["configuracion"]
+                .select(Columns.list("valor")) { filter { eq("clave", "horarios_atencion") } }
+                .decodeList<JsonObject>().firstOrNull()?.str("valor")
+        }.getOrNull()
+    }
+
     /** Sede del tratamiento (la pone el servidor al crearlo). null = sin sede / no se pudo leer. */
     suspend fun sedeDeTratamiento(tratamientoId: String): String? = runCatching {
         Supabase.client.postgrest["tratamientos"]

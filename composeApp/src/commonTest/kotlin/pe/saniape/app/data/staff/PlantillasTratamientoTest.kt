@@ -220,4 +220,60 @@ class PlantillasTratamientoTest {
         assertTrue(textoAgendarPrimera(TipoTratamientoNuevo.SERVICIO_UNICO).contains("la cita"))
         assertNotNull(modalidadesDe(TipoTratamientoNuevo.CONSULTA).singleOrNull())
     }
+
+    // ── Revisión: moneda de la sede, sede de destino, hora propuesta ──
+
+    @Test
+    fun sinPrecioEnLaMonedaDeLaSedeNoSeCreaSueltaNiServicioUnico() {
+        assertTrue(faltaPrecioEnMonedaSede(true, TipoTratamientoNuevo.SESIONES, "Sesión suelta", "", ""))
+        assertFalse(faltaPrecioEnMonedaSede(true, TipoTratamientoNuevo.SESIONES, "Sesión suelta", "50", ""))
+        assertFalse(faltaPrecioEnMonedaSede(true, TipoTratamientoNuevo.SESIONES, "Paquete", "", ""))  // lo exige su propio aviso
+        assertTrue(faltaPrecioEnMonedaSede(true, TipoTratamientoNuevo.SERVICIO_UNICO, "Consulta", "", ""))
+        assertFalse(faltaPrecioEnMonedaSede(true, TipoTratamientoNuevo.SERVICIO_UNICO, "Consulta", "", "120"))
+        assertFalse(faltaPrecioEnMonedaSede(true, TipoTratamientoNuevo.CONSULTA, "Consulta", "", ""))  // puede ser gratis
+        assertFalse(faltaPrecioEnMonedaSede(false, TipoTratamientoNuevo.SESIONES, "Sesión suelta", "", ""))
+        // En otra moneda el servicio no prellena montos de la clínica; solo el de la sede.
+        val c = camposEnOtraMoneda(camposDeServicio(proc(tarifarios = listOf(tar10))), TipoTratamientoNuevo.SESIONES, null)
+        assertEquals("", c.precioPaquete)
+        assertEquals("", c.precioPorSesion)
+        assertEquals("45.0", camposEnOtraMoneda(camposDeServicio(proc(modo = "unidades")), TipoTratamientoNuevo.UNIDADES, 45.0).precioUnitario)
+    }
+
+    @Test
+    fun laSedeDeDestinoEsLaDeLaCitaDeOrigenPrimero() {
+        assertEquals("s-cita", sedeDestinoTratamiento(true, "s-cita", "s-activa", "s-principal"))
+        assertEquals("s-activa", sedeDestinoTratamiento(true, null, "s-activa", "s-principal"))
+        assertEquals("s-principal", sedeDestinoTratamiento(true, "", null, "s-principal"))
+        assertNull(sedeDestinoTratamiento(false, "s-cita", "s-activa", "s-principal"))
+    }
+
+    @Test
+    fun laPrimeraSesionPropuestaNuncaEsUnaHoraPasada() {
+        val h = HORARIO_ATENCION_DEFAULT
+        // Jueves 2026-10-08 (diaIdx 4) a las 10:20 → hoy 11:00.
+        assertEquals("2026-10-08" to "11:00", primeraSesionPropuesta("2026-10-08", 10 * 60 + 20, 4, h))
+        // Antes de abrir (06:30) → la apertura de hoy.
+        assertEquals("2026-10-08" to "08:00", primeraSesionPropuesta("2026-10-08", 6 * 60 + 30, 4, h))
+        // Ya cerró (17:30 → 18:00 = cierre) → viernes 08:00.
+        assertEquals("2026-10-09" to "08:00", primeraSesionPropuesta("2026-10-08", 17 * 60 + 30, 4, h))
+        // Viernes 21:00 → sábado 09:00 (horario de sábado).
+        assertEquals("2026-10-10" to "09:00", primeraSesionPropuesta("2026-10-09", 21 * 60, 5, h))
+        // Sábado 13:30 → domingo cerrado → lunes 08:00.
+        assertEquals("2026-10-12" to "08:00", primeraSesionPropuesta("2026-10-10", 13 * 60 + 30, 6, h))
+        // Sin ningún día activo: mañana 09:00.
+        assertEquals("2026-10-09" to "09:00", primeraSesionPropuesta("2026-10-08", 600, 4, h.map { it.copy(activo = false) }))
+    }
+
+    @Test
+    fun horarioGuardadoOElDeSiempre() {
+        assertEquals(HORARIO_ATENCION_DEFAULT, parsearHorariosAtencion(null))
+        assertEquals(HORARIO_ATENCION_DEFAULT, parsearHorariosAtencion("Lunes a viernes 8-6"))
+        val propio = parsearHorariosAtencion(
+            """[{"dia":"Lunes","activo":true,"apertura":"07:00","cierre":"19:00"},{"dia":"Martes","activo":false,"apertura":"","cierre":""}]""",
+        )
+        assertEquals(2, propio.size)
+        assertEquals("07:00", propio.first().apertura)
+        // Lunes 2026-10-12 (diaIdx 1) a las 06:00 → 07:00 de su horario propio.
+        assertEquals("2026-10-12" to "07:00", primeraSesionPropuesta("2026-10-12", 360, 1, propio))
+    }
 }

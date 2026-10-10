@@ -207,6 +207,12 @@ fun PantallaAgenda(
     var tratForm by remember { mutableStateOf(false) }
     // Tras crear un tratamiento sin su primera cita: ofrecer agendarla.
     var ofertaPrimera by remember { mutableStateOf<pe.saniape.app.ui.clinica.pacientes.OfertaPrimeraCita?>(null) }
+    // Evaluación dental que no se pudo completar sola (falta quién atendió o el
+    // diagnóstico): la oferta espera a que se cierre la ventana de completar.
+    var ofertaTrasCompletar by remember { mutableStateOf<pe.saniape.app.ui.clinica.pacientes.OfertaPrimeraCita?>(null) }
+    LaunchedEffect(completar) {
+        if (completar == null) ofertaTrasCompletar?.let { ofertaPrimera = it; ofertaTrasCompletar = null }
+    }
     fun cerrarTratamiento() { tratCita = null; tratDiag = null; tratPac = null; tratForm = false }
     fun abrirTratamientoDeCita(cita: CitaStaff, diagnostico: String?) {
         val pid = cita.pacienteId ?: return
@@ -281,6 +287,9 @@ fun PantallaAgenda(
                 completandoEval = false
                 cerrar()
                 revisada = RevisionHecha(cita.id, diag, tratamientoResuelto = true)
+                // El tratamiento ya existe: su primera cita se ofrece igual, al cerrar esta ventana.
+                (res as? pe.saniape.app.ui.clinica.odontologia.ResultadoTratamientoEvaluacion.Creado)
+                    ?.oferta?.let { of -> ofertaTrasCompletar = of.copy(pacienteNombre = cita.pacienteNombre) }
                 completar = cita
                 val falta = if (terId == null) "indica quién atendió" else "escribe el diagnóstico"
                 pe.saniape.app.ui.Toaster.info(
@@ -298,10 +307,12 @@ fun PantallaAgenda(
                 ofrecerPlan = false,
                 alTerminar = { ok ->
                     completandoEval = false
-                    if (ok) cerrar()
-                    // Evaluación dental con tratamiento(s) creado(s): agendar su primera cita.
-                    if (ok) (res as? pe.saniape.app.ui.clinica.odontologia.ResultadoTratamientoEvaluacion.Creado)
-                        ?.oferta?.let { of -> ofertaPrimera = of.copy(pacienteNombre = cita.pacienteNombre) }
+                    if (ok) {
+                        cerrar()
+                        // Evaluación dental con tratamiento(s) creado(s): agendar su primera cita.
+                        (res as? pe.saniape.app.ui.clinica.odontologia.ResultadoTratamientoEvaluacion.Creado)
+                            ?.oferta?.let { of -> ofertaPrimera = of.copy(pacienteNombre = cita.pacienteNombre) }
+                    }
                     // El error del servidor ya se mostró (vm.ejecutar); aquí,
                     // que el tratamiento SÍ quedó y no se duplicará al reintentar.
                     else if (creados) pe.saniape.app.ui.Toaster.info(

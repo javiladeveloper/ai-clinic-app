@@ -204,9 +204,9 @@ fun medicacionDePlantilla(indicaciones: String?): String? = indicaciones?.trim()
 
 /**
  * Requisito del dueño: al crear un tratamiento SIEMPRE se ofrece agendar la
- * primera sesión. Por sesiones, la tarjeta "Agendarla ahora" del formulario
- * arranca MARCADA (como la web); si se desmarca —o el tipo no tiene esa
- * tarjeta— se ofrece después de crear. null = no hay nada que ofrecer (ya se
+ * primera sesión. En la app la casilla "Agendarla ahora" arranca DESMARCADA
+ * (nunca se crea una cita sin que alguien elija fecha y hora): si no se marca
+ * —o el tipo no tiene esa casilla— se ofrece después de crear. null = no hay nada que ofrecer (ya se
  * agendó, o no hay id del tratamiento: quedó en la cola offline).
  */
 fun ofrecerAgendarTrasCrear(tratamientoId: String?, primeraAgendada: Boolean): Boolean =
@@ -228,3 +228,123 @@ fun textoAgendarPrimera(tipo: TipoTratamientoNuevo): String = when (tipo) {
     TipoTratamientoNuevo.SERVICIO_UNICO, TipoTratamientoNuevo.CONSULTA -> "📅 Agendar la cita"
 }
 
+
+// ── Precio en la moneda de la sede ─────────────────────────────────────────
+
+/**
+ * ¿Falta escribir el precio en la moneda de la sede? Con una sede de OTRA moneda
+ * y sin precio propio del servicio en ella, el precio del servicio está en la
+ * moneda de la clínica: no sirve de respaldo. Una sesión suelta o un servicio
+ * único con el campo vacío NO se crean (se cobrarían en la moneda equivocada);
+ * el paquete ya lo exige su propio aviso y unidades exige el precio por unidad.
+ */
+fun faltaPrecioEnMonedaSede(
+    sinPrecioEnMoneda: Boolean, tipo: TipoTratamientoNuevo?, modalidad: String,
+    precioPorSesion: String, precioAcordado: String,
+): Boolean {
+    if (!sinPrecioEnMoneda || tipo == null) return false
+    return when (tipo) {
+        TipoTratamientoNuevo.SESIONES -> modalidad == "Sesión suelta" && precioPorSesion.toDoubleOrNull() == null
+        TipoTratamientoNuevo.SERVICIO_UNICO -> precioAcordado.toDoubleOrNull() == null
+        else -> false
+    }
+}
+
+/**
+ * Campos del servicio en una sede de OTRA moneda: los montos del servicio y sus
+ * paquetes están en la moneda de la clínica, así que no se prellenan; solo el
+ * precio propio de la sede (si lo tiene) como precio por sesión / por unidad.
+ */
+fun camposEnOtraMoneda(c: CamposComerciales, tipo: TipoTratamientoNuevo, precioSede: Double?): CamposComerciales {
+    val sede = precioSede?.toString() ?: ""
+    return c.copy(
+        precioPaquete = "",
+        precioPorSesion = sede,
+        precioUnitario = if (tipo == TipoTratamientoNuevo.UNIDADES) sede else "",
+    )
+}
+
+// ── Dónde se venderá ─────────────────────────────────────────────────────────
+
+/**
+ * La sede que el SERVIDOR le pondrá al tratamiento (`sede_por_defecto_tratamiento`):
+ * la de la cita que lo origina → la sede activa del usuario → la principal. Sin
+ * multisede, null (un solo local: nada que decidir).
+ */
+fun sedeDestinoTratamiento(multiSede: Boolean, sedeCitaOrigen: String?, sedeActiva: String?, sedePrincipal: String?): String? =
+    if (!multiSede) null
+    else sedeCitaOrigen?.takeIf { it.isNotBlank() } ?: sedeActiva?.takeIf { it.isNotBlank() } ?: sedePrincipal?.takeIf { it.isNotBlank() }
+
+// ── Fecha y hora propuestas para la primera sesión ──────────────────────────
+
+/** Un día del horario de atención (`configuracion.horarios_atencion` / `sedes.horarios_atencion`). */
+data class DiaAtencion(val dia: String, val activo: Boolean, val apertura: String, val cierre: String)
+
+/** Gemelo de HORARIO_ATENCION_DEFAULT (lib/horario-atencion.ts): rige si la clínica no guardó el suyo. */
+val HORARIO_ATENCION_DEFAULT: List<DiaAtencion> = listOf(
+    DiaAtencion("Lunes", true, "08:00", "18:00"),
+    DiaAtencion("Martes", true, "08:00", "18:00"),
+    DiaAtencion("Miércoles", true, "08:00", "18:00"),
+    DiaAtencion("Jueves", true, "08:00", "18:00"),
+    DiaAtencion("Viernes", true, "08:00", "18:00"),
+    DiaAtencion("Sábado", true, "09:00", "13:00"),
+    DiaAtencion("Domingo", false, "09:00", "13:00"),
+)
+
+/**
+ * El horario guardado (JSON `[{dia, activo, apertura, cierre}]`). Vacío o
+ * ilegible → el de por defecto (la web además entiende texto libre; aquí, ante
+ * la duda, el default, que solo sirve para PROPONER una fecha editable).
+ */
+fun parsearHorariosAtencion(crudo: String?): List<DiaAtencion> {
+    val txt = crudo?.trim().orEmpty()
+    if (txt.isEmpty()) return HORARIO_ATENCION_DEFAULT
+    return runCatching {
+        kotlinx.serialization.json.Json.parseToJsonElement(txt) as kotlinx.serialization.json.JsonArray
+    }.getOrNull()?.mapNotNull { e ->
+        val o = e as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+        fun t(k: String) = (o[k] as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it != "null" }
+        val dia = t("dia") ?: return@mapNotNull null
+        DiaAtencion(dia, t("activo") == "true", t("apertura").orEmpty(), t("cierre").orEmpty())
+    }?.takeIf { it.isNotEmpty() } ?: HORARIO_ATENCION_DEFAULT
+}
+
+private fun minutosDe(hhmm: String): Int? {
+    val p = hhmm.trim().split(":")
+    val h = p.getOrNull(0)?.toIntOrNull() ?: return null
+    val m = p.getOrNull(1)?.take(2)?.toIntOrNull() ?: 0
+    return if (h in 0..23 && m in 0..59) h * 60 + m else null
+}
+
+private fun hhmm(min: Int): String = "${(min / 60).toString().padStart(2, '0')}:${(min % 60).toString().padStart(2, '0')}"
+
+private fun sinTildes(s: String): String = s.lowercase()
+    .replace('á', 'a').replace('é', 'e').replace('í', 'i').replace('ó', 'o').replace('ú', 'u')
+
+/** Nombre del día (0 = domingo, como `AhoraEnZona.diaIdx`). */
+private val DIAS_ATENCION_IDX = listOf("domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado")
+
+/**
+ * Fecha y hora propuestas para la primera sesión: la próxima hora en punto de
+ * HOY si todavía cabe en el horario de atención (antes de abrir: la apertura);
+ * si no (p. ej. ya cerró, o pasadas las 20:00), el próximo día que atiende, a
+ * su hora de apertura. Nunca una hora pasada. Sin ningún día activo: mañana 09:00.
+ */
+fun primeraSesionPropuesta(hoyIso: String, minutosAhora: Int, diaIdxHoy: Int, horario: List<DiaAtencion>): Pair<String, String> {
+    fun diaDe(idx: Int): DiaAtencion? = horario.firstOrNull { sinTildes(it.dia) == DIAS_ATENCION_IDX[((idx % 7) + 7) % 7] }
+    val proximaEnPunto = (minutosAhora / 60 + 1) * 60
+    diaDe(diaIdxHoy)?.takeIf { it.activo }?.let { d ->
+        val abre = minutosDe(d.apertura)
+        val cierra = minutosDe(d.cierre)
+        if (abre != null && cierra != null) {
+            val propuesta = maxOf(proximaEnPunto, abre)
+            if (propuesta < cierra && propuesta < 24 * 60) return hoyIso to hhmm(propuesta)
+        }
+    }
+    for (n in 1..7) {
+        val d = diaDe(diaIdxHoy + n)?.takeIf { it.activo } ?: continue
+        val abre = minutosDe(d.apertura) ?: continue
+        return sumarDiasIso(hoyIso, n) to hhmm(abre)
+    }
+    return sumarDiasIso(hoyIso, 1) to "09:00"
+}
