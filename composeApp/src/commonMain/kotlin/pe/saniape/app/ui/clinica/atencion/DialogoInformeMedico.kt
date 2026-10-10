@@ -143,8 +143,10 @@ fun DialogoInformeMedico(
     var seguimiento by remember { mutableStateOf(true) }
     var errores by remember { mutableStateOf<List<String>>(emptyList()) }
     var emitiendo by remember { mutableStateOf(false) }
-    // Un intento = una clave: reintentar tras un corte no emite dos documentos ni gasta dos números.
-    val clave = remember { nuevaClaveCliente() }
+    // Un intento = una clave: reintentar tras un corte no emite dos documentos ni
+    // gasta dos números. Cambiar el tipo, quién firma o la fecha es OTRO documento:
+    // clave nueva (si no, el servidor devolvería el ya emitido como "repetido").
+    val clave = remember(tipo, terapeutaId, fecha) { nuevaClaveCliente() }
     // Qué selector de fecha está abierto: "fecha" | "desde" | "hasta".
     var calendario by remember { mutableStateOf<String?>(null) }
 
@@ -188,9 +190,11 @@ fun DialogoInformeMedico(
             if (r.registrada) {
                 val inf = r.cuerpo?.get("informe") as? JsonObject
                 val id = (inf?.get("id") as? JsonPrimitive)?.contentOrNull.orEmpty()
-                val numero = formatearNumeroInforme(tipo, (inf?.get("numero") as? JsonPrimitive)?.intOrNull)
+                // El tipo que emitió el servidor (un "repetido" puede ser de otro intento).
+                val tipoEmitido = (inf?.get("tipo") as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() } ?: tipo
+                val numero = formatearNumeroInforme(tipoEmitido, (inf?.get("numero") as? JsonPrimitive)?.intOrNull)
                 val repetido = (r.cuerpo?.get("repetido") as? JsonPrimitive)?.booleanOrNull == true
-                Toaster.exito(if (repetido) "Ya se había emitido: $numero" else "${nombreTipoDoc(tipo)} emitido · $numero")
+                Toaster.exito(if (repetido) "Ya se había emitido: $numero" else "${nombreTipoDoc(tipoEmitido)} emitido · $numero")
                 val creadas = ((r.cuerpo?.get("seguimiento") as? JsonObject)?.get("creadas") as? JsonPrimitive)?.intOrNull ?: 0
                 if (creadas > 0) Toaster.info("$creadas examen(es) en seguimiento (pestaña Exámenes)")
                 onEmitido(id, numero)

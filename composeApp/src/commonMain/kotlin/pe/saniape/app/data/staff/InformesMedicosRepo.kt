@@ -21,6 +21,15 @@ import pe.saniape.app.data.offline.CacheLectura
 object InformesMedicosRepo {
     private val json = Json { ignoreUnknownKeys = true }
 
+    /** runCatching que NO se traga la cancelación (salir de la pantalla corta la corrutina de verdad). */
+    private inline fun <T> intentar(bloque: () -> T): Result<T> = try {
+        Result.success(bloque())
+    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+
     private fun JsonObject.s(k: String): String? =
         (this[k] as? JsonPrimitive)?.content?.takeIf { it != "null" && it.isNotBlank() }
 
@@ -49,7 +58,7 @@ object InformesMedicosRepo {
     }
 
     /** Exámenes que la clínica ya pidió (los aprende el trigger), más usados primero. Vacío si falla. */
-    suspend fun examenesAprendidos(): List<ExamenAprendido> = runCatching {
+    suspend fun examenesAprendidos(): List<ExamenAprendido> = intentar {
         Supabase.client.postgrest["examenes_frecuentes"]
             .select(Columns.list("nombre", "usos")) {
                 order("usos", Order.DESCENDING)
@@ -64,7 +73,7 @@ object InformesMedicosRepo {
      * (para el selector de quién firma: firmantesDocumento). null si falla: la
      * pantalla lo avisa (un fallo de red no es "nadie puede firmar").
      */
-    suspend fun equipoFirmantes(): List<FirmanteDoc>? = runCatching {
+    suspend fun equipoFirmantes(): List<FirmanteDoc>? = intentar {
         Supabase.client.postgrest["terapeutas"]
             .select(Columns.raw(
                 "id, nombre, cmp, estado, " +
@@ -87,7 +96,7 @@ object InformesMedicosRepo {
     }.getOrNull()
 
     /** Especialidades de la clínica con nombre y estado (¿la atención es de psiquiatría?). Vacío si falla. */
-    suspend fun especialidades(): List<EspecialidadNombre> = runCatching {
+    suspend fun especialidades(): List<EspecialidadNombre> = intentar {
         Supabase.client.postgrest["especialidades"]
             .select(Columns.list("id", "nombre", "estado")) { limit(200) }
             .decodeList<JsonObject>()

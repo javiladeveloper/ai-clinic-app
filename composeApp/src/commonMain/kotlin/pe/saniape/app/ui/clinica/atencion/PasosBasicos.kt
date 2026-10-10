@@ -177,6 +177,7 @@ internal fun PasoExamen(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura:
             EscalasConsulta(
                 valor = vm.borrador.escalas.orEmpty(),
                 instrumentos = vm.instrumentos,
+                cargando = vm.cargandoInstrumentos,
                 soloLectura = soloLectura,
                 sexo = pe.saniape.app.data.staff.sexoHc(d.cita.paciente),
                 onReintentarInstrumentos = { vm.cargarInstrumentos() },

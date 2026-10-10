@@ -241,13 +241,16 @@ fun cuerpoEmitirInforme(b: BorradorInforme, claveCliente: String, seguimiento: B
         put("fecha", b.fecha)
         put("titulo", t(b.titulo?.take(120)))
         put("dirigidoA", t(b.dirigidoA?.take(200)))
-        put("motivo", t(b.motivo))
-        put("antecedentes", t(b.antecedentes))
-        put("examen", t(b.examen))
-        put("examenMental", t(b.examenMental))
-        put("escalas", t(b.escalas))
-        put("tratamiento", t(b.tratamiento))
-        put("recomendaciones", t(b.recomendaciones))
+        // El cuerpo solo va en el INFORME: un descanso o una orden no mandan texto
+        // que no se imprime (gemelo de filaInforme y del CHECK de la base).
+        fun cuerpo(s: String?): JsonPrimitive = if (b.tipo == DOC_INFORME) t(s) else JsonNull
+        put("motivo", cuerpo(b.motivo))
+        put("antecedentes", cuerpo(b.antecedentes))
+        put("examen", cuerpo(b.examen))
+        put("examenMental", cuerpo(b.examenMental))
+        put("escalas", cuerpo(b.escalas))
+        put("tratamiento", cuerpo(b.tratamiento))
+        put("recomendaciones", cuerpo(b.recomendaciones))
         put("diagnosticos", JsonArray(diagnosticosParaDocumento(b.diagnosticos).map { d ->
             buildJsonObject {
                 put("codigo", d.codigo?.let { JsonPrimitive(it) } ?: JsonNull)

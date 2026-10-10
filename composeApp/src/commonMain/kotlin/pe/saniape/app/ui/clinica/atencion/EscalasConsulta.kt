@@ -60,6 +60,8 @@ private data class EscalaEnEdicion(val ins: InstrumentoPsico, val valores: List<
 internal fun EscalasConsulta(
     valor: List<EscalaAplicadaApp>,
     instrumentos: List<InstrumentoPsico>?,
+    /** Las definiciones todavía se están pidiendo. */
+    cargando: Boolean,
     soloLectura: Boolean,
     /** Sexo de la filiación (cortes del AUDIT-C). */
     sexo: String?,
@@ -100,6 +102,8 @@ internal fun EscalasConsulta(
         }
         if (!soloLectura && valor.size < MAX_ESCALAS) {
             when {
+                instrumentos == null && cargando -> Text("Cargando escalas…", color = c.textoSuave, fontSize = 12.sp,
+                    modifier = Modifier.padding(vertical = 4.dp))
                 instrumentos == null -> Text(
                     "No se pudieron cargar las escalas. Toca para reintentar.", color = c.navy, fontSize = 12.sp,
                     modifier = Modifier.clickable(onClick = onReintentarInstrumentos).padding(vertical = 4.dp),

@@ -205,6 +205,18 @@ class InformesMedicosTest {
         assertEquals(1, orden["examenes"]!!.jsonArray.size)
         assertEquals(JsonNull, orden["descansoDesde"])
         assertEquals(true, orden["seguimiento"]!!.jsonPrimitive.content.toBoolean())
+        // El cuerpo del informe NO viaja en un descanso ni en una orden (null, no el texto).
+        val camposCuerpo = listOf("motivo", "antecedentes", "examen", "examenMental", "escalas", "tratamiento", "recomendaciones")
+        val conTexto = borrador(DOC_ORDEN).copy(
+            motivo = "m", antecedentes = "a", examen = "e", examenMental = "em", escalas = "PHQ-9: 3 / 27",
+            tratamiento = "t", recomendaciones = "r", examenes = listOf(ExamenOrden("TSH")),
+        )
+        for (tipo in listOf(DOC_DESCANSO, DOC_ORDEN)) {
+            val cj = cuerpoEmitirInforme(conTexto.copy(tipo = tipo), "k", seguimiento = false)
+            camposCuerpo.forEach { k -> assertEquals(JsonNull, cj[k], "$tipo.$k") }
+        }
+        val informe = cuerpoEmitirInforme(conTexto.copy(tipo = DOC_INFORME), "k", seguimiento = false)
+        camposCuerpo.forEach { k -> assertTrue(informe[k] is JsonPrimitive && informe[k] != JsonNull, "informe.$k") }
     }
 
     @Test fun filaDeLaLista() {

@@ -96,6 +96,8 @@ class AtencionViewModel(
     var psiq by mutableStateOf(false); private set
     /** Definiciones de las escalas (PHQ-9, GAD-7…). null = cargando o no disponibles. */
     var instrumentos by mutableStateOf<List<InstrumentoPsico>?>(null); private set
+    /** Pidiendo las definiciones (la pantalla muestra "Cargando…", no un error). */
+    var cargandoInstrumentos by mutableStateOf(false); private set
     /** Informe / descanso / orden abierto desde el cierre: (tipo, prellenado). */
     var documentoAbierto by mutableStateOf<Pair<String, PrefillInforme>?>(null); private set
 
@@ -192,8 +194,15 @@ class AtencionViewModel(
 
     /** Definiciones de las escalas (las mismas de la evaluación psicológica). */
     fun cargarInstrumentos() {
+        // Se marca ANTES de lanzar: la pantalla nunca ve "no se pudieron cargar" mientras se piden.
+        if (cargandoInstrumentos) return
+        cargandoInstrumentos = true
         viewModelScope.launch {
-            instrumentos = (EvaluacionPsicoRepo.instrumentos() as? EvaluacionPsicoRepo.Instrumentos.Ok)?.lista
+            try {
+                instrumentos = (EvaluacionPsicoRepo.instrumentos() as? EvaluacionPsicoRepo.Instrumentos.Ok)?.lista
+            } finally {
+                cargandoInstrumentos = false
+            }
         }
     }
     fun examenes(l: List<ExamenSolicitado>) = editar { it.copy(examenes = l) }
