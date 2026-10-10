@@ -339,7 +339,9 @@ fun ContenidoRecetasFicha(ctx: ContextoStaff, pacienteId: String, fichaInactiva:
     var fallo by remember(pacienteId) { mutableStateOf(false) }
     // Sube al emitir una receta: vuelve a cargar la lista.
     var recarga by remember(pacienteId) { mutableStateOf(0) }
-    LaunchedEffect(pacienteId, recarga) {
+    // También al emitir una desde "📝 Dar indicaciones" de una atención (fuera de esta pestaña).
+    val emitidasFuera = pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.emitidas
+    LaunchedEffect(pacienteId, recarga, emitidasFuera) {
         val r = RecetasStaffRepo.recetasDe(pacienteId)
         fallo = r == null
         recetas = r ?: emptyList()

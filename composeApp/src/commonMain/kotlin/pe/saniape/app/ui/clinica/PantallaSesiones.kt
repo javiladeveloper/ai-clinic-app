@@ -86,6 +86,28 @@ fun PantallaSesiones(
     // Anti-doble-tap: mientras una acción de sesión corre, no se dispara otra.
     var accionando by remember { mutableStateOf(false) }
 
+    // ── 📝 Receta / indicaciones de las sesiones atendidas ──
+    // ¿Esta sesión puede llevar receta? (módulo + permiso + especialidad del servicio).
+    val recetaAplica = { s: SesionGlobal ->
+        !s.pacienteId.isNullOrBlank() && pe.saniape.app.data.staff.recetaAplicaAtencion(
+            ctx.modulosClinicos, ctx.puede("sesiones"), especialidadServicioId = s.especialidadId,
+        )
+    }
+    val prefillReceta = { s: SesionGlobal ->
+        pe.saniape.app.data.staff.prefillRecetaDeSesion(
+            pacienteId = s.pacienteId.orEmpty(), pacienteNombre = s.pacienteNombre,
+            sesionId = s.id, numero = s.numero, tratamientoId = s.tratamientoId,
+            terapeutaSesion = s.terapeutaId, terapeutaTratamiento = s.terapeutaTratamientoId,
+            diagnostico = s.diagnostico,
+        )
+    }
+    // Indicador por sesión: UNA lectura liviana, en segundo plano, solo con el módulo
+    // encendido; se repite al emitir una. Un fallo deja la lista sin indicador.
+    val recetasEmitidas = pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.emitidas
+    var recetasPorSesion by remember { mutableStateOf<Map<String, pe.saniape.app.data.staff.RecetaVinculada>>(emptyMap()) }
+    var abriendoReceta by remember { mutableStateOf(false) }
+    val accionesNat = pe.saniape.app.ui.recordarAcciones()
+
     // Filtros
     var busqueda by remember { mutableStateOf("") }
     var filtroEstado by remember { mutableStateOf<String?>(null) }
@@ -160,6 +182,15 @@ fun PantallaSesiones(
         if (ctx.esGestor) {
             profesionales = runCatching { PacientesRepo.terapeutasActivos() }.getOrDefault(emptyList())
         }
+    }
+
+    LaunchedEffect(sesiones, recetasEmitidas) {
+        val conReceta = sesiones.filter { it.estado == "Completada" && recetaAplica(it) }
+        if (conReceta.isEmpty()) { recetasPorSesion = emptyMap(); return@LaunchedEffect }
+        val r = pe.saniape.app.data.staff.RecetaAtencionRepo.recientesConSesion() ?: return@LaunchedEffect
+        recetasPorSesion = conReceta.mapNotNull { s ->
+            pe.saniape.app.data.staff.recetaDeAtencion(r, null, s.id)?.let { s.id to it }
+        }.toMap()
     }
 
     // Stats sobre el conjunto YA acotado por scope (lo que devuelve el repo).
@@ -299,6 +330,22 @@ fun PantallaSesiones(
                             onReactivar = {
                                 accion("Sesión reactivada") { PacientesRepo.cambiarEstadoSesion(s.id, "Planificada", motivo = "") }
                             },
+                            textoReceta = if (s.estado == "Completada" && recetaAplica(s))
+                                pe.saniape.app.data.staff.textoDarReceta(ctx.modulosClinicos) else null,
+                            recetaVinculada = recetasPorSesion[s.id],
+                            onReceta = { pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.abrir(prefillReceta(s), yaTiene = recetasPorSesion[s.id]) },
+                            onVerReceta = { r ->
+                                if (!abriendoReceta) {
+                                    abriendoReceta = true
+                                    scope.launch {
+                                        try {
+                                            val titulo = r.nombreHoja + " " + r.numeroTexto
+                                            if (!pe.saniape.app.ui.clinica.recetas.abrirRecetaImpresa(accionesNat, r.id, titulo))
+                                                pe.saniape.app.ui.Toaster.error("No se pudo abrir. Revisa tu conexión.")
+                                        } finally { abriendoReceta = false }
+                                    }
+                                }
+                            },
                         )
                     }
                 }
@@ -352,6 +399,11 @@ fun PantallaSesiones(
                     )
                     if (r.registrada) {
                         if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Sesión #${cc.ses.numero} completada")
+                        // 📝 "¿Le dejas indicaciones?" DESPUÉS del éxito (sin señal no: necesita red).
+                        // La especialidad sale del contexto de completar (ya leída al abrir).
+                        if (!r.encolada && recetaAplica(sg.copy(especialidadId = sg.especialidadId ?: cc.especialidadId))) {
+                            pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.ofrecer(prefillReceta(sg))
+                        }
                         // Aprender las técnicas en la especialidad del tratamiento (segundo
                         // plano; sin señal se descarta, no se encola).
                         if (!r.encolada) tecnicas?.let {
@@ -539,6 +591,12 @@ private fun TarjetaSesion(
     onReasignar: () -> Unit,
     onRevertir: () -> Unit,
     onReactivar: () -> Unit,
+    /** "📝 Dar indicaciones" (solo en la sesión completada); null = no aplica. */
+    textoReceta: String? = null,
+    /** Receta ya vinculada a esta sesión (indicador + "🖨 Ver"). */
+    recetaVinculada: pe.saniape.app.data.staff.RecetaVinculada? = null,
+    onReceta: () -> Unit = {},
+    onVerReceta: (pe.saniape.app.data.staff.RecetaVinculada) -> Unit = {},
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
@@ -573,6 +631,9 @@ private fun TarjetaSesion(
                         color = c.textoSuave, fontSize = 11.sp)
                     s.duracion?.let {
                         Text(" · $it min", color = c.textoSuave, fontSize = 11.sp)
+                    }
+                    recetaVinculada?.let {
+                        Text(" · ${pe.saniape.app.data.staff.etiquetaRecetaVinculada(it)}", color = c.purple, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -636,6 +697,11 @@ private fun TarjetaSesion(
                 }
                 if (s.estado == "Completada") {
                     BotonAccion("↩ Revertir", c.superficie, c.texto, borde = true, onClick = onRevertir)
+                    // Receta / indicaciones de la sesión atendida: verla si ya tiene, si no darla.
+                    when {
+                        recetaVinculada != null -> BotonAccion("🖨 ${recetaVinculada.nombreHoja}", c.purpleBg, c.purple) { onVerReceta(recetaVinculada) }
+                        textoReceta != null -> BotonAccion(textoReceta, c.purpleBg, c.purple, onClick = onReceta)
+                    }
                 }
                 if (s.estado == "Cancelada" || s.estado == "No asistió" || s.estado == "Otro") {
                     BotonAccion("↩ Reactivar", c.superficie, c.texto, borde = true, onClick = onReactivar)

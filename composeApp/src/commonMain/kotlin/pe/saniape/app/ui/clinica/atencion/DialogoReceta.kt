@@ -250,6 +250,8 @@ internal fun cuerpoEmitirReceta(
     citaId: String?,
     tratamientoId: String?,
     claveCliente: String,
+    /** La sesión atendida (receta dada al completar una sesión). null = sin sesión. */
+    sesionId: String? = null,
 ): JsonObject {
     fun t(s: String?): JsonPrimitive = s?.trim()?.takeIf { it.isNotEmpty() }?.let { JsonPrimitive(it) } ?: JsonNull
     return buildJsonObject {
@@ -278,8 +280,9 @@ internal fun cuerpoEmitirReceta(
         }))
         put("citaId", t(citaId))
         put("tratamientoId", t(tratamientoId))
-        // Paridad con el contrato: la app no emite recetas desde una sesión.
-        put("sesionId", JsonNull)
+        // La receta dada tras completar una sesión queda atada a ella (el servidor
+        // valida por trigger que la sesión sea del mismo paciente).
+        put("sesionId", t(sesionId))
         put("claveCliente", claveCliente)
     }
 }
@@ -315,6 +318,10 @@ fun DialogoReceta(
     onEmitida: (recetaId: String) -> Unit,
     terapeutaSugerido: String? = null,
     indicaciones: String? = null,
+    /** La sesión atendida (receta tras completar una sesión). */
+    sesionId: String? = null,
+    /** Lo anotado como medicación en la consulta (texto libre): referencia para transcribir. */
+    medicacionRef: String? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -366,6 +373,7 @@ fun DialogoReceta(
             diagnostico = dx, cie10 = cie, indicacionesGenerales = indicacionesGen,
             infoFarmaceutico = if (verInfoQf) infoQf else null, items = items.toList(),
             citaId = citaId, tratamientoId = tratamientoId, claveCliente = clave,
+            sesionId = sesionId,
         )
         scope.launch {
             val r = AtencionRepo.emitirReceta(cuerpo)
@@ -407,6 +415,10 @@ fun DialogoReceta(
             // Errores del servidor (422 de validarReceta, prescriptor ajeno…): arriba y en rojo.
             if (errores.isNotEmpty()) {
                 CajaAviso(errores.joinToString("\n") { "• $it" }, c.error, c.errorBg)
+            }
+            // La medicación escrita en la consulta (texto libre), para transcribirla.
+            medicacionRef?.trim()?.takeIf { it.isNotEmpty() }?.let { ref ->
+                CajaAviso("💊 Anotado en la consulta: $ref", c.texto, c.fondo)
             }
             if (nadiePrescribe) {
                 CajaAviso(

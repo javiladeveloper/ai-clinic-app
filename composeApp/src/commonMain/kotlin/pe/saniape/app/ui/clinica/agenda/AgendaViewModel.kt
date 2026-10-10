@@ -529,6 +529,54 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         }.getOrDefault(citas))
     }
 
+    // ── 📝 Receta / indicaciones de las citas atendidas ──
+    /**
+     * ¿La cita (atendida) puede llevar receta / indicaciones? Módulo de recetas +
+     * permiso 'sesiones' + especialidad de la cita en el mapa de recetas (DALU:
+     * todas). Una clínica sin el módulo (RENOVA) nunca ve nada.
+     */
+    fun recetaAplica(cita: CitaStaff, terapeutaId: String? = null): Boolean =
+        cita.pacienteId != null && pe.saniape.app.data.staff.recetaAplicaAtencion(
+            ctx.modulosClinicos, ctx.puede("sesiones"),
+            especialidadCitaId = cita.especialidadId,
+            especialidadServicioId = cita.especialidadServicioId,
+            especialidadesProfesional = (terapeutaId ?: cita.terapeutaId)?.let { espsPorTerapeuta[it] },
+            especialidadesDeQuienMira = ctx.miTerapeutaId?.let { espsPorTerapeuta[it] },
+        )
+
+    /** Prellenado de la receta de esta cita (quien atendió, su diagnóstico si se escribió). */
+    fun prefillReceta(cita: CitaStaff, terapeutaId: String? = null, diagnostico: String? = null) =
+        pe.saniape.app.data.staff.prefillRecetaDeCita(cita, terapeutaId, diagnostico, flujoDe(cita).nombreTipo(cita.tipo))
+
+    /** Receta ya vinculada a cada cita completada del día (por cita o por su sesión). */
+    var recetasPorCita by mutableStateOf<Map<String, pe.saniape.app.data.staff.RecetaVinculada>>(emptyMap()); private set
+    private var recetasJob: kotlinx.coroutines.Job? = null
+    /** Citas (ids) de la última lectura buena: la recarga en vivo de la agenda no repite la consulta. */
+    private var recetasLeidasDe: Set<String>? = null
+
+    /**
+     * El indicador "💊 Receta N°…" / "📋 Indicaciones N°…" de las citas completadas: UNA lectura por
+     * lista (por paciente, con índice), en segundo plano y solo con el módulo de
+     * recetas encendido. Un fallo deja lo que había (sin indicador): nunca bloquea.
+     */
+    fun cargarRecetasVinculadas(lista: List<CitaStaff> = citas, forzar: Boolean = false) {
+        val completadas = lista.filter { it.estado == "Completada" && recetaAplica(it) }
+        val ids = completadas.map { it.id }.toSet()
+        // Mismas citas completadas que la última lectura (recarga en vivo, cobro…): nada que leer.
+        if (!forzar && ids == recetasLeidasDe) return
+        recetasJob?.cancel()
+        if (completadas.isEmpty()) { recetasPorCita = emptyMap(); recetasLeidasDe = ids; return }
+        recetasJob = viewModelScope.launch {
+            val r = pe.saniape.app.data.staff.RecetaAtencionRepo
+                .vinculadasDe(completadas.mapNotNull { it.pacienteId }) ?: return@launch
+            recetasPorCita = completadas.mapNotNull { c ->
+                // La dada desde la agenda lleva su cita_id; la de la ficha, su sesion_id.
+                pe.saniape.app.data.staff.recetaDeAtencion(r, c.id, c.sesionId)?.let { c.id to it }
+            }.toMap()
+            recetasLeidasDe = ids
+        }
+    }
+
     /**
      * "¿Ya pagó?" por cita (badge de la tarjeta), lo arma el servidor. UNA
      * petición por lista cargada (no por tarjeta). Vacío = no se muestra nada.
@@ -555,6 +603,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             estadosPago = r
         }
         cargarMediosPago(nuevas)
+        cargarRecetasVinculadas(nuevas)
     }
 
     /**
@@ -838,6 +887,13 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                         // las aprendía (solo la ficha y Sesiones).
                         pe.saniape.app.data.staff.TecnicasRepo.registrar(observaciones, espChips, cita.pacienteNombre)
                     }
+                }
+                // 📝 "¿Le dejas indicaciones?": la barra sale DESPUÉS del éxito (completar
+                // sigue siendo un viaje). Sin señal (quedó en la cola) no: la receta
+                // necesita red y la cita aún no está completada en el servidor.
+                if (accion == AccionCita.Completar && !completadaEncolada && recetaAplica(cita, terapeutaId)) {
+                    prefillReceta(cita.copy(estado = "Completada"), terapeutaId, diagnostico)
+                        ?.let { pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.ofrecer(it) }
                 }
                 val txt = when (accion) {
                     AccionCita.Confirmar -> "Cita confirmada"

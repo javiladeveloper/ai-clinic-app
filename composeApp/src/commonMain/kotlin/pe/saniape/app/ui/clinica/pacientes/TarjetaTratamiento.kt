@@ -57,6 +57,26 @@ private val ESTADOS_SESION = pe.saniape.app.data.staff.ESTADOS_MENU_SESION
 private fun avisoBaja(t: pe.saniape.app.data.staff.TerminologiaPaciente) = "${t.Paciente} dado de baja: reactívalo para registrar sesiones, citas o pagos."
 
 /**
+ * 📝 Receta / indicaciones en la tarjeta de un tratamiento (null = no aplica:
+ * módulo apagado, sin permiso, especialidad que no receta). La arma la ficha.
+ */
+class RecetaEnTarjeta(
+    /** "📝 Dar indicaciones" / "📝 Dar receta / indicaciones". */
+    val textoDar: String,
+    /** Recetas del paciente atadas a una atención (para el indicador por sesión). */
+    val vinculadas: List<pe.saniape.app.data.staff.RecetaVinculada>,
+    /** La cita de una sesión (si se agendó), para encontrar su receta. */
+    val citaDeSesion: (String) -> String?,
+    /** Abrir la emisión: de esa sesión, o del tratamiento entero (null). */
+    val onDar: (SesionFicha?) -> Unit,
+    /** Tras registrar el servicio único: la barra "¿Le dejas indicaciones?". */
+    val onOfrecer: () -> Unit,
+) {
+    fun deSesion(ses: SesionFicha): pe.saniape.app.data.staff.RecetaVinculada? =
+        pe.saniape.app.data.staff.recetaDeAtencion(vinculadas, citaDeSesion(ses.id), ses.id)
+}
+
+/**
  * Tarjeta de un tratamiento en la ficha: cabecera (procedimiento/estado/progreso/pago)
  * + al expandir, la lista de sus sesiones con acciones (Completar, estados) y "Dar de Alta".
  * Las escrituras van por endpoints (sesión/estado, tratamiento/alta) → reglas en la web.
@@ -92,6 +112,8 @@ fun TarjetaTratamiento(
     citaEvaluacion: pe.saniape.app.data.staff.CitaHito? = null,
     onEditarCita: (pe.saniape.app.data.staff.CitaHito) -> Unit = {},
     onCompletarSesion: (SesionFicha, anterior: SesionFicha?, tecnicasSugeridas: String?, trat: TratamientoPaciente) -> Unit,   // abre modal (con sesión previa + técnicas + tratamiento)
+    /** 📝 Receta / indicaciones (null = no aplica a este tratamiento). */
+    receta: RecetaEnTarjeta? = null,
     onCambioRealizado: () -> Unit,               // refrescar ficha tras acción
     onEditar: (TratamientoPaciente) -> Unit = {},
     onAmpliar: (TratamientoPaciente) -> Unit = {},
@@ -135,6 +157,9 @@ fun TarjetaTratamiento(
     var menuDe by remember { mutableStateOf<SesionFicha?>(null) }   // sesión con menú ⋯ abierto
     var cambioToken by remember { mutableStateOf(0) }   // recarga la sección de pagos tras cobros
     var menuTrat by remember { mutableStateOf(false) }   // menú ⋯ del tratamiento
+    // "🖨 Ver indicaciones" de una sesión en curso (un doble toque no abre dos visores).
+    var abriendoReceta by remember { mutableStateOf(false) }
+    val accionesNat = pe.saniape.app.ui.recordarAcciones()
     var eliminarAbierto by remember { mutableStateOf(false) }   // "🗑 Eliminar tratamiento" (Admin)
     // Sesiones objetivo de cada modal (o null).
     var editarSesion by remember { mutableStateOf<SesionFicha?>(null) }
@@ -388,6 +413,8 @@ fun TarjetaTratamiento(
                         // Evaluación psicológica: las citas se suman sin cobrar (botón propio).
                         if (!esEvaluacionPsico) ItemMenu("➕ Ampliar (más sesiones)", c.navy) { menuTrat = false; onAmpliar(t) }
                     }
+                    // 📝 Receta / indicaciones para el tratamiento (gemelo del "📝 Receta" de la web).
+                    if (receta != null) ItemMenu(receta.textoDar, c.purple) { menuTrat = false; receta.onDar(null) }
                     // Derivar este tratamiento a otra especialidad (feature Premium).
                     if (puedeDerivar && t.estado == "Activo")
                         ItemMenu("↗ Derivar a otra especialidad", c.purple) { menuTrat = false; onDerivar(t) }
@@ -586,6 +613,23 @@ fun TarjetaTratamiento(
                                 onBorrar = { borrarSesion = ses; menuDe = null },
                                 onReasignar = { reasignarSesion = ses; menuDe = null },
                                 onCobrar = { cobrarSesion = ses; menuDe = null },
+                                // 📝 Receta / indicaciones de la sesión atendida (o verla si ya tiene).
+                                textoReceta = receta?.textoDar?.takeIf { ses.estado == "Completada" && !soloLectura },
+                                recetaSesion = receta?.deSesion(ses),
+                                onReceta = { menuDe = null; receta?.onDar?.invoke(ses) },
+                                onVerReceta = { r ->
+                                    menuDe = null
+                                    if (!abriendoReceta) {
+                                        abriendoReceta = true
+                                        scope.launch {
+                                            try {
+                                                if (!pe.saniape.app.ui.clinica.recetas.abrirRecetaImpresa(
+                                                        accionesNat, r.id, "${r.nombreHoja} ${r.numeroTexto}"))
+                                                    pe.saniape.app.ui.Toaster.error("No se pudo abrir. Revisa tu conexión.")
+                                            } finally { abriendoReceta = false }
+                                        }
+                                    }
+                                },
                             )
                             Spacer(Modifier.height(6.dp))
                         }
@@ -822,6 +866,8 @@ fun TarjetaTratamiento(
                         !okCobro -> pe.saniape.app.ui.Toaster.error("Atención registrada, pero el cobro falló. Revisa caja.")
                         else -> pe.saniape.app.ui.Toaster.exito("Atención registrada")
                     }
+                    // 📝 "¿Le dejas indicaciones?" tras registrar la atención (después del éxito).
+                    if (okServicio && !rServicio.encolada) receta?.onOfrecer?.invoke()
                     accionando = false
                     cambioToken++
                     onCambioRealizado()
@@ -916,6 +962,12 @@ private fun FilaSesion(
     onBorrar: () -> Unit,
     onReasignar: () -> Unit,
     onCobrar: () -> Unit,
+    /** "📝 Dar indicaciones" (solo en la sesión completada); null = no aplica. */
+    textoReceta: String? = null,
+    /** La receta ya vinculada a esta sesión (indicador + "🖨 Ver"). */
+    recetaSesion: pe.saniape.app.data.staff.RecetaVinculada? = null,
+    onReceta: () -> Unit = {},
+    onVerReceta: (pe.saniape.app.data.staff.RecetaVinculada) -> Unit = {},
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
@@ -938,6 +990,14 @@ private fun FilaSesion(
                 Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.pendBg)
                     .padding(horizontal = 7.dp, vertical = 2.dp)) {
                     Text("⚕️ RX", color = c.pend, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            // Indicador: esta sesión ya tiene receta / indicaciones vinculadas.
+            if (recetaSesion != null) {
+                Spacer(Modifier.width(6.dp))
+                Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.purpleBg)
+                    .padding(horizontal = 7.dp, vertical = 2.dp)) {
+                    Text("${if (recetaSesion.esIndicaciones) "📋" else "💊"} ${recetaSesion.numeroTexto}", color = c.purple, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                 }
             }
             Spacer(Modifier.width(8.dp))
@@ -995,6 +1055,11 @@ private fun FilaSesion(
                 ) {
                     ItemMenu("✏ Editar sesión", c.texto) { onEditar() }
                     if (ses.pendiente) ESTADOS_SESION.forEach { e -> ItemMenu(e, c.texto) { onEstado(e) } }
+                    // Receta / indicaciones de la sesión atendida: verla (si tiene) y dar una.
+                    if (completada && recetaSesion != null) {
+                        ItemMenu("🖨 Ver ${recetaSesion.nombreHoja.lowercase()} ${recetaSesion.numeroTexto}", c.purple) { onVerReceta(recetaSesion) }
+                    }
+                    if (completada && textoReceta != null) ItemMenu(textoReceta, c.purple) { onReceta() }
                     if (completada) ItemMenu("↩ Revertir", c.pend) { onRevertir() }
                     ItemMenu("👤 Reasignar profesional", c.texto) { onReasignar() }
                     // Borrar es destructivo: solo Admin (igual criterio que borrar pagos).

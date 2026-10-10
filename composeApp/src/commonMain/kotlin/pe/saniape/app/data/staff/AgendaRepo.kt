@@ -62,6 +62,8 @@ data class CitaStaff(
     val procedimientoId: String? = null,
     /** Multisede/multipaís: la sede de la cita (su moneda en "todas las sedes"). null = la principal. */
     val sedeId: String? = null,
+    /** La sesión vinculada (citas.sesion_id): la receta de la sesión también es de la cita. */
+    val sesionId: String? = null,
 )
 
 /**
@@ -140,7 +142,7 @@ object AgendaRepo {
     /** Columnas comunes de una cita (con joins). Una sola fuente. */
     const val SELECT_CITA =
         "id, fecha, hora, estado, tipo, costo, pagada_at, duracion, origen, confirmada_por_paciente, " +
-            "terapeuta_id, paciente_id, tratamiento_id, especialidad_id, procedimiento_id, sede_id, " +
+            "terapeuta_id, paciente_id, tratamiento_id, especialidad_id, procedimiento_id, sede_id, sesion_id, " +
             "paciente:pacientes(nombre, telefono, edad, fecha_nacimiento, requiere_apoderado), terapeuta:terapeutas(nombre), " +
             "tratamiento:tratamientos!citas_tratamiento_id_fkey(nota_recepcion, procedimiento:procedimientos(id, nombre, especialidad_id)), " +
             "sesion:sesiones!citas_sesion_id_fkey(numero)"
@@ -183,6 +185,7 @@ object AgendaRepo {
                     Apoderado.badgeDe(ps("fecha_nacimiento"), ps("edad")?.toIntOrNull(), ps("requiere_apoderado") == "true")
                 },
                 sedeId = s("sede_id"),
+                sesionId = s("sesion_id")?.takeIf { it.isNotBlank() },
             )
     }
 

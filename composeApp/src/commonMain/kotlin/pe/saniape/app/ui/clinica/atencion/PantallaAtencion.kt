@@ -114,7 +114,27 @@ fun PantallaAtencion(
 
     // Terminada → de vuelta a la agenda. Correcto aunque `terminada` no se
     // reinicie: el VM es nuevo en cada apertura (key con [apertura]).
-    LaunchedEffect(vm.terminada) { if (vm.terminada) onSalir() }
+    LaunchedEffect(vm.terminada) {
+        if (!vm.terminada) return@LaunchedEffect
+        // 📝 Sin receta en esta consulta (y la consulta la admite): la barra
+        // "¿Le das una receta o indicaciones?" en la agenda. Después del éxito.
+        vm.datos?.let { dt ->
+            val (dxTexto, dxCodigo) = diagnosticoParaReceta(vm.borrador.diagnosticos)
+            pe.saniape.app.data.staff.prefillRecetaTrasConsulta(
+                recetasAplica = dt.flags.recetasAplica && ctx.modulosClinicos.recetas && ctx.puede("sesiones"),
+                estadosRecetasDeLaCita = dt.recetas.map { it.estado },
+                pacienteId = dt.cita.paciente?.id ?: dt.cita.paciente_id,
+                pacienteNombre = dt.cita.paciente?.nombre,
+                citaId = dt.cita.id,
+                tratamientoId = dt.cita.tratamiento_id,
+                terapeutaId = vm.borrador.terapeutaId ?: dt.cita.terapeuta_id,
+                diagnostico = dxTexto,
+                cie10 = dxCodigo,
+                indicaciones = vm.borrador.textos["tratamiento"],
+            )?.let { pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.ofrecer(it) }
+        }
+        onSalir()
+    }
 
     // Consentimiento emitido al abrir (el servidor lo deja PENDIENTE): se avisa una
     // vez (saveable: al rotar no se repite el aviso).

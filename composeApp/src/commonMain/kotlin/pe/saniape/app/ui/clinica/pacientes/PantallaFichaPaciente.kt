@@ -248,6 +248,59 @@ private fun PantallaFichaPacienteContenido(
         especialidadesDeQuienMira = datosReceta.second,
     )
     val esPacienteDocs = pe.saniape.app.data.staff.pacienteRecibeDocumentos(ctx.modulosClinicos, esPacienteMedico, esPacienteReceta)
+    // ── 📝 Receta / indicaciones por ATENCIÓN (tras completar y desde el menú) ──
+    // Solo con recetas en el paciente; la lectura (por paciente, con índice) es liviana
+    // y se repite al emitir una (RecetaTrasAtencion.emitidas) para el indicador.
+    val recetasEmitidas = pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.emitidas
+    var recetasVinc by remember(paciente.id) { mutableStateOf<List<pe.saniape.app.data.staff.RecetaVinculada>>(emptyList()) }
+    LaunchedEffect(paciente.id, esPacienteReceta, recargarToken, recetasEmitidas) {
+        if (esPacienteReceta) pe.saniape.app.data.staff.RecetaAtencionRepo.vinculadasDe(listOf(paciente.id))?.let { recetasVinc = it }
+    }
+    // ¿Este tratamiento puede llevar receta / indicaciones? (módulo + permiso + especialidad).
+    val recetaAplicaTrat = { t: TratamientoPaciente ->
+        esPacienteReceta && !pe.saniape.app.data.staff.fichaInactiva(paciente.estado) &&
+            pe.saniape.app.data.staff.recetaAplicaAtencion(
+                ctx.modulosClinicos, ctx.puede("sesiones"),
+                especialidadServicioId = t.especialidadId
+                    ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id,
+                especialidadesProfesional = t.especialidadesProfesional,
+                especialidadesDeQuienMira = datosReceta.second,
+            )
+    }
+    // Prellenado de una sesión (su cita si se agendó, quien la atendió, el diagnóstico).
+    val prefillRecetaSesion = { t: TratamientoPaciente, ses: SesionFicha ->
+        pe.saniape.app.data.staff.prefillRecetaDeSesion(
+            pacienteId = paciente.id, pacienteNombre = paciente.nombre,
+            sesionId = ses.id, numero = ses.numero, tratamientoId = t.id,
+            citaId = hitos?.citaPorSesion?.get(ses.id),
+            terapeutaSesion = ses.terapeutaId, terapeutaTratamiento = t.terapeutaId,
+            diagnostico = t.diagnostico ?: paciente.diagnostico,
+        )
+    }
+    // Prellenado del tratamiento entero (consulta / servicio único / el "📝" del menú, como la web).
+    val prefillRecetaTrat = { t: TratamientoPaciente ->
+        pe.saniape.app.data.staff.prefillRecetaDeTratamiento(
+            pacienteId = paciente.id, pacienteNombre = paciente.nombre,
+            tratamientoId = t.id, esConsulta = t.esConsulta, citaOrigenId = t.citaOrigenId,
+            terapeutaId = t.terapeutaId, diagnostico = t.diagnostico ?: paciente.diagnostico,
+            atencion = null, medicacion = t.medicacion,
+        )
+    }
+    val recetaEnTarjeta = { t: TratamientoPaciente ->
+        if (!recetaAplicaTrat(t)) null else RecetaEnTarjeta(
+            textoDar = pe.saniape.app.data.staff.textoDarReceta(ctx.modulosClinicos),
+            vinculadas = recetasVinc,
+            citaDeSesion = { sid -> hitos?.citaPorSesion?.get(sid) },
+            onDar = { ses ->
+                // Una sesión que ya tiene su hoja: primero el aviso (ver / emitir otra).
+                pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.abrir(
+                    if (ses != null) prefillRecetaSesion(t, ses) else prefillRecetaTrat(t),
+                    yaTiene = ses?.let { pe.saniape.app.data.staff.recetaDeAtencion(recetasVinc, hitos?.citaPorSesion?.get(it.id), it.id) },
+                )
+            },
+            onOfrecer = { pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.ofrecer(prefillRecetaTrat(t)) },
+        )
+    }
     // "Nuevo paquete" (M3): abre el form de tratamiento prellenado con este.
     var renovarDesde by remember { mutableStateOf<TratamientoPaciente?>(null) }
     // ── 🧠 Evaluación psicológica (servicios con tipo_clinico) ──
@@ -700,6 +753,7 @@ private fun PantallaFichaPacienteContenido(
                         procsEvalPsico = procsEvalPsico,
                         onEvaluacionPsico = { evalPsicoAbierta = it.id to kotlinx.datetime.Clock.System.now().toEpochMilliseconds() },
                         onCompletarSesion = { ses, anterior, tecSug, trat -> completarSesion = CompletarSesionReq(ses, anterior, tecSug, trat) },
+                        recetaDe = recetaEnTarjeta,
                         onRecargar = { recargar() },
                         onEditarTrat = { editarTratamiento = it },
                         onAmpliarTrat = { ampliarTratamiento = it },
@@ -1014,6 +1068,17 @@ private fun PantallaFichaPacienteContenido(
                     }
                     if (ok) pe.saniape.app.ui.Toaster.exito("Atención registrada") else pe.saniape.app.ui.Toaster.error("No se pudo guardar")
                     recargar()
+                    // La receta formal de esta consulta (con la medicación anotada como referencia).
+                    // Solo si se anotó medicación nueva: editar la fecha de la consulta no la ofrece.
+                    if (ok && recetaAplicaTrat(t) && e.medicacion.isNotBlank() && e.medicacion.trim() != t.medicacion?.trim()) {
+                        pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.ofrecer(
+                            prefillRecetaTrat(t).copy(
+                                citaId = citaConsulta?.id ?: t.citaOrigenId,
+                                diagnostico = e.diagnostico.ifBlank { null } ?: t.diagnostico ?: paciente.diagnostico,
+                                medicacionRef = e.medicacion.ifBlank { null },
+                            ),
+                        )
+                    }
                 }
             },
         )
@@ -1155,6 +1220,11 @@ private fun PantallaFichaPacienteContenido(
                     )
                     val ok = r.registrada
                     if (ok) pe.saniape.app.ui.Toaster.exito("Sesión #${ses.numero} completada")
+                    // 📝 "¿Le dejas indicaciones?" DESPUÉS del éxito (completar sigue siendo un
+                    // viaje). Sin señal (en la cola) no: la receta necesita red.
+                    if (ok && !r.encolada && recetaAplicaTrat(req.trat)) {
+                        pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.ofrecer(prefillRecetaSesion(req.trat, ses))
+                    }
                     else pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo completar la sesión")
                     // Fotos de la sesión: en segundo plano, ligadas a esta sesión y su
                     // tratamiento. Sin señal (encolada) o sin completar: se avisa.
@@ -2159,6 +2229,8 @@ private fun ContenidoAtenciones(
     procsEvalPsico: Set<String> = emptySet(),
     onEvaluacionPsico: (TratamientoPaciente) -> Unit = {},
     onCompletarSesion: (SesionFicha, SesionFicha?, String?, TratamientoPaciente) -> Unit,
+    /** 📝 Receta / indicaciones de cada tratamiento (null = no aplica). */
+    recetaDe: (TratamientoPaciente) -> RecetaEnTarjeta? = { null },
     onRecargar: () -> Unit,
     onEditarTrat: (TratamientoPaciente) -> Unit,
     onAmpliarTrat: (TratamientoPaciente) -> Unit,
@@ -2232,6 +2304,7 @@ private fun ContenidoAtenciones(
             hitosCargados = hitos != null,
             onEditarCita = onEditarCita,
             onCompletarSesion = onCompletarSesion,
+            receta = recetaDe(t),
             onCambioRealizado = onRecargar,
             onEditar = onEditarTrat, onAmpliar = onAmpliarTrat,
             onCambiarEstadoTrat = onCambiarEstadoTrat,

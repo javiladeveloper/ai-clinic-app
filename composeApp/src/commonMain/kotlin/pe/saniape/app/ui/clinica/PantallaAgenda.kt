@@ -161,6 +161,9 @@ fun PantallaAgenda(
     var cargandoFicha by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val acciones = pe.saniape.app.ui.recordarAcciones()
+    // Se emitió una receta (desde la barra o el menú): el indicador de las tarjetas se actualiza.
+    val recetasEmitidas = pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.emitidas
+    LaunchedEffect(recetasEmitidas) { if (recetasEmitidas > 0) vm.cargarRecetasVinculadas(forzar = true) }
     /**
      * Cierre con "dejarle ejercicios de apoyo" (fisio): a la ficha del paciente, pestaña
      * 🏠, con ESA sesión elegida (gemelo de `irAEjercicios` en /citas web). La sesión
@@ -543,6 +546,11 @@ fun PantallaAgenda(
                                         AccionTarjeta.Atender -> atendiendo = Atendiendo(cita.id)
                                         AccionTarjeta.EvaluacionPsico -> evalPsico = cita to kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
                                         AccionTarjeta.AnularCobro -> anularCobroCita = cita
+                                        // 📝 Ya tiene receta → verla/imprimirla; si no → darla, prellenada.
+                                        // (Si ya tiene, el aviso: 🖨 Ver / reimprimir · Emitir otra.)
+                                        AccionTarjeta.Receta -> vm.prefillReceta(cita)?.let {
+                                            pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.abrir(it, yaTiene = vm.recetasPorCita[cita.id])
+                                        }
                                     }
                                 },
                                 onVerResumen = { resumenPacienteId = it },
@@ -557,6 +565,12 @@ fun PantallaAgenda(
                                 estadoPago = vm.estadosPago[cita.id],
                                 mediosPago = vm.mediosPago[cita.id],
                                 anularCobro = vm.puedeAnularCobro(cita),
+                                // 📝 Receta / indicaciones de la cita atendida (con el módulo y el permiso).
+                                textoReceta = if (cita.estado == "Completada" && vm.recetaAplica(cita))
+                                    pe.saniape.app.data.staff.textoDarReceta(ctx.modulosClinicos) else null,
+                                recetaVinculada = vm.recetasPorCita[cita.id]?.let {
+                                    pe.saniape.app.data.staff.etiquetaRecetaVinculada(it)
+                                },
                                 // Gemelo de evalPsicoDe (/citas web): servicio de evaluación + Admin o
                                 // quien atiende la cita. La base decide al abrir.
                                 evaluacionPsico = cita.procedimientoId != null && cita.procedimientoId in procsEvalPsico &&

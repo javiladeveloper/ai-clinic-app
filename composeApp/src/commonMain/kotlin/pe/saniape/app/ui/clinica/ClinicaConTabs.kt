@@ -594,6 +594,9 @@ fun ClinicaConTabs(
     PildoraPrimeraVez()
     HostTutorial(capa = 0, principal = true)
     CentroAyuda()
+    // "📝 Dar receta / indicaciones" tras completar una atención (agenda, ficha,
+    // Sesiones): la barra de la oferta y la emisión, para todas las pantallas.
+    pe.saniape.app.ui.clinica.recetas.HostRecetaTrasAtencion(contexto)
     }
     urlPagina?.let { url -> if (verMiPagina) DialogoMiPagina(url) { verMiPagina = false } }
     }

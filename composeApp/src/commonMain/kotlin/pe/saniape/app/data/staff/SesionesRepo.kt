@@ -33,6 +33,12 @@ data class SesionGlobal(
     val modalidad: String?,
     val precioPorSesion: Double?,
     val precioAcordado: Double?,
+    /** Especialidad del servicio (¿lleva receta / indicaciones?). */
+    val especialidadId: String? = null,
+    /** Diagnóstico del tratamiento (prellenado de la receta). */
+    val diagnostico: String? = null,
+    /** Profesional a cargo del tratamiento (prescriptor sugerido si la sesión no tiene). */
+    val terapeutaTratamientoId: String? = null,
 ) {
     val pendiente: Boolean
         get() = estado == "Planificada" || estado == "En progreso" || estado == "Reprogramada"
@@ -64,9 +70,9 @@ object SesionesRepo {
         id, numero, fecha, hora, estado, costo, notas, mejorias, duracion, motivo_estado, terapeuta_id,
         terapeuta:terapeutas(nombre),
         tratamiento:tratamientos(
-            id, modalidad, precio_por_sesion, precio_acordado,
+            id, modalidad, precio_por_sesion, precio_acordado, diagnostico, terapeuta_id,
             paciente:pacientes(id, nombre),
-            procedimiento:procedimientos(nombre)
+            procedimiento:procedimientos(nombre, especialidad_id)
         )
     """
 
@@ -125,6 +131,9 @@ object SesionesRepo {
             modalidad = trat?.str("modalidad"),
             precioPorSesion = trat?.dbl("precio_por_sesion"),
             precioAcordado = trat?.dbl("precio_acordado"),
+            especialidadId = proc?.str("especialidad_id"),
+            diagnostico = trat?.str("diagnostico")?.takeIf { it.isNotBlank() },
+            terapeutaTratamientoId = trat?.str("terapeuta_id"),
         )
     }
 

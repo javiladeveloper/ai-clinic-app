@@ -103,6 +103,14 @@ fun TarjetaCita(
      * de la sesión: gemelo de PopupCita web). El nombre y los botones siguen con lo suyo.
      */
     onAbrirDetalle: (() -> Unit)? = null,
+    /**
+     * 📝 Receta / indicaciones de la cita ATENDIDA: el texto del botón ("📝 Dar
+     * indicaciones") o null = no aplica (módulo apagado, sin permiso, especialidad
+     * que no receta). Lo decide la pantalla; si ya tiene una, ella avisa antes de otra.
+     */
+    textoReceta: String? = null,
+    /** Indicador "💊 Receta N° 000012" / "📋 Indicaciones N° …" si la cita ya tiene una vinculada. */
+    recetaVinculada: String? = null,
 ) {
     // Multipaís: el costo va en la moneda de la sede de la cita ("todas las sedes").
     val moneda = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)
@@ -220,6 +228,7 @@ fun TarjetaCita(
                 if (!conBadgePago && cobrable && !puedeCobrar && !pagada && cita.estado == "Completada") {
                     add(Triple("⚠ Debe ${textoSoles(cita.costo ?: 0.0, moneda)}", c.error, c.errorBg))
                 }
+                recetaVinculada?.let { add(Triple(it, c.purple, c.purpleBg)) }
                 if (cita.origen == "online") add(Triple("🌐 Web", c.purple, c.purpleBg))
                 if (cita.terapeutaId == null && cita.origen == "online") add(Triple("⚠ Asignar", c.pend, c.pendBg))
                 // Solapamiento: N citas en la misma hora del mismo profesional.
@@ -251,7 +260,8 @@ fun TarjetaCita(
                 sala = sala?.takeIf { cita.pacienteId != null },
                 evaluacionPsico = evaluacionPsico && cita.tratamientoId != null,
                 cobrar = cobrable && puedeCobrar && !pagada,
-                anularCobro = anularCobro && pagada)
+                anularCobro = anularCobro && pagada,
+                receta = textoReceta?.takeIf { cita.pacienteId != null })
             if (acc.isNotEmpty()) {
                 Spacer(Modifier.height(Sania.dim.md))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
@@ -288,6 +298,8 @@ enum class AccionTarjeta {
     EvaluacionPsico,
     /** "↺ Anular cobro": borra el cobro dividido de caja y la cita vuelve a "por cobrar" (solo Admin). */
     AnularCobro,
+    /** "📝 Dar receta / indicaciones" de la cita atendida (o "🖨 Ver" la que ya tiene). */
+    Receta,
 }
 
 /**
@@ -345,6 +357,8 @@ private fun accionesPara(
     evaluacionPsico: Boolean = false,
     /** Cobro dividido ya hecho y quien mira es Admin con 'pagos'. */
     anularCobro: Boolean = false,
+    /** Texto de "📝 Dar receta / indicaciones" (solo en la cita completada); null = no aplica. */
+    receta: String? = null,
 ): List<Triple<String, AccionTarjeta, Color>> {
     val c = Sania.colors
     val lista = mutableListOf<Triple<String, AccionTarjeta, Color>>()
@@ -383,6 +397,8 @@ private fun accionesPara(
     if (estado == "Completada" || estado == "Cancelada") lista.add(Triple("↩ Revertir", AccionTarjeta.Revertir, c.pend))
     // Repetir: agendar la SIGUIENTE cita del mismo paciente en 1 toque (misma info,
     // fecha propuesta a futuro). Muy usado para citar la próxima sesión/control.
+    // Receta / indicaciones de la atención (después de completar, o para verla).
+    if (estado == "Completada" && receta != null) lista.add(Triple(receta, AccionTarjeta.Receta, c.purple))
     if (estado == "Completada") lista.add(Triple("🔁 Repetir", AccionTarjeta.Repetir, c.teal))
     // Odontograma desde la cita, en cualquier estado: el dentista lo abre para
     // revisar o marcar sin ir a la ficha. No en las sesiones de tratamiento
