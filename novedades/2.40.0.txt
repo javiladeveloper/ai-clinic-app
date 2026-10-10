@@ -1,0 +1,10 @@
+# Novedades de la 2.40.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Documentos médicos en la app: informe médico, descanso médico y orden de exámenes listos para imprimir; examen mental y escalas en la consulta de psiquiatría.
+---
+Clínicas médicas:
+• Ficha del paciente: en "Recetas y documentos" emite un informe médico, un descanso médico o una orden de exámenes, numerados y listos para imprimir, firmar y sellar. Puedes reimprimirlos y anularlos con motivo (quedan en el historial).
+• Consulta guiada: en el cierre, los tres documentos salen prellenados con la atención (motivo, examen, diagnóstico CIE-10 y plan) para revisarlos antes de emitir.
+• Descanso médico: desde/hasta con días de un toque y la opción "No imprimir el diagnóstico" a pedido del paciente.
+• Orden de exámenes: sugerencias que aprenden de tu clínica e indicaciones por examen; en el plan Plus, seguimiento de resultados.
+• Psiquiatría: examen mental con frases rápidas y "📋 Escalas" (PHQ-9, GAD-7, ASRS, AUDIT y más) con puntaje automático dentro de la atención; diagnósticos frecuentes del capítulo F.

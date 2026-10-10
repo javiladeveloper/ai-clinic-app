@@ -220,7 +220,12 @@ private fun PantallaFichaPacienteContenido(
     // pestaña ni una sola consulta. Solo en una clínica MIXTA se pregunta,
     // liviano, si ya tiene recetas y de qué especialidades es quien mira.
     val mapaReceta = ctx.modulosClinicos.mapaReceta
-    val mixtaReceta = mapaReceta.ids.isNotEmpty() && !mapaReceta.solo
+    val mapaMedico = ctx.modulosClinicos.mapaMedico
+    // Documentos médicos (informe/descanso/orden): también por PACIENTE, con el
+    // mapa del flujo médico. Lo de quién mira se pregunta si cualquiera es mixto.
+    val docsActivos = pe.saniape.app.data.staff.documentosMedicosActivos(ctx.modulosClinicos)
+    val mixtaReceta = (mapaReceta.ids.isNotEmpty() && !mapaReceta.solo) ||
+        (docsActivos && mapaMedico.ids.isNotEmpty() && !mapaMedico.solo)
     var datosReceta by remember { mutableStateOf(false to emptyList<String>()) }
     LaunchedEffect(paciente.id, mixtaReceta, recargarToken) {
         if (mixtaReceta) datosReceta = pe.saniape.app.data.staff.RecetasStaffRepo.datosMixta(paciente.id, ctx.miTerapeutaId)
@@ -233,6 +238,16 @@ private fun PantallaFichaPacienteContenido(
         especialidadesDeQuienMira = datosReceta.second,
         tieneRecetas = datosReceta.first,
     )
+    // Gemelos de esPacienteMedico / esPacienteDocs de la ficha web: DALU (recetas
+    // como indicaciones) y RENOVA no ven nada nuevo (documentosMedicosActivos = false).
+    val esPacienteMedico = docsActivos && pe.saniape.app.data.staff.pacienteRecibeRecetas(
+        mapaMedico,
+        especialidadIds = paciente.tratamientos.map { t ->
+            t.especialidadId ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id
+        } + (hitos?.let { it.evaluaciones + it.consultas }.orEmpty()).map { it.especialidadId },
+        especialidadesDeQuienMira = datosReceta.second,
+    )
+    val esPacienteDocs = pe.saniape.app.data.staff.pacienteRecibeDocumentos(ctx.modulosClinicos, esPacienteMedico, esPacienteReceta)
     // "Nuevo paquete" (M3): abre el form de tratamiento prellenado con este.
     var renovarDesde by remember { mutableStateOf<TratamientoPaciente?>(null) }
     // ── 🧠 Evaluación psicológica (servicios con tipo_clinico) ──
@@ -623,7 +638,10 @@ private fun PantallaFichaPacienteContenido(
                     // 🏠 Ejercicios de apoyo: mismo candado que la 📏 (solo fisioterapia).
                     if (esPacienteFisio) add("ejercicios" to "🏠 Ejercicios")
                     // SOLO pacientes de especialidades que recetan (`esPacienteReceta`).
-                    if (esPacienteReceta) add("recetas" to "💊 Recetas")
+                    // + documentos médicos (informe/descanso/orden) en clínicas médicas.
+                    if (esPacienteReceta || esPacienteDocs) {
+                        add("recetas" to pe.saniape.app.data.staff.etiquetaPestanaRecetas(esPacienteReceta, esPacienteDocs))
+                    }
                     if (ctx.puede("pagos")) add("pagos" to "💰 Pagos")
                     add("resumen" to "📋 Resumen")
                 }
@@ -752,11 +770,20 @@ private fun PantallaFichaPacienteContenido(
                         onVerHistoria = { historiaAbierta = true },
                     )
                     // Doble candado, como la 🦷: sin recetas en el paciente no se monta.
-                    "recetas" -> if (esPacienteReceta) ContenidoRecetasFicha(
-                        ctx = ctx, pacienteId = paciente.id,
-                        fichaInactiva = pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
-                        acciones = acciones,
-                    )
+                    "recetas" -> if (esPacienteReceta || esPacienteDocs) {
+                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            if (esPacienteReceta) ContenidoRecetasFicha(
+                                ctx = ctx, pacienteId = paciente.id,
+                                fichaInactiva = pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
+                                acciones = acciones,
+                            )
+                            if (esPacienteDocs) ContenidoDocumentosMedicos(
+                                ctx = ctx, pacienteId = paciente.id, pacienteNombre = paciente.nombre,
+                                fichaInactiva = pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
+                                acciones = acciones,
+                            )
+                        }
+                    }
                     // Doble candado: aunque `tab` quedara en "odontograma" por
                     // un estado viejo, sin odontología no se monta.
                     // 📏 Evaluación fisio: consulta SOLO al abrirse (la monta este `when`).

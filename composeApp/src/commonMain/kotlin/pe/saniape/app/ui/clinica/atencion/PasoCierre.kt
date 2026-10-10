@@ -107,6 +107,13 @@ internal fun PasoCierre(
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (!esProc) FilaResumen("Motivo", t["motivo_consulta"])
             if (esProc) FilaResumen("Procedimiento", t["nota_procedimiento"])
+            // Psiquiatría: examen mental y escalas (como el resumen de la web).
+            if (vm.psiq && !esProc) {
+                FilaResumen("Examen mental", vm.borrador.examenMental)
+                if (!vm.borrador.escalas.isNullOrEmpty()) {
+                    FilaResumen("Escalas", pe.saniape.app.data.staff.textoEscalas(vm.borrador.escalas.orEmpty()))
+                }
+            }
             FilaResumen("Diagnóstico", textoDiagnosticos(vm.borrador.diagnosticos))
             FilaResumen("Receta", d.recetas.joinToString(" · ") {
                 formatearNumeroReceta(it.numero) + if (it.estado == "Anulada") " (anulada)" else ""
@@ -174,6 +181,17 @@ internal fun PasoCierre(
                     }
                 }
             }
+            // Informe médico / descanso / orden de exámenes (todos los planes): los
+            // emite el profesional (a su nombre) o el Admin; prellenados con la atención.
+            if (docsMedicosEnCierre(ctx, soloLectura, esProc)) {
+                pe.saniape.app.data.staff.TIPOS_DOC_MEDICO.forEach { t ->
+                    BotonChico(
+                        if (vm.accionando == "documento") "Abriendo…"
+                        else "${pe.saniape.app.data.staff.iconoTipoDoc(t)} ${pe.saniape.app.data.staff.nombreTipoDoc(t)}",
+                        c.navy, c.superficie, borde = c.borde, habilitado = vm.accionando == null,
+                    ) { vm.abrirDocumento(t) }
+                }
+            }
         }
 
         // ── Acciones ──
@@ -228,6 +246,16 @@ internal fun PasoCierre(
         }
     }
 }
+
+/**
+ * ¿El cierre ofrece los documentos médicos? (docsMedicos de ConsultaGuiada.tsx):
+ * clínica con documentos, quien puede emitir (Admin o profesional, con
+ * `sesiones`), no en solo lectura ni en la cita de un procedimiento.
+ */
+internal fun docsMedicosEnCierre(ctx: ContextoStaff, soloLectura: Boolean, esProcedimiento: Boolean): Boolean =
+    pe.saniape.app.data.staff.documentosMedicosActivos(ctx.modulosClinicos) &&
+        pe.saniape.app.data.staff.puedeEmitirDocumentos(ctx.rol, ctx.miTerapeutaId, ctx.puede("sesiones")) &&
+        !soloLectura && !esProcedimiento
 
 /** "J06.9 Faringitis aguda (P); Fiebre (D)" — como el resumen de la web. */
 internal fun textoDiagnosticos(l: List<DiagnosticoCie>): String =

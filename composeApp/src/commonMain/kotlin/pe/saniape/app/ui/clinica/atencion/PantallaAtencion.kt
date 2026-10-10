@@ -62,6 +62,8 @@ import pe.saniape.app.data.staff.fechaLegibleCorta
 import pe.saniape.app.ui.AccionesNativas
 import pe.saniape.app.ui.ManejarAtras
 import pe.saniape.app.ui.Toaster
+import pe.saniape.app.data.staff.AtencionRepo
+import pe.saniape.app.data.staff.zonaDeSede
 import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.tutoriales.tourAncla
@@ -278,6 +280,28 @@ private fun ColumnScope.ContenidoAtencion(
             onEmitida = { verReceta = false; vm.recargar() },
             terapeutaSugerido = vm.borrador.terapeutaId ?: d.cita.terapeuta_id,
             indicaciones = vm.borrador.textos["tratamiento"],
+        )
+    }
+    // Informe / descanso / orden de exámenes, prellenado con la atención (cierre).
+    vm.documentoAbierto?.let { (tipo, prefill) ->
+        val pac = d.cita.paciente
+        DialogoInformeMedico(
+            ctx = ctx,
+            tipoInicial = tipo,
+            pacienteId = pac?.id ?: d.cita.paciente_id.orEmpty(),
+            pacienteNombre = pac?.nombre.orEmpty(),
+            prefill = prefill,
+            // "Hoy" en la zona de la sede de la cita (multipaís), como el servidor.
+            hoy = pe.saniape.app.data.staff.hoyEnIso(ctx.zonaDeSede(d.cita.sede_id)),
+            onCancelar = { vm.cerrarDocumento() },
+            onEmitido = { id, numero ->
+                vm.cerrarDocumento()
+                // Como la web: emitido → la hoja para imprimir.
+                if (id.isNotBlank()) vm.lanzar {
+                    AtencionRepo.htmlImprimible("informe", id)?.let { acciones.abrirHtml(it, numero) }
+                        ?: Toaster.error("Se emitió, pero no se pudo abrir la impresión. Reimprímelo desde la ficha.")
+                }
+            },
         )
     }
 }
