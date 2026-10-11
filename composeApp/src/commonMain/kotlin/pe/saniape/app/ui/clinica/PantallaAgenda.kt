@@ -601,6 +601,7 @@ fun PantallaAgenda(
                                 // quien atiende la cita. La base decide al abrir.
                                 evaluacionPsico = cita.procedimientoId != null && cita.procedimientoId in procsEvalPsico &&
                                     pe.saniape.app.data.staff.puedeVerEvaluacionPsico(ctx.rol, ctx.miTerapeutaId, null, listOf(cita.terapeutaId)),
+                                medica = vm.esMedicaGuiada(cita),
                                 sala = vm.etapaDe(cita)?.let { etapa ->
                                     val a = vm.atencionDe(cita)
                                     pe.saniape.app.ui.clinica.agenda.componentes.SalaTarjeta(
