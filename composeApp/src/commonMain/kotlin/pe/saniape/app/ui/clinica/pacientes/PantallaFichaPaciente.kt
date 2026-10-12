@@ -374,7 +374,7 @@ private fun PantallaFichaPacienteContenido(
             ctx = ctx, tratamientoId = tId, apertura = apertura, acciones = acciones,
             onSalir = { evalPsicoAbierta = null; recargar() },
             // "Crear tratamiento con este plan": el formulario de SIEMPRE, pre-llenado.
-            onCrearTratamiento = if (ctx.puede("sesiones") || ctx.puede("pacientes")) { evId, prefill ->
+            onCrearTratamiento = if (ctx.puede("sesiones")) { evId, prefill ->
                 evalPsicoAbierta = null
                 planPsico = evId to prefill
             } else null,
@@ -886,6 +886,7 @@ private fun PantallaFichaPacienteContenido(
                         pe.saniape.app.ui.clinica.odontologia.OdontogramaVista(
                             pacienteId = paciente.id,
                             mapaDental = ctx.mapaDental,
+                            puedeCrearTratamientos = ctx.puede("sesiones"),
                             // Paciente dado de baja: se mira, no se marca.
                             soloLectura = paciente.estado == "Inactivo",
                             // Tras "Crear tratamiento(s)": agendar la primera cita.
@@ -2336,7 +2337,7 @@ private fun ContenidoAtenciones(
         Etiqueta("Tratamientos")
         // "➕ Nuevo tratamiento" ARRIBA, como el encabezado de "Planes de atención" en la
         // web: abajo de todo quedaba escondido tras las tarjetas y el médico no lo veía.
-        if ((ctx.puede("sesiones") || ctx.puede("pacientes")) && !soloLectura) {
+        if (ctx.puede("sesiones") && !soloLectura) {
             Box(
                 Modifier.fillMaxWidth().tourAncla("ficha.nuevo_tratamiento").clip(RoundedCornerShape(Sania.shape.md.dp))
                     .background(c.navy).clickable { onNuevoTratamiento() }.padding(vertical = 12.dp),

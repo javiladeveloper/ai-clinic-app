@@ -131,7 +131,10 @@ object Sincronizador {
             r == null -> Triple(ResultadoEnvio.SIN_RED, null, null)   // reintentable → encolar
             r.exito -> Triple(ResultadoEnvio.OK, null, r.json)
             // el servidor dijo que no → no encolar
-            else -> Triple(ResultadoEnvio.RECHAZADO, RechazoServidor(r.error ?: "Error del servidor", r.codigo, r.status, r.json), null)
+            else -> Triple(ResultadoEnvio.RECHAZADO, RechazoServidor(
+                pe.saniape.app.data.staff.mensajeSinPermisoTratamiento(endpoint, r.status, r.codigo) ?: r.error ?: "Error del servidor",
+                r.codigo, r.status, r.json,
+            ), null)
         }
     }
 

@@ -99,6 +99,8 @@ fun OdontogramaVista(
     onCambio: () -> Unit = {},
     /** En la revisión previa al diagnóstico se marca y nada más: sin presupuesto. */
     mostrarPresupuesto: Boolean = true,
+    /** Permiso `sesiones`: sin él el presupuesto es de solo lectura (el servidor rechazaría crear tratamientos). */
+    puedeCrearTratamientos: Boolean = true,
     /** Para ofrecer solo servicios dentales en una clínica mixta. */
     mapaDental: pe.saniape.app.data.staff.MapaDental = pe.saniape.app.data.staff.MapaDental(),
     /**
@@ -326,7 +328,7 @@ fun OdontogramaVista(
             citaId = citaId,
             hallazgos = hallazgos,
             catalogo = catalogo,
-            soloLectura = soloLectura,
+            soloLectura = soloLectura || !puedeCrearTratamientos,
             // El catálogo también: al asignar un servicio a un hallazgo, sin
             // recargarlo seguiría figurando "sin servicio".
             onCambio = {

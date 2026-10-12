@@ -71,6 +71,8 @@ fun RevisionPrevia(
      * (ver DialogoAtencionPuntual). null = solo la revisión completa.
      */
     onAtencionPuntual: (() -> Unit)? = null,
+    /** Permiso `sesiones` para crear el tratamiento del presupuesto. */
+    puedeCrearTratamientos: Boolean = true,
 ) {
     val c = Sania.colors
     // Se recalcula cada vez que el odontograma avisa un cambio: el dentista ve
@@ -104,6 +106,7 @@ fun RevisionPrevia(
             citaId = citaId,
             mapaDental = mapaDental,
             registroPresupuesto = registro,
+            puedeCrearTratamientos = puedeCrearTratamientos,
             onDatos = { hallazgos, catalogo -> sugerido = diagnosticoDesdeHallazgos(hallazgos, catalogo) },
         )
 

@@ -333,7 +333,7 @@ fun TarjetaTratamiento(
                 trat = t, flujo = flujo, consultaDone = consultaDone, evalDone = evalDone, citasTrat = citasTrat,
                 citasCargadas = hitosCargados,
                 citaConsulta = citaConsulta, citaEvaluacion = citaEvaluacion,
-                puedePagos = verPagos, expandido = expandido, onEditarCita = onEditarCita,
+                puedePagos = verPagos, puedeGestionar = puedeSesionesEf, expandido = expandido, onEditarCita = onEditarCita,
                 onToggleSesiones = { expandido = !expandido },
                 onColapsarTarjeta = { expandido = false },
                 onAgendarControl = {

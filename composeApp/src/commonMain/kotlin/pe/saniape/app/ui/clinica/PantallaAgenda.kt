@@ -732,6 +732,7 @@ fun PantallaAgenda(
                 // Un solo paso: la revisión completa la evaluación (ver
                 // completarEvaluacionDental). La ventana de abajo solo si falta algo.
                 pe.saniape.app.ui.clinica.odontologia.RevisionPrevia(
+                puedeCrearTratamientos = ctx.puede("sesiones"),
                     pacienteId = pac,
                     pacienteNombre = cita.pacienteNombre,
                     citaId = cita.id,
@@ -864,6 +865,7 @@ fun PantallaAgenda(
             (cita.estado == "Pendiente" || cita.estado == "Confirmada") && ctx.puede("citas")
         if (completable) {
             pe.saniape.app.ui.clinica.odontologia.RevisionPrevia(
+                puedeCrearTratamientos = ctx.puede("sesiones"),
                 pacienteId = pac,
                 pacienteNombre = cita.pacienteNombre,
                 citaId = cita.id,
@@ -889,6 +891,7 @@ fun PantallaAgenda(
             ) {
                 pe.saniape.app.ui.clinica.odontologia.OdontogramaVista(
                     pacienteId = pac, citaId = cita.id, mapaDental = ctx.mapaDental,
+                    puedeCrearTratamientos = ctx.puede("sesiones"),
                     // Tras "Crear tratamiento(s)": agendar la primera cita (cierra el odontograma).
                     onOfrecerAgendar = { of -> odontogramaCita = null; ofertaPrimera = of.copy(pacienteNombre = cita.pacienteNombre) },
                 )

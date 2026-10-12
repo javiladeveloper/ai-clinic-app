@@ -64,6 +64,8 @@ fun BarraRecorrido(
     citaConsulta: CitaHito? = null,
     citaEvaluacion: CitaHito? = null,
     puedePagos: Boolean = false,
+    /** ¿Puede gestionar el tratamiento (permiso `sesiones`)? Oculta registrar atención / revertir / dar de alta. */
+    puedeGestionar: Boolean = true,
     expandido: Boolean = false,             // si la tarjeta está expandida (resalta el paso Sesiones)
     onEditarCita: (CitaHito) -> Unit = {},
     onToggleSesiones: () -> Unit = {},      // tocar la bolita Sesiones expande/colapsa la tarjeta
@@ -261,12 +263,14 @@ fun BarraRecorrido(
                 if (!altaTrat) {
                     Spacer(Modifier.height(8.dp))
                     // Registrar atención (medicación/receta) — el momento natural tras atender.
-                    Box(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.navy)
-                            .clickable { onRegistrarAtencion() }.padding(vertical = 9.dp),
-                        contentAlignment = Alignment.Center,
-                    ) { Text("📝 Registrar atención (medicación/receta)", color = c.sobreNavy, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                    Spacer(Modifier.height(8.dp))
+                    if (puedeGestionar) {
+                        Box(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.navy)
+                                .clickable { onRegistrarAtencion() }.padding(vertical = 9.dp),
+                            contentAlignment = Alignment.Center,
+                        ) { Text("📝 Registrar atención (medicación/receta)", color = c.sobreNavy, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        Spacer(Modifier.height(8.dp))
+                    }
                     Text("¿El ${LocalTerminologiaPaciente.current.paciente} necesita volver?", color = c.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -275,12 +279,14 @@ fun BarraRecorrido(
                                 .clickable { onAgendarControl() }.padding(vertical = 8.dp),
                             contentAlignment = Alignment.Center,
                         ) { Text("📅 Agendar control", color = c.sobreNavy, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                        Box(
-                            Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
-                                .background(c.ok.copy(alpha = 0.15f)).border(1.dp, c.ok, RoundedCornerShape(Sania.shape.sm.dp))
-                                .clickable { onDarAlta() }.padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center,
-                        ) { Text("✓ Dar de alta", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        if (puedeGestionar) {
+                            Box(
+                                Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                    .background(c.ok.copy(alpha = 0.15f)).border(1.dp, c.ok, RoundedCornerShape(Sania.shape.sm.dp))
+                                    .clickable { onDarAlta() }.padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center,
+                            ) { Text("✓ Dar de alta", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        }
                     }
                 }
             }
@@ -308,6 +314,8 @@ fun BarraRecorrido(
                         )
                     } else if (!servRealizado && !citasCargadas) {
                         Text("Cargando…", color = c.textoSuave, fontSize = 11.sp)
+                    } else if (!puedeGestionar) {
+                        Unit
                     } else if (!servRealizado) {
                         Box(
                             Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.navy)
