@@ -139,6 +139,11 @@ fun PantallaCrearCita(
     var terapeutas by remember { mutableStateOf<List<TerapeutaRef>>(emptyList()) }
     var especialidadesClinica by remember { mutableStateOf<List<EspecialidadRef>>(emptyList()) }
     var tratamientos by remember { mutableStateOf<List<TratamientoRef>>(emptyList()) }
+    // De qué paciente llegó BIEN la lista de tratamientos (si la consulta falla no
+    // se afirma "aún no tiene tratamiento").
+    var tratamientosDe by remember { mutableStateOf<String?>(null) }
+    // "＋ Crear tratamiento" (paciente sin tratamiento en una Sesión, psicología).
+    var crearTratamiento by remember { mutableStateOf(false) }
     var precioConsulta by remember { mutableStateOf(0.0) }
     var precioEvaluacion by remember { mutableStateOf(40.0) }
     // Campañas vigentes: el costo por defecto sale con la MEJOR promo aplicada (como la web).
@@ -194,6 +199,18 @@ fun PantallaCrearCita(
         TIPOS_INFO.filter { flujoEfectivo.usaTipo(it.valor) }
             .filter { it.valor != "Sesión" || ctx.usaSesiones }
     }
+    // Psicología (sin Consulta ni Evaluación): la Sesión es la primera cita, así que
+    // un paciente sin tratamiento se puede elegir (y hasta registrar) y el
+    // tratamiento se crea aquí mismo. Con Consulta/Evaluación nada de esto cambia.
+    val directoASesiones = pe.saniape.app.data.staff.flujoDirectoASesiones(flujoEfectivo)
+    val avisoTratamiento = pe.saniape.app.data.staff.avisoSinTratamiento(
+        tipo = tipo,
+        directoASesiones = directoASesiones,
+        pacienteElegido = paciente != null,
+        tratamientosCargados = paciente != null && tratamientosDe == paciente?.id,
+        hayTratamientos = tratamientos.isNotEmpty(),
+        puedeSesiones = ctx.puede("sesiones"),
+    )
     // Si el tipo elegido deja de ofrecerse (al cambiar de especialidad, o al
     // abrir la pantalla en una clínica que no usa Consulta), se cae al primero
     // que sí exista. Sin esto se guardaba una cita de un tipo que la clínica
@@ -324,7 +341,12 @@ fun PantallaCrearCita(
     // Tratamientos del paciente (para tipo Sesión / control vinculado)
     LaunchedEffect(paciente?.id) {
         val p = paciente
-        tratamientos = if (p != null) try { AgendaRepo.tratamientosActivos(p.id) } catch (_: Exception) { emptyList() } else emptyList()
+        tratamientosDe = null
+        tratamientos = if (p != null) try {
+            AgendaRepo.tratamientosActivos(p.id).also { tratamientosDe = p.id }
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (_: Exception) { emptyList() } else emptyList()
         // Si el prefill trae un tratamiento (p.ej. control que nace de un tratamiento), enlazarlo.
         prefill?.tratamientoId?.let { tid -> tratamiento = tratamientos.find { it.id == tid } }
     }
@@ -392,6 +414,39 @@ fun PantallaCrearCita(
         ) { Box(Modifier.fillMaxWidth().padding(Sania.dim.lg), Alignment.Center) { TimePicker(state = estado) } }
     }
 
+    // "＋ Crear tratamiento": el MISMO form de la ficha, prellenado con lo que ya se
+    // eligió en la cita. Sin "Agendarla ahora": la sesión #1 es esta cita.
+    val pacTrat = paciente
+    if (crearTratamiento && pacTrat != null) {
+        pe.saniape.app.ui.clinica.pacientes.ModalCrearTratamiento(
+            pacienteId = pacTrat.id,
+            miTerapeutaId = ctx.miTerapeutaId,
+            diagnosticoPrevio = null,
+            terapeutaInicialId = terapeuta?.id,
+            especialidadInicialId = especialidad?.id ?: terapeuta?.especialidadIds?.singleOrNull(),
+            desdeCita = true,
+            onCancelar = { crearTratamiento = false },
+            onGuardar = { nuevo ->
+                crearTratamiento = false
+                scope.launch {
+                    // Toast, plantilla y diagnóstico van adentro (el mismo camino de la ficha).
+                    val r = pe.saniape.app.ui.clinica.pacientes.guardarTratamientoNuevo(pacTrat.id, nuevo, pacTrat.nombre)
+                    if (!r.creado || paciente?.id != pacTrat.id) return@launch
+                    val lista = runCatching { AgendaRepo.tratamientosActivos(pacTrat.id) }.getOrNull()
+                    if (lista == null) {
+                        mensaje = "El tratamiento se creó, pero no se pudo recargar. Vuelve a elegir al ${ctx.terminologiaPaciente.paciente}."
+                        return@launch
+                    }
+                    tratamientos = lista
+                    tratamientosDe = pacTrat.id
+                    // Queda elegido en la cita: se agenda como su Sesión #1.
+                    tratamiento = pe.saniape.app.data.staff.tratamientoCreadoEnLista(lista, r.tratamientoId)
+                    mensaje = null
+                }
+            },
+        )
+    }
+
     // Modal "ver horarios": disponibilidad de todos los profesionales para fecha/hora.
     if (mostrarHorarios) {
         ModalVerHorarios(
@@ -416,6 +471,9 @@ fun PantallaCrearCita(
         val p = paciente ?: run { mensaje = "Elige un ${ctx.terminologiaPaciente.paciente}"; return }
         if (tipo == "Sesión" && tratamiento == null && tratamientos.isNotEmpty()) {
             mensaje = "Elige el tratamiento"; return
+        }
+        pe.saniape.app.data.staff.mensajeFaltaTratamiento(avisoTratamiento, ctx.terminologiaPaciente.paciente)?.let {
+            mensaje = it; return
         }
         // Clínica que mezcla odontología con otra especialidad: la
         // cita tiene que decir de cuál es, porque de eso depende que
@@ -594,9 +652,10 @@ fun PantallaCrearCita(
                         termino = ctx.terminologiaPaciente.paciente,
                         items = pacientes, elegido = paciente,
                         onElegir = { paciente = it; terapeuta = null; tratamiento = null; terapeutaAMano = false; precargado = null },
-                        // Alta al vuelo (DNI → RENIEC → registrar), como la web: solo en
-                        // Consulta/Evaluación y para quien agenda. Con el país de la sede.
-                        altaRapida = pe.saniape.app.data.staff.altaRapidaPermitida(tipo, ctx.puede("agendar")),
+                        // Alta al vuelo (DNI → RENIEC → registrar), como la web: en
+                        // Consulta/Evaluación (y en la Sesión de psicología, que es la
+                        // primera cita) y para quien agenda. Con el país de la sede.
+                        altaRapida = pe.saniape.app.data.staff.altaRapidaPermitida(tipo, ctx.puede("agendar"), directoASesiones),
                         pais = pe.saniape.app.data.staff.paisDeFila(sedeId),
                         puedeReactivar = ctx.puede("datos_personales"),
                         onRegistrado = { nuevo ->
@@ -605,6 +664,16 @@ fun PantallaCrearCita(
                             pacientes = listOf(nuevo) + pacientes.filter { it.id != nuevo.id }
                             paciente = nuevo; terapeuta = null; tratamiento = null; terapeutaAMano = false; precargado = null
                         },
+                    )
+                }
+
+                // Paciente sin tratamiento en una Sesión (psicología): decirlo y ofrecer crearlo.
+                if (avisoTratamiento != pe.saniape.app.data.staff.AvisoSinTratamiento.NINGUNO) {
+                    Spacer(Modifier.height(Sania.dim.sm))
+                    AvisoSinTratamientoCita(
+                        titulo = pe.saniape.app.data.staff.tituloSinTratamiento(ctx.terminologiaPaciente.paciente),
+                        aviso = avisoTratamiento,
+                        onCrear = { crearTratamiento = true },
                     )
                 }
 
@@ -776,8 +845,38 @@ private fun Etiqueta(t: String) {
         modifier = Modifier.padding(bottom = 4.dp))
 }
 
+/**
+ * "Este paciente aún no tiene tratamiento" bajo el paciente de una Sesión
+ * (psicología). Con permiso: "＋ Crear tratamiento"; sin él, a quién pedírselo.
+ */
 @Composable
-private fun TarjetaTipo(info: TipoInfo, activo: Boolean, etiqueta: String = info.valor, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun AvisoSinTratamientoCita(
+    titulo: String,
+    aviso: pe.saniape.app.data.staff.AvisoSinTratamiento,
+    onCrear: () -> Unit,
+) {
+    val c = Sania.colors
+    val forma = RoundedCornerShape(Sania.shape.sm.dp)
+    Column(
+        Modifier.fillMaxWidth().clip(forma).background(c.pendBg).border(1.dp, c.pend.copy(alpha = 0.4f), forma)
+            .padding(12.dp),
+    ) {
+        Text("📋 $titulo", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(pe.saniape.app.data.staff.detalleSinTratamiento(aviso), color = c.textoSuave, fontSize = 12.sp,
+            modifier = Modifier.padding(top = 2.dp))
+        if (aviso == pe.saniape.app.data.staff.AvisoSinTratamiento.OFRECER_CREAR) {
+            Spacer(Modifier.height(8.dp))
+            Box(
+                Modifier.fillMaxWidth().heightIn(min = 44.dp).clip(RoundedCornerShape(Sania.shape.md.dp))
+                    .background(c.navy).clickable(onClick = onCrear).padding(horizontal = 14.dp, vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) { Text("＋ Crear tratamiento", color = c.sobreNavy, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+        }
+    }
+}
+
+@Composable
+private fun TarjetaTipo(info: TipoInfo,activo: Boolean, etiqueta: String = info.valor, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val c = Sania.colors
     val acento = when (info.valor) {
         "Evaluación" -> c.info

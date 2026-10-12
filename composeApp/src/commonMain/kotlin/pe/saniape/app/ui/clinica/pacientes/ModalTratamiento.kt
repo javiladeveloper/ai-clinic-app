@@ -132,6 +132,13 @@ fun ModalCrearTratamiento(
      * de siempre. El diagnóstico llega por [diagnosticoPrevio].
      */
     prefillPlan: pe.saniape.app.data.staff.PrefillPlanPsico? = null,
+    /** La especialidad que ya se eligió donde se abrió (p. ej. la cita que se está agendando). */
+    especialidadInicialId: String? = null,
+    /**
+     * Se abre DESDE el formulario de una cita de Sesión (paciente sin tratamiento):
+     * la sesión #1 es esa cita, así que no se ofrece "Agendarla ahora" (duplicaría).
+     */
+    desdeCita: Boolean = false,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
@@ -265,6 +272,8 @@ fun ModalCrearTratamiento(
         plantillas = runCatching { PacientesRepo.plantillas() }.getOrDefault(emptyList())
         // Si la clínica tiene 1 sola especialidad, se autoselecciona.
         if (especialidad == null && esps.size == 1) especialidad = esps.first()
+        // La que ya venía elegida (el formulario de cita que abrió este).
+        especialidadInicialId?.let { eId -> esps.find { it.id == eId }?.let { especialidad = it } }
         // Profesional vinculado: fijar su(s) especialidad(es) si tiene una sola.
         if (miTerapeutaId != null) {
             val miTer = ters.find { it.id == miTerapeutaId }
@@ -885,7 +894,11 @@ fun ModalCrearTratamiento(
 
                 // PRIMERA SESIÓN en el mismo paso: sin esto había que crear el
                 // tratamiento y después buscarlo para agendar (28/09/2026).
-                if (usaSesiones) {
+                if (usaSesiones && desdeCita) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("La sesión #1 es la cita que estás agendando: al crear, queda elegido en ella.",
+                        color = c.textoSuave, fontSize = 11.sp)
+                } else if (usaSesiones) {
                     Spacer(Modifier.height(12.dp))
                     Tarjeta(titulo = "Primera sesión", icono = "📅") {
                         Row(Modifier.fillMaxWidth().clickable { conPrimera = !conPrimera },
@@ -987,7 +1000,12 @@ data class OfertaPrimeraCita(
 }
 
 /** Lo que dejó crear un tratamiento: si quedó creado y, si corresponde, la oferta de agendar. */
-data class ResultadoCrearTratamiento(val creado: Boolean, val oferta: OfertaPrimeraCita? = null)
+data class ResultadoCrearTratamiento(
+    val creado: Boolean,
+    val oferta: OfertaPrimeraCita? = null,
+    /** El id del tratamiento creado (null si quedó en la cola offline o el servidor no lo dijo). */
+    val tratamientoId: String? = null,
+)
 
 /** El id del tratamiento creado: de la respuesta, o del rechazo PARCIAL (se creó, falló lo demás). */
 private fun idCreado(r: pe.saniape.app.data.offline.ResultadoEscritura): String? =
@@ -1061,7 +1079,7 @@ suspend fun guardarTratamientoNuevo(pacienteId: String, nuevo: TratamientoNuevo,
     // En la cola offline aún no hay id: no hay qué agendar todavía.
     val oferta = trasCrear(pacienteId, nuevo, nombrePaciente, if (r.encolada) null else id,
         primeraAgendada = r.registrada && nuevo.primeraFecha != null, respuesta = r.cuerpo ?: r.rechazo?.datos)
-    return ResultadoCrearTratamiento(creado = true, oferta = oferta)
+    return ResultadoCrearTratamiento(creado = true, oferta = oferta, tratamientoId = if (r.encolada) null else id)
 }
 
 /**

@@ -51,13 +51,15 @@ fun consultaPadron(documento: String, pais: String?): Boolean =
     usaReniec(pais) && Regex("^\\d{8}$").matches(documento.trim())
 
 /**
- * ¿Se ofrece registrar al paciente desde la cita? Como la web: solo en Consulta
- * y Evaluación (las citas de paciente nuevo) y para quien puede agendar. En una
- * Sesión el paciente existe por fuerza (tiene tratamiento): ofrecer crearlo
- * ahí es un camino a duplicados.
+ * ¿Se ofrece registrar al paciente desde la cita? Como la web: en Consulta y
+ * Evaluación (las citas de paciente nuevo) y para quien puede agendar. En una
+ * Sesión el paciente suele existir (tiene tratamiento) y ofrecer crearlo ahí es
+ * un camino a duplicados; la excepción es el flujo que entra DIRECTO a sesiones
+ * ([directoASesiones], psicología): ahí la Sesión ES la primera cita y no hay
+ * otra puerta para un paciente nuevo.
  */
-fun altaRapidaPermitida(tipo: String, puedeAgendar: Boolean): Boolean =
-    puedeAgendar && (tipo == "Consulta" || tipo == "Evaluación")
+fun altaRapidaPermitida(tipo: String, puedeAgendar: Boolean, directoASesiones: Boolean = false): Boolean =
+    puedeAgendar && (tipo == "Consulta" || tipo == "Evaluación" || (tipo == "Sesión" && directoASesiones))
 
 /** Estado de la consulta al padrón / del registro (el `Hallazgo` de la web). */
 sealed interface HallazgoPadron {
