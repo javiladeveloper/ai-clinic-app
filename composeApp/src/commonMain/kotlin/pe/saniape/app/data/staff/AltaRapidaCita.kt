@@ -54,12 +54,12 @@ fun consultaPadron(documento: String, pais: String?): Boolean =
  * ¿Se ofrece registrar al paciente desde la cita? Como la web: en Consulta y
  * Evaluación (las citas de paciente nuevo) y para quien puede agendar. En una
  * Sesión el paciente suele existir (tiene tratamiento) y ofrecer crearlo ahí es
- * un camino a duplicados; la excepción es el flujo que entra DIRECTO a sesiones
- * ([directoASesiones], psicología): ahí la Sesión ES la primera cita y no hay
+ * un camino a duplicados; la excepción es la clínica que entra SOLO por Sesión
+ * ([soloSesion], psicología; ver [entraSoloPorSesion]): ahí la Sesión ES la primera cita y no hay
  * otra puerta para un paciente nuevo.
  */
-fun altaRapidaPermitida(tipo: String, puedeAgendar: Boolean, directoASesiones: Boolean = false): Boolean =
-    puedeAgendar && (tipo == "Consulta" || tipo == "Evaluación" || (tipo == "Sesión" && directoASesiones))
+fun altaRapidaPermitida(tipo: String, puedeAgendar: Boolean, soloSesion: Boolean = false): Boolean =
+    puedeAgendar && (tipo == "Consulta" || tipo == "Evaluación" || (tipo == "Sesión" && soloSesion))
 
 /** Estado de la consulta al padrón / del registro (el `Hallazgo` de la web). */
 sealed interface HallazgoPadron {

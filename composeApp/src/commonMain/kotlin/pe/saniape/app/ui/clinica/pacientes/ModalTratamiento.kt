@@ -328,7 +328,11 @@ fun ModalCrearTratamiento(
     val espId = especialidad?.id
     val terId = if (miTerapeutaId != null) miTerapeutaId else terapeuta?.id
     val espsDelProf = terapeutas.find { it.id == terId }?.especialidadIds ?: emptyList()
-    val procsVisibles = procedimientos.filter { p ->
+    // Desde una cita de Sesión: solo servicios por sesiones y de la especialidad de
+    // la cita (un pago único o por unidades no se agenda como "Sesión #1").
+    val procsPermitidos = if (desdeCita) pe.saniape.app.data.staff.serviciosParaSesion(procedimientos, especialidadInicialId)
+        else procedimientos
+    val procsVisibles = procsPermitidos.filter { p ->
         when {
             espId != null -> p.especialidadId == null || p.especialidadId == espId
             terId != null -> p.especialidadId == null || p.especialidadId in espsDelProf
@@ -525,8 +529,9 @@ fun ModalCrearTratamiento(
                                     plantillaId = plantilla?.id,
                                     campaniaId = campaniaAplicada?.id,
                                     motivoPrecio = motivoPrecio.trim().ifBlank { null },
-                                    primeraFecha = if (usaSesiones && conPrimera) fechaPrimera else null,
-                                    primeraHora = if (usaSesiones && conPrimera) horaPrimera else null,
+                                    // Desde una cita, la Sesión #1 ES esa cita: nunca se manda otra.
+                                    primeraFecha = if (usaSesiones && conPrimera && !desdeCita) fechaPrimera else null,
+                                    primeraHora = if (usaSesiones && conPrimera && !desdeCita) horaPrimera else null,
                                     tipo = tipoFinal,
                                     diagnosticoAprender = dxAprender,
                                     especialidadDiagnostico = p.especialidadId,
@@ -580,7 +585,7 @@ fun ModalCrearTratamiento(
                     // Solo las que tienen un servicio ACTIVO (las copiadas de la biblioteca nacen
                     // sin servicio hasta que la clínica le asigna uno) y no apagado en la sede.
                     val ofrecibles = pe.saniape.app.data.staff.plantillasOfrecibles(
-                        plantillas, procedimientos,
+                        plantillas, procsPermitidos,
                         apagadosEnSede = serviciosSede.filterValues { !it.second }.keys,
                     )
                     if (ofrecibles.isNotEmpty()) {
@@ -1005,6 +1010,8 @@ data class ResultadoCrearTratamiento(
     val oferta: OfertaPrimeraCita? = null,
     /** El id del tratamiento creado (null si quedó en la cola offline o el servidor no lo dijo). */
     val tratamientoId: String? = null,
+    /** Quedó en la cola offline: se creará al volver la señal (aún sin id). */
+    val encolada: Boolean = false,
 )
 
 /** El id del tratamiento creado: de la respuesta, o del rechazo PARCIAL (se creó, falló lo demás). */
@@ -1079,7 +1086,9 @@ suspend fun guardarTratamientoNuevo(pacienteId: String, nuevo: TratamientoNuevo,
     // En la cola offline aún no hay id: no hay qué agendar todavía.
     val oferta = trasCrear(pacienteId, nuevo, nombrePaciente, if (r.encolada) null else id,
         primeraAgendada = r.registrada && nuevo.primeraFecha != null, respuesta = r.cuerpo ?: r.rechazo?.datos)
-    return ResultadoCrearTratamiento(creado = true, oferta = oferta, tratamientoId = if (r.encolada) null else id)
+    return ResultadoCrearTratamiento(
+        creado = true, oferta = oferta, tratamientoId = if (r.encolada) null else id, encolada = r.encolada,
+    )
 }
 
 /**

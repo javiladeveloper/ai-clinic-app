@@ -94,6 +94,40 @@ class BancoMedicamentosTest {
         assertEquals(listOf("Paracetamol"), sugerenciasIniciales(lista, porPerfil, PERFIL_ODONTOLOGIA).todas.map { it.dci })
     }
 
+    @Test
+    fun hastaDoceDelPerfilComoLaWeb() {
+        val doce = (1..14).map { pnume("Psico$it") }
+        val g = sugerenciasIniciales(emptyList(), mapOf(PERFIL_PSIQUIATRIA to doce), PERFIL_PSIQUIATRIA)
+        assertEquals(12, g.perfil.size)
+    }
+
+    // ── Controlados (chip "Lista IVB" antes de elegir) ──
+
+    @Test
+    fun marcaLosControladosComoLaWeb() {
+        assertEquals("IVB", controlDeSustancia("Sertralina")?.lista)
+        assertEquals("IVB", controlDeSustancia("Clonazepam 2 mg")?.lista)
+        assertEquals("IVB", controlDeSustancia("Ácido valproico")?.lista)
+        assertFalse(controlDeSustancia("Clonazepam")!!.especial)
+        // Receta especial (Sania no la emite): marcada como especial.
+        assertTrue(controlDeSustancia("Morfina")!!.especial)
+        assertEquals("IIB", controlDeSustancia("Paracetamol + codeína")?.lista)
+        // Palabra completa: "Paracetamol" no es controlado; vacío tampoco.
+        assertNull(controlDeSustancia("Paracetamol"))
+        assertNull(controlDeSustancia(""))
+        assertNull(controlDeSustancia(null))
+    }
+
+    @Test
+    fun cacheDeEspecialidadesPorClinica() {
+        NombresEspecialidadCache.guardar("c1", mapOf("e1" to "Psiquiatría"))
+        assertEquals("Psiquiatría", NombresEspecialidadCache.de("c1")?.get("e1"))
+        assertNull(NombresEspecialidadCache.de("c2"))
+        // Una lista vacía (falló la consulta) no pisa la buena.
+        NombresEspecialidadCache.guardar("c1", emptyMap())
+        assertEquals("Psiquiatría", NombresEspecialidadCache.de("c1")?.get("e1"))
+    }
+
     // ── Pie de la lista ──
 
     @Test

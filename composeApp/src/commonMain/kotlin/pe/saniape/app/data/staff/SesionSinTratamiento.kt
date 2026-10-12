@@ -1,23 +1,28 @@
 package pe.saniape.app.data.staff
 
 /**
- * Agendar una Sesión a un paciente SIN tratamiento (psicología) — gemelo de la web
- * (docs/sesion-paciente-sin-tratamiento.md, rama fix/sesion-paciente-sin-tratamiento).
+ * Nueva cita de tipo Sesión para un paciente SIN tratamiento activo — gemelo de
+ * `lib/cita-sin-tratamiento.ts` (web, rama fix/sesion-paciente-sin-tratamiento;
+ * contrato en docs/sesion-paciente-sin-tratamiento.md).
  *
- * En una clínica que entra directo a sesiones (sin Consulta ni Evaluación) la
- * Sesión es la primera cita: el paciente nuevo no tiene tratamiento todavía y no
- * había por dónde agendarlo. Ahora se lo puede elegir; el formulario dice "aún no
- * tiene tratamiento" y ofrece crearlo ahí mismo (queda elegido y la cita sale como
- * Sesión #1). Las clínicas con Consulta/Evaluación no cambian: el paciente nuevo
- * entra por ahí y su tratamiento nace de la evaluación.
+ * Una sesión va siempre dentro de un tratamiento: antes la app dejaba guardar una
+ * cita "Sesión" huérfana (sin tratamiento, el servidor no crea la sesión). Ahora,
+ * en TODAS las clínicas, el formulario lo dice y ofrece crearlo ahí mismo (queda
+ * elegido y la cita sale como su Sesión #1), o a quién pedírselo. El alta rápida
+ * del paciente en una Sesión, en cambio, SOLO en las clínicas que entran por
+ * Sesión (psicología): con Consulta/Evaluación el paciente nuevo entra por ahí.
  */
 
-/** ¿El flujo entra directo a sesiones? (preset de psicología: sin Consulta ni Evaluación) */
-fun flujoDirectoASesiones(flujo: FlujoClinica): Boolean = !flujo.usaConsulta && !flujo.usaEvaluacion
+/**
+ * ¿La clínica (o la especialidad de la cita) entra SOLO por Sesión? Entre los
+ * tipos que el formulario ofrece está Sesión y no hay Consulta ni Evaluación.
+ */
+fun entraSoloPorSesion(tiposVisibles: List<String>): Boolean =
+    "Sesión" in tiposVisibles && "Consulta" !in tiposVisibles && "Evaluación" !in tiposVisibles
 
 /** Qué se muestra bajo el paciente de una Sesión cuando no tiene tratamiento activo. */
 enum class AvisoSinTratamiento {
-    /** Nada que avisar (tiene tratamiento, no es Sesión, flujo con Consulta/Evaluación, aún cargando…). */
+    /** Nada que avisar (tiene tratamiento, no es Sesión, viene con uno prefijado, aún cargando…). */
     NINGUNO,
 
     /** "Este paciente aún no tiene tratamiento" + "＋ Crear tratamiento". */
@@ -30,41 +35,76 @@ enum class AvisoSinTratamiento {
 /**
  * El aviso para el paciente elegido. [tratamientosCargados]: la lista de SUS
  * tratamientos llegó bien (si la consulta falló no se afirma que no tenga).
- * [puedeSesiones]: el permiso con el que se crean tratamientos (el servidor lo
- * exige igual).
+ * [tratamientoPrefijado]: la cita vino con su tratamiento (agendar tras crear uno).
+ * [puedeSesiones]: el permiso con el que se gestionan tratamientos y sesiones.
  */
 fun avisoSinTratamiento(
     tipo: String,
-    directoASesiones: Boolean,
     pacienteElegido: Boolean,
     tratamientosCargados: Boolean,
     hayTratamientos: Boolean,
+    tratamientoPrefijado: Boolean,
     puedeSesiones: Boolean,
 ): AvisoSinTratamiento = when {
-    tipo != "Sesión" || !directoASesiones || !pacienteElegido || !tratamientosCargados || hayTratamientos ->
+    tipo != "Sesión" || !pacienteElegido || !tratamientosCargados || hayTratamientos || tratamientoPrefijado ->
         AvisoSinTratamiento.NINGUNO
     puedeSesiones -> AvisoSinTratamiento.OFRECER_CREAR
     else -> AvisoSinTratamiento.PEDIR_A_QUIEN_PUEDE
 }
 
-/** Textos del aviso ([termino] = "paciente", "cliente"… según la clínica). */
-fun tituloSinTratamiento(termino: String): String = "Este $termino aún no tiene tratamiento"
+/** Título del aviso ([termino] = "paciente", "cliente"… según la clínica). */
+fun tituloSinTratamiento(aviso: AvisoSinTratamiento, termino: String): String = when (aviso) {
+    AvisoSinTratamiento.PEDIR_A_QUIEN_PUEDE -> "Este $termino necesita un tratamiento"
+    else -> "Este $termino aún no tiene tratamiento"
+}
 
-fun detalleSinTratamiento(aviso: AvisoSinTratamiento): String = when (aviso) {
+/**
+ * El detalle del aviso. [entrada]: el nombre de la otra puerta de la clínica
+ * (su Consulta/Evaluación, con el nombre del flujo), o null si solo entra por Sesión.
+ */
+fun detalleSinTratamiento(aviso: AvisoSinTratamiento, entrada: String?): String = when (aviso) {
     AvisoSinTratamiento.OFRECER_CREAR ->
-        "Créalo aquí: queda elegido en la cita y esta se agenda como la Sesión #1."
+        "Una sesión va siempre dentro de un tratamiento. Créalo aquí: esta cita queda como su Sesión #1, " +
+            "con la fecha, hora y profesional que ya elegiste." +
+            (entrada?.let { " Si viene por algo nuevo, elige $it arriba." } ?: "")
     AvisoSinTratamiento.PEDIR_A_QUIEN_PUEDE ->
-        "Para agendarle sesiones necesita un tratamiento: pídeselo a su profesional o al Admin."
+        "Pídeselo a su profesional o al Admin: una sesión va siempre dentro de un tratamiento." +
+            (entrada?.let { " Si viene por algo nuevo, agéndale una $it." } ?: "")
     AvisoSinTratamiento.NINGUNO -> ""
 }
 
-/** Lo que dice el "Guardar" si se intenta agendar sin crear antes el tratamiento. */
+/** Lo que dice "Guardar" si se intenta agendar la Sesión sin tratamiento (null = puede). */
 fun mensajeFaltaTratamiento(aviso: AvisoSinTratamiento, termino: String): String? = when (aviso) {
-    AvisoSinTratamiento.OFRECER_CREAR -> "${tituloSinTratamiento(termino)}: créalo para agendarle la sesión."
+    AvisoSinTratamiento.OFRECER_CREAR -> "Crea el tratamiento del $termino para agendar la sesión."
     AvisoSinTratamiento.PEDIR_A_QUIEN_PUEDE ->
-        "${tituloSinTratamiento(termino)}: pídeselo a su profesional o al Admin."
+        "El $termino necesita un tratamiento: pídeselo a su profesional o al Admin."
     AvisoSinTratamiento.NINGUNO -> null
 }
+
+/** Modo de cobro efectivo: el del servicio; si no fija uno válido, el de su especialidad. */
+fun modoCobroServicio(p: ProcedimientoRef): String =
+    p.modoCobro?.trim()?.takeIf { it == "simple" || it == "sesiones" || it == "unidades" }
+        ?: if (p.usaSesiones) "sesiones" else "simple"
+
+/**
+ * Servicios que se ofrecen al crear el tratamiento DESDE una cita de Sesión: solo
+ * los que van por sesiones (un pago único o por unidades no se agenda como
+ * "Sesión #1") y de la especialidad de la cita si eligió una (los servicios sin
+ * especialidad sirven siempre). `serviciosParaSesion` de la web.
+ */
+fun serviciosParaSesion(servicios: List<ProcedimientoRef>, especialidadId: String?): List<ProcedimientoRef> =
+    servicios.filter { s ->
+        modoCobroServicio(s) == "sesiones" &&
+            (especialidadId.isNullOrBlank() || s.especialidadId == null || s.especialidadId == especialidadId)
+    }
+
+/**
+ * Costo de la Sesión #1 de un tratamiento recién creado (`costoPrimeraSesion` de
+ * la web): en un paquete la sesión no se cobra suelta (null); en "Sesión suelta",
+ * su precio por sesión.
+ */
+fun costoPrimeraSesion(modalidad: String?, precioPorSesion: Double?): Double? =
+    if (modalidad == "Sesión suelta") precioPorSesion else null
 
 /**
  * Tras crear el tratamiento desde la cita: cuál queda elegido. El del id que

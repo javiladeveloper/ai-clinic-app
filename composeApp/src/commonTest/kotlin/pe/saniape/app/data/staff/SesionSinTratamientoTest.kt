@@ -6,45 +6,43 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Agendar una Sesión a un paciente sin tratamiento (psicología) desde Crear cita. */
+/** Nueva cita de Sesión para un paciente sin tratamiento (gemelo de lib/cita-sin-tratamiento.ts). */
 class SesionSinTratamientoTest {
 
-    private val psicologia = FlujoClinica(usaConsulta = false, usaEvaluacion = false)
-    private val fisio = FlujoClinica()
-    private val nutricion = FlujoClinica(usaConsulta = true, usaEvaluacion = false)
-
     @Test
-    fun soloPsicologiaEntraDirectoASesiones() {
-        assertTrue(flujoDirectoASesiones(psicologia))
-        assertFalse(flujoDirectoASesiones(fisio))
-        assertFalse(flujoDirectoASesiones(nutricion))
-        assertFalse(flujoDirectoASesiones(FlujoClinica(usaConsulta = false, usaEvaluacion = true)))
+    fun entraSoloPorSesionMiraLosTiposQueSeOfrecen() {
+        assertTrue(entraSoloPorSesion(listOf("Sesión")))
+        assertFalse(entraSoloPorSesion(listOf("Consulta", "Evaluación", "Sesión")))
+        assertFalse(entraSoloPorSesion(listOf("Consulta", "Sesión")))
+        assertFalse(entraSoloPorSesion(listOf("Evaluación", "Sesión")))
+        // Sin Sesión (la clínica no usa sesiones) tampoco.
+        assertFalse(entraSoloPorSesion(listOf("Consulta")))
+        assertFalse(entraSoloPorSesion(emptyList()))
     }
 
     @Test
-    fun altaRapidaEnSesionSoloSiElFlujoEsDirecto() {
-        assertTrue(altaRapidaPermitida("Sesión", puedeAgendar = true, directoASesiones = true))
-        assertFalse(altaRapidaPermitida("Sesión", puedeAgendar = true, directoASesiones = false))
-        assertFalse(altaRapidaPermitida("Sesión", puedeAgendar = false, directoASesiones = true))
+    fun altaRapidaEnSesionSoloSiEntraSoloPorSesion() {
+        assertTrue(altaRapidaPermitida("Sesión", puedeAgendar = true, soloSesion = true))
+        assertFalse(altaRapidaPermitida("Sesión", puedeAgendar = true, soloSesion = false))
+        assertFalse(altaRapidaPermitida("Sesión", puedeAgendar = false, soloSesion = true))
         // Consulta/Evaluación: como siempre.
-        assertTrue(altaRapidaPermitida("Consulta", puedeAgendar = true, directoASesiones = false))
+        assertTrue(altaRapidaPermitida("Consulta", puedeAgendar = true, soloSesion = false))
         assertTrue(altaRapidaPermitida("Evaluación", puedeAgendar = true))
     }
 
     private fun aviso(
-        tipo: String = "Sesión", directo: Boolean = true, elegido: Boolean = true, cargados: Boolean = true,
-        hay: Boolean = false, puede: Boolean = true,
-    ) = avisoSinTratamiento(tipo, directo, elegido, cargados, hay, puede)
+        tipo: String = "Sesión", elegido: Boolean = true, cargados: Boolean = true,
+        hay: Boolean = false, prefijado: Boolean = false, puede: Boolean = true,
+    ) = avisoSinTratamiento(tipo, elegido, cargados, hay, prefijado, puede)
 
     @Test
-    fun ofreceCrearTratamientoSoloCuandoCorresponde() {
+    fun elAvisoValeEnTodasLasClinicas() {
         assertEquals(AvisoSinTratamiento.OFRECER_CREAR, aviso())
-        // Sin permiso de tratamientos: a quién pedírselo.
+        // Sin permiso de sesiones: a quién pedírselo.
         assertEquals(AvisoSinTratamiento.PEDIR_A_QUIEN_PUEDE, aviso(puede = false))
-        // Ya tiene tratamiento: se elige de la lista, sin aviso.
+        // Ya tiene tratamiento, o la cita vino con el suyo: nada.
         assertEquals(AvisoSinTratamiento.NINGUNO, aviso(hay = true))
-        // Clínicas con Consulta/Evaluación: sin cambios.
-        assertEquals(AvisoSinTratamiento.NINGUNO, aviso(directo = false))
+        assertEquals(AvisoSinTratamiento.NINGUNO, aviso(prefijado = true))
         // Otro tipo de cita, sin paciente, o la lista no llegó (no se afirma que no tenga).
         assertEquals(AvisoSinTratamiento.NINGUNO, aviso(tipo = "Consulta"))
         assertEquals(AvisoSinTratamiento.NINGUNO, aviso(elegido = false))
@@ -52,17 +50,49 @@ class SesionSinTratamientoTest {
     }
 
     @Test
-    fun textosDelAvisoYDelGuardar() {
-        assertEquals("Este paciente aún no tiene tratamiento", tituloSinTratamiento("paciente"))
-        assertEquals("Este cliente aún no tiene tratamiento", tituloSinTratamiento("cliente"))
-        assertTrue("pídeselo a su profesional o al Admin" in detalleSinTratamiento(AvisoSinTratamiento.PEDIR_A_QUIEN_PUEDE))
-        assertTrue("Sesión #1" in detalleSinTratamiento(AvisoSinTratamiento.OFRECER_CREAR))
+    fun textosComoLaWeb() {
+        assertEquals("Este paciente aún no tiene tratamiento", tituloSinTratamiento(AvisoSinTratamiento.OFRECER_CREAR, "paciente"))
+        assertEquals("Este cliente necesita un tratamiento", tituloSinTratamiento(AvisoSinTratamiento.PEDIR_A_QUIEN_PUEDE, "cliente"))
+        // Con otra puerta en la clínica se sugiere; solo-Sesión, no.
+        val conConsulta = detalleSinTratamiento(AvisoSinTratamiento.OFRECER_CREAR, "Consulta")
+        assertTrue("Sesión #1" in conConsulta)
+        assertTrue(conConsulta.endsWith("Si viene por algo nuevo, elige Consulta arriba."))
+        assertFalse("Si viene" in detalleSinTratamiento(AvisoSinTratamiento.OFRECER_CREAR, null))
+        val pedir = detalleSinTratamiento(AvisoSinTratamiento.PEDIR_A_QUIEN_PUEDE, "Evaluación")
+        assertTrue(pedir.startsWith("Pídeselo a su profesional o al Admin"))
+        assertTrue(pedir.endsWith("agéndale una Evaluación."))
+        // Guardar queda bloqueado mientras falte.
         assertNull(mensajeFaltaTratamiento(AvisoSinTratamiento.NINGUNO, "paciente"))
-        assertEquals(
-            "Este paciente aún no tiene tratamiento: créalo para agendarle la sesión.",
-            mensajeFaltaTratamiento(AvisoSinTratamiento.OFRECER_CREAR, "paciente"),
+        assertEquals("Crea el tratamiento del paciente para agendar la sesión.",
+            mensajeFaltaTratamiento(AvisoSinTratamiento.OFRECER_CREAR, "paciente"))
+        assertEquals("El paciente necesita un tratamiento: pídeselo a su profesional o al Admin.",
+            mensajeFaltaTratamiento(AvisoSinTratamiento.PEDIR_A_QUIEN_PUEDE, "paciente"))
+    }
+
+    private fun servicio(id: String, esp: String?, modo: String? = null, usaSesiones: Boolean = true) =
+        ProcedimientoRef(id, id, 50.0, null, esp, usaSesiones, emptyList(), modoCobro = modo)
+
+    @Test
+    fun soloServiciosPorSesionesDeLaEspecialidad() {
+        val l = listOf(
+            servicio("terapia", "psico"),
+            servicio("evaluacion", "psico", modo = "sesiones"),
+            servicio("informe", "psico", modo = "simple"),
+            servicio("consulta", "psico", usaSesiones = false),      // especialidad sin sesiones
+            servicio("taller", null),                                 // sin especialidad: sirve siempre
+            servicio("fisio", "fisio"),
+            servicio("botox", "psico", modo = "unidades"),
+            servicio("raro", "psico", modo = "otro"),                 // modo inválido → el de la especialidad
         )
-        assertTrue(mensajeFaltaTratamiento(AvisoSinTratamiento.PEDIR_A_QUIEN_PUEDE, "paciente")!!.contains("Admin"))
+        assertEquals(listOf("terapia", "evaluacion", "taller", "raro"), serviciosParaSesion(l, "psico").map { it.id })
+        assertEquals(listOf("terapia", "evaluacion", "taller", "fisio", "raro"), serviciosParaSesion(l, null).map { it.id })
+    }
+
+    @Test
+    fun costoDeLaPrimeraSesion() {
+        assertNull(costoPrimeraSesion("Paquete", 80.0))
+        assertEquals(60.0, costoPrimeraSesion("Sesión suelta", 60.0))
+        assertNull(costoPrimeraSesion("Sesión suelta", null))
     }
 
     @Test
@@ -73,7 +103,5 @@ class SesionSinTratamientoTest {
         // Sin id (respuesta vieja): el único que haya; con varios, ninguno (que elija).
         assertEquals(a, tratamientoCreadoEnLista(listOf(a), null))
         assertNull(tratamientoCreadoEnLista(listOf(a, b), null))
-        // Id que no está (aún no se ve): el único, si hay uno.
-        assertEquals(a, tratamientoCreadoEnLista(listOf(a), "t9"))
     }
 }

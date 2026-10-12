@@ -167,6 +167,20 @@ internal fun filtrarSugerencias(lista: List<SugerenciaMedicamento>, texto: Strin
 // Gemelo de perfilPrescriptor / sugerenciasIniciales (lib/recetas-acciones.ts) y
 // del pie de RecetaForm.tsx. Contrato: docs/app-contrato-atencion.md §12.
 
+/** Nombres de las especialidades por clínica, en memoria (solo se guarda una lista no vacía). */
+internal object NombresEspecialidadCache {
+    private var clinicaId: String? = null
+    private var mapa: Map<String, String>? = null
+
+    fun de(clinica: String): Map<String, String>? = if (clinica == clinicaId) mapa else null
+
+    fun guardar(clinica: String, m: Map<String, String>) {
+        if (m.isEmpty()) return
+        clinicaId = clinica
+        mapa = m
+    }
+}
+
 internal const val PERFIL_ODONTOLOGIA = "odontologia"
 internal const val PERFIL_MEDICINA = "medicina"
 internal const val PERFIL_PSIQUIATRIA = "psiquiatria"
@@ -227,7 +241,7 @@ internal fun sugerenciasIniciales(
     frecuentesPorPerfil: Map<String, List<SugerenciaMedicamento>>,
     perfil: String?,
     maxClinica: Int = 5,
-    maxPerfil: Int = 10,
+    maxPerfil: Int = 12,
 ): GruposIniciales {
     val clinica = lista.filter { it.origen == "clinica" }.take(maxClinica)
     val delPerfil = perfil?.let { frecuentesPorPerfil[it] }.orEmpty()
@@ -424,8 +438,12 @@ fun DialogoReceta(
     sesionId: String? = null,
     /** Lo anotado como medicación en la consulta (texto libre): referencia para transcribir. */
     medicacionRef: String? = null,
-    /** La atención es de psiquiatría: los frecuentes del banco son los de psiquiatría. */
-    psiquiatria: Boolean = false,
+    /**
+     * ¿La atención es de psiquiatría? Manda sobre el prescriptor (`prefill.psiq ??
+     * prescriptor` de la web): false = no lo es aunque el prescriptor sea psiquiatra.
+     * null (receta sin atención) → se decide por las especialidades del prescriptor.
+     */
+    psiquiatria: Boolean? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -457,21 +475,26 @@ fun DialogoReceta(
     var emitiendo by remember { mutableStateOf(false) }
     var banco by remember { mutableStateOf(BancoMedicamentos()) }
     // Nombres de las especialidades (¿el prescriptor es psiquiatra?), como el informe médico.
-    var nombresEsp by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    // En memoria por clínica: no se consultan en cada apertura.
+    var nombresEsp by remember { mutableStateOf(NombresEspecialidadCache.de(ctx.clinicaId).orEmpty()) }
     // Un intento = una clave: reintentar tras un corte no emite dos recetas ni gasta dos números.
     val clave = remember { nuevaClaveCliente() }
 
     LaunchedEffect(Unit) { banco = AtencionRepo.sugerenciasMedicamentos() }
     LaunchedEffect(Unit) {
-        nombresEsp = pe.saniape.app.data.staff.InformesMedicosRepo.especialidades().associate { it.id to it.nombre }
+        // Con la atención diciendo si es psiquiatría, no hacen falta.
+        if (psiquiatria != null || NombresEspecialidadCache.de(ctx.clinicaId) != null) return@LaunchedEffect
+        val m = pe.saniape.app.data.staff.InformesMedicosRepo.especialidades().associate { it.id to it.nombre }
+        NombresEspecialidadCache.guardar(ctx.clinicaId, m)
+        nombresEsp = m
     }
 
     val prescriptor = profesionales.firstOrNull { it.id == terapeutaId }
     val noMedico = prescriptorNoMedico(prescriptor) || (recetasOptIn && prescriptor == null)
     val esDentista = prescriptor != null && prescriptor.especialidades.isNotEmpty() &&
         prescriptor.especialidades.all { it.rubro == "odontologia" }
-    val psiquiatra = psiquiatria ||
-        prescriptor?.especialidades.orEmpty().any { pe.saniape.app.data.staff.esPsiquiatria(nombresEsp[it.id]) }
+    val psiquiatra = psiquiatria
+        ?: prescriptor?.especialidades.orEmpty().any { pe.saniape.app.data.staff.esPsiquiatria(nombresEsp[it.id]) }
     // Qué frecuentes del PNUME se ven al enfocar el campo vacío (la profesión del prescriptor).
     val perfil = perfilDisponible(perfilPrescriptor(esDentista, noMedico, psiquiatra), banco.frecuentesPorPerfil.keys)
     val dias = vigencia.toIntOrNull() ?: 0
@@ -744,6 +767,12 @@ private fun FilaMedicamento(
                             Spacer(Modifier.width(6.dp))
                             if (s.origen == "clinica") Text("recetado ${s.usos}×", color = c.teal, fontSize = 11.sp)
                             else Text("PNUME", color = c.textoSuave, fontSize = 11.sp)
+                            // Controlado (IVB…): se avisa ANTES de elegirlo; el servidor valida al emitir.
+                            controlDeSustancia(s.dci)?.let { ctl ->
+                                Spacer(Modifier.width(4.dp))
+                                Text("Lista ${ctl.lista}", color = if (ctl.especial) c.error else c.pend,
+                                    fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                         Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
                     }
