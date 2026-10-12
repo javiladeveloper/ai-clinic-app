@@ -1178,6 +1178,21 @@ fun SeccionPagos(
     var editMonto by remember { mutableStateOf("") }
     var editMetodo by remember { mutableStateOf("Efectivo") }
     var borrarId by remember { mutableStateOf<String?>(null) }   // confirmación de borrado
+    // Recibo de pago (PDF, recibo interno): id del pago cuyo formato se está eligiendo.
+    var reciboDe by remember { mutableStateOf<String?>(null) }
+    var bajandoRecibo by remember { mutableStateOf(false) }
+    val accionesRecibo = pe.saniape.app.ui.recordarAcciones()
+    fun abrirRecibo(pagoId: String, formato: String) {
+        if (bajandoRecibo) return
+        bajandoRecibo = true
+        scope.launch {
+            val pdf = pe.saniape.app.data.staff.ReciboRepo.pdf("pago", pagoId, formato)
+            bajandoRecibo = false
+            reciboDe = null
+            if (pdf == null) pe.saniape.app.ui.Toaster.error("No se pudo generar el recibo. Revisa tu conexión.")
+            else accionesRecibo.abrirPdf("recibo-$pagoId-$formato.pdf", pdf)
+        }
+    }
     // ── Pagar con saldo a favor (docs/app-contrato-pagar-con-saldo.md) ──
     var usarSaldo by remember { mutableStateOf(false) }
     var montoSaldo by remember { mutableStateOf("") }
@@ -1306,6 +1321,11 @@ fun SeccionPagos(
                     Spacer(Modifier.width(8.dp))
                     Text(p.fecha, color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.weight(1f))
                     Text("${simboloMoneda(moneda)} ${formato2(p.monto)}", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    // Recibo (PDF): quien ve los pagos lo puede imprimir o compartir.
+                    if (p.saldoTipo != "consumo") {
+                        Spacer(Modifier.width(10.dp))
+                        Text("🧾", fontSize = 14.sp, modifier = Modifier.clickable { reciboDe = if (reciboDe == p.id) null else p.id })
+                    }
                     // Editar / borrar (solo Admin, y no en una ficha dada de baja)
                     if (esAdmin && !soloLectura) {
                         Spacer(Modifier.width(8.dp))
@@ -1314,6 +1334,15 @@ fun SeccionPagos(
                         })
                         Spacer(Modifier.width(10.dp))
                         Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable { borrarId = p.id })
+                    }
+                }
+                if (reciboDe == p.id) {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (bajandoRecibo) "Generando recibo…" else "Recibo:", color = c.textoSuave, fontSize = 11.sp)
+                        MiniBtn("🧾 A4", c.navy, !bajandoRecibo) { abrirRecibo(p.id, "a4") }
+                        MiniBtn("🎫 Ticket", c.navy, !bajandoRecibo) { abrirRecibo(p.id, "ticket") }
+                        MiniBtn("Cancelar", c.textoSuave, !bajandoRecibo) { reciboDe = null }
                     }
                 }
                 // Observación del pago (la ve quien cobre la próxima vez).

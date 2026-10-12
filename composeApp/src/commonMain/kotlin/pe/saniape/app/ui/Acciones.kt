@@ -31,6 +31,12 @@ interface AccionesNativas {
      */
     fun compartirArchivo(nombre: String, contenido: String, mime: String, titulo: String = "Compartir") =
         compartirTexto(contenido, titulo)
+    /**
+     * Abre un PDF (p. ej. el recibo de pago) en el visor del teléfono, desde donde
+     * se imprime o se comparte por WhatsApp. Por defecto no hace nada (plataformas
+     * sin visor todavía: iOS Fase 2).
+     */
+    fun abrirPdf(nombre: String, bytes: ByteArray) {}
 }
 
 @Composable
