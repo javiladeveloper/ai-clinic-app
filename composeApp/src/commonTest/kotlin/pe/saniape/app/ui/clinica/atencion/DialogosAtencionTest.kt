@@ -49,7 +49,11 @@ class DialogosAtencionTest {
         )
         assertEquals(2, filtrarSugerencias(l, "amox").size)
         assertEquals(listOf("Amoxicilina + ácido clavulánico"), filtrarSugerencias(l, "acido").map { it.dci })
-        assertTrue(filtrarSugerencias(l, "a").isEmpty())
+        // Con 1 letra ya filtra (solo por el inicio del nombre: "ácido" no entra por la "a").
+        assertEquals(listOf("Amoxicilina", "Amoxicilina + ácido clavulánico"), filtrarSugerencias(l, "a").map { it.dci })
+        assertEquals(listOf("Paracetamol"), filtrarSugerencias(l, "P").map { it.dci })
+        assertTrue(filtrarSugerencias(l, "c").isEmpty())
+        assertTrue(filtrarSugerencias(l, "  ").isEmpty())
     }
 
     @Test

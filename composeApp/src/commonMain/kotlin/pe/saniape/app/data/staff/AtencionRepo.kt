@@ -44,6 +44,23 @@ data class SugerenciaMedicamento(
     val origen: String? = null,
 )
 
+/** Tamaño del Petitorio Nacional (PNUME) que conoce el servidor: para el pie de la lista. */
+@Serializable
+data class TotalPetitorio(val medicamentos: Int = 0, val presentaciones: Int = 0)
+
+/**
+ * Lo que devuelve `/api/staff/receta/sugerencias` (contrato §12): lo aprendido + el
+ * petitorio y, desde 2026-10-12 (aditivos), los frecuentes del PNUME por perfil del
+ * prescriptor ("odontologia", "medicina", y los que el servidor agregue, p. ej.
+ * "psiquiatria") y el tamaño del petitorio. Un servidor viejo no los manda: el mapa
+ * queda vacío y el total en null (la lista solo muestra lo de la clínica).
+ */
+data class BancoMedicamentos(
+    val sugerencias: List<SugerenciaMedicamento> = emptyList(),
+    val frecuentesPorPerfil: Map<String, List<SugerenciaMedicamento>> = emptyMap(),
+    val totalPetitorio: TotalPetitorio? = null,
+)
+
 /**
  * La consulta guiada contra el servidor (docs/app-contrato-atencion.md en la web):
  * `/api/staff/atencion/…`, el buscador CIE-10, las recetas y los imprimibles.
@@ -137,18 +154,22 @@ object AtencionRepo {
         }
     }
 
-    /** Medicamentos aprendidos (los más usados primero) + petitorio PNUME. Vacío si falla. */
-    suspend fun sugerenciasMedicamentos(): List<SugerenciaMedicamento> {
-        val tk = token() ?: return emptyList()
+    /**
+     * Medicamentos aprendidos (los más usados primero) + petitorio PNUME, con los
+     * frecuentes por perfil y el total del petitorio si el servidor los manda.
+     * Vacío si falla.
+     */
+    suspend fun sugerenciasMedicamentos(): BancoMedicamentos {
+        val tk = token() ?: return BancoMedicamentos()
         return try {
             val resp = http.get("${Supabase.SITE_URL}/api/staff/receta/sugerencias") {
                 header("Authorization", "Bearer $tk")
             }
-            if (resp.status.value !in 200..299) emptyList() else parsearSugerencias(resp.bodyAsText())
+            if (resp.status.value !in 200..299) BancoMedicamentos() else parsearBanco(resp.bodyAsText())
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (e: Exception) {
-            emptyList()
+            BancoMedicamentos()
         }
     }
 
@@ -323,11 +344,29 @@ object AtencionRepo {
                 ?.map { json.decodeFromJsonElement(ExamenSolicitado.serializer(), it) }
         }.getOrNull()
 
-    internal fun parsearSugerencias(cuerpo: String): List<SugerenciaMedicamento> =
-        runCatching {
-            json.parseToJsonElement(cuerpo).jsonObject["sugerencias"]?.jsonArray
-                ?.map { json.decodeFromJsonElement(SugerenciaMedicamento.serializer(), it) }
-        }.getOrNull().orEmpty()
+    internal fun parsearSugerencias(cuerpo: String): List<SugerenciaMedicamento> = parsearBanco(cuerpo).sugerencias
+
+    /**
+     * El cuerpo completo de sugerencias (§12). Cada parte se lee por separado: un
+     * perfil o un total con otra forma se ignora sin perder lo demás. Acepta
+     * cualquier perfil (el servidor puede sumar "psiquiatria" u otros).
+     */
+    internal fun parsearBanco(cuerpo: String): BancoMedicamentos {
+        val raiz = runCatching { json.parseToJsonElement(cuerpo).jsonObject }.getOrNull() ?: return BancoMedicamentos()
+        fun lista(e: kotlinx.serialization.json.JsonElement?): List<SugerenciaMedicamento> =
+            (e as? JsonArray)?.mapNotNull { item ->
+                runCatching { json.decodeFromJsonElement(SugerenciaMedicamento.serializer(), item) }.getOrNull()
+                    ?.takeIf { it.dci.isNotBlank() }
+            }.orEmpty()
+        val porPerfil = (raiz["frecuentesPorPerfil"] as? JsonObject)
+            ?.mapValues { (_, v) -> lista(v) }
+            ?.filterValues { it.isNotEmpty() }
+            .orEmpty()
+        val total = (raiz["totalPetitorio"] as? JsonObject)?.let {
+            runCatching { json.decodeFromJsonElement(TotalPetitorio.serializer(), it) }.getOrNull()
+        }?.takeIf { it.medicamentos > 0 }
+        return BancoMedicamentos(lista(raiz["sugerencias"]), porPerfil, total)
+    }
 
     /**
      * El cuerpo de `guardar` (§3). Como REEMPLAZA la atención:

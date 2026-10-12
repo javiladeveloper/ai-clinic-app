@@ -302,6 +302,7 @@ private fun ColumnScope.ContenidoAtencion(
             onEmitida = { verReceta = false; vm.recargar() },
             terapeutaSugerido = vm.borrador.terapeutaId ?: d.cita.terapeuta_id,
             indicaciones = vm.borrador.textos["tratamiento"],
+            psiquiatria = vm.psiq,
         )
     }
     // Informe / descanso / orden de exámenes, prellenado con la atención (cierre).

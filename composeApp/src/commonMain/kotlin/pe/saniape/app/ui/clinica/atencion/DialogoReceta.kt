@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -51,7 +53,9 @@ import pe.saniape.app.data.staff.AtencionRepo
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.ProfesionalPlan
 import pe.saniape.app.data.staff.RUBROS_QUE_RECETAN
+import pe.saniape.app.data.staff.BancoMedicamentos
 import pe.saniape.app.data.staff.SugerenciaMedicamento
+import pe.saniape.app.data.staff.TotalPetitorio
 import pe.saniape.app.data.staff.formatearNumeroReceta
 import pe.saniape.app.data.staff.hoyClinicaIso
 import pe.saniape.app.data.staff.sumarDiasIso
@@ -144,15 +148,113 @@ internal fun unidadSugerida(forma: String?): String {
     }
 }
 
-/** Sugerencias cuyo DCI (o una de sus palabras) empieza con lo escrito (filtrarSugerencias). */
+/**
+ * Sugerencias cuyo DCI (o una de sus palabras) empieza con lo escrito (filtrarSugerencias).
+ * Con UNA letra solo el inicio del nombre: la lista que se abrió al enfocar no
+ * desaparece al teclear la primera letra (antes no mostraba nada hasta la 2.ª).
+ */
 internal fun filtrarSugerencias(lista: List<SugerenciaMedicamento>, texto: String, max: Int = 8): List<SugerenciaMedicamento> {
     val q = sinTildes(texto).trim()
-    if (q.length < 2) return emptyList()
+    if (q.isEmpty()) return emptyList()
     val separadores = Regex("[\\s+(/,-]+")
     return lista.filter { s ->
         val d = sinTildes(s.dci)
-        d.startsWith(q) || d.split(separadores).any { it.startsWith(q) }
+        d.startsWith(q) || (q.length >= 2 && d.split(separadores).any { it.startsWith(q) })
     }.take(max)
+}
+
+// ── Banco de medicamentos: la lista que se abre al enfocar el DCI vacío ──────
+// Gemelo de perfilPrescriptor / sugerenciasIniciales (lib/recetas-acciones.ts) y
+// del pie de RecetaForm.tsx. Contrato: docs/app-contrato-atencion.md §12.
+
+internal const val PERFIL_ODONTOLOGIA = "odontologia"
+internal const val PERFIL_MEDICINA = "medicina"
+internal const val PERFIL_PSIQUIATRIA = "psiquiatria"
+
+/**
+ * Perfil del prescriptor para los frecuentes del PNUME: odontología (todas sus
+ * especialidades son dentales), null si NO prescribe (fisio, estética: da
+ * indicaciones, solo ve lo de su clínica), psiquiatría si alguna especialidad
+ * suya lo es, medicina en otro caso (o sin prescriptor elegido).
+ */
+internal fun perfilPrescriptor(esDentista: Boolean, noMedico: Boolean, psiquiatra: Boolean = false): String? = when {
+    esDentista -> PERFIL_ODONTOLOGIA
+    noMedico -> null
+    psiquiatra -> PERFIL_PSIQUIATRIA
+    else -> PERFIL_MEDICINA
+}
+
+/** El perfil que de verdad se usa: un servidor que aún no tiene psiquiatría manda los de medicina. */
+internal fun perfilDisponible(perfil: String?, disponibles: Set<String>): String? = when {
+    perfil == null -> null
+    perfil in disponibles -> perfil
+    perfil == PERFIL_PSIQUIATRIA && PERFIL_MEDICINA in disponibles -> PERFIL_MEDICINA
+    else -> perfil
+}
+
+/** Encabezado del grupo del perfil ("Frecuentes en odontología · Petitorio MINSA"). */
+internal fun tituloPerfil(perfil: String): String {
+    val nombre = when (perfil) {
+        PERFIL_ODONTOLOGIA -> "odontología"
+        PERFIL_MEDICINA -> "medicina general"
+        PERFIL_PSIQUIATRIA -> "psiquiatría"
+        else -> perfil.replace('_', ' ')
+    }
+    return "Frecuentes en $nombre · Petitorio MINSA"
+}
+
+/** dci|concentración|forma sin espacios ni tildes (la `clave` de la web). */
+internal fun claveMedicamento(s: SugerenciaMedicamento): String =
+    listOf(s.dci, s.concentracion.orEmpty(), s.forma.orEmpty())
+        .joinToString("|") { sinTildes(it).replace(Regex("\\s+"), "") }
+
+/** Los dos grupos de la lista inicial. */
+internal data class GruposIniciales(
+    val clinica: List<SugerenciaMedicamento>,
+    val perfil: List<SugerenciaMedicamento>,
+) {
+    val todas: List<SugerenciaMedicamento> get() = clinica + perfil
+}
+
+/**
+ * Lo que se ve al ENFOCAR el campo vacío: lo que más receta la clínica (las
+ * primeras con origen "clinica") y los frecuentes del PNUME del [perfil] sin
+ * repetir; si la clínica ya aprendió uno, se usa el aprendido. Sin perfil (no
+ * prescribe) o sin frecuentes del servidor (servidor viejo): solo lo de la clínica.
+ */
+internal fun sugerenciasIniciales(
+    lista: List<SugerenciaMedicamento>,
+    frecuentesPorPerfil: Map<String, List<SugerenciaMedicamento>>,
+    perfil: String?,
+    maxClinica: Int = 5,
+    maxPerfil: Int = 10,
+): GruposIniciales {
+    val clinica = lista.filter { it.origen == "clinica" }.take(maxClinica)
+    val delPerfil = perfil?.let { frecuentesPorPerfil[it] }.orEmpty()
+    if (delPerfil.isEmpty()) return GruposIniciales(clinica, emptyList())
+    val vistos = clinica.mapTo(mutableSetOf()) { claveMedicamento(it) }
+    val porClave = lista.associateBy { claveMedicamento(it) }
+    val salida = mutableListOf<SugerenciaMedicamento>()
+    for (m in delPerfil) {
+        val k = claveMedicamento(m)
+        if (!vistos.add(k)) continue
+        salida += porClave[k] ?: m.copy(usos = 0, origen = "petitorio")
+    }
+    return GruposIniciales(clinica, salida.take(maxPerfil))
+}
+
+/** ¿Escribió algo (≥ 2 letras) que no está en ningún lado? Entonces el pie lo dice. */
+internal fun sinCoincidenciasMedicamento(texto: String, opciones: List<SugerenciaMedicamento>): Boolean =
+    texto.trim().length >= 2 && opciones.isEmpty()
+
+/** El pie de la lista de medicamentos (el `<li>` final de RecetaForm.tsx). */
+internal fun pieListaMedicamentos(vacio: Boolean, sinCoincidencias: Boolean, total: TotalPetitorio?): String = when {
+    sinCoincidencias -> "No está en el petitorio: escribe la DCI completa y queda guardada para la próxima."
+    vacio -> if (total != null && total.medicamentos > 0) {
+        "Escribe para buscar en el Petitorio del MINSA (${total.medicamentos} medicamentos" +
+            (if (total.presentaciones > 0) ", ${total.presentaciones} presentaciones" else "") + ")."
+    } else "Escribe para buscar en el Petitorio del MINSA."
+    else -> "Al elegir uno se completan concentración, forma y vía."
 }
 
 /** ¿Alguno de estos rubros receta? (esPrescriptorLegal de la web). */
@@ -322,6 +424,8 @@ fun DialogoReceta(
     sesionId: String? = null,
     /** Lo anotado como medicación en la consulta (texto libre): referencia para transcribir. */
     medicacionRef: String? = null,
+    /** La atención es de psiquiatría: los frecuentes del banco son los de psiquiatría. */
+    psiquiatria: Boolean = false,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -351,16 +455,25 @@ fun DialogoReceta(
     val items = remember { mutableStateListOf(ItemRecetaForm()) }
     var errores by remember { mutableStateOf<List<String>>(emptyList()) }
     var emitiendo by remember { mutableStateOf(false) }
-    var sugerencias by remember { mutableStateOf<List<SugerenciaMedicamento>>(emptyList()) }
+    var banco by remember { mutableStateOf(BancoMedicamentos()) }
+    // Nombres de las especialidades (¿el prescriptor es psiquiatra?), como el informe médico.
+    var nombresEsp by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     // Un intento = una clave: reintentar tras un corte no emite dos recetas ni gasta dos números.
     val clave = remember { nuevaClaveCliente() }
 
-    LaunchedEffect(Unit) { sugerencias = AtencionRepo.sugerenciasMedicamentos() }
+    LaunchedEffect(Unit) { banco = AtencionRepo.sugerenciasMedicamentos() }
+    LaunchedEffect(Unit) {
+        nombresEsp = pe.saniape.app.data.staff.InformesMedicosRepo.especialidades().associate { it.id to it.nombre }
+    }
 
     val prescriptor = profesionales.firstOrNull { it.id == terapeutaId }
     val noMedico = prescriptorNoMedico(prescriptor) || (recetasOptIn && prescriptor == null)
     val esDentista = prescriptor != null && prescriptor.especialidades.isNotEmpty() &&
         prescriptor.especialidades.all { it.rubro == "odontologia" }
+    val psiquiatra = psiquiatria ||
+        prescriptor?.especialidades.orEmpty().any { pe.saniape.app.data.staff.esPsiquiatria(nombresEsp[it.id]) }
+    // Qué frecuentes del PNUME se ven al enfocar el campo vacío (la profesión del prescriptor).
+    val perfil = perfilDisponible(perfilPrescriptor(esDentista, noMedico, psiquiatra), banco.frecuentesPorPerfil.keys)
     val dias = vigencia.toIntOrNull() ?: 0
     val validaHasta = sumarDiasIso(hoy, dias.coerceIn(1, 365))
 
@@ -491,7 +604,7 @@ fun DialogoReceta(
                     // key: el estado de cada fila (sugerencias abiertas) viaja con su medicamento al quitar otra.
                     key(fila.uid) {
                         FilaMedicamento(
-                            n = i + 1, item = fila, sugerencias = sugerencias,
+                            n = i + 1, item = fila, banco = banco, perfil = perfil,
                             onCambio = { nuevo -> items[i] = nuevo },
                             onQuitar = if (items.size > 1) ({ items.removeAt(i) }) else null,
                         )
@@ -545,14 +658,29 @@ private fun ChipVigencia(texto: String, activo: Boolean, onClick: () -> Unit) {
 private fun FilaMedicamento(
     n: Int,
     item: ItemRecetaForm,
-    sugerencias: List<SugerenciaMedicamento>,
+    /** Lo aprendido + el petitorio, con los frecuentes por perfil (si el servidor los manda). */
+    banco: BancoMedicamentos,
+    /** Profesión del prescriptor: decide los frecuentes que se ven sin escribir (null = no prescribe). */
+    perfil: String?,
     onCambio: (ItemRecetaForm) -> Unit,
     onQuitar: (() -> Unit)?,
 ) {
     val c = Sania.colors
     val forma = RoundedCornerShape(Sania.shape.sm.dp)
+    // Se abre al ENFOCAR el campo (no hace falta escribir) y se cierra al elegir o al salir.
     var abierto by remember { mutableStateOf(false) }
-    val opciones = if (abierto) filtrarSugerencias(sugerencias, item.dci) else emptyList()
+    // Campo vacío → lista inicial (lo que más receta la clínica + frecuentes de su
+    // profesión); al escribir → búsqueda en todo lo aprendido + el PNUME.
+    val vacio = item.dci.isBlank()
+    val iniciales = remember(banco, perfil) { sugerenciasIniciales(banco.sugerencias, banco.frecuentesPorPerfil, perfil) }
+    val opciones = when {
+        !abierto -> emptyList()
+        vacio -> iniciales.todas
+        else -> filtrarSugerencias(banco.sugerencias, item.dci)
+    }
+    val sinCoincidencias = !vacio && sinCoincidenciasMedicamento(item.dci, opciones)
+    // Con la lista abierta siempre hay algo que decir (aunque la clínica no haya recetado nada aún).
+    val mostrarLista = abierto && banco.sugerencias.isNotEmpty() && (opciones.isNotEmpty() || sinCoincidencias || vacio)
 
     Column(
         Modifier.fillMaxWidth().clip(forma).border(1.dp, c.borde, forma).background(c.fondo).padding(10.dp),
@@ -565,45 +693,67 @@ private fun FilaMedicamento(
                     modifier = Modifier.clickable(onClick = onQuitar).padding(horizontal = 6.dp, vertical = 4.dp))
             }
         }
-        // Las sugerencias se cierran al elegir una o al salir del campo.
         CampoDialogo(
-            "Medicamento (DCI)", item.dci, { onCambio(item.copy(dci = it)); abierto = true }, "Ej. Amoxicilina",
-            modifier = Modifier.onFocusChanged { if (!it.hasFocus) abierto = false },
+            "Medicamento (DCI)", item.dci, { onCambio(item.copy(dci = it)); abierto = true }, "Busca o elige: ej. Amoxicilina",
+            modifier = Modifier.onFocusChanged { abierto = it.hasFocus },
         )
-        if (opciones.isNotEmpty()) {
+        if (mostrarLista) {
             Column(
                 Modifier.fillMaxWidth().clip(forma).border(1.dp, c.borde, forma).background(c.superficie),
             ) {
-                opciones.forEach { s ->
-                    Row(
-                        Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable {
-                            onCambio(
-                                item.copy(
-                                    dci = s.dci,
-                                    concentracion = s.concentracion?.ifBlank { null } ?: item.concentracion,
-                                    forma = s.forma?.ifBlank { null } ?: item.forma,
-                                    via = s.via?.ifBlank { null } ?: item.via.ifBlank { viaSugerida(s.forma) },
-                                    unidad = item.unidad.ifBlank { unidadSugerida(s.forma) },
-                                ),
+                // Alto acotado + scroll propio: la lista inicial puede traer 15 filas.
+                Column(Modifier.fillMaxWidth().heightIn(max = 300.dp).verticalScroll(rememberScrollState())) {
+                    opciones.forEachIndexed { j, s ->
+                        // Encabezados de grupo solo en la lista inicial (campo vacío).
+                        val titulo = when {
+                            !vacio -> null
+                            j == 0 && iniciales.clinica.isNotEmpty() -> "Lo que más receta tu clínica"
+                            j == iniciales.clinica.size && perfil != null -> tituloPerfil(perfil)
+                            else -> null
+                        }
+                        if (titulo != null) {
+                            Text(
+                                titulo.uppercase(), color = c.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.6.sp,
+                                modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 2.dp),
                             )
-                            abierto = false
-                        }.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            buildString {
-                                append(s.dci)
-                                s.concentracion?.takeIf { it.isNotBlank() }?.let { append(" $it") }
-                                s.forma?.takeIf { it.isNotBlank() }?.let { append(" · $it") }
-                            },
-                            color = c.texto, fontSize = 13.sp, modifier = Modifier.weight(1f),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        if (s.origen == "clinica") Text("recetado ${s.usos}×", color = c.teal, fontSize = 11.sp)
-                        else Text("PNUME", color = c.textoSuave, fontSize = 11.sp)
+                        }
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable {
+                                onCambio(
+                                    item.copy(
+                                        dci = s.dci,
+                                        concentracion = s.concentracion?.ifBlank { null } ?: item.concentracion,
+                                        forma = s.forma?.ifBlank { null } ?: item.forma,
+                                        via = s.via?.ifBlank { null } ?: item.via.ifBlank { viaSugerida(s.forma) },
+                                        unidad = item.unidad.ifBlank { unidadSugerida(s.forma) },
+                                    ),
+                                )
+                                abierto = false
+                            }.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                buildString {
+                                    append(s.dci)
+                                    s.concentracion?.takeIf { it.isNotBlank() }?.let { append(" $it") }
+                                    s.forma?.takeIf { it.isNotBlank() }?.let { append(" · $it") }
+                                },
+                                color = c.texto, fontSize = 13.sp, modifier = Modifier.weight(1f),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            if (s.origen == "clinica") Text("recetado ${s.usos}×", color = c.teal, fontSize = 11.sp)
+                            else Text("PNUME", color = c.textoSuave, fontSize = 11.sp)
+                        }
+                        Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
                     }
-                    Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
                 }
+                // Pie fijo: que existe el petitorio (con su tamaño, si el servidor lo dice) o que no está.
+                Text(
+                    pieListaMedicamentos(vacio, sinCoincidencias, banco.totalPetitorio),
+                    color = c.textoSuave, fontSize = 11.sp,
+                    modifier = Modifier.fillMaxWidth().background(c.fondo).padding(horizontal = 12.dp, vertical = 7.dp),
+                )
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
