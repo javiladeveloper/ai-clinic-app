@@ -143,6 +143,18 @@ fun aplicarEscalaLocal(ins: InstrumentoPsico, crudos: List<Int?>, sexo: String? 
     )
 }
 
+/**
+ * Nombre en el selector "+ …" de la consulta (etiquetaInstrumento de la web). Dos
+ * versiones del mismo instrumento comparten `corto` (APGAR familiar de 3 y de 5
+ * opciones) y salían dos chips idénticos: a esas se les agrega cuántas opciones
+ * tienen. Las demás quedan como siempre.
+ */
+fun etiquetaInstrumento(ins: InstrumentoPsico, todos: List<InstrumentoPsico>): String {
+    val repetido = todos.any { it.id != ins.id && it.corto == ins.corto }
+    val n = ins.opciones.size
+    return if (repetido && n > 0) "${ins.corto} ($n opciones)" else ins.corto
+}
+
 /** "PHQ-9: 14 / 27 — Depresión moderada · ⚠ …" (textoEscala de la web). */
 fun textoEscala(e: EscalaAplicadaApp): String {
     val p = e.puntaje?.let { pt ->

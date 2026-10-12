@@ -1442,6 +1442,14 @@ internal fun ModalCompletarSesion(
     var mejorias by remember { mutableStateOf(ses.mejorias.orEmpty()) }
     var dejoRx by remember { mutableStateOf(AvisoRx.dejoRx(ses)) }
     val muestraMejorias = ses.numero > 1
+    // Sugerencias de evolución del rubro de ESTA sesión (psicoterapia ≠ fisio). Fisio
+    // y dental no necesitan nada más; el resto mira la especialidad (una lectura).
+    val especialidadesRubro by androidx.compose.runtime.produceState<List<Triple<String, String?, String?>>>(emptyList(), especialidadId) {
+        if (!muestraMejorias || esFisio || esDental) return@produceState
+        value = runCatching { pe.saniape.app.data.staff.AgendaRepo.especialidades() }.getOrDefault(emptyList())
+            .map { Triple(it.id, it.rubro, it.nombre) }
+    }
+    val rubroCierre = pe.saniape.app.data.staff.rubroCierreSesion(esFisio, esDental, especialidadId, especialidadesRubro)
     var piezas by remember { mutableStateOf<List<String>>(emptyList()) }
     // Odontología: null = cargando la lista de piezas; false = falló la carga.
     // Solo con la lista a la vista (true) se mandan `piezas`: mandar [] antes de
@@ -1588,7 +1596,7 @@ internal fun ModalCompletarSesion(
             TarjetaForm(titulo = "Mejorías / evolución", icono = "↗") {
                 androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(), 
                     value = mejorias, onValueChange = { mejorias = it },
-                    placeholder = { Text("Ej: Menos dolor al caminar, mayor rango…", color = c.textoSuave) },
+                    placeholder = { Text(pe.saniape.app.data.staff.placeholderMejorias(rubroCierre), color = c.textoSuave) },
                     modifier = Modifier.fillMaxWidth(), minLines = 2,
                 )
                 // Chips rápidos: los añaden al texto en vez de teclear (evolución típica).
@@ -1604,7 +1612,8 @@ internal fun ModalCompletarSesion(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    listOf("Menos dolor", "Mayor rango", "Más fuerza", "Sin cambios", "Mejor movilidad").forEach { chip ->
+                    // Nunca los de fisio fuera de fisio: psicoterapia tiene los suyos.
+                    pe.saniape.app.data.staff.mejoriasRapidasNoFisio(rubroCierre).forEach { chip ->
                         ChipCompletar(chip) {
                             mejorias = if (mejorias.isBlank()) chip else "$mejorias, $chip"
                         }
@@ -2274,7 +2283,7 @@ private fun ContenidoAtenciones(
         especialidades = runCatching { AgendaRepo.especialidades() }.getOrDefault(emptyList())
     }
     val flujoDe = { t: TratamientoPaciente ->
-        ctx.flujo.paraEspecialidad(especialidades.find { it.id == t.especialidadId }?.flujoPreset)
+        especialidades.find { it.id == t.especialidadId }.let { e -> ctx.flujo.paraEspecialidad(e?.flujoPreset, e?.nombre) }
     }
 
     // Render de UNA tarjeta (vivo o del historial) — mismo componente y acciones.

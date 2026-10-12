@@ -336,7 +336,7 @@ object AgendaRepo {
      */
     suspend fun especialidades(): List<EspecialidadRef> {
         val filas = Supabase.client.postgrest["especialidades"]
-            .select(Columns.list("id, nombre, flujo_preset, color, icono, chips_tipos, chips_sintomas")) {
+            .select(Columns.list("id, nombre, rubro, flujo_preset, color, icono, chips_tipos, chips_sintomas")) {
                 filter { eq("estado", "Activa") }
                 order("nombre", Order.ASCENDING)
             }
@@ -348,6 +348,7 @@ object AgendaRepo {
                 color = it.str("color"), icono = it.str("icono"),
                 chipsTipos = listaTextos(it["chips_tipos"]),
                 chipsSintomas = listaTextos(it["chips_sintomas"]),
+                rubro = it.str("rubro"),
             )
         }
     }
@@ -756,6 +757,8 @@ data class EspecialidadRef(
     val color: String? = null, val icono: String? = null,
     /** Chips personalizados en /especialidades (null = los del código). */
     val chipsTipos: List<String>? = null, val chipsSintomas: List<String>? = null,
+    /** Rubro de la especialidad (sugerencias de evolución del cierre: psicoterapia ≠ fisio). */
+    val rubro: String? = null,
 )
 
 /** Para [pe.saniape.app.ui.clinica.chipsDeEspecialidad]: los personalizados mandan sobre los del código. */

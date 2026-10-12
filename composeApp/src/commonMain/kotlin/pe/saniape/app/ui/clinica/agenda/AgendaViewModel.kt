@@ -108,7 +108,8 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
      */
     fun flujoDe(cita: CitaStaff): FlujoClinica {
         val espId = cita.especialidadId ?: cita.especialidadServicioId
-        return ctx.flujo.paraEspecialidad(especialidades.find { it.id == espId }?.flujoPreset)
+        val esp = especialidades.find { it.id == espId }
+        return ctx.flujo.paraEspecialidad(esp?.flujoPreset, esp?.nombre)
     }
 
     /** ¿Esta cita pasa por el odontograma? Por cita, no por clínica (gemelo de la web). */

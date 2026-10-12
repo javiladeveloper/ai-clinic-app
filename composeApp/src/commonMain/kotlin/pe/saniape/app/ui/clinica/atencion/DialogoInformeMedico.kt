@@ -37,7 +37,9 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import pe.saniape.app.data.staff.AtencionOrigenDoc
 import pe.saniape.app.data.staff.AtencionRepo
+import pe.saniape.app.data.staff.examenYaEnOrden
 import pe.saniape.app.data.staff.BorradorInforme
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.DOC_DESCANSO
@@ -101,6 +103,12 @@ fun DialogoInformeMedico(
     prefill: PrefillInforme?,
     hoy: String,
     onCancelar: () -> Unit,
+    /**
+     * Abierto desde la FICHA (sin atención): se prellena con la última atención
+     * del paciente y se puede elegir otra o dejarlo en blanco (GET
+     * /api/staff/informe/prefill, el mismo de la web). Con [prefill] no se usa.
+     */
+    desdeFicha: Boolean = false,
     onEmitido: (id: String, numeroTexto: String) -> Unit,
 ) {
     val c = Sania.colors
@@ -141,6 +149,36 @@ fun DialogoInformeMedico(
     var nuevoEx by remember { mutableStateOf("") }
     var indicaciones by remember { mutableStateOf("") }
     var seguimiento by remember { mutableStateOf(true) }
+
+    // Desde la ficha: de qué atención sale el prellenado.
+    var origenes by remember { mutableStateOf<List<AtencionOrigenDoc>?>(null) }
+    var origenId by remember { mutableStateOf("") }
+    var origen by remember { mutableStateOf<PrefillInforme?>(null) }
+    var psiqFicha by remember { mutableStateOf(false) }
+    var cargandoOrigen by remember { mutableStateOf(false) }
+    fun aplicar(q: PrefillInforme) {
+        motivo = q.motivo.orEmpty(); antecedentes = q.antecedentes.orEmpty(); examen = q.examen.orEmpty()
+        examenMental = q.examenMental.orEmpty(); escalas = q.escalas.orEmpty(); tratamiento = q.tratamiento.orEmpty()
+        recomendaciones = q.recomendaciones.orEmpty(); dx = q.diagnosticos; examenes = normalizarExamenesOrden(q.examenes)
+    }
+    /** null = la última con contenido; "" = en blanco. */
+    fun cargarOrigen(atencionId: String?) {
+        cargandoOrigen = true
+        scope.launch {
+            val r = AtencionRepo.prefillFicha(pacienteId, atencionId)
+            cargandoOrigen = false
+            if (r == null) { if (origenes == null) origenes = emptyList(); return@launch }
+            origenes = r.atenciones
+            origenId = r.atencionId.orEmpty()
+            psiqFicha = r.psiq
+            origen = r.prefill
+            aplicar(if (atencionId == "") PrefillInforme() else r.prefill ?: PrefillInforme())
+            // El Admin firma por defecto como el profesional de esa atención (si puede firmar).
+            val suyo = r.prefill?.terapeutaId
+            if (esAdmin && suyo != null && firmantes.any { it.id == suyo }) terapeutaId = suyo
+        }
+    }
+    LaunchedEffect(Unit) { if (desdeFicha && prefill == null) cargarOrigen(null) }
     var errores by remember { mutableStateOf<List<String>>(emptyList()) }
     var emitiendo by remember { mutableStateOf(false) }
     // Un intento = una clave: reintentar tras un corte no emite dos documentos ni
@@ -151,14 +189,17 @@ fun DialogoInformeMedico(
     var calendario by remember { mutableStateOf<String?>(null) }
 
     val firmante = firmantes.firstOrNull { it.id == terapeutaId }
-    val psiq = p.psiq || firmante?.psiquiatra == true
+    // Psiquiatría: por la atención de origen (la consulta o la elegida en la ficha),
+    // la clínica, o quien firma. Desde la ficha, sin esto, el Admin (que no atiende)
+    // veía el informe sin examen mental ni escalas.
+    val psiq = p.psiq || psiqFicha || origen?.psiq == true || firmante?.psiquiatra == true
     val titulos = titulosSugeridos(tipo, psiq)
 
     // Exámenes: lo aprendido por la clínica + la base del rubro (una consulta, solo en la orden).
     var aprendidos by remember { mutableStateOf<List<ExamenAprendido>?>(null) }
     LaunchedEffect(tipo) { if (tipo == DOC_ORDEN && aprendidos == null) aprendidos = InformesMedicosRepo.examenesAprendidos() }
     val opcionesEx = remember(aprendidos, psiq) { sugerenciasExamenes(aprendidos.orEmpty(), psiq) }
-    fun yaEsta(n: String) = examenes.any { it.nombre.equals(n, ignoreCase = true) }
+    fun yaEsta(n: String) = examenYaEnOrden(examenes, n)
     val chipsEx = opcionesEx.filterNot { yaEsta(it) }.take(14)
     val typeahead = filtrarExamenes(opcionesEx, nuevoEx).filterNot { yaEsta(it) }
     fun agregarEx(nombre: String) {
@@ -178,7 +219,8 @@ fun DialogoInformeMedico(
             examenMental = examenMental, escalas = escalas, tratamiento = tratamiento, recomendaciones = recomendaciones,
             diagnosticos = dx, ocultarDiagnostico = ocultarDx, descansoDesde = desde, descansoHasta = hasta,
             examenes = examenes, indicaciones = indicaciones,
-            citaId = p.citaId, atencionId = p.atencionId, tratamientoId = p.tratamientoId,
+            citaId = (prefill ?: origen)?.citaId, atencionId = (prefill ?: origen)?.atencionId,
+            tratamientoId = (prefill ?: origen)?.tratamientoId,
         )
         val errs = validarInforme(b, hoy)
         errores = errs
@@ -217,6 +259,22 @@ fun DialogoInformeMedico(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (errores.isNotEmpty()) CajaAviso(errores.joinToString("\n") { "• $it" }, c.error, c.errorBg)
+
+            // ── Desde la ficha: de qué atención se prellena ──
+            if (desdeFicha && prefill == null) {
+                Column {
+                    EtqForm("Prellenar con la atención")
+                    val lista = origenes
+                    when {
+                        lista == null || (cargandoOrigen && lista.isEmpty()) ->
+                            Text("Buscando la última atención…", color = c.textoSuave, fontSize = 13.sp)
+                        lista.isEmpty() -> Text("Sin atenciones registradas: el documento empieza en blanco.", color = c.textoSuave, fontSize = 13.sp)
+                        else -> SelectorDialogo("", origenId, lista.map { it.id to it.etiqueta } + ("" to "— En blanco (sin prellenar) —")) { id ->
+                            if (!cargandoOrigen) { origenId = id; cargarOrigen(id) }
+                        }
+                    }
+                }
+            }
 
             // ── Tipo ──
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

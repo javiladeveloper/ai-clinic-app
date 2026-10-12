@@ -185,7 +185,7 @@ fun PantallaCrearCita(
     // propio, si no el de la clínica. Es lo que permite que en una misma
     // clínica fisioterapia entre por Consulta y odontología por Diagnóstico.
     val flujoEfectivo = remember(ctx.flujo, especialidad) {
-        ctx.flujo.paraEspecialidad(especialidad?.flujoPreset)
+        ctx.flujo.paraEspecialidad(especialidad?.flujoPreset, especialidad?.nombre)
     }
     // Los tipos que se ofrecen de verdad. Antes se mostraban los tres SIEMPRE:
     // a RENOVA, que no hace consultas, se le ofrecía "Consulta"; y con los

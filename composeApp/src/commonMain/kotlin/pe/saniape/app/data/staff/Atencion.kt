@@ -402,7 +402,7 @@ data class BorradorAtencion(
 // ── Reglas puras (gemelas de lib/atencion-medica.ts) ─────────────────────────
 
 /** Pasos según el tipo de atención: una consulta o la cita de un procedimiento. */
-fun pasosDeAtencion(esProcedimiento: Boolean, dental: Boolean): List<PasoAtencion> {
+fun pasosDeAtencion(esProcedimiento: Boolean, dental: Boolean, psiq: Boolean = false): List<PasoAtencion> {
     if (esProcedimiento) {
         return listOf(
             PasoAtencion("procedimiento", "Consentimiento y procedimiento"),
@@ -415,12 +415,28 @@ fun pasosDeAtencion(esProcedimiento: Boolean, dental: Boolean): List<PasoAtencio
     return listOf(
         PasoAtencion("motivo", "Motivo y anamnesis"),
         PasoAtencion("vitales", if (dental) "Funciones vitales (opcional)" else "Funciones vitales"),
-        PasoAtencion("examen", if (dental) "Examen estomatológico" else "Examen físico"),
+        PasoAtencion("examen", tituloPasoExamen(dental, psiq)),
         PasoAtencion("diagnostico", "Diagnóstico CIE-10"),
         PasoAtencion("plan", "Plan"),
         PasoAtencion("cierre", "Cierre"),
     )
 }
+
+/** Título del paso 3: en psiquiatría lleva el examen mental (y el físico, opcional). */
+fun tituloPasoExamen(dental: Boolean, psiq: Boolean): String = when {
+    dental -> "Examen estomatológico"
+    psiq -> "Examen mental y físico"
+    else -> "Examen físico"
+}
+
+/**
+ * Los pasos que mandó el servidor, con el título del paso 3 de psiquiatría. Un
+ * servidor que aún no lo sabe manda "Examen físico" aunque el paso tenga el
+ * examen mental y las escalas; la app ya sabe que es psiquiatría ([psiq]).
+ * Fuera de psiquiatría, tal cual llegaron.
+ */
+fun pasosConPsiquiatria(pasos: List<PasoAtencion>, psiq: Boolean): List<PasoAtencion> =
+    if (!psiq) pasos else pasos.map { if (it.clave == "examen" && it.titulo == "Examen físico") it.copy(titulo = tituloPasoExamen(false, true)) else it }
 
 /**
  * Avisos del cierre (no bloquean): lo que conviene resolver antes de terminar.

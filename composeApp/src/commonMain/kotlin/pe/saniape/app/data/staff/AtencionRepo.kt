@@ -153,6 +153,29 @@ object AtencionRepo {
     }
 
     /**
+     * Prellenado de un documento abierto desde la FICHA: la última atención del
+     * paciente con contenido ([atencionId] null), otra ([atencionId]) o en blanco
+     * (""). null = no se pudo (sin red, o un servidor que aún no lo tiene): el
+     * formulario queda en blanco, como antes.
+     */
+    suspend fun prefillFicha(pacienteId: String, atencionId: String?): PrefillFichaDoc? {
+        val tk = token() ?: return null
+        return try {
+            val resp = http.get("${Supabase.SITE_URL}/api/staff/informe/prefill") {
+                header("Authorization", "Bearer $tk")
+                parameter("paciente", pacienteId)
+                if (atencionId != null) parameter("atencion", atencionId)
+            }
+            if (resp.status.value !in 200..299) null
+            else (Json.parseToJsonElement(resp.bodyAsText()) as? JsonObject)?.let { parsearPrefillFicha(it) }
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
      * HTML imprimible. [tipo]: `indicaciones` (id = CITA), `receta` o
      * `consentimiento` (id = el documento). null si no se pudo.
      */
