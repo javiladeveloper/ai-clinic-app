@@ -1,0 +1,7 @@
+# Novedades de la 2.41.1 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+"▶ Atender" vuelve a aparecer en las consultas médicas de la agenda, y ahora puedes imprimir o enviar el recibo de cada pago.
+---
+Clínicas:
+• Agenda: en las citas de especialidad médica ahora sale "▶ Atender" (consulta guiada) en vez de "✓ Completar", también en citas de otros días y en clínicas sin sala de espera, igual que en la web.
+• Pagos: toca 🧾 en cualquier pago del tratamiento para generar su recibo en PDF (A4 o ticket de 80 mm) e imprimirlo o enviarlo por WhatsApp.

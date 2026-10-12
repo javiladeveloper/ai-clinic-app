@@ -70,6 +70,13 @@ fun TarjetaCita(
      */
     sala: SalaTarjeta? = null,
     /**
+     * La cita va por la consulta guiada (especialidad médica, no dental). Decide
+     * "▶ Atender" vs "✓ Completar" AUNQUE no haya sala de espera (otro día, o la
+     * clínica no la usa), igual que /citas web (`esMedicaGuiada`). Antes solo salía
+     * con la sala de espera de HOY y el resto de días mostraba "Completar".
+     */
+    medica: Boolean = false,
+    /**
      * El flujo de la ESPECIALIDAD de la cita: cómo se llama cada tipo y si existe
      * el paso "→ Evaluación". Sin él, la tarjeta decía "CONSULTA" y ofrecía
      * "→ Evaluación" en una clínica que entra por Diagnóstico, o en medicina
@@ -258,6 +265,7 @@ fun TarjetaCita(
                 pasarA = flujo.labelEvaluacion.takeIf { flujo.pasaAEvaluacion(cita.tipo) },
                 crearTratamiento = crearTratamiento && cita.pacienteId != null,
                 sala = sala?.takeIf { cita.pacienteId != null },
+                medica = medica && cita.pacienteId != null,
                 evaluacionPsico = evaluacionPsico && cita.tratamientoId != null,
                 cobrar = cobrable && puedeCobrar && !pagada,
                 anularCobro = anularCobro && pagada,
@@ -350,6 +358,8 @@ private fun accionesPara(
     odontograma: Boolean = false,
     crearTratamiento: Boolean = false,
     sala: SalaTarjeta? = null,
+    /** Consulta guiada por especialidad (sin depender de la sala de espera). */
+    medica: Boolean = false,
     /** Nombre del paso Evaluación en el flujo de la cita; null = no hay paso al que pasar. */
     pasarA: String? = null,
     /** Consulta/Evaluación con costo, sin cobrar, y quien mira tiene permiso 'pagos'. */
@@ -376,8 +386,10 @@ private fun accionesPara(
         sala.etapa == EtapaLlegada.LLEGO && sala.triajeOn -> AccionTarjeta.Triaje
         else -> AccionTarjeta.Atender
     }
-    val textoAtender = if (sala?.medica == true) (if (sala.etapa == EtapaLlegada.EN_CONSULTA) "▶ Continuar" else "▶ Atender") else "✓ Completar"
-    val accionAtender = if (sala?.medica == true) AccionTarjeta.Atender else AccionTarjeta.Completar
+    // Médica: por la sala de hoy o, sin sala, por la especialidad (como la web).
+    val esMedica = sala?.medica == true || medica
+    val textoAtender = if (esMedica) (if (sala?.etapa == EtapaLlegada.EN_CONSULTA) "▶ Continuar" else "▶ Atender") else "✓ Completar"
+    val accionAtender = if (esMedica) AccionTarjeta.Atender else AccionTarjeta.Completar
     val textoTriaje = if (sala?.atencion?.triajeAt != null) "🩺 Triaje ✓ (corregir)" else "🩺 Triaje"
     when (principal) {
         AccionTarjeta.Llego -> lista.add(Triple(if (sala?.marcando == true) "…" else "🔔 Llegó", AccionTarjeta.Llego, c.ok))
@@ -393,7 +405,8 @@ private fun accionesPara(
     // Evaluación psicológica: el espacio de trabajo, en cualquier estado (como la web).
     if (evaluacionPsico && estado != "Cancelada") lista.add(Triple("🧠 Evaluación", AccionTarjeta.EvaluacionPsico, c.purple))
     if (pasarA != null && activa) lista.add(Triple("→ $pasarA", AccionTarjeta.PasarEvaluacion, c.info))
-    if (activa && principal == null) lista.add(Triple("✓ Completar", AccionTarjeta.Completar, c.navy))
+    // Sin sala de espera: la acción de cierre según la especialidad (Atender o Completar).
+    if (activa && principal == null) lista.add(Triple(textoAtender, accionAtender, c.navy))
     if (estado == "Completada" || estado == "Cancelada") lista.add(Triple("↩ Revertir", AccionTarjeta.Revertir, c.pend))
     // Repetir: agendar la SIGUIENTE cita del mismo paciente en 1 toque (misma info,
     // fecha propuesta a futuro). Muy usado para citar la próxima sesión/control.
