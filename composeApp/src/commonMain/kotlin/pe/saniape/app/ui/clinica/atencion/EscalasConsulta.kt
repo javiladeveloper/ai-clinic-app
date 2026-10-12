@@ -110,7 +110,7 @@ internal fun EscalasConsulta(
                 )
                 else -> FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     instrumentos.forEach { ins ->
-                        ChipPsico("+ ${ins.corto}", activo = false) {
+                        ChipPsico("+ ${pe.saniape.app.data.staff.etiquetaInstrumento(ins, instrumentos)}", activo = false) {
                             abierta = EscalaEnEdicion(ins, ins.items.map { null }, null)
                         }
                     }
@@ -153,7 +153,8 @@ private fun DialogoEscala(
         ) {
             Row(Modifier.fillMaxWidth().background(c.navyDark).padding(horizontal = 18.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Text(ins.nombre.ifBlank { ins.corto }, color = c.sobreNavy, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                Text(ins.nombre.ifBlank { ins.corto } + (ins.opciones.size.takeIf { ins.id == "apgar3" || ins.id == "apgar5" }?.let { " ($it opciones)" } ?: ""),
+                    color = c.sobreNavy, fontSize = 16.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f))
                 Text("✕", color = c.sobreNavy, fontSize = 18.sp, modifier = Modifier.clickable(onClick = onCerrar).padding(6.dp))
             }

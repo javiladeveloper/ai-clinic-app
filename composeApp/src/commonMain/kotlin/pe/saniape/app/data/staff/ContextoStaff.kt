@@ -72,8 +72,23 @@ data class FlujoClinica(
      */
     fun paraEspecialidad(propio: JsonObject?): FlujoClinica {
         if (propio == null) return this
-        val usaC = (propio["usa_consulta"] as? JsonPrimitive)?.booleanOrNull ?: return this
-        val usaE = (propio["usa_evaluacion"] as? JsonPrimitive)?.booleanOrNull ?: return this
+        return paraEspecialidadValida(propio) ?: this
+    }
+
+    /**
+     * Como [paraEspecialidad], sabiendo el NOMBRE de la especialidad: si no tiene
+     * flujo propio guardado y es psiquiatría, sigue el de medicina general
+     * (Consulta → Controles → Alta, sin Evaluación). Gemelo de
+     * `presetPropioDeEspecialidad` de la web. Todo lo demás, igual que antes.
+     */
+    fun paraEspecialidad(propio: JsonObject?, nombre: String?): FlujoClinica {
+        propio?.let { p -> paraEspecialidadValida(p)?.let { return it } }
+        return if (esPsiquiatria(nombre)) FLUJO_MEDICINA_GENERAL else this
+    }
+
+    private fun paraEspecialidadValida(propio: JsonObject): FlujoClinica? {
+        val usaC = (propio["usa_consulta"] as? JsonPrimitive)?.booleanOrNull ?: return null
+        val usaE = (propio["usa_evaluacion"] as? JsonPrimitive)?.booleanOrNull ?: return null
         fun txt(k: String, porDefecto: String) =
             (propio[k] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() } ?: porDefecto
         return FlujoClinica(
@@ -86,6 +101,12 @@ data class FlujoClinica(
         )
     }
 }
+
+/** El preset de medicina general ('nutricion' en la web): Consulta → Controles → Alta. */
+val FLUJO_MEDICINA_GENERAL = FlujoClinica(
+    usaConsulta = true, usaEvaluacion = false,
+    labelConsulta = "Consulta", labelEvaluacion = "Evaluación", labelSesiones = "Controles", labelAlta = "Alta",
+)
 
 data class ContextoStaff(
     val clinicaId: String,

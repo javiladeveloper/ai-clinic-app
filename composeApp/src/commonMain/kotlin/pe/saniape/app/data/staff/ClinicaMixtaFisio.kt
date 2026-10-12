@@ -86,6 +86,58 @@ fun resumenDolor(puntos: List<PuntoDolor>): ResumenDolor? {
 /** Chips de evolución (fisio). Gemelo de `MEJORIAS_RAPIDAS`. */
 val MEJORIAS_RAPIDAS: List<String> = listOf("Menos dolor", "Más movilidad", "Menos rigidez", "Sin cambios", "Peor")
 
+/** Chips de evolución en psicoterapia (psicología / psiquiatría). Gemelo de `MEJORIAS_RAPIDAS_PSICO`. */
+val MEJORIAS_RAPIDAS_PSICO: List<String> =
+    listOf("Mejor manejo de la ansiedad", "Duerme mejor", "Mejor estado de ánimo", "Menos crisis", "Sin cambios", "Peor")
+
+/** Chips neutros de evolución (rubros sin chips propios en la web: estética, medicina…). */
+val MEJORIAS_RAPIDAS_GENERAL: List<String> = listOf("Mejor", "Sin cambios", "Peor")
+
+/**
+ * De qué rubro es el cierre (rubroCierreSesion de lib/cierre-sesion.ts). Antes
+ * toda sesión que no era de fisio sugería "Menos dolor al caminar…" y chips de
+ * fisio, también una sesión de psicoterapia. Fisio y dental, como siempre;
+ * psico, por la especialidad (rubro psicología, o psiquiatría/psicología por el
+ * nombre) o, sin especialidad, si todas las de la clínica lo son.
+ */
+enum class RubroCierre { FISIO, DENTAL, PSICO, OTRO }
+
+private val TILDES_CIERRE = mapOf('á' to 'a', 'é' to 'e', 'í' to 'i', 'ó' to 'o', 'ú' to 'u', 'ü' to 'u')
+
+private fun esEspecialidadPsico(rubro: String?, nombre: String?): Boolean {
+    if (rubro == "psicologia") return true
+    val n = nombre.orEmpty().lowercase().map { TILDES_CIERRE[it] ?: it }.joinToString("")
+    return n.contains("psiquiatr") || n.contains("psicolog")
+}
+
+/** [especialidades]: (id, rubro, nombre) de las activas de la clínica. */
+fun rubroCierreSesion(
+    esFisio: Boolean,
+    esDental: Boolean,
+    especialidadId: String?,
+    especialidades: List<Triple<String, String?, String?>>,
+): RubroCierre {
+    if (esFisio) return RubroCierre.FISIO
+    if (esDental) return RubroCierre.DENTAL
+    if (!especialidadId.isNullOrBlank()) {
+        val e = especialidades.firstOrNull { it.first == especialidadId } ?: return RubroCierre.OTRO
+        return if (esEspecialidadPsico(e.second, e.third)) RubroCierre.PSICO else RubroCierre.OTRO
+    }
+    return if (especialidades.isNotEmpty() && especialidades.all { esEspecialidadPsico(it.second, it.third) }) RubroCierre.PSICO else RubroCierre.OTRO
+}
+
+/** Ejemplo del campo "Mejorías / evolución" (placeholderMejorias de la web). */
+fun placeholderMejorias(r: RubroCierre): String = when (r) {
+    RubroCierre.FISIO -> "Ej: Menos dolor al caminar, mayor rango…"
+    RubroCierre.DENTAL -> "Ej: Sin sensibilidad al frío, buena adaptación de la resina…"
+    RubroCierre.PSICO -> "Ej: Mejor manejo de la ansiedad, duerme mejor, menos episodios de pánico…"
+    RubroCierre.OTRO -> "Ej: Cómo evolucionó respecto a la sesión anterior…"
+}
+
+/** Chips rápidos de evolución fuera de fisio (fisio usa ChipsMejoriaFisio). */
+fun mejoriasRapidasNoFisio(r: RubroCierre): List<String> =
+    if (r == RubroCierre.PSICO) MEJORIAS_RAPIDAS_PSICO else MEJORIAS_RAPIDAS_GENERAL
+
 private fun partesMejoria(texto: String): List<String> = texto.split(",").map { it.trim() }.filter { it.isNotEmpty() }
 
 fun tieneMejoria(texto: String, chip: String): Boolean =

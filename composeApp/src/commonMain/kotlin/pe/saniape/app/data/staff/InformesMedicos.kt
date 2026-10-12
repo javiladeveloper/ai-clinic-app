@@ -153,6 +153,20 @@ fun claveExamen(s: String): String =
     s.lowercase().map { TILDES_EX[it] ?: it }.joinToString("")
         .replace(Regex("\\s+"), " ").trim().replace(Regex("[\\s.,;:]+$"), "")
 
+/**
+ * Clave para NO SUGERIR dos veces el mismo examen (claveBaseExamen de la web): la
+ * de [claveExamen] sin lo que va entre paréntesis. "Litemia (litio sérico)" y
+ * "Litemia (nivel de litio en sangre)" son el mismo chip. Solo para sugerir: lo
+ * que se guarda y aprende sigue con [claveExamen].
+ */
+fun claveBaseExamen(s: String): String = claveExamen(s.substringBefore('(')).ifEmpty { claveExamen(s) }
+
+/** ¿Ya está en la orden (mismo examen, con o sin la aclaración entre paréntesis)? */
+fun examenYaEnOrden(lista: List<ExamenOrden>, nombre: String): Boolean {
+    val k = claveBaseExamen(nombre)
+    return k.isNotEmpty() && lista.any { claveBaseExamen(it.nombre) == k }
+}
+
 /** Sin vacíos ni repetidos (por nombre), con tope (normalizarExamenesOrden). */
 fun normalizarExamenesOrden(lista: List<ExamenOrden>): List<ExamenOrden> {
     val vistos = mutableSetOf<String>()
@@ -376,13 +390,17 @@ val EXAMENES_FRECUENTES_PSIQUIATRIA = listOf(
 
 data class ExamenAprendido(val nombre: String, val usos: Int = 0)
 
-/** Lo aprendido por la clínica primero (más usado arriba), luego la base del rubro, sin duplicar. */
+/**
+ * Lo aprendido por la clínica primero (más usado arriba), luego la base del rubro,
+ * sin duplicar: sin tildes, mayúsculas ni la aclaración entre paréntesis
+ * ([claveBaseExamen]); gana el nombre aprendido.
+ */
 fun sugerenciasExamenes(aprendidos: List<ExamenAprendido>, psiq: Boolean = false): List<String> {
     val base = if (psiq) EXAMENES_FRECUENTES_PSIQUIATRIA + EXAMENES_FRECUENTES_MEDICINA else EXAMENES_FRECUENTES_MEDICINA
     val vistos = mutableSetOf<String>()
     val out = mutableListOf<String>()
     for (n in aprendidos.sortedByDescending { it.usos }.map { it.nombre } + base) {
-        val k = claveExamen(n)
+        val k = claveBaseExamen(n)
         if (k.isEmpty() || !vistos.add(k)) continue
         out += n
     }
@@ -508,6 +526,67 @@ fun aInformeMedico(o: JsonObject): InformeMedicoApp? {
         profesionalNombre = prof?.s("nombre"),
         profesionalColegiatura = prof?.s("colegiatura"),
     )
+}
+
+/** Una atención que se ofrece como origen del documento (AtencionOrigen de la web). */
+data class AtencionOrigenDoc(
+    val id: String,
+    val fecha: String,
+    val hora: String?,
+    val resumen: String,
+    val profesional: String?,
+    val psiq: Boolean,
+) {
+    /** "12/10/2026 09:30 · Control PHQ-9 — Dr. Valdivia" */
+    val etiqueta: String get() =
+        "${fechaCortaDoc(fecha)}${hora?.let { " $it" } ?: ""} · $resumen${profesional?.let { " — $it" } ?: ""}"
+}
+
+/** Respuesta de GET /api/staff/informe/prefill (PrefillFicha de la web). */
+data class PrefillFichaDoc(
+    val atenciones: List<AtencionOrigenDoc>,
+    /** La elegida; null = en blanco (o el paciente no tiene atenciones). */
+    val atencionId: String?,
+    /** Psiquiatría: por la atención elegida o, sin atención, porque la clínica lo es. */
+    val psiq: Boolean,
+    val prefill: PrefillInforme?,
+)
+
+/** JSON del servidor → [PrefillFichaDoc]. Tolerante: lo que no se entiende se ignora. */
+fun parsearPrefillFicha(o: JsonObject): PrefillFichaDoc {
+    val psiq = o.s("psiq") == "true"
+    val ats = (o["atenciones"] as? JsonArray).orEmpty().mapNotNull { e ->
+        val x = e as? JsonObject ?: return@mapNotNull null
+        AtencionOrigenDoc(
+            id = x.s("id") ?: return@mapNotNull null,
+            fecha = x.s("fecha")?.take(10).orEmpty(),
+            hora = x.s("hora")?.take(5),
+            resumen = x.s("resumen") ?: "Atención",
+            profesional = x.s("profesional"),
+            psiq = x.s("psiq") == "true",
+        )
+    }
+    val p = o["prefill"] as? JsonObject
+    val prefill = p?.let {
+        val dx = (it["diagnosticos"] as? JsonArray).orEmpty().mapNotNull { d ->
+            val x = d as? JsonObject ?: return@mapNotNull null
+            DiagnosticoCie(x.s("codigo"), x.s("descripcion").orEmpty(), x.s("tipo") ?: "P")
+        }
+        val ex = (it["examenes"] as? JsonArray).orEmpty().mapNotNull { e ->
+            val x = e as? JsonObject
+            val nombre = x?.s("nombre") ?: (e as? JsonPrimitive)?.takeIf { v -> v !is JsonNull }?.content
+            nombre?.let { n -> ExamenOrden(n, x?.s("indicacion")) }
+        }
+        PrefillInforme(
+            motivo = it.s("motivo"), antecedentes = it.s("antecedentes"), examen = it.s("examen"),
+            examenMental = it.s("examenMental"), escalas = it.s("escalas"),
+            diagnosticos = diagnosticosParaDocumento(dx), tratamiento = it.s("tratamiento"),
+            recomendaciones = it.s("recomendaciones"), examenes = normalizarExamenesOrden(ex),
+            citaId = it.s("citaId"), atencionId = it.s("atencionId"), tratamientoId = it.s("tratamientoId"),
+            terapeutaId = it.s("terapeutaId"), psiq = it.s("psiq") == "true" || psiq,
+        )
+    }
+    return PrefillFichaDoc(ats, o.s("atencionId"), psiq, prefill)
 }
 
 /** "dd/mm/aaaa" desde un ISO (fechaCorta de la web). */

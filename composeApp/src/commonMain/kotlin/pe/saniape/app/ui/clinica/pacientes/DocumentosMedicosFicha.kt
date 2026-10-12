@@ -163,6 +163,8 @@ fun ContenidoDocumentosMedicos(
             prefill = null,
             hoy = hoyClinicaIso(),
             onCancelar = { form = null },
+            // Sin atención abierta: la última del paciente (o la que elija), como la web.
+            desdeFicha = true,
             onEmitido = { id, numero ->
                 form = null
                 recarga++

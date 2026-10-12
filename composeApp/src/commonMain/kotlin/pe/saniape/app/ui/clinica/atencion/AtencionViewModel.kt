@@ -16,6 +16,7 @@ import pe.saniape.app.data.staff.DatosConsultaApp
 import pe.saniape.app.data.staff.DiagnosticoCie
 import pe.saniape.app.data.staff.ExamenSolicitado
 import pe.saniape.app.data.staff.PasoAtencion
+import pe.saniape.app.data.staff.pasosConPsiquiatria
 import pe.saniape.app.data.staff.EscalaAplicadaApp
 import pe.saniape.app.data.staff.EvaluacionPsicoRepo
 import pe.saniape.app.data.staff.ExamenOrden
@@ -101,7 +102,7 @@ class AtencionViewModel(
     /** Informe / descanso / orden abierto desde el cierre: (tipo, prellenado). */
     var documentoAbierto by mutableStateOf<Pair<String, PrefillInforme>?>(null); private set
 
-    val pasos: List<PasoAtencion> get() = datos?.flags?.pasos ?: emptyList()
+    val pasos: List<PasoAtencion> get() = pasosConPsiquiatria(datos?.flags?.pasos ?: emptyList(), psiq)
     val pasoActual: PasoAtencion? get() = pasos.getOrNull(paso)
     /** Sin datos todavía = solo lectura (no se edita lo que no cargó). */
     val soloLectura: Boolean get() = datos?.flags?.soloLectura ?: true
