@@ -1,0 +1,9 @@
+# Novedades de la 2.43.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Medicamentos del Petitorio del MINSA a un toque en la receta y agendar a un paciente nuevo en clínicas de psicología.
+---
+Clínicas:
+• Receta: al tocar el medicamento ves lo que más receta tu clínica y los frecuentes de tu profesión (medicina, odontología o psiquiatría) del Petitorio del MINSA; los controlados se marcan antes de elegirlos.
+• Busca desde la primera letra; si no está en el petitorio, escríbelo completo y queda guardado para la próxima.
+• Nueva cita → Sesión: si el paciente aún no tiene tratamiento, créalo ahí mismo y la cita queda como su Sesión #1.
+• Psicología: registra a un paciente nuevo desde la misma cita.
