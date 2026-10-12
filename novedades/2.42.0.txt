@@ -1,0 +1,9 @@
+# Novedades de la 2.42.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Odontología: nueva "Atención puntual" para pacientes que vienen por algo concreto: eliges las piezas, qué se hizo y cobras en un paso, con recibo de la visita.
+---
+Clínicas dentales:
+• Al completar un diagnóstico dental ahora hay dos pestañas: "Revisión completa" (el odontograma de siempre) y "Atención puntual".
+• Atención puntual: toca las piezas que atendiste (o "Toda la boca"), elige el servicio de cada una (el precio sale de tu lista y se puede ajustar) y agrega una nota si quieres.
+• Todo queda en el mismo odontograma como realizado; las piezas que no tocaste quedan sin revisar.
+• Si tienes permiso de caja, cobras servicios y consulta con un solo medio de pago y entregas el recibo de la visita (A4 o ticket). Si no, queda por cobrar para recepción.
