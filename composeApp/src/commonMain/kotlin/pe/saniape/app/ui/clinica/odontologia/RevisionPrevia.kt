@@ -65,6 +65,12 @@ fun RevisionPrevia(
     // toque escribe en la base), así que "Cancelar" haría creer que se deshace,
     // y no se deshace. Desde la tarjeta (🦷 Odontograma) es "Cerrar".
     textoCancelar: String = "Salir sin completar",
+    /**
+     * Atención puntual (2026-10-12): el paciente vino por algo concreto. Con
+     * esto aparecen las pestañas "Revisión completa / Atención puntual" arriba
+     * (ver DialogoAtencionPuntual). null = solo la revisión completa.
+     */
+    onAtencionPuntual: (() -> Unit)? = null,
 ) {
     val c = Sania.colors
     // Se recalcula cada vez que el odontograma avisa un cambio: el dentista ve
@@ -86,6 +92,7 @@ fun RevisionPrevia(
         onAccion = { if (!guardando) onCompletar(sugerido, registro) },
         textoCancelar = textoCancelar,
     ) {
+        if (onAtencionPuntual != null) SelectorModoAtencion(puntual = false) { if (it) onAtencionPuntual() }
         Text(
             "Se guarda al momento. El diagnóstico se redacta solo con lo que marques, y al completar " +
                 "se crea el tratamiento con lo marcado en el presupuesto (si ya lo creaste, no se duplica).",

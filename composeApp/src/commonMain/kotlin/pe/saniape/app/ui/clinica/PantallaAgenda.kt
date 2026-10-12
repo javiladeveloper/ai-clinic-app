@@ -708,20 +708,43 @@ fun PantallaAgenda(
         // CITA: en una clínica con fisio y odontología, la evaluación de fisio
         // va directo al modal de siempre.
         if (vm.esDental(cita) && evalua && pac != null && revisada?.citaId != cita.id) {
-            // Un solo paso: la revisión completa la evaluación (ver
-            // completarEvaluacionDental). La ventana de abajo solo si falta algo.
-            pe.saniape.app.ui.clinica.odontologia.RevisionPrevia(
-                pacienteId = pac,
-                pacienteNombre = cita.pacienteNombre,
-                citaId = cita.id,
-                mapaDental = ctx.mapaDental,
-                atendio = nombreProfesional(cita, profesionalEvaluacion(cita)),
-                guardando = completandoEval,
-                onCompletar = { diag, registro ->
-                    completarEvaluacionDental(cita, diag, registro) { completar = null; revisada = null }
-                },
-                onCancelar = { if (!completandoEval) { completar = null; revisada = null } },
-            )
+            // Revisión completa o ATENCIÓN PUNTUAL (vino por algo concreto): dos
+            // pestañas de la misma ventana; las dos escriben el mismo odontograma.
+            var puntual by remember(cita.id) { mutableStateOf(false) }
+            if (puntual) {
+                pe.saniape.app.ui.clinica.odontologia.DialogoAtencionPuntual(
+                    pacienteId = pac,
+                    pacienteNombre = cita.pacienteNombre,
+                    citaId = cita.id,
+                    mapaDental = ctx.mapaDental,
+                    terapeutaId = profesionalEvaluacion(cita),
+                    atendio = nombreProfesional(cita, profesionalEvaluacion(cita)),
+                    motivo = null,
+                    costoConsulta = cita.costo?.takeIf { it > 0 && cita.pagadaAt == null },
+                    tipoCita = cita.tipo,
+                    puedeCobrar = ctx.puede("pagos"),
+                    onVolverARevision = { puntual = false },
+                    // El servidor ya completó la cita: solo refrescar la agenda.
+                    onRegistrada = { vm.refrescar() },
+                    onCerrar = { completar = null; revisada = null },
+                )
+            } else {
+                // Un solo paso: la revisión completa la evaluación (ver
+                // completarEvaluacionDental). La ventana de abajo solo si falta algo.
+                pe.saniape.app.ui.clinica.odontologia.RevisionPrevia(
+                    pacienteId = pac,
+                    pacienteNombre = cita.pacienteNombre,
+                    citaId = cita.id,
+                    mapaDental = ctx.mapaDental,
+                    atendio = nombreProfesional(cita, profesionalEvaluacion(cita)),
+                    guardando = completandoEval,
+                    onCompletar = { diag, registro ->
+                        completarEvaluacionDental(cita, diag, registro) { completar = null; revisada = null }
+                    },
+                    onCancelar = { if (!completandoEval) { completar = null; revisada = null } },
+                    onAtencionPuntual = { puntual = true },
+                )
+            }
         } else {
             // La revisión dental ya resolvió el tratamiento: no ofrecer otro plan.
             val planResuelto = revisada?.takeIf { it.citaId == cita.id }?.tratamientoResuelto == true
