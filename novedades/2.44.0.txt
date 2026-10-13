@@ -1,0 +1,9 @@
+# Novedades de la 2.44.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Mejoras para psiquiatría y psicología, y tratamientos solo para quien tiene permiso.
+---
+Clínicas:
+• Psiquiatría: el paso de la consulta se llama "Examen mental y físico"; el informe médico desde la ficha se llena solo con la última atención.
+• Orden de exámenes sin repetidos y escalas con nombres claros (APGAR familiar de 3 o 5 opciones).
+• Al cerrar una sesión de psicoterapia, sugerencias de evolución propias de psicología.
+• Crear, editar o dar de alta tratamientos ahora requiere el permiso de Sesiones; si no lo tienes, verás un aviso claro.
