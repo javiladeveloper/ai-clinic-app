@@ -1,0 +1,9 @@
+# Novedades de la 2.47.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Nutrición: arma el plan de alimentación de cada paciente desde la app.
+---
+Clínicas:
+• Nueva pestaña 🥗 Plan alimentario en la ficha de nutrición: comidas del día, objetivo, recomendaciones, alimentos a evitar e hidratación.
+• Calculadora de calorías y macros con el peso y la talla de la pestaña Medidas.
+• Plantillas reutilizables, impresión con tu logo y envío por WhatsApp.
+• Más diagnósticos rápidos para nutrición, ortodoncia y odontología general.
