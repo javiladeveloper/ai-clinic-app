@@ -1,0 +1,9 @@
+# Novedades de la 2.54.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Curvas de crecimiento con edad corregida para bebés prematuros.
+---
+Clínicas:
+• 👶 Crecimiento: nueva tarjeta "🍼 ¿Nació prematuro?" con las semanas al nacer. Hasta los 2 años, las curvas OMS y la clasificación usan la edad corregida y se muestran las dos edades.
+• Antes de llegar a término no se calcula un puntaje engañoso: se indica usar las curvas para prematuros.
+Pacientes:
+• Las curvas de Crecimiento muestran también la edad corregida cuando corresponde.
