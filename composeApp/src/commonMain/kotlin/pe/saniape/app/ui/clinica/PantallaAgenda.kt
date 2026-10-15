@@ -158,6 +158,8 @@ fun PantallaAgenda(
     var fichaPaciente by remember { mutableStateOf<PacienteStaff?>(null) }
     // La ficha se abre en la pestaña 🏠 Ejercicios (se cerró una sesión de fisio con "dejarle ejercicios").
     var fichaEjercicios by remember { mutableStateOf<pe.saniape.app.ui.clinica.fisio.IndicarEjercicios?>(null) }
+    // La ficha se abre en ⚖️ Medidas / 🥗 Plan alimentario (nutrición), con la cita vinculada.
+    var fichaNutricion by remember { mutableStateOf<pe.saniape.app.ui.clinica.nutricion.AperturaNutricion?>(null) }
     var cargandoFicha by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val acciones = pe.saniape.app.ui.recordarAcciones()
@@ -188,6 +190,25 @@ fun PantallaAgenda(
                 return@launch
             }
             fichaEjercicios = pe.saniape.app.ui.clinica.fisio.IndicarEjercicios(sesionId, cita.tratamientoId)
+            fichaPaciente = pac
+        }
+    }
+    /**
+     * Nutrición: a la ficha en ⚖️ Medidas (formulario abierto, vinculado a la
+     * cita) o en 🥗 Plan alimentario. Gemelo de `rutaFichaNutricion` de /citas.
+     */
+    fun abrirFichaNutricion(cita: CitaStaff, tab: String, abrirFormulario: Boolean) {
+        val pid = cita.pacienteId ?: return
+        if (cargandoFicha) return
+        cargandoFicha = true
+        scope.launch {
+            val pac = runCatching { PacientesRepo.porId(pid) }.getOrNull()
+            cargandoFicha = false
+            if (pac == null) {
+                pe.saniape.app.ui.Toaster.error("No se pudo abrir la ficha. Revisa tu conexión.")
+                return@launch
+            }
+            fichaNutricion = pe.saniape.app.ui.clinica.nutricion.AperturaNutricion(tab, cita.id, abrirFormulario, cita.tratamientoId)
             fichaPaciente = pac
         }
     }
@@ -577,6 +598,8 @@ fun PantallaAgenda(
                                                 }
                                             }
                                         }
+                                        AccionTarjeta.Medidas -> abrirFichaNutricion(cita, "medidas", abrirFormulario = true)
+                                        AccionTarjeta.PlanAlimentario -> abrirFichaNutricion(cita, "plan", abrirFormulario = false)
                                     }
                                 },
                                 onVerResumen = { resumenPacienteId = it },
@@ -597,6 +620,7 @@ fun PantallaAgenda(
                                 recetaVinculada = vm.recetasPorCita[cita.id]?.let {
                                     pe.saniape.app.data.staff.etiquetaRecetaVinculada(it)
                                 },
+                                nutricion = vm.nutricionEnTarjeta(cita),
                                 // Gemelo de evalPsicoDe (/citas web): servicio de evaluación + Admin o
                                 // quien atiende la cita. La base decide al abrir.
                                 evaluacionPsico = cita.procedimientoId != null && cita.procedimientoId in procsEvalPsico &&
@@ -1151,12 +1175,37 @@ fun PantallaAgenda(
         )
     }
 
+    // Nutrición: "⚖️ Registrar medidas" tras completar un control. Aviso abajo que
+    // NO bloquea: "📅 Agendar siguiente" sale a la vez, como siempre.
+    // Tras una Evaluación se abre primero el tratamiento: el aviso espera a que se cierre
+    // (como la web, que lo ofrece al cerrar ese popup) y recién entonces corre su tiempo.
+    vm.ofrecerMedidas?.let { cm ->
+        val visible = fichaPaciente == null && tratCita == null && vm.ofrecerTratamiento == null
+        LaunchedEffect(cm, visible) {
+            if (!visible) return@LaunchedEffect
+            kotlinx.coroutines.delay(pe.saniape.app.ui.clinica.nutricion.VIDA_OFERTA_MEDIDAS_MS)
+            if (vm.ofrecerMedidas === cm) vm.cerrarOfertaMedidas()
+        }
+        if (visible) {
+            pe.saniape.app.ui.clinica.agenda.modales.BarraOfertaMedidas(
+                pacienteNombre = cm.pacienteNombre,
+                cargando = cargandoFicha,
+                onRegistrar = {
+                    vm.cerrarOfertaMedidas()
+                    abrirFichaNutricion(cm, "medidas", abrirFormulario = true)
+                },
+                onCerrar = { vm.cerrarOfertaMedidas() },
+            )
+        }
+    }
+
     fichaPaciente?.let { pac ->
         Box(Modifier.fillMaxSize().background(c.fondo)) {
             pe.saniape.app.tutoriales.PantallaTutorial("Ficha") { PantallaFichaPaciente(
                 ctx = ctx, pacienteInicial = pac,
-                onCerrar = { fichaPaciente = null; fichaEjercicios = null },
+                onCerrar = { fichaPaciente = null; fichaEjercicios = null; fichaNutricion = null },
                 ejerciciosAlAbrir = fichaEjercicios,
+                nutricionAlAbrir = fichaNutricion,
             ) }
         }
     }

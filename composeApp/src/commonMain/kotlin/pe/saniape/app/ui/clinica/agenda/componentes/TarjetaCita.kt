@@ -118,6 +118,12 @@ fun TarjetaCita(
     textoReceta: String? = null,
     /** Indicador "💊 Receta N° 000012" / "📋 Indicaciones N° …" si la cita ya tiene una vinculada. */
     recetaVinculada: String? = null,
+    /**
+     * Cita de NUTRICIÓN y quien mira puede escribir en la ficha ('pacientes' o
+     * 'sesiones'): "⚖️ Medidas" y "🥗 Plan alimentario" de esta atención, sin
+     * buscar la pestaña (gemelo del menú de /citas web). Lo decide la pantalla.
+     */
+    nutricion: Boolean = false,
 ) {
     // Multipaís: el costo va en la moneda de la sede de la cita ("todas las sedes").
     val moneda = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)
@@ -267,7 +273,8 @@ fun TarjetaCita(
                 evaluacionPsico = evaluacionPsico && cita.tratamientoId != null,
                 cobrar = cobrable && puedeCobrar && !pagada,
                 anularCobro = anularCobro && pagada,
-                receta = textoReceta?.takeIf { cita.pacienteId != null })
+                receta = textoReceta?.takeIf { cita.pacienteId != null },
+                nutricion = nutricion && cita.pacienteId != null)
             if (acc.isNotEmpty()) {
                 Spacer(Modifier.height(Sania.dim.md))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
@@ -306,6 +313,8 @@ enum class AccionTarjeta {
     AnularCobro,
     /** "📝 Dar receta / indicaciones" de la cita atendida (o "🖨 Ver" la que ya tiene). */
     Receta,
+    /** Nutrición: la ficha en ⚖️ Medidas (formulario abierto, vinculado a la cita) o en 🥗 Plan alimentario. */
+    Medidas, PlanAlimentario,
 }
 
 /**
@@ -367,6 +376,8 @@ private fun accionesPara(
     anularCobro: Boolean = false,
     /** Texto de "📝 Dar receta / indicaciones" (solo en la cita completada); null = no aplica. */
     receta: String? = null,
+    /** Nutrición: "⚖️ Medidas" y "🥗 Plan alimentario" de la atención. */
+    nutricion: Boolean = false,
 ): List<Triple<String, AccionTarjeta, Color>> {
     val c = Sania.colors
     val lista = mutableListOf<Triple<String, AccionTarjeta, Color>>()
@@ -415,6 +426,11 @@ private fun accionesPara(
     // revisar o marcar sin ir a la ficha. No en las sesiones de tratamiento
     // (ahí se atiende lo ya presupuestado). Mismo criterio que la web.
     if (odontograma && tipo != "Sesión") lista.add(Triple("🦷 Odontograma", AccionTarjeta.Odontograma, c.info))
+    // Nutrición: medidas y plan alimentario de esta atención (no en la cancelada).
+    if (nutricion && estado != "Cancelada") {
+        lista.add(Triple("⚖️ Medidas", AccionTarjeta.Medidas, c.teal))
+        lista.add(Triple("🥗 Plan alimentario", AccionTarjeta.PlanAlimentario, c.teal))
+    }
     // Crear el plan desde la cita que evalúa (no cancelada), como la web.
     if (crearTratamiento && estado != "Cancelada") lista.add(Triple("🩺 Crear tratamiento", AccionTarjeta.CrearTratamiento, c.purple))
     // Corregir un cobro dividido es anularlo y volver a cobrar (como la web, solo Admin).

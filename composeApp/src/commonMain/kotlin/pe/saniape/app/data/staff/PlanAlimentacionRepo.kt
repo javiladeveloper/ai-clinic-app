@@ -110,6 +110,32 @@ object PlanAlimentacionRepo {
 
     suspend fun borrar(id: String): ResultadoEscritura = borrarEn(RUTA, id)
 
+    // ── Autocompletado que aprende ──
+
+    private const val RUTA_SUGERENCIAS = "/api/staff/plan-alimentacion/sugerencias"
+    /** Caché de la sesión (por usuario): UN viaje al abrir el editor; al escribir se filtra en memoria. */
+    private var cacheSugerencias: Pair<String?, SugerenciasPlan>? = null
+
+    /**
+     * Lo que la clínica ya escribió en sus planes (más usado primero). Si falla
+     * o el servidor aún no tiene la ruta, vacío: el editor sigue con los chips
+     * base (nunca bloquea). Solo se guarda en caché una respuesta buena.
+     */
+    suspend fun sugerencias(): SugerenciasPlan {
+        val clinica = Supabase.client.auth.currentSessionOrNull()?.user?.id
+        cacheSugerencias?.takeIf { it.first == clinica }?.let { return it.second }
+        val tk = token() ?: return SugerenciasPlan()
+        return try {
+            val resp = http.get("${Supabase.SITE_URL}$RUTA_SUGERENCIAS") { header("Authorization", "Bearer $tk") }
+            if (resp.status != HttpStatusCode.OK) return SugerenciasPlan()
+            val o = runCatching { json.parseToJsonElement(resp.bodyAsText()).jsonObject }.getOrNull() ?: return SugerenciasPlan()
+            sugerenciasPlanDeJson(o).also { cacheSugerencias = clinica to it }
+        } catch (e: CancellationException) { throw e } catch (_: Exception) { SugerenciasPlan() }
+    }
+
+    /** Tras guardar un plan: la próxima vez se vuelve a pedir (ya aprendió lo nuevo). */
+    fun olvidarSugerencias() { cacheSugerencias = null }
+
     // ── Plantillas ──
 
     /** Las de la clínica, por nombre. Si no se pudo leer (o el servidor no las tiene), lista vacía. */

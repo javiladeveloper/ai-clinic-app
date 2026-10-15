@@ -22,6 +22,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -46,6 +48,11 @@ import kotlinx.serialization.json.booleanOrNull
 import pe.saniape.app.data.staff.ComidaEditor
 import pe.saniape.app.data.staff.ContenidoEditorPlan
 import pe.saniape.app.data.staff.DatosCalculo
+import pe.saniape.app.data.staff.FraseFrecuenteApp
+import pe.saniape.app.data.staff.FrasesCampoPlan
+import pe.saniape.app.data.staff.SugerenciasPlan
+import pe.saniape.app.data.staff.frasesCampoTextoPlan
+import pe.saniape.app.data.staff.frasesComidaPlan
 import pe.saniape.app.data.staff.LimitesPlan
 import pe.saniape.app.data.staff.MedicionesRepo
 import pe.saniape.app.data.staff.NivelActividad
@@ -82,6 +89,7 @@ import pe.saniape.app.data.staff.validarDatosCalculo
 import pe.saniape.app.data.staff.validarPlan
 import pe.saniape.app.data.staff.validarPlantilla
 import pe.saniape.app.ui.Toaster
+import pe.saniape.app.ui.clinica.atencion.CampoTextoClinico
 import pe.saniape.app.ui.clinica.pacientes.CajaSelectorForm
 import pe.saniape.app.ui.clinica.pacientes.DialogoFecha
 import pe.saniape.app.ui.clinica.pacientes.DialogoForm
@@ -100,6 +108,11 @@ import pe.saniape.app.ui.theme.Sania
  *  · Editor: fecha, objetivo, comidas del día (los 5 tiempos; se agregan,
  *    quitan y reordenan), recomendaciones, evitar, hidratación y la
  *    calculadora (Mifflin-St Jeor) con peso y talla de la última medición.
+ *    Cada texto con chips para tocar y autocompletado que aprende de lo que
+ *    la clínica ya escribió (PlanAlimentacionChips.kt + /sugerencias), y el
+ *    interruptor "Visible para el paciente en su app".
+ *  · Recién guardado: imprimir y WhatsApp ahí mismo (y, sin cita por delante,
+ *    "📅 Agendar siguiente control").
  *
  * Carga SOLO cuando la pestaña se abre (la monta el padre en su `when`). Las
  * plantillas y las medidas se piden recién al abrir el editor. Sin listas
@@ -121,6 +134,12 @@ fun PlanAlimentarioTab(
     clinicaDireccion: String?,
     logoUrl: String?,
     colorPrincipal: String?,
+    /** La cita de la que viene (agenda o ⚖️ Medidas): el plan NUEVO queda vinculado a ella. */
+    citaId: String? = null,
+    /** Abrir un plan nuevo de una ("Continuar con el plan alimentario →"); parte del último. */
+    abrirNuevo: Boolean = false,
+    /** "📅 Agendar siguiente control" tras guardar (la ficha lo pasa solo si no tiene cita por delante). */
+    onAgendarControl: (() -> Unit)? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -140,7 +159,9 @@ fun PlanAlimentarioTab(
         profesionales = runCatching { PacientesRepo.terapeutasActivos().associate { it.id to it.nombre } }.getOrDefault(emptyMap())
     }
     // null = cerrado · "nuevo" · id del plan que se edita
-    var editor by remember { mutableStateOf<String?>(null) }
+    var editor by remember { mutableStateOf(if (abrirNuevo && puedeEditar) "nuevo" else null) }
+    // El plan recién guardado: imprimir y mandarlo por WhatsApp quedan ahí mismo.
+    var recien by remember { mutableStateOf<String?>(null) }
     var confirmarBorrar by remember { mutableStateOf<PlanAlimentacion?>(null) }
     var borrando by remember { mutableStateOf(false) }
     var comoPlantilla by remember { mutableStateOf<PlanAlimentacion?>(null) }
@@ -164,9 +185,42 @@ fun PlanAlimentarioTab(
 
     val planes = items.orEmpty()
     val waValido = enlaceWhatsAppSede(telefono) != null
+    fun imprimir(p: PlanAlimentacion) {
+        acciones.abrirHtml(
+            htmlPlanAlimentario(p, clinicaNombre, clinicaDireccion, logoUrl, colorPrincipal,
+                pacienteNombre, pacienteDocumento, p.terapeutaId?.let { profesionales[it] }),
+            "Plan alimentario",
+        )
+    }
+    fun enviarWhatsApp(p: PlanAlimentacion) {
+        val texto = textoPlanWhatsApp(p, clinicaNombre, pacienteNombre, p.terapeutaId?.let { profesionales[it] })
+        // enlaceWhatsAppSede → urlWhatsApp (api.whatsapp.com/send): wa.me?text= rompe los emojis.
+        val url = enlaceWhatsAppSede(telefono, texto)
+        if (url == null) Toaster.error("El paciente no tiene un celular válido") else acciones.abrirUrl(url)
+    }
+    val guardado = recien?.takeIf { editor == null }?.let { id -> planes.firstOrNull { it.id == id } }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("🥗 Plan alimentario", color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        guardado?.let { g ->
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.okBg)
+                    .border(1.dp, c.ok, RoundedCornerShape(Sania.shape.md.dp)).padding(12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("✓ Plan guardado · ¿se lo entregas?", color = c.ok, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f))
+                    Text("✕", color = c.textoSuave, fontSize = 14.sp,
+                        modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable { recien = null }.padding(horizontal = 8.dp, vertical = 4.dp))
+                }
+                FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BotonPlan("🖨 Imprimir / PDF") { imprimir(g) }
+                    if (waValido) BotonPlan("💬 Enviar por WhatsApp") { enviarWhatsApp(g) }
+                    onAgendarControl?.let { agendar -> BotonPlan("📅 Agendar siguiente control") { recien = null; agendar() } }
+                }
+            }
+        }
         if (puedeEditar && planes.isNotEmpty()) BotonPlan("＋ Nuevo plan", lleno = true) { editor = "nuevo" }
 
         if (planes.isEmpty()) {
@@ -190,19 +244,8 @@ fun PlanAlimentarioTab(
                     TarjetaPlan(
                         plan = p, actual = i == 0, puedeEditar = puedeEditar, waValido = waValido,
                         profesional = p.terapeutaId?.let { profesionales[it] },
-                        onImprimir = {
-                            acciones.abrirHtml(
-                                htmlPlanAlimentario(p, clinicaNombre, clinicaDireccion, logoUrl, colorPrincipal,
-                                    pacienteNombre, pacienteDocumento, p.terapeutaId?.let { profesionales[it] }),
-                                "Plan alimentario",
-                            )
-                        },
-                        onWhatsApp = {
-                            val texto = textoPlanWhatsApp(p, clinicaNombre, pacienteNombre, p.terapeutaId?.let { profesionales[it] })
-                            // enlaceWhatsAppSede → urlWhatsApp (api.whatsapp.com/send): wa.me?text= rompe los emojis.
-                            val url = enlaceWhatsAppSede(telefono, texto)
-                            if (url == null) Toaster.error("El paciente no tiene un celular válido") else acciones.abrirUrl(url)
-                        },
+                        onImprimir = { imprimir(p) },
+                        onWhatsApp = { enviarWhatsApp(p) },
                         onEditar = { editor = p.id },
                         onPlantilla = { comoPlantilla = p },
                         onBorrar = { confirmarBorrar = p },
@@ -217,9 +260,11 @@ fun PlanAlimentarioTab(
         androidx.compose.runtime.key(e) {
             EditorPlan(
                 pacienteId = pacienteId, edad = edad, plan = enEdicion, ultimo = planes.firstOrNull(),
+                citaId = citaId,
                 onCerrar = { editor = null },
                 onGuardado = { p, nuevo ->
                     editor = null
+                    recien = p.id
                     items = pe.saniape.app.data.staff.ordenarPlanes(if (nuevo) listOf(p) + planes else planes.map { if (it.id == p.id) p else it })
                 },
             )
@@ -245,6 +290,7 @@ fun PlanAlimentarioTab(
                         if (r.registrada || r.rechazo?.codigo == "NO_ENCONTRADO") {
                             confirmarBorrar = null
                             items = planes.filter { it.id != p.id }
+                            if (recien == p.id) recien = null
                             Toaster.exito("Plan eliminado")
                         } else Toaster.error(r.rechazo?.error ?: "No se pudo eliminar")
                     }
@@ -283,6 +329,8 @@ private fun TarjetaPlan(
                     Text("🥗 Plan del ${fechaPlan(plan.fecha)}", color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     if (actual) Pildora("Vigente", c.ok, c.okBg)
                     plan.kcal?.let { Pildora("$it kcal", c.teal, c.tealBg) }
+                    // El paciente no lo ve en su app (las filas viejas, sin el dato, sí lo ven).
+                    if (!plan.visiblePaciente) Pildora("🔒 Solo la clínica", c.textoSuave, c.chipBg)
                 }
                 plan.objetivo?.let {
                     Text("🎯 $it", color = c.textoSuave, fontSize = 12.sp, maxLines = if (abierto) Int.MAX_VALUE else 1,
@@ -399,6 +447,8 @@ private fun EditorPlan(
     plan: PlanAlimentacion?,
     /** El último plan del paciente: un plan nuevo parte de él. */
     ultimo: PlanAlimentacion?,
+    /** Solo para un plan NUEVO: la cita de la que viene. */
+    citaId: String?,
     onCerrar: () -> Unit,
     onGuardado: (PlanAlimentacion, Boolean) -> Unit,
 ) {
@@ -420,6 +470,12 @@ private fun EditorPlan(
     var horaDe by remember { mutableStateOf<Int?>(null) }
     var errores by remember { mutableStateOf<List<String>>(emptyList()) }
     var guardando by remember { mutableStateOf(false) }
+    // Lo ve el paciente en su app (por defecto sí; las filas viejas no traen el dato = sí).
+    var visible by remember { mutableStateOf(plan?.visiblePaciente ?: true) }
+    // Autocompletado que aprende: UN viaje al abrir el editor (caché de la sesión);
+    // al escribir se filtra en memoria. Si falla, quedan los chips base.
+    var sugerencias by remember { mutableStateOf<SugerenciasPlan?>(null) }
+    LaunchedEffect(Unit) { sugerencias = PlanAlimentacionRepo.sugerencias() }
 
     fun partirDe(valor: String) {
         origen = valor
@@ -459,7 +515,8 @@ private fun EditorPlan(
 
     fun guardar() {
         if (guardando) return
-        val b = borradorDesdeEditor(pacienteId, fecha, cont, calculo)
+        val b = borradorDesdeEditor(pacienteId, fecha, cont, calculo,
+            citaId = if (nuevo) citaId else null, visiblePaciente = visible)
         val e = validarPlan(b)
         errores = e
         if (e.isNotEmpty()) return
@@ -469,6 +526,8 @@ private fun EditorPlan(
             guardando = false
             val fila = (r.cuerpo?.get("plan") as? JsonObject)?.let(::planDeJson)
             if (r.registrada && fila != null) {
+                // Lo escrito ya cuenta para el autocompletado: la próxima vez se vuelve a pedir.
+                PlanAlimentacionRepo.olvidarSugerencias()
                 Toaster.exito(if (nuevo) "Plan guardado" else "Plan actualizado")
                 onGuardado(fila, nuevo)
             } else {
@@ -540,8 +599,12 @@ private fun EditorPlan(
         }
 
         Spacer(Modifier.height(12.dp))
-        EtqForm("Objetivo")
-        CampoPlan(cont.objetivo, { cont = cont.copy(objetivo = it.take(LimitesPlan.OBJETIVO)) }, "Ej. Bajar 4 kg en 2 meses, mejorar la glucosa")
+        CampoConChipsPlan(
+            label = "🎯 Objetivo", valor = cont.objetivo,
+            onChange = { cont = cont.copy(objetivo = it.take(LimitesPlan.OBJETIVO)) },
+            frases = frasesCampoTextoPlan("objetivo", sugerencias), placeholder = "Ej. Bajar 4 kg en 2 meses, controlar la glucosa",
+            minLineas = 1, chipsVisibles = 8,
+        )
 
         // ── Energía y macros ──
         Spacer(Modifier.height(14.dp))
@@ -609,8 +672,13 @@ private fun EditorPlan(
                         }
                     }
                     Spacer(Modifier.height(6.dp))
-                    CampoPlan(m.detalle, { v -> setComida(m.k) { it.copy(detalle = v.take(LimitesPlan.DETALLE)) } },
-                        "Ej. 1 taza de avena con leche descremada, 1 fruta", multilinea = true)
+                    // Uno por línea (así sale en la hoja): chips del tiempo de comida + lo que la clínica ya usa.
+                    CampoConChipsPlan(
+                        label = "Qué come en ${m.tiempo.ifBlank { "esta comida" }}", valor = m.detalle,
+                        onChange = { v -> setComida(m.k) { it.copy(detalle = v.take(LimitesPlan.DETALLE)) } },
+                        frases = frasesComidaPlan(m.tiempo, sugerencias), placeholder = "Toca una opción o escribe (una por línea)",
+                        minLineas = 2, chipsVisibles = 6, mostrarEtiqueta = false,
+                    )
                     Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.End) {
                         AccionComida("↑", habilitada = i > 0) { moverComida(i, -1) }
                         AccionComida("↓", habilitada = i < cont.comidas.size - 1) { moverComida(i, 1) }
@@ -630,16 +698,42 @@ private fun EditorPlan(
 
         // ── Indicaciones ──
         listOf(
-            Triple("✅ Recomendaciones", cont.recomendaciones, "Ej. Comer despacio, no saltarse comidas…"),
-            Triple("🚫 Alimentos a evitar", cont.evitar, "Ej. Gaseosas, frituras, embutidos…"),
-            Triple("💧 Hidratación", cont.hidratacion, "Ej. 2 litros de agua al día"),
-        ).forEachIndexed { i, (etq, valor, ph) ->
+            Triple("✅ Recomendaciones", "recomendaciones", "Ej. Comer despacio, no saltarse comidas…"),
+            Triple("🚫 Alimentos a evitar", "evitar", "Ej. Gaseosas, frituras, embutidos…"),
+            Triple("💧 Hidratación", "hidratacion", "Ej. 2 litros de agua al día"),
+        ).forEach { (etq, campo, ph) ->
             Spacer(Modifier.height(12.dp))
-            EtqForm(etq)
-            CampoPlan(valor, { v ->
-                val t = v.take(LimitesPlan.TEXTO)
-                cont = when (i) { 0 -> cont.copy(recomendaciones = t); 1 -> cont.copy(evitar = t); else -> cont.copy(hidratacion = t) }
-            }, ph, multilinea = true)
+            val valor = when (campo) { "recomendaciones" -> cont.recomendaciones; "evitar" -> cont.evitar; else -> cont.hidratacion }
+            CampoConChipsPlan(
+                label = etq, valor = valor,
+                onChange = { v ->
+                    val t = v.take(LimitesPlan.TEXTO)
+                    cont = when (campo) {
+                        "recomendaciones" -> cont.copy(recomendaciones = t)
+                        "evitar" -> cont.copy(evitar = t)
+                        else -> cont.copy(hidratacion = t)
+                    }
+                },
+                frases = frasesCampoTextoPlan(campo, sugerencias), placeholder = ph, minLineas = 2, chipsVisibles = 8,
+            )
+        }
+
+        // ── Lo ve el paciente en su app ──
+        Spacer(Modifier.height(14.dp))
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                .clickable { visible = !visible }.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("📱 Visible para el paciente en su app", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("Lo ve en «Mi plan de alimentación» y lo descarga en PDF.", color = c.textoSuave, fontSize = 11.sp)
+            }
+            Switch(
+                checked = visible, onCheckedChange = { visible = it },
+                colors = SwitchDefaults.colors(checkedTrackColor = c.navy, checkedThumbColor = c.sobreNavy),
+            )
         }
         CajaErrores(errores)
     }
@@ -747,6 +841,31 @@ private fun Calculadora(pacienteId: String, edad: Int?, previo: JsonObject?, onU
 }
 
 // ─── Piezas ──────────────────────────────────────────────────────────────────
+
+/**
+ * Campo de texto del plan con chips y autocompletado: el MISMO campo de la
+ * consulta guiada (CampoTextoClinico, gemelo de CampoConFrases.tsx). Tocar un
+ * chip lo agrega al final (las comidas, uno por línea; el resto, con coma) y
+ * tocarlo otra vez lo quita; al escribir se ofrece lo aprendido y la base.
+ */
+@Composable
+private fun CampoConChipsPlan(
+    label: String,
+    valor: String,
+    onChange: (String) -> Unit,
+    frases: FrasesCampoPlan,
+    placeholder: String,
+    minLineas: Int,
+    chipsVisibles: Int,
+    mostrarEtiqueta: Boolean = true,
+) {
+    val chips = remember(frases) { frases.chips.map { FraseFrecuenteApp("plan", it.texto, 0) } }
+    CampoTextoClinico(
+        label = label, valor = valor, onChange = onChange, frases = chips, soloLectura = false,
+        minLineas = minLineas, placeholder = placeholder, porLinea = frases.porLinea,
+        opciones = frases.opciones, chipsVisibles = chipsVisibles, mostrarEtiqueta = mostrarEtiqueta,
+    )
+}
 
 @Composable
 private fun CampoPlan(

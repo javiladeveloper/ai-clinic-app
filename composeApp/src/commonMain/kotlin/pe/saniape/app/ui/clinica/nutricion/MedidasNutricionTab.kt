@@ -88,6 +88,12 @@ fun MedidasNutricionTab(
     puedeEditar: Boolean,
     /** Para clasificar el IMC (en menores de 18 no se clasifica). */
     edad: Int?,
+    /** La cita de la que viene (agenda → "⚖️ Registrar medidas"): la medición queda vinculada a ella. */
+    citaId: String? = null,
+    /** Abrir el formulario de una (al llegar desde la agenda). */
+    abrirAlInicio: Boolean = false,
+    /** "🥗 Continuar con el plan alimentario →" tras guardar (la ficha cambia de pestaña). */
+    onContinuarPlan: (() -> Unit)? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -100,7 +106,9 @@ fun MedidasNutricionTab(
         if (r != null) { items = r; fallo = false } else fallo = items == null
         cargando = false
     }
-    var registrar by remember { mutableStateOf(false) }
+    var registrar by remember { mutableStateOf(abrirAlInicio && puedeEditar) }
+    // Recién guardada: el paso que sigue (el plan alimentario) a un toque, sin buscar la pestaña.
+    var recienGuardada by remember { mutableStateOf(false) }
     var confirmarBorrar by remember { mutableStateOf<MedicionCorporal?>(null) }
     var borrando by remember { mutableStateOf(false) }
 
@@ -130,7 +138,21 @@ fun MedidasNutricionTab(
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("⚖️ Peso, talla y medidas", color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-        if (puedeEditar) BotonMedidas("＋ Registrar medidas") { registrar = true }
+        if (recienGuardada && onContinuarPlan != null) {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.okBg)
+                    .border(1.dp, c.ok, RoundedCornerShape(Sania.shape.md.dp)).padding(12.dp),
+            ) {
+                Text("✓ Medidas guardadas", color = c.ok, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BotonMedidas("🥗 Continuar con el plan alimentario →", onClick = onContinuarPlan)
+                    Text("Listo", color = c.textoSuave, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).clickable { recienGuardada = false }
+                            .padding(horizontal = 12.dp, vertical = 8.dp))
+                }
+            }
+        } else if (puedeEditar) BotonMedidas("＋ Registrar medidas") { registrar = true }
 
         if (lista.isEmpty()) {
             Tarjeta {
@@ -193,9 +215,11 @@ fun MedidasNutricionTab(
             pacienteId = pacienteId,
             tallaPrevia = remember(lista) { ultimaTalla(lista) },
             edad = edad,
+            citaId = citaId,
             onCerrar = { registrar = false },
             onGuardada = { nueva ->
                 registrar = false
+                recienGuardada = true
                 // Se muestra al instante; la relectura confirma lo que quedó en la base.
                 nueva?.let { n -> items = ordenarMediciones(lista.filter { it.id != n.id } + n) }
                 token++
@@ -243,6 +267,8 @@ private fun FormularioMedidas(
     pacienteId: String,
     tallaPrevia: Double?,
     edad: Int?,
+    /** La cita de la que vino (la base valida que sea de este paciente). */
+    citaId: String?,
     onCerrar: () -> Unit,
     onGuardada: (MedicionCorporal?) -> Unit,
 ) {
@@ -267,7 +293,7 @@ private fun FormularioMedidas(
         if (e.isNotEmpty()) return
         guardando = true
         scope.launch {
-            val r = MedicionesRepo.registrar(b)
+            val r = MedicionesRepo.registrar(b, citaId = citaId)
             guardando = false
             if (r.registrada) {
                 Toaster.exito("Medidas registradas")

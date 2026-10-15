@@ -128,6 +128,16 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         cita.terapeutaId?.let { espsPorTerapeuta[it] },
     )
 
+    /** ¿Esta cita es de nutrición? (⚖️ Medidas / 🥗 Plan alimentario). Gemelo de `citaEsNutricion`. */
+    fun esNutricion(cita: CitaStaff): Boolean = pe.saniape.app.data.staff.citaEsNutricion(
+        ctx.mapaNutricion, cita.especialidadId, cita.especialidadServicioId,
+        cita.terapeutaId?.let { espsPorTerapeuta[it] },
+    )
+
+    /** "⚖️ Medidas" / "🥗 Plan alimentario" en la tarjeta: cita de nutrición + permiso de escribir en la ficha. */
+    fun nutricionEnTarjeta(cita: CitaStaff): Boolean =
+        cita.pacienteId != null && (ctx.puede("pacientes") || ctx.puede("sesiones")) && esNutricion(cita)
+
     /** ¿Esta cita es de fisioterapia? (EVA, mejorías, dictado al completar). Gemelo de `citaEsFisio`. */
     fun esFisio(cita: CitaStaff): Boolean = pe.saniape.app.data.staff.citaEsFisio(
         ctx.mapaFisio, cita.especialidadId, cita.especialidadServicioId,
@@ -713,6 +723,15 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     var ofrecerSiguiente by mutableStateOf<OfertaSiguiente?>(null); private set
     fun cerrarOfertaSiguiente() { ofrecerSiguiente = null }
 
+    /**
+     * Nutrición: tras completar un control, "⚖️ Registrar medidas" (gemelo de
+     * `ofrecerMedidasNutri` de /citas). Es un AVISO que no bloquea ni encadena:
+     * "📅 Agendar siguiente" sale igual que siempre, a la vez. Aceptar abre la
+     * ficha en ⚖️ Medidas con el formulario vinculado a esta cita.
+     */
+    var ofrecerMedidas by mutableStateOf<CitaStaff?>(null); private set
+    fun cerrarOfertaMedidas() { ofrecerMedidas = null }
+
     /** Cobro que no entró tras completar la sesión desde la agenda (para reintentar SOLO el cobro). */
     data class CobroFallidoAgenda(
         val cita: CitaStaff, val tratamientoId: String, val numero: Int,
@@ -922,6 +941,14 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                     AccionCita.Cancelar -> "Cita cancelada"
                 }
                 pe.saniape.app.ui.Toaster.exito(textoExito ?: txt)
+                // Nutrición: "⚖️ Registrar medidas" (aviso aparte; no toca lo que sigue).
+                if (accion == AccionCita.Completar && pe.saniape.app.ui.clinica.nutricion.ofrecerMedidasTrasCompletar(
+                        esNutricion = esNutricion(cita), pacienteId = cita.pacienteId,
+                        puedePacientes = ctx.puede("pacientes"), puedeSesiones = ctx.puede("sesiones"),
+                        encolada = completadaEncolada,
+                    )) {
+                    ofrecerMedidas = cita.copy(estado = "Completada")
+                }
                 // Fisioterapia: la evaluación estructurada (opcional). Aparte, para no
                 // demorar la recarga de la agenda; nunca bloquea: la cita ya quedó
                 // completada y, si falla, solo se avisa (gemelo de guardarEvaluacionDeCita).

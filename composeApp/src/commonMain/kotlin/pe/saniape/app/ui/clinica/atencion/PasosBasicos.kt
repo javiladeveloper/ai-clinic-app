@@ -38,6 +38,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -364,8 +365,21 @@ internal fun CampoTextoClinico(
     placeholder: String? = null,
     /** true = las frases van una por línea (examen, indicaciones); false = con coma. */
     porLinea: Boolean = false,
+    /**
+     * Autocompletado (gemelo de CampoConFrases.tsx): lo que se ofrece para el
+     * fragmento en curso mientras se escribe. Vacío = sin autocompletado.
+     */
+    opciones: List<String> = emptyList(),
+    /** Chips visibles antes de "+N más". */
+    chipsVisibles: Int = CHIPS_VISIBLES,
+    /** false = sin la etiqueta encima (el contexto ya la muestra, p. ej. el tiempo de comida). */
+    mostrarEtiqueta: Boolean = true,
 ) {
     val c = Sania.colors
+    var enfocado by remember { mutableStateOf(false) }
+    val sugerencias = remember(valor, opciones, porLinea) {
+        if (opciones.isEmpty()) emptyList() else sugerirPara(fragmentoEnCurso(valor, porLinea), opciones)
+    }
     // El dictado llega por callback: siempre sobre el valor y el onChange de AHORA.
     val valorActual by rememberUpdatedState(valor)
     val onChangeActual by rememberUpdatedState(onChange)
@@ -408,7 +422,7 @@ internal fun CampoTextoClinico(
     }
 
     Column(Modifier.fillMaxWidth()) {
-        EtqForm(label)
+        if (mostrarEtiqueta) EtqForm(label)
         OutlinedTextField(
             value = valor,
             onValueChange = onChange,
@@ -435,8 +449,25 @@ internal fun CampoTextoClinico(
                     ) { Text(if (escuchando) "■" else "🎤", fontSize = 15.sp, color = if (escuchando) c.sobreNavy else c.navy) }
                 }
             } else null,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().onFocusChanged { enfocado = it.isFocused },
         )
+        // Autocompletado: solo en el campo donde se escribe; tocar una opción
+        // completa el fragmento en curso y conserva lo anterior.
+        if (!soloLectura && enfocado && sugerencias.isNotEmpty()) {
+            Column(
+                Modifier.fillMaxWidth().padding(top = 4.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .background(c.fondo).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
+            ) {
+                sugerencias.forEach { s ->
+                    Box(
+                        Modifier.fillMaxWidth().heightIn(min = 40.dp)
+                            .clickable { onChange(completarFragmento(valor, s, porLinea)) }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) { Text(s, color = c.texto, fontSize = 13.sp) }
+                }
+            }
+        }
         if (escuchando) {
             Text(
                 if (parcial.isBlank()) "🎙 Escuchando… toca ■ para terminar." else "🎙 $parcial",
@@ -445,7 +476,7 @@ internal fun CampoTextoClinico(
             )
         }
         if (!soloLectura && frases.isNotEmpty()) {
-            val visibles = if (todos) frases else frases.take(CHIPS_VISIBLES)
+            val visibles = if (todos) frases else frases.take(chipsVisibles)
             val ocultos = frases.size - visibles.size
             Spacer(Modifier.height(8.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -640,6 +671,42 @@ internal fun insertarFrase(texto: String, frase: String, porLinea: Boolean): Str
             base.endsWith(".") -> "$base $p"
             else -> "$base, ${enMinuscula(p)}"
         }
+    }
+    return r
+}
+
+/**
+ * El fragmento que se está escribiendo ahora (desde el último separador), para
+ * el autocompletado. Gemelo de `fragmentoEnCurso` de lib/frases-clinicas.ts.
+ */
+internal fun fragmentoEnCurso(texto: String, porLinea: Boolean): String {
+    var frag = if (porLinea) texto.substringAfterLast('\n')
+    else texto.substring(texto.lastIndexOfAny(charArrayOf(',', ';', '\n')) + 1)
+    // Por líneas, una línea puede tener varias oraciones: cuenta la última.
+    if (porLinea) frag = frag.split(Regex("""\.\s+""")).last()
+    return frag.trimStart()
+}
+
+/** Reemplaza el fragmento en curso por la opción elegida (conserva lo anterior). */
+internal fun completarFragmento(texto: String, opcion: String, porLinea: Boolean): String {
+    val frag = fragmentoEnCurso(texto, porLinea)
+    val antes = texto.substring(0, texto.length - frag.length)
+    val pegado = antes.trimEnd()
+    val valor = if (!porLinea && (pegado.endsWith(",") || pegado.endsWith(";"))) enMinuscula(opcion) else opcion
+    return antes + valor
+}
+
+/** Sugerencias para el fragmento en curso: contienen lo escrito y aún no coinciden (máx. [max]). */
+internal fun sugerirPara(fragmento: String, opciones: List<String>, max: Int = 6): List<String> {
+    val q = normalizarFrase(fragmento)
+    if (q.length < 2) return emptyList()
+    val vistos = HashSet<String>()
+    val r = mutableListOf<String>()
+    for (o in opciones) {
+        val n = normalizarFrase(o)
+        if (n in vistos || n == q || !n.contains(q)) continue
+        vistos += n; r += o
+        if (r.size >= max) break
     }
     return r
 }

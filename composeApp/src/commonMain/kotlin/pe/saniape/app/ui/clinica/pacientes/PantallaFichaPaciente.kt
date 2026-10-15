@@ -86,6 +86,11 @@ fun PantallaFichaPaciente(
      * null = la ficha de siempre (pestaña Atenciones).
      */
     ejerciciosAlAbrir: pe.saniape.app.ui.clinica.fisio.IndicarEjercicios? = null,
+    /**
+     * Nutrición (desde la agenda): la ficha arranca en ⚖️ Medidas o 🥗 Plan
+     * alimentario, con la cita vinculada y, si se pide, el formulario abierto.
+     */
+    nutricionAlAbrir: pe.saniape.app.ui.clinica.nutricion.AperturaNutricion? = null,
 ) {
     // Multipaís: el dinero de la ficha va en la moneda de la sede del paciente
     // (solo con "pacientes por sede"; si no, la de la sede activa). Una clínica de
@@ -99,7 +104,7 @@ fun PantallaFichaPaciente(
     androidx.compose.runtime.CompositionLocalProvider(
         pe.saniape.app.ui.LocalMoneda provides pe.saniape.app.data.staff.monedaDeFila(sedePaciente),
     ) {
-        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir)
+        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir)
     }
 }
 
@@ -107,6 +112,7 @@ fun PantallaFichaPaciente(
 private fun PantallaFichaPacienteContenido(
     ctx: ContextoStaff, pacienteInicial: PacienteStaff, onCerrar: () -> Unit,
     ejerciciosAlAbrir: pe.saniape.app.ui.clinica.fisio.IndicarEjercicios?,
+    nutricionAlAbrir: pe.saniape.app.ui.clinica.nutricion.AperturaNutricion?,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val tpl = LocalTerminologiaPaciente.current
@@ -141,7 +147,14 @@ private fun PantallaFichaPacienteContenido(
     var editarTratamiento by remember { mutableStateOf<TratamientoPaciente?>(null) }
     var registrarAtencion by remember { mutableStateOf<TratamientoPaciente?>(null) }
     var recargarToken by remember { mutableStateOf(0) }   // fuerza recarga de las tarjetas
-    var tab by remember { mutableStateOf(if (ejerciciosAlAbrir != null) "ejercicios" else "atenciones") }
+    var tab by remember {
+        mutableStateOf(if (ejerciciosAlAbrir != null) "ejercicios" else nutricionAlAbrir?.tab ?: "atenciones")
+    }
+    // Nutrición: el flujo medidas → plan con la cita de la que se viene (los
+    // "abrir de una" valen una vez: al pasar a otra pestaña se apagan).
+    var flujoNutri by remember {
+        mutableStateOf(pe.saniape.app.ui.clinica.nutricion.FlujoNutricionFicha.desde(nutricionAlAbrir))
+    }
     // Ejercicios de apoyo: se viene de cerrar una sesión con "dejarle ejercicios" (aquí,
     // o desde la agenda / Sesiones con [ejerciciosAlAbrir]) → la pestaña 🏠 abre con ESA
     // sesión elegida. Se olvida al pasar a otra pestaña.
@@ -220,7 +233,8 @@ private fun PantallaFichaPacienteContenido(
     // ¿Pestaña ⚖️ Medidas? (nutrición, gemelo de `pacienteEsNutricion`). Misma receta
     // que la de fisio: con lo que la ficha ya tiene, sin consultas extra. Un backend sin
     // `especialidadesNutricion`/`soloNutricion` deja el mapa vacío y no aparece.
-    val esPacienteNutricion = pe.saniape.app.data.staff.pacienteEsNutricion(
+    // Se llegó desde una cita de nutrición de la agenda: el paciente ES de nutrición.
+    val esPacienteNutricion = nutricionAlAbrir != null || pe.saniape.app.data.staff.pacienteEsNutricion(
         ctx.mapaNutricion,
         atenciones = paciente.tratamientos.map { t ->
             pe.saniape.app.data.staff.AtencionFisio(
@@ -362,6 +376,37 @@ private fun PantallaFichaPacienteContenido(
         }
     }
     fun recargar() { recargarToken++ }
+
+    /**
+     * Nutrición: "📅 Agendar siguiente control" tras guardar el plan (sin una
+     * próxima cita). El formulario de crear cita de siempre, prellenado como el
+     * "Agendar control" del tratamiento: el de nutrición de la cita de la que se
+     * vino (o el activo más reciente), con su próximo control anotado y su
+     * profesional; si aún le quedan sesiones, la siguiente Sesión. Sin
+     * tratamiento de nutrición, una Consulta de siempre.
+     */
+    val agendarControlNutri: () -> Unit = {
+        val hoyCtl = pe.saniape.app.data.staff.hoyClinicaIso()
+        val activos = paciente.tratamientos.filter { tr ->
+            tr.estado == "Activo" && pe.saniape.app.data.staff.citaEsNutricion(
+                ctx.mapaNutricion,
+                especialidadServicioId = tr.especialidadId
+                    ?: especialidadesClinica.firstOrNull { it.nombre == tr.especialidadNombre }?.id,
+                especialidadesProfesional = tr.especialidadesProfesional,
+            )
+        }
+        val t = activos.firstOrNull { it.id == flujoNutri.tratamientoId } ?: activos.firstOrNull()
+        val fechaCtl = pe.saniape.app.data.staff.fechaParaAgendarControl(t?.proximoControl, hoyCtl)
+        crearCita = pe.saniape.app.ui.clinica.PrefillCita(
+            tipo = if (t != null && t.usaSesiones && t.sesionesCompletadas < t.totalSesiones) "Sesión" else "Consulta",
+            pacienteId = paciente.id, pacienteNombre = paciente.nombre,
+            fecha = fechaCtl,
+            hora = pe.saniape.app.data.staff.horaInicialNuevaCita(fechaCtl, hoyCtl, pe.saniape.app.ui.proximaHoraEnPunto()),
+            terapeutaId = t?.terapeutaId ?: ctx.miTerapeutaId,
+            especialidadId = t?.let { tr -> tr.especialidadId ?: especialidadesClinica.firstOrNull { it.nombre == tr.especialidadNombre }?.id },
+            tratamientoId = t?.id,
+        )
+    }
 
     // Se llegó a la pestaña 🏠 (desde la agenda o Sesiones) pero, ya cargada la ficha, el
     // paciente no resultó ser de fisioterapia: esa pestaña no existe para él. Cae en
@@ -735,7 +780,11 @@ private fun PantallaFichaPacienteContenido(
                                 .clip(RoundedCornerShape(Sania.shape.pill.dp))
                                 .background(if (activo) c.navy else c.superficie)
                                 .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
-                                .clickable { tab = key; if (key != "ejercicios") indicarEjercicios = null }
+                                .clickable {
+                                    tab = key
+                                    if (key != "ejercicios") indicarEjercicios = null
+                                    flujoNutri = flujoNutri.alCambiarTab(key)
+                                }
                                 .padding(horizontal = 14.dp, vertical = 8.dp),
                         ) { Text(label, color = if (activo) c.sobreNavy else c.texto, fontSize = 12.sp,
                             fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal, maxLines = 1) }
@@ -887,6 +936,12 @@ private fun PantallaFichaPacienteContenido(
                             edad = pe.saniape.app.data.staff.edadDe(
                                 paciente.fechaNacimiento, paciente.edad, pe.saniape.app.data.staff.hoyClinicaIso(),
                             ),
+                            citaId = flujoNutri.citaId,
+                            abrirAlInicio = flujoNutri.abrirMedidas,
+                            onContinuarPlan = {
+                                flujoNutri = flujoNutri.continuarConPlan()
+                                tab = "plan"
+                            },
                         )
                     }
                     // 🥗 Plan alimentario (nutrición): consulta SOLO al abrirse, como ⚖️ Medidas.
@@ -909,6 +964,14 @@ private fun PantallaFichaPacienteContenido(
                             clinicaDireccion = ctx.clinicaDireccion,
                             logoUrl = ctx.logoUrl,
                             colorPrincipal = ctx.colorPrincipal,
+                            citaId = flujoNutri.citaId,
+                            abrirNuevo = flujoNutri.abrirPlan,
+                            // Sin una próxima cita: "📅 Agendar siguiente control" (el agendar de siempre).
+                            onAgendarControl = agendarControlNutri.takeIf {
+                                hitos != null && hitos?.proximaCitaFecha == null &&
+                                    (ctx.puede("agendar") || ctx.puede("sesiones")) &&
+                                    !pe.saniape.app.data.staff.fichaInactiva(paciente.estado)
+                            },
                         )
                     }
                     // 🏠 Ejercicios de apoyo (fisio): consulta SOLO al abrirse, como la 📏.

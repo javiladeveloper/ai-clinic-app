@@ -80,6 +80,8 @@ data class PlanAlimentacion(
     val citaId: String? = null,
     val terapeutaId: String? = null,
     val createdAt: String? = null,
+    /** Lo ve el paciente en su app / portal. Una fila vieja sin el dato = visible. */
+    val visiblePaciente: Boolean = true,
 ) : ContenidoPlanFuente
 
 /** Una fila de `plantillas_plan_alimentacion`. */
@@ -133,6 +135,10 @@ data class BorradorPlan(
     val evitar: String? = null,
     val hidratacion: String? = null,
     val calculo: JsonObject? = null,
+    /** Solo al crear: la cita de la que viene (agenda → medidas → plan). La base valida que sea del paciente. */
+    val citaId: String? = null,
+    /** Lo ve el paciente en su app (por defecto sí). Un backend viejo ignora el campo. */
+    val visiblePaciente: Boolean = true,
 )
 
 private fun validarEnergia(kcalTxt: String?, p: String?, c: String?, g: String?, e: MutableList<String>) {
@@ -249,7 +255,10 @@ fun contenidoDesde(b: ContenidoPlanFuente?): ContenidoEditorPlan {
 }
 
 /** Editor → borrador para validar y enviar. */
-fun borradorDesdeEditor(pacienteId: String, fecha: String, c: ContenidoEditorPlan, calculo: JsonObject?): BorradorPlan {
+fun borradorDesdeEditor(
+    pacienteId: String, fecha: String, c: ContenidoEditorPlan, calculo: JsonObject?,
+    citaId: String? = null, visiblePaciente: Boolean = true,
+): BorradorPlan {
     fun vacio(v: String) = v.trim().ifEmpty { null }
     return BorradorPlan(
         pacienteId = pacienteId, fecha = fecha, objetivo = vacio(c.objetivo), kcal = vacio(c.kcal),
@@ -257,6 +266,8 @@ fun borradorDesdeEditor(pacienteId: String, fecha: String, c: ContenidoEditorPla
         comidas = c.comidas.map { it.aComida() },
         recomendaciones = vacio(c.recomendaciones), evitar = vacio(c.evitar), hidratacion = vacio(c.hidratacion),
         calculo = calculo,
+        citaId = citaId?.takeIf { it.isNotBlank() },
+        visiblePaciente = visiblePaciente,
     )
 }
 
@@ -286,7 +297,11 @@ private fun numeroONull(v: String?): Double? = aNumero(v)?.takeIf { !it.isNaN() 
  * Las comidas van como se escribieron; el servidor descarta las vacías.
  */
 fun cuerpoPlan(b: BorradorPlan, id: String? = null): JsonObject = buildJsonObject {
-    if (id != null) put("id", id) else put("pacienteId", b.pacienteId)
+    if (id != null) put("id", id) else {
+        put("pacienteId", b.pacienteId)
+        // La cita solo al crear (un plan ya guardado no cambia de atención).
+        b.citaId?.takeIf { it.isNotBlank() }?.let { put("citaId", it) }
+    }
     b.fecha?.takeIf { it.isNotBlank() }?.let { put("fecha", it) }
     fun texto(k: String, v: String?) { if (v.isNullOrBlank()) put(k, JsonNull) else put(k, v.trim()) }
     texto("objetivo", b.objetivo)
@@ -301,6 +316,7 @@ fun cuerpoPlan(b: BorradorPlan, id: String? = null): JsonObject = buildJsonObjec
     texto("evitar", b.evitar)
     texto("hidratacion", b.hidratacion)
     put("calculo", b.calculo ?: JsonNull)
+    put("visiblePaciente", b.visiblePaciente)
 }
 
 private fun comidasJson(comidas: List<ComidaPlan>): JsonArray = buildJsonArray {
@@ -360,6 +376,8 @@ fun planDeJson(o: JsonObject): PlanAlimentacion? {
         citaId = o.txtPlan("cita_id"),
         terapeutaId = o.txtPlan("terapeuta_id"),
         createdAt = o.txtPlan("created_at"),
+        // Solo un `false` explícito la oculta: sin la columna (backend viejo) = visible.
+        visiblePaciente = (o["visible_paciente"] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content != "false",
     )
 }
 
