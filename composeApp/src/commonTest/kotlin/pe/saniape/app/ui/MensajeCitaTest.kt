@@ -63,6 +63,14 @@ class MensajeCitaTest {
     }
 
     @Test
+    fun saludo_salta_los_titulos_como_la_web() {
+        assertTrue(mensajeCita("Tlgo. Juan Pérez", "2026-10-05", null, null, "2026-09-27").startsWith("Hola Juan 👋"))
+        assertTrue(mensajeCita("Dr, Luis Ramos", "2026-10-05", null, null, "2026-09-27").startsWith("Hola Luis 👋"))
+        // Todo títulos: la primera palabra (como la web), no "Hola 👋".
+        assertTrue(mensajeCita("Lic.", "2026-10-05", null, null, "2026-09-27").startsWith("Hola Lic. 👋"))
+    }
+
+    @Test
     fun recien_agendada_en_el_dia_de_la_clinica() {
         val lima = TimeZone.of("America/Lima")
         // 23:07 de Lima del 12 = 04:07 UTC del 13 (la cita de JOSE).

@@ -31,7 +31,7 @@ fun mensajeCita(
     recienAgendada: Boolean = false,
 ): String {
     fun limpio(v: String?) = v?.trim().orEmpty()
-    val nombre = nombreDeSaludo(nombrePaciente)?.let { nombreCompletoBonito(it) }.orEmpty()
+    val nombre = nombreCompletoBonito(primerNombreSinTitulo(nombrePaciente))
     val completo = nombreCompletoBonito(nombrePaciente)
     val f = fecha.take(10)
     val dia = fechaHumana(f)
@@ -64,6 +64,22 @@ fun mensajeCita(
     }
     return listOf(encabezado, datos, cierre).filter { it.isNotEmpty() }
         .joinToString("\n\n") { it.joinToString("\n") }
+}
+
+// Títulos que la gente pone delante del nombre: COPIA de TITULOS_NOMBRE de la web
+// (lib/utils.ts) para que el saludo salga igual que el 📱 web. Sin punto y en minúscula.
+private val TITULOS_NOMBRE = setOf(
+    "lic", "licda", "licdo", "dr", "dra", "doc", "mg", "mag", "mgtr", "msc", "mba", "phd",
+    "tlgo", "tlga", "tm", "ft", "fta", "klgo", "klga", "ps", "psic", "psi", "od", "cd",
+    "obst", "nut", "enf", "ing", "prof", "sr", "sra", "srta", "esp", "med",
+)
+
+/** Primer nombre saltando títulos, como primerNombreSinTitulo de la web ("Tlgo. Juan" → "Juan"). */
+internal fun primerNombreSinTitulo(nombre: String?): String? {
+    val partes = nombre.orEmpty().trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+    if (partes.isEmpty()) return null
+    fun esTitulo(p: String) = p.lowercase().replace(Regex("[.,:]"), "") in TITULOS_NOMBRE
+    return partes.firstOrNull { !esTitulo(it) } ?: partes[0]
 }
 
 /** "JOSE LUIS DE LA CRUZ" → "Jose Luis de la Cruz" (casi todos llegan en mayúsculas). */
