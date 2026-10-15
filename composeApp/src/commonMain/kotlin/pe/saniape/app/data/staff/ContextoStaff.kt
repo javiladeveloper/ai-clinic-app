@@ -181,6 +181,12 @@ data class ContextoStaff(
      * pestaña no aparece.
      */
     val mapaPediatria: MapaPediatria = MapaPediatria(),
+    /**
+     * Qué especialidades son de gineco-obstetricia (pestaña 🤰 Embarazo, por
+     * paciente con `pacienteEsGineco`; solo el rubro guardado 'ginecologia').
+     * Un backend sin el campo deja el mapa vacío y la pestaña no aparece.
+     */
+    val mapaGineco: MapaGineco = MapaGineco(),
     val clinicas: List<ClinicaRef>,
     val tienePortal: Boolean,
     /**

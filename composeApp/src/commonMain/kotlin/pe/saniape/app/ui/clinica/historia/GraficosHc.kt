@@ -43,13 +43,24 @@ internal fun GraficoLineaHc(
      * entre tomas (tricoscopía). Por defecto, equiespaciados como siempre.
      */
     ejeTiempo: Boolean = false,
+    /**
+     * Eje X NUMÉRICO (p. ej. semanas de edad gestacional): un valor por punto y
+     * el rango del eje. null = como siempre (orden o tiempo).
+     */
+    ejeX: EjeXGrafico? = null,
+    /** Banda de referencia (x, mínimo, máximo) en el eje de [ejeX] (AU esperada, IOM…). */
+    banda: List<BandaGrafico> = emptyList(),
+    /** Texto de cada punto en la lista de abajo; null = "fecha: valor unidad". */
+    textoPunto: ((PuntoSerieHc, Int) -> String)? = null,
 ) {
     if (puntos.isEmpty()) return
     val c = Sania.colors
     val rejilla = c.borde
     val fondo = c.superficie
-    val min = remember(puntos) { puntos.minOf { it.valor } }
-    val max = remember(puntos) { puntos.maxOf { it.valor } }
+    val colorBanda = c.ok
+    val bandaX = if (ejeX != null) banda else emptyList()
+    val min = remember(puntos, bandaX) { (puntos.map { it.valor } + bandaX.map { it.min }).min() }
+    val max = remember(puntos, bandaX) { (puntos.map { it.valor } + bandaX.map { it.max }).max() }
     val rango = (max - min).takeIf { it > 0.0001 } ?: 1.0
     val fracciones = remember(puntos, ejeTiempo) {
         if (ejeTiempo) pe.saniape.app.data.staff.fraccionesTiempo(puntos.map { it.fecha }) else null
@@ -68,12 +79,22 @@ internal fun GraficoLineaHc(
                 val padX = 8.dp.toPx()
                 val iw = size.width - padX * 2
                 val ih = size.height - padY * 2
-                fun x(i: Int) = padX + when {
+                val anchoX = ejeX?.let { (it.hasta - it.desde).takeIf { a -> a > 0 } ?: 1.0 }
+                fun xNum(v: Double) = padX + (((v - ejeX!!.desde) / anchoX!!).toFloat()).coerceIn(0f, 1f) * iw
+                fun x(i: Int) = if (ejeX != null) xNum(ejeX.valores.getOrElse(i) { ejeX.desde }) else padX + when {
                     puntos.size == 1 -> iw / 2
                     fracciones != null -> fracciones[i].toFloat() * iw
                     else -> i * iw / (puntos.size - 1)
                 }
                 fun y(v: Double) = padY + ih - (((v - min) / rango).toFloat()) * ih
+                if (ejeX != null && bandaX.size > 1) {
+                    val b = Path()
+                    bandaX.forEachIndexed { i, p -> if (i == 0) b.moveTo(xNum(p.x), y(p.max)) else b.lineTo(xNum(p.x), y(p.max)) }
+                    bandaX.reversed().forEach { p -> b.lineTo(xNum(p.x), y(p.min)) }
+                    b.close()
+                    drawPath(b, colorBanda.copy(alpha = 0.14f))
+                    drawPath(b, colorBanda.copy(alpha = 0.5f), style = Stroke(width = 0.8.dp.toPx()))
+                }
                 drawLine(rejilla, Offset(0f, y(max)), Offset(size.width, y(max)), strokeWidth = 1.dp.toPx())
                 drawLine(rejilla, Offset(0f, y(min)), Offset(size.width, y(min)), strokeWidth = 1.dp.toPx())
                 if (puntos.size > 1) {
@@ -87,12 +108,26 @@ internal fun GraficoLineaHc(
                 }
             }
         }
+        ejeX?.let { e ->
+            Row(Modifier.fillMaxWidth().padding(start = 40.dp)) {
+                Text(numeroHc(e.desde), color = c.textoSuave, fontSize = 8.sp, modifier = Modifier.weight(1f))
+                Text("${numeroHc(e.hasta)} ${e.etiqueta.orEmpty()}".trim(), color = c.textoSuave, fontSize = 8.sp)
+            }
+        }
         Text(
-            puntos.joinToString(" · ") { "${fechaHc(it.fecha)}: ${numeroHc(it.valor)} $unidad".trim() },
+            puntos.withIndex().joinToString(" · ") { (i, p) ->
+                textoPunto?.invoke(p, i) ?: "${fechaHc(p.fecha)}: ${numeroHc(p.valor)} $unidad".trim()
+            },
             color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp),
         )
     }
 }
+
+/** Eje X numérico de [GraficoLineaHc]: un valor por punto y el rango del eje. */
+internal data class EjeXGrafico(val valores: List<Double>, val desde: Double, val hasta: Double, val etiqueta: String? = null)
+
+/** Un tramo de la banda de referencia de [GraficoLineaHc]. */
+internal data class BandaGrafico(val x: Double, val min: Double, val max: Double)
 
 /** "2026-10-08" → "08/10/2026"; otra cosa se deja como vino. */
 internal fun fechaHc(iso: String?): String {

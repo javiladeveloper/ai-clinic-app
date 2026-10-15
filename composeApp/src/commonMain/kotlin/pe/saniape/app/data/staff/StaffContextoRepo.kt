@@ -219,6 +219,12 @@ object StaffContextoRepo {
                     .mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } },
                 solo = o.boolOrNull("soloPediatria") ?: false,
             ),
+            // Gineco-obstetricia (🤰 Embarazo): igual, sin el campo (backend viejo) → vacío y nada nuevo.
+            mapaGineco = MapaGineco(
+                ids = (o["especialidadesGineco"] as? kotlinx.serialization.json.JsonArray).orEmpty()
+                    .mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } },
+                solo = o.boolOrNull("soloGineco") ?: false,
+            ),
             // Con defaults: una app nueva contra un backend viejo (o al revés)
             // no puede quedarse sin nombres para sus citas.
             flujo = o.obj("flujo")?.let { f ->
