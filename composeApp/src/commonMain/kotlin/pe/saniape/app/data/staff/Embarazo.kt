@@ -409,20 +409,34 @@ fun evaluarAu(au: Double?, egDias: Int?): EvaluacionAu? {
 
 private val PROTEINURIA_POSITIVA = listOf("+", "++", "+++")
 
+/** Umbrales de la PA en el embarazo (ACOG PB 222): ≥ 140/90 descartar THE; ≥ 160/110 rango severo. */
+const val PA_SIST_ELEVADA = 140
+const val PA_DIAST_ELEVADA = 90
+const val PA_SIST_SEVERA = 160
+const val PA_DIAST_SEVERA = 110
+
+/** Nivel de una toma con el criterio de [alertasPa]: "severa", "elevada" o null (normal). */
+fun nivelPa(sist: Int, diast: Int): String? = when {
+    sist >= PA_SIST_SEVERA || diast >= PA_DIAST_SEVERA -> "severa"
+    sist >= PA_SIST_ELEVADA || diast >= PA_DIAST_ELEVADA -> "elevada"
+    else -> null
+}
+
 /** Presión arterial (ACOG PB 222): ≥ 140/90 descartar THE; ≥ 160/110 rango severo. */
 fun alertasPa(sist: Int?, diast: Int?, egDias: Int?, proteinuria: String?): List<AlertaEmbarazo> {
     if (sist == null || diast == null) return emptyList()
     val out = mutableListOf<AlertaEmbarazo>()
     val pa = "$sist/$diast mmHg"
-    if (sist >= 160 || diast >= 110) {
+    val nivel = nivelPa(sist, diast)
+    if (nivel == "severa") {
         out += AlertaEmbarazo("pa_severa", "alerta", "PA $pa en rango severo: evaluación de inmediato (descartar preeclampsia con signos de severidad).", F_PA)
-    } else if (sist >= 140 || diast >= 90) {
+    } else if (nivel == "elevada") {
         val antes20 = egDias != null && egDias < 20 * 7
         out += AlertaEmbarazo("pa_elevada", "alerta",
             "PA $pa (≥ 140/90): descartar trastorno hipertensivo del embarazo${if (antes20) " — antes de las 20 semanas sugiere HTA crónica" else ""}. Repetir la toma en 4 horas.",
             F_PA)
     }
-    if ((sist >= 140 || diast >= 90) && proteinuria != null && proteinuria in PROTEINURIA_POSITIVA && (egDias == null || egDias >= 20 * 7)) {
+    if (nivel != null && proteinuria != null && proteinuria in PROTEINURIA_POSITIVA && (egDias == null || egDias >= 20 * 7)) {
         out += AlertaEmbarazo("sospecha_preeclampsia", "alerta", "PA elevada con proteinuria $proteinuria en tira: sospecha de preeclampsia.", F_PA)
     }
     return out
@@ -704,6 +718,41 @@ fun seriePa(controles: List<ControlPrenatal>, d: Datacion?): Pair<List<PuntoSeri
     }
     return sist to diast
 }
+
+/**
+ * Una toma de PA para el gráfico: la semana de EG, los dos valores y su nivel
+ * ([nivelPa], el mismo criterio que las alertas del control). Cada valor se
+ * resalta contra SU línea: la sistólica desde 140, la diastólica desde 90.
+ */
+data class PuntoPa(val x: Double, val sistolica: Int, val diastolica: Int, val fecha: String, val nivel: String?) {
+    val sistolicaAlta: Boolean get() = sistolica >= PA_SIST_ELEVADA
+    val diastolicaAlta: Boolean get() = diastolica >= PA_DIAST_ELEVADA
+}
+
+/** Las tomas de PA (con EG y los dos valores), en orden cronológico — los mismos puntos que [seriePa]. */
+fun puntosPa(controles: List<ControlPrenatal>, d: Datacion?): List<PuntoPa> =
+    ordenarControles(controles).mapNotNull { c ->
+        val eg = egDelControl(c, d) ?: return@mapNotNull null
+        val s = c.paSistolica ?: return@mapNotNull null
+        val di = c.paDiastolica ?: return@mapNotNull null
+        PuntoPa(semanasDecimal(eg), s, di, c.fecha, nivelPa(s, di))
+    }
+
+/**
+ * La línea de aviso del gráfico: "⚠ 2 tomas ≥ 140/90 (1 en rango severo ≥ 160/110)".
+ * null si todas están por debajo del umbral.
+ */
+fun resumenAlertasPa(puntos: List<PuntoPa>): String? {
+    val altas = puntos.count { it.nivel != null }
+    if (altas == 0) return null
+    val severas = puntos.count { it.nivel == "severa" }
+    val base = "⚠ $altas ${if (altas == 1) "toma" else "tomas"} ≥ $PA_SIST_ELEVADA/$PA_DIAST_ELEVADA"
+    return if (severas > 0) "$base ($severas en rango severo ≥ $PA_SIST_SEVERA/$PA_DIAST_SEVERA)" else base
+}
+
+/** "30 sem: 150/95 (severa)" — el texto de una toma bajo el gráfico. */
+fun textoPuntoPa(p: PuntoPa): String =
+    "${numEmb(p.x)} sem: ${p.sistolica}/${p.diastolica}" + when (p.nivel) { "severa" -> " ⚠ severa"; "elevada" -> " ⚠"; else -> "" }
 
 // ─── Validación (los mismos mensajes que la API) ─────────────────────────────
 

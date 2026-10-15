@@ -363,6 +363,57 @@ class EmbarazoTest {
         assertEquals(listOf(PuntoSerieEmb(20.0, 110.0, "2026-07-19")), seriePa(csSerie, dSerie).first)
     }
 
+    // ── gráfico de PA (líneas 140/90 y tomas resaltadas, criterio de alertasPa) ──
+
+    @Test fun nivelPaConLosUmbralesDeLasAlertas() {
+        assertNull(nivelPa(139, 89))
+        assertEquals("elevada", nivelPa(140, 80))
+        assertEquals("elevada", nivelPa(120, 90))
+        assertEquals("severa", nivelPa(160, 100))
+        assertEquals("severa", nivelPa(150, 110))
+        // Mismo criterio que las alertas del control: elevada/severa ⇔ alerta de PA.
+        for ((s, d) in listOf(139 to 89, 140 to 80, 120 to 90, 160 to 100, 150 to 110, 118 to 76)) {
+            val ids = alertasPa(s, d, 200, null).map { it.id }
+            when (nivelPa(s, d)) {
+                "severa" -> assertEquals(listOf("pa_severa"), ids)
+                "elevada" -> assertEquals(listOf("pa_elevada"), ids)
+                else -> assertTrue(ids.isEmpty())
+            }
+        }
+    }
+
+    @Test fun puntosPaSoloConEgYLosDosValores() {
+        val cs = listOf(
+            ctrl("c", "2026-09-13").copy(paSistolica = 150, paDiastolica = 85),   // 28 sem, sistólica alta
+            ctrl("a", "2026-05-24").copy(paSistolica = 110, paDiastolica = 70),   // 12 sem
+            ctrl("b", "2026-07-19").copy(paSistolica = 120),                      // sin diastólica: fuera
+            ctrl("d", "2026-10-11").copy(paSistolica = 135, paDiastolica = 112),  // 32 sem, severa por la diastólica
+        )
+        val p = puntosPa(cs, dSerie)
+        assertEquals(listOf(12.0, 28.0, 32.0), p.map { it.x })
+        assertEquals(listOf(null, "elevada", "severa"), p.map { it.nivel })
+        assertEquals(listOf(false, true, false), p.map { it.sistolicaAlta })
+        assertEquals(listOf(false, false, true), p.map { it.diastolicaAlta })
+        // Los mismos puntos que seriePa (la serie de la web).
+        val (sist, diast) = seriePa(cs, dSerie)
+        assertEquals(sist.map { it.x to it.y }, p.map { it.x to it.sistolica.toDouble() })
+        assertEquals(diast.map { it.y }, p.map { it.diastolica.toDouble() })
+        // Sin datación no hay EG: nada que graficar.
+        assertTrue(puntosPa(cs, null).isEmpty())
+    }
+
+    @Test fun avisoYTextoDeLasTomas() {
+        val normal = PuntoPa(12.0, 110, 70, "2026-05-24", null)
+        val alta = PuntoPa(28.0, 150, 85, "2026-09-13", "elevada")
+        val severa = PuntoPa(32.5, 135, 112, "2026-10-11", "severa")
+        assertNull(resumenAlertasPa(listOf(normal)))
+        assertEquals("⚠ 1 toma ≥ 140/90", resumenAlertasPa(listOf(normal, alta)))
+        assertEquals("⚠ 2 tomas ≥ 140/90 (1 en rango severo ≥ 160/110)", resumenAlertasPa(listOf(normal, alta, severa)))
+        assertEquals("12 sem: 110/70", textoPuntoPa(normal))
+        assertEquals("28 sem: 150/85 ⚠", textoPuntoPa(alta))
+        assertEquals("32.5 sem: 135/112 ⚠ severa", textoPuntoPa(severa))
+    }
+
     // ── validación del embarazo ──
 
     @Test fun furOEcoObligatoriaYNoFuturas() {

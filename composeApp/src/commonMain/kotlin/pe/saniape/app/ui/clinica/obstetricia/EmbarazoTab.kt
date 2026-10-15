@@ -70,7 +70,12 @@ import pe.saniape.app.data.staff.numEmb
 import pe.saniape.app.data.staff.ordenarControles
 import pe.saniape.app.data.staff.ordenarEmbarazos
 import pe.saniape.app.data.staff.resumenEmbarazo
+import pe.saniape.app.data.staff.PA_DIAST_ELEVADA
+import pe.saniape.app.data.staff.PA_SIST_ELEVADA
+import pe.saniape.app.data.staff.puntosPa
+import pe.saniape.app.data.staff.resumenAlertasPa
 import pe.saniape.app.data.staff.serieAu
+import pe.saniape.app.data.staff.textoPuntoPa
 import pe.saniape.app.data.staff.serieGanancia
 import pe.saniape.app.data.staff.textoEg
 import pe.saniape.app.data.staff.textoGananciaRecomendada
@@ -79,6 +84,8 @@ import pe.saniape.app.ui.Toaster
 import pe.saniape.app.ui.clinica.historia.BandaGrafico
 import pe.saniape.app.ui.clinica.historia.EjeXGrafico
 import pe.saniape.app.ui.clinica.historia.GraficoLineaHc
+import pe.saniape.app.ui.clinica.historia.LineaRefGrafico
+import pe.saniape.app.ui.clinica.historia.SerieGrafico
 import pe.saniape.app.ui.clinica.mapas.BotonMapa
 import pe.saniape.app.ui.clinica.mapas.EtiquetaMapa
 import pe.saniape.app.ui.clinica.mapas.FilaBotonesMapa
@@ -474,7 +481,11 @@ internal fun ListaAlertas(alertas: List<AlertaEmbarazo>) {
     }
 }
 
-/** AU vs EG (banda EG ± 2 cm) y ganancia de peso vs EG (banda IOM), con el gráfico de la app. */
+/**
+ * Las tres curvas de `GraficosEmbarazo.tsx` con el gráfico de la app: AU vs EG
+ * (banda EG ± 2 cm), ganancia de peso vs EG (banda IOM) y la PA (sistólica y
+ * diastólica, líneas de 140/90 y las tomas ≥ 140/90 resaltadas en rojo).
+ */
 @Composable
 private fun GraficosEmbarazo(emb: Embarazo, controles: List<ControlPrenatal>) {
     val c = Sania.colors
@@ -483,7 +494,8 @@ private fun GraficosEmbarazo(emb: Embarazo, controles: List<ControlPrenatal>) {
     val cat = categoriaImc(imcEmb(emb.pesoPregestacional, emb.tallaCm))
     val multiple = esMultiple(emb.riesgos)
     val gan = remember(controles, d, cat) { if (cat != null) serieGanancia(controles, d, emb.pesoPregestacional) else emptyList() }
-    if (au.isEmpty() && gan.isEmpty()) return
+    val pa = remember(controles, d) { puntosPa(controles, d) }
+    if (au.isEmpty() && gan.isEmpty() && pa.isEmpty()) return
     TarjetaMapa {
         if (au.isNotEmpty()) {
             val banda = bandaAu().map { BandaGrafico(it.x, it.min, it.max) }
@@ -503,6 +515,22 @@ private fun GraficosEmbarazo(emb: Embarazo, controles: List<ControlPrenatal>) {
                 ejeX = EjeXGrafico(gan.map { it.x }, 0.0, maxOf(41.0, gan.maxOf { it.x }), "sem"),
                 banda = banda,
                 textoPunto = { p, i -> "${numEmb(gan[i].x)} sem: ${if (p.valor > 0) "+" else ""}${numEmb(p.valor)} kg" },
+            )
+        }
+        if (pa.isNotEmpty()) {
+            if (au.isNotEmpty() || gan.isNotEmpty()) Spacer(Modifier.height(12.dp))
+            GraficoLineaHc(
+                "Presión arterial vs EG (mmHg)", "mmHg", pa.map { PuntoSerieHc(it.fecha, it.sistolica.toDouble()) }, color = c.navy,
+                nombre = "Sistólica",
+                serie2 = SerieGrafico("Diastólica", pa.map { PuntoSerieHc(it.fecha, it.diastolica.toDouble()) }, c.teal),
+                ejeX = EjeXGrafico(pa.map { it.x }, minOf(8.0, pa.minOf { it.x }), maxOf(41.0, pa.maxOf { it.x }), "sem"),
+                lineas = listOf(LineaRefGrafico(PA_SIST_ELEVADA.toDouble(), "$PA_SIST_ELEVADA"), LineaRefGrafico(PA_DIAST_ELEVADA.toDouble(), "$PA_DIAST_ELEVADA")),
+                alerta = { serie, i -> pa.getOrNull(i)?.let { if (serie == 0) it.sistolicaAlta else it.diastolicaAlta } == true },
+                leyendaAlerta = "≥ $PA_SIST_ELEVADA/$PA_DIAST_ELEVADA",
+                aviso = resumenAlertasPa(pa),
+                descripcion = "Presión arterial por semana de gestación: " + pa.joinToString("; ") { textoPuntoPa(it) },
+                textoPunto = { _, i -> textoPuntoPa(pa[i]) },
+                alto = 140.dp,
             )
         }
     }
