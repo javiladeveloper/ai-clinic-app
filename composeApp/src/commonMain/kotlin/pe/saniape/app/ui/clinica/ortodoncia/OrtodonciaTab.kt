@@ -575,7 +575,7 @@ private fun CabeceraPlan(
             }
         }
         // 💰 Cuotas: solo con permiso de pagos y un tratamiento atado (como la web).
-        if (puedePagos) plan.tratamientoId?.let { CuotasPlanOrto(it, hoy, onVerPagos) }
+        if (puedePagos) plan.tratamientoId?.let { CuotasPlanOrto(it, hoy, tratamiento?.moneda, onVerPagos) }
         plan.notas?.let { Text("Notas: $it", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp)) }
     }
 }
@@ -588,10 +588,10 @@ private fun CabeceraPlan(
  * pudo leer (backend viejo, sin red), el recuadro no aparece.
  */
 @Composable
-private fun CuotasPlanOrto(tratamientoId: String, hoy: String, onVerPagos: (() -> Unit)?) {
+private fun CuotasPlanOrto(tratamientoId: String, hoy: String, monedaTratamiento: String?, onVerPagos: (() -> Unit)?) {
     val c = Sania.colors
-    // La moneda de la ficha (la sede del paciente): nunca se mezcla con otra.
-    val moneda = monedaUI()
+    // La moneda del TRATAMIENTO (su sede); sin ella, la de la ficha. Nunca se mezclan.
+    val moneda = monedaTratamiento ?: monedaUI()
     var datos by remember(tratamientoId) { mutableStateOf<CuotasTratamientoOrto?>(null) }
     var cargando by remember(tratamientoId) { mutableStateOf(true) }
     LaunchedEffect(tratamientoId) {

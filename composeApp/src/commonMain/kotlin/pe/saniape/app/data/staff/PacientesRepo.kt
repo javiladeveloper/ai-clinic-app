@@ -115,6 +115,12 @@ data class TratamientoPaciente(
      */
     val saldoLiberadoAt: String? = null,
     val saldoLiberadoPor: String? = null,
+    /**
+     * Multipaís: la sede donde se vendió (`tratamientos.sede_id`). Su moneda es
+     * la del tratamiento (cuotas, pagos); null = sin sede o backend viejo → la
+     * del paciente ([monedaDeTratamiento]).
+     */
+    val sedeId: String? = null,
 ) {
     /**
      * La cuenta de este tratamiento para el saldo a favor, con lo [pagado].
@@ -505,7 +511,7 @@ object PacientesRepo {
             cantidad_unidades, precio_unitario,
             diagnostico, medicacion, proximo_control, nota_recepcion, tecnicas_sugeridas,
             procedimiento_id, sesiones_base, cita_origen_id, no_volvio, motivo_cierre, cerrado_at,
-            fecha_inicio, created_at, saldo_liberado_at, saldo_liberado_por, control_anclaje, control_indice,
+            fecha_inicio, created_at, saldo_liberado_at, saldo_liberado_por, control_anclaje, control_indice, sede_id,
             ses_estados:sesiones!sesiones_tratamiento_id_fkey(estado),
             citas_estados:citas!citas_tratamiento_id_fkey(estado),
             procedimiento:procedimientos(nombre, especialidad_id, modo_cobro, precio, unidad_label, especialidad:especialidades(nombre, usa_sesiones)),
@@ -1755,6 +1761,7 @@ object PacientesRepo {
                 },
                 saldoLiberadoAt = t.str("saldo_liberado_at"),
                 saldoLiberadoPor = t.str("saldo_liberado_por"),
+                sedeId = t.str("sede_id"),
             )
         }
         return PacienteStaff(

@@ -1393,6 +1393,8 @@ private fun PantallaFichaPacienteContenido(
                                     id = t.id, nombre = t.procedimiento ?: t.especialidadNombre ?: "Tratamiento", estado = t.estado,
                                     terapeutaId = t.terapeutaId,
                                     especialidadId = t.especialidadId ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id,
+                                    // Multipaís: su sede → la del paciente (la de la ficha).
+                                    moneda = pe.saniape.app.data.staff.monedaDeTratamiento(t.sedeId, pe.saniape.app.ui.monedaUI()),
                                 )
                             },
                             nombresServicio = paciente.tratamientos.mapNotNull { t -> t.procedimientoId?.let { id -> t.procedimiento?.let { id to it } } }.toMap(),

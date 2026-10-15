@@ -444,7 +444,15 @@ fun aparatologiaSugerida(servicio: String?): String {
 }
 
 /** Un tratamiento de ortodoncia del paciente (para atar el plan). */
-data class TratamientoOrto(val id: String, val nombre: String?, val estado: String?, val terapeutaId: String? = null, val especialidadId: String? = null)
+data class TratamientoOrto(
+    val id: String,
+    val nombre: String?,
+    val estado: String?,
+    val terapeutaId: String? = null,
+    val especialidadId: String? = null,
+    /** Multipaís: moneda del tratamiento (las cuotas), por SU sede (`monedaDeTratamiento`); null = la de la ficha. */
+    val moneda: String? = null,
+)
 
 /**
  * El tratamiento al que se ata el plan: los vivos primero; la instalación o el

@@ -167,6 +167,26 @@ class MultimonedaAppTest {
         assertEquals("PE", sinPais.copy(sedes = listOf(SedeRef("y", "Y", pais = "Bolivia"))).paisDeSede("y"))
     }
 
+    // ── Moneda de un tratamiento: SU sede → la del paciente → activa → principal ──
+
+    @Test
+    fun moneda_del_tratamiento_por_su_sede_y_luego_la_del_paciente() {
+        val ctx = ctxDosPaises
+        // Paciente de Tacna con un tratamiento vendido en La Paz: Bs, nunca S/.
+        assertEquals("BOB", monedaDeTratamiento(ctx, sedeActiva = null, sedeTratamiento = "s-lapaz", sedePaciente = "s-tacna"))
+        // Y al revés: el tratamiento manda sobre el paciente y la sede activa.
+        assertEquals("PEN", monedaDeTratamiento(ctx, sedeActiva = "s-lapaz", sedeTratamiento = "s-tacna", sedePaciente = "s-lapaz"))
+        // Sin sede propia (backend viejo o tratamiento antiguo): la del paciente.
+        assertEquals("BOB", monedaDeTratamiento(ctx, sedeActiva = null, sedeTratamiento = null, sedePaciente = "s-lapaz"))
+        assertEquals("BOB", monedaDeTratamiento(ctx, sedeActiva = null, sedeTratamiento = "", sedePaciente = "s-lapaz"))
+        // Ni tratamiento ni paciente: la activa; consolidado → la principal.
+        assertEquals("BOB", monedaDeTratamiento(ctx, sedeActiva = "s-lapaz", sedeTratamiento = null, sedePaciente = null))
+        assertEquals("PEN", monedaDeTratamiento(ctx, sedeActiva = null, sedeTratamiento = null, sedePaciente = null))
+        // Con la moneda del paciente ya resuelta y sin sede del tratamiento: esa, tal cual.
+        assertEquals("BOB", monedaDeTratamiento(sedeTratamiento = null, monedaPaciente = "BOB"))
+        assertEquals("BOB", monedaDeTratamiento(sedeTratamiento = " ", monedaPaciente = "BOB"))
+    }
+
     // ── Moneda de cada fila: su sede → la activa → principal → clínica → PEN ──
 
     @Test

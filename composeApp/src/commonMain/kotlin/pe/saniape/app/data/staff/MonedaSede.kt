@@ -52,6 +52,22 @@ fun monedaDeFila(sedeId: String?): String {
     return monedaDeFila(ctx, sedeActivaDe(ctx), sedeId)
 }
 
+/**
+ * Moneda de un TRATAMIENTO (sus cuotas y pagos), puro — gemelo de
+ * `sedeDelTratamiento` + `monedaTrat` de la web: la sede del tratamiento → la
+ * del paciente → la activa → principal → clínica → PEN.
+ */
+fun monedaDeTratamiento(ctx: ContextoStaff?, sedeActiva: String?, sedeTratamiento: String?, sedePaciente: String?): String =
+    monedaDeFila(ctx, sedeActiva, sedeTratamiento?.takeIf { it.isNotBlank() } ?: sedePaciente)
+
+/**
+ * Lo mismo con el contexto vigente, cuando la pantalla ya tiene la moneda del
+ * paciente resuelta ([monedaPaciente], p. ej. `monedaUI()` en la ficha): con
+ * sede propia manda la del tratamiento; sin sede, la del paciente.
+ */
+fun monedaDeTratamiento(sedeTratamiento: String?, monedaPaciente: String): String =
+    sedeTratamiento?.takeIf { it.isNotBlank() }?.let { monedaDeFila(it) } ?: monedaPaciente
+
 /** País (ISO-2) de la sede activa. */
 fun paisActivo(): String {
     val ctx = StaffContextoRepo.actual ?: return PAIS_POR_DEFECTO
