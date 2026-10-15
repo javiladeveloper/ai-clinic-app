@@ -1,0 +1,7 @@
+# Novedades de la 2.53.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Presión arterial del embarazo en gráfico y cuotas de ortodoncia a la vista.
+---
+Clínicas:
+• 🤰 Embarazo: gráfico de presión arterial por semana de gestación, con las tomas ≥ 140/90 resaltadas y las severas (≥ 160/110) bien distinguidas.
+• 😁 Ortodoncia: resumen de cuotas del tratamiento (pagadas, atrasadas, próxima cuota) en la moneda de la sede donde se vendió.
