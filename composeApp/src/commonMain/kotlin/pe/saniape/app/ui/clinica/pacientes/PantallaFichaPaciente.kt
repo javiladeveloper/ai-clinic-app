@@ -215,7 +215,7 @@ private fun PantallaFichaPacienteContenido(
     // Y con especialidades de ortodoncia: el ortodoncista ve la 😁 en un paciente nuevo.
     val mixtaMapas = (ctx.mapaPodologia.ids.isNotEmpty() && !ctx.mapaPodologia.solo) ||
         (ctx.mapaEstetica.ids.isNotEmpty() && !ctx.mapaEstetica.solo) ||
-        ctx.mapaOrtodoncia.ids.isNotEmpty() ||
+        (ctx.mapaOrtodoncia.ids.isNotEmpty() && !ctx.mapaDental.solo) ||
         (ctx.mapaPediatria.ids.isNotEmpty() && !ctx.mapaPediatria.solo) ||
         (ctx.mapaGineco.ids.isNotEmpty() && !ctx.mapaGineco.solo)
     LaunchedEffect(paciente.id, mixtaDental, mixtaMapas, recargarToken) {
@@ -1707,12 +1707,17 @@ private fun PantallaFichaPacienteContenido(
                         tocarTipoDocumento = e.tocarTipoDocumento, tipoDocumento = e.tipoDocumento)
                     // Sexo (curvas OMS): por el endpoint de la web, solo si cambió. Un servidor
                     // viejo no lo guarda (lo avisa): el resto de la ficha ya quedó.
+                    var sexoFallo = false
                     if (ok && e.tocarSexo) {
                         val rs = pe.saniape.app.data.staff.PediatriaRepo.actualizarFicha(paciente.id, sexo = e.sexo, tocarSexo = true)
                         if (rs.registrada) sexoPaciente = e.sexo
-                        else pe.saniape.app.ui.Toaster.error(rs.rechazo?.error ?: "No se pudo guardar el sexo")
+                        else {
+                            sexoFallo = true
+                            pe.saniape.app.ui.Toaster.error(rs.rechazo?.error ?: "No se pudo guardar el sexo")
+                        }
                     }
-                    if (ok) pe.saniape.app.ui.Toaster.exito("${tpl.Paciente} actualizado") else pe.saniape.app.ui.Toaster.error("No se pudo guardar")
+                    if (!ok) pe.saniape.app.ui.Toaster.error("No se pudo guardar")
+                    else if (!sexoFallo) pe.saniape.app.ui.Toaster.exito("${tpl.Paciente} actualizado")
                     recargar()
                 }
             },

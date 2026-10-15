@@ -102,7 +102,8 @@ fun parsearMiEmbarazo(texto: String): MiEmbarazo? {
             val c = ce as? JsonObject ?: return@mapNotNull null
             val cid = c.txtP("id") ?: return@mapNotNull null
             val fecha = c.txtP("fecha")?.take(10) ?: return@mapNotNull null
-            val eg = c.intP("egDias") ?: egDiasEn(inicio, fecha)
+            val eg = c.intP("egDias") ?: egDiasEn(inicio, fecha.takeIf { esFechaIsoEmb(it) })
+            if (!esFechaIsoEmb(fecha)) return@mapNotNull null
             ControlPortalEmb(cid, fecha, eg, c.txtP("eg") ?: textoEg(eg), c.numP("peso"), c.intP("paSistolica"),
                 c.intP("paDiastolica"), c.numP("alturaUterina"), c.intP("lcf"))
         }.sortedBy { it.fecha }
@@ -112,9 +113,9 @@ fun parsearMiEmbarazo(texto: String): MiEmbarazo? {
             diasParaFpp = o.intP("diasParaFpp") ?: 0,
             grupoSanguineo = o.txtP("grupoSanguineo"), rh = o.txtP("rh"),
             clinicaNombre = (o["clinica"] as? JsonObject)?.txtP("nombre"), profesional = o.txtP("profesional"),
-            controles = controles, proximoControl = o.txtP("proximoControl")?.take(10),
+            controles = controles, proximoControl = o.txtP("proximoControl")?.take(10)?.takeIf { esFechaIsoEmb(it) },
         )
-    }
+    }.distinctBy { it.id }
     val signos = (raiz["signosAlarma"] as? JsonArray).orEmpty().mapNotNull { it.primPortal()?.content?.trim()?.takeIf { s -> s.isNotEmpty() } }
     return MiEmbarazo(embarazos, signos.ifEmpty { SIGNOS_ALARMA_EMB.map { it.educativo } })
 }

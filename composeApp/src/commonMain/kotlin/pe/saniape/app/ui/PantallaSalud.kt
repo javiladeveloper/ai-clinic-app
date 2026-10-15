@@ -465,20 +465,17 @@ fun PantallaSalud() {
                             espacioArriba = hayTratamientos || planesEjercicios.isNotEmpty() || datosEmbarazo != null || datosNutricion != null,
                         )
                     }
-                    // 👶 Crecimiento y 💉 Carné de vacunas de sus niños (pediatría): solo si su
-                    // clínica con pediatría les registró algo (como la web: tras capilar).
-                    val arribaPediatria = hayTratamientos || planesEjercicios.isNotEmpty() || datosEmbarazo != null ||
+                    // Orden de la web: capilar → ortodoncia → crecimiento → vacunas.
+                    val arribaOrto = hayTratamientos || planesEjercicios.isNotEmpty() || datosEmbarazo != null ||
                         datosNutricion != null || datosCapilar != null
+                    // 😁 Mi ortodoncia: solo si su ortodoncista le registró un plan.
+                    datosOrto?.let { d -> seccionOrtodoncia(datos = d, espacioArriba = arribaOrto) }
+                    // 👶 Crecimiento y 💉 Carné de vacunas de sus niños (pediatría): solo si su
+                    // clínica con pediatría les registró algo.
+                    val arribaPediatria = arribaOrto || datosOrto != null
                     datosCrecimiento?.let { d -> seccionCrecimiento(datos = d, espacioArriba = arribaPediatria) }
                     datosVacunas?.let { d -> seccionVacunas(datos = d, espacioArriba = arribaPediatria || datosCrecimiento != null) }
-                    // 😁 Mi ortodoncia: solo si su ortodoncista le registró un plan.
-                    datosOrto?.let { d ->
-                        seccionOrtodoncia(
-                            datos = d,
-                            espacioArriba = arribaPediatria || datosCrecimiento != null || datosVacunas != null,
-                        )
-                    }
-                    val arribaIndicaciones = arribaPediatria || datosCrecimiento != null || datosVacunas != null || datosOrto != null
+                    val arribaIndicaciones = arribaPediatria || datosCrecimiento != null || datosVacunas != null
                     // 📝 Mis indicaciones para casa: junto al plan de alimentación, solo si
                     // su clínica le dejó alguna visible.
                     if (listaIndicaciones.isNotEmpty()) {

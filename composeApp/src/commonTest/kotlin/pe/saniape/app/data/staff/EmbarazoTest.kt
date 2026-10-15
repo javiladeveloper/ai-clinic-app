@@ -482,6 +482,10 @@ class EmbarazoTest {
         assertEquals(25.0, c.alturaUterina)
         assertTrue(c.signosAlarmaExplicados)
         assertNull(embarazoDeJson(Json.parseToJsonElement("""{"fur":"2026-03-01"}""").jsonObject))
+        // Sin fecha válida el control se salta (nunca llega una fecha vacía a las reglas).
+        assertNull(controlDeJson(Json.parseToJsonElement("""{"id":"c2","fecha":""}""").jsonObject))
+        assertNull(controlDeJson(Json.parseToJsonElement("""{"id":"c3","fecha":"2026-02-31"}""").jsonObject))
+        assertNull(controlDeJson(Json.parseToJsonElement("""{"id":"c4","fecha":"2026-08-23","proximo_control":"x"}""").jsonObject)!!.proximoControl)
     }
 
     // ── ¿es gineco-obstetricia? (solo por rubro guardado) ──

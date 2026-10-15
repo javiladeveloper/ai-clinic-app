@@ -66,5 +66,10 @@ class MiEmbarazoPortalTest {
         assertEquals(SIGNOS_ALARMA_EMB.map { it.educativo }, d.signosAlarma)
         assertTrue(parsearMiEmbarazo("""{"embarazos":[],"signosAlarma":[]}""")!!.embarazos.isEmpty())
         assertNull(parsearMiEmbarazo("no es json"))
+        // Ids repetidos (la clave del ítem): uno solo. Controles sin fecha válida: fuera.
+        val dup = parsearMiEmbarazo("""{"embarazos":[{"id":"e1","fpp":"2026-12-06","diasParaFpp":1,
+            "controles":[{"id":"a","fecha":""},{"id":"b","fecha":"2026-08-01"}]},{"id":"e1","fpp":"2026-12-06","diasParaFpp":1}]}""")!!
+        assertEquals(1, dup.embarazos.size)
+        assertEquals(listOf("b"), dup.embarazos[0].controles.map { it.id })
     }
 }

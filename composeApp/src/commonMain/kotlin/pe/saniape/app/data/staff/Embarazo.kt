@@ -1043,16 +1043,18 @@ fun embarazoDeJson(o: JsonObject): Embarazo? {
 
 fun controlDeJson(o: JsonObject): ControlPrenatal? {
     val id = o.txtEmb("id") ?: return null
+    // Sin fecha válida no hay EG, orden ni próximo control: la fila se salta.
+    val fecha = o.txtEmb("fecha")?.take(10)?.takeIf { esFechaIsoEmb(it) } ?: return null
     return ControlPrenatal(
         id = id, embarazoId = o.txtEmb("embarazo_id").orEmpty(), pacienteId = o.txtEmb("paciente_id").orEmpty(),
-        citaId = o.txtEmb("cita_id"), terapeutaId = o.txtEmb("terapeuta_id"), fecha = o.txtEmb("fecha")?.take(10).orEmpty(),
+        citaId = o.txtEmb("cita_id"), terapeutaId = o.txtEmb("terapeuta_id"), fecha = fecha,
         egDias = o.intEmb("eg_dias"), peso = o.numEmbJ("peso"), paSistolica = o.intEmb("pa_sistolica"), paDiastolica = o.intEmb("pa_diastolica"),
         alturaUterina = o.numEmbJ("altura_uterina"), lcf = o.intEmb("lcf"),
         movimientosFetales = o.txtEmb("movimientos_fetales"), presentacion = o.txtEmb("presentacion"),
         edema = o.txtEmb("edema"), proteinuria = o.txtEmb("proteinuria"),
         suplementos = o.listaEmb("suplementos"), signosAlarma = o.listaEmb("signos_alarma"),
         signosAlarmaExplicados = o.boolEmb("signos_alarma_explicados"), observaciones = o.txtEmb("observaciones"),
-        proximoControl = o.txtEmb("proximo_control")?.take(10), createdAt = o.txtEmb("created_at"),
+        proximoControl = o.txtEmb("proximo_control")?.take(10)?.takeIf { esFechaIsoEmb(it) }, createdAt = o.txtEmb("created_at"),
     )
 }
 
