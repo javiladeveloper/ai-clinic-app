@@ -61,6 +61,8 @@ import pe.saniape.app.data.MiNutricion
 import pe.saniape.app.data.MiNutricionRepo
 import pe.saniape.app.data.MiEvolucionCapilar
 import pe.saniape.app.data.MiEvolucionCapilarRepo
+import pe.saniape.app.data.MiOrtodoncia
+import pe.saniape.app.data.MiOrtodonciaRepo
 import pe.saniape.app.data.IndicacionPortal
 import pe.saniape.app.data.MisIndicacionesRepo
 import pe.saniape.app.data.conEjercicioMarcado
@@ -117,6 +119,9 @@ fun PantallaSalud() {
     // 🔬 Mi evolución capilar (tricoscopía): null = no se sabe (servidor viejo, sin red y
     // sin caché). Sin evaluaciones visibles, la sección no aparece.
     var capilar by remember { mutableStateOf<MiEvolucionCapilar?>(null) }
+    // 😁 Mi ortodoncia: null = no se sabe (servidor viejo, sin red y sin caché). Sin
+    // planes, la sección no aparece.
+    var ortodoncia by remember { mutableStateOf<MiOrtodoncia?>(null) }
     // 📝 Indicaciones para casa que le dejó su clínica (cualquier especialidad): null =
     // no se sabe (servidor viejo, sin red y sin caché). Sin ninguna, la sección no aparece.
     var indicaciones by remember { mutableStateOf<List<IndicacionPortal>?>(null) }
@@ -152,6 +157,7 @@ fun PantallaSalud() {
         if (recetas == null) recetas = withContext(Dispatchers.Default) { RecetasRepo.guardadas() }
         if (nutricion == null) nutricion = withContext(Dispatchers.Default) { MiNutricionRepo.guardada() }
         if (capilar == null) capilar = withContext(Dispatchers.Default) { MiEvolucionCapilarRepo.guardada() }
+        if (ortodoncia == null) ortodoncia = withContext(Dispatchers.Default) { MiOrtodonciaRepo.guardada() }
         if (indicaciones == null) indicaciones = withContext(Dispatchers.Default) { MisIndicacionesRepo.guardada() }
         if (docsMedicos == null) docsMedicos = withContext(Dispatchers.Default) { DocumentosClinicosRepo.guardados() }
         try {
@@ -166,6 +172,7 @@ fun PantallaSalud() {
                 val dEjercicios = async { runCatching { MisEjerciciosRepo.cargar() }.getOrNull() }
                 val dNutricion = async { runCatching { MiNutricionRepo.cargar() }.getOrNull() }
                 val dCapilar = async { runCatching { MiEvolucionCapilarRepo.cargar() }.getOrNull() }
+                val dOrtodoncia = async { runCatching { MiOrtodonciaRepo.cargar() }.getOrNull() }
                 val dIndicaciones = async { runCatching { MisIndicacionesRepo.cargar() }.getOrNull() }
                 val dDocsMedicos = async { runCatching { DocumentosClinicosRepo.cargar() }.getOrNull() }
                 when (val rt = dTrat.await()) {
@@ -189,6 +196,7 @@ fun PantallaSalud() {
                 dEjercicios.await()?.let { ejercicios = it }
                 dNutricion.await()?.let { nutricion = it }
                 dCapilar.await()?.let { capilar = it }
+                dOrtodoncia.await()?.let { ortodoncia = it }
                 dIndicaciones.await()?.let { indicaciones = it }
                 dDocsMedicos.await()?.let { docsMedicos = it }
             }
@@ -199,6 +207,7 @@ fun PantallaSalud() {
     val planesEjercicios = ejercicios?.planes.orEmpty()
     val datosNutricion = nutricion?.takeIf { it.tieneDatos }
     val datosCapilar = capilar?.takeIf { it.tieneDatos }
+    val datosOrto = ortodoncia?.takeIf { it.tieneDatos }
     val listaIndicaciones = indicaciones.orEmpty()
     val datosDocsMedicos = docsMedicos?.takeIf { it.tieneDatos }
 
@@ -305,7 +314,7 @@ fun PantallaSalud() {
     var verCancelados by remember { mutableStateOf(false) }
     val hayTratamientos = separados.vigentes.isNotEmpty() || separados.cancelados.isNotEmpty()
     val sinNada = !hayTratamientos && documentos.isEmpty() && fotos.isEmpty() && listaRecetas.isEmpty() &&
-        planesEjercicios.isEmpty() && datosNutricion == null && datosCapilar == null && listaIndicaciones.isEmpty() &&
+        planesEjercicios.isEmpty() && datosNutricion == null && datosCapilar == null && datosOrto == null && listaIndicaciones.isEmpty() &&
         datosDocsMedicos == null
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
@@ -423,13 +432,21 @@ fun PantallaSalud() {
                             espacioArriba = hayTratamientos || planesEjercicios.isNotEmpty() || datosNutricion != null,
                         )
                     }
+                    // 😁 Mi ortodoncia: solo si su ortodoncista le registró un plan.
+                    datosOrto?.let { d ->
+                        seccionOrtodoncia(
+                            datos = d,
+                            espacioArriba = hayTratamientos || planesEjercicios.isNotEmpty() || datosNutricion != null ||
+                                datosCapilar != null,
+                        )
+                    }
                     // 📝 Mis indicaciones para casa: junto al plan de alimentación, solo si
                     // su clínica le dejó alguna visible.
                     if (listaIndicaciones.isNotEmpty()) {
                         seccionIndicaciones(
                             items = listaIndicaciones,
                             espacioArriba = hayTratamientos || planesEjercicios.isNotEmpty() || datosNutricion != null ||
-                                datosCapilar != null,
+                                datosCapilar != null || datosOrto != null,
                             verAnteriores = verIndicacionesAnteriores,
                             onAlternarAnteriores = { verIndicacionesAnteriores = !verIndicacionesAnteriores },
                             onDescargar = { i -> descargarIndicacion(acciones, i) },
@@ -439,7 +456,7 @@ fun PantallaSalud() {
                     if (listaRecetas.isNotEmpty()) {
                         item {
                             if (hayTratamientos || planesEjercicios.isNotEmpty() || datosNutricion != null ||
-                                datosCapilar != null || listaIndicaciones.isNotEmpty()) Spacer(Modifier.height(Sania.dim.sm))
+                                datosCapilar != null || datosOrto != null || listaIndicaciones.isNotEmpty()) Spacer(Modifier.height(Sania.dim.sm))
                             Etiqueta("💊 MIS RECETAS")
                         }
                         item { AvisoCopiaReceta(recetas?.aviso ?: AVISO_RECETA_POR_DEFECTO) }
@@ -453,7 +470,7 @@ fun PantallaSalud() {
                         seccionDocumentosMedicos(
                             datos = d,
                             espacioArriba = hayTratamientos || planesEjercicios.isNotEmpty() ||
-                                datosNutricion != null || datosCapilar != null || listaRecetas.isNotEmpty() ||
+                                datosNutricion != null || datosCapilar != null || datosOrto != null || listaRecetas.isNotEmpty() ||
                                 listaIndicaciones.isNotEmpty(),
                             abriendo = abriendoDocMed,
                             onVer = { verDocumentoMedico(it) },
