@@ -167,6 +167,13 @@ data class ContextoStaff(
      * backend sin el campo deja el mapa vacío y la pestaña no aparece.
      */
     val mapaEstetica: MapaEstetica = MapaEstetica(),
+    /**
+     * Qué especialidades son de pediatría (pestaña 👶 Crecimiento, por paciente
+     * con `pacienteEsPediatria`; la web las reconoce por el NOMBRE). Un backend
+     * sin `especialidadesPediatria`/`soloPediatria` deja el mapa vacío y la
+     * pestaña no aparece.
+     */
+    val mapaPediatria: MapaPediatria = MapaPediatria(),
     val clinicas: List<ClinicaRef>,
     val tienePortal: Boolean,
     /**
