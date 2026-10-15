@@ -41,6 +41,9 @@ import pe.saniape.app.data.staff.InformesMedicosRepo
 import pe.saniape.app.data.staff.TIPOS_DOC_MEDICO
 import pe.saniape.app.data.staff.hoyClinicaIso
 import pe.saniape.app.data.staff.iconoTipoDoc
+import pe.saniape.app.data.staff.mensajeVisibilidad
+import pe.saniape.app.data.staff.puedeCambiarVisibilidad
+import pe.saniape.app.data.staff.visibleEnSuApp
 import pe.saniape.app.data.staff.nombreTipoDoc
 import pe.saniape.app.data.staff.puedeEmitirDocumentos
 import pe.saniape.app.data.staff.puedeFirmarComo
@@ -87,6 +90,30 @@ fun ContenidoDocumentosMedicos(
     var anulando by remember { mutableStateOf(false) }
     // "🖨" en curso: un doble toque no abre dos visores.
     var abriendo by remember { mutableStateOf<String?>(null) }
+    // "📱 Mostrar / 🙈 Ocultar de su app" en curso (uno a la vez).
+    var cambiandoVisible by remember { mutableStateOf<String?>(null) }
+
+    // ¿El paciente lo ve en su app? Lo único que se cambia después de emitir.
+    fun alternarVisible(inf: InformeMedicoApp) {
+        if (cambiandoVisible != null) return
+        val visible = inf.visiblePaciente != true
+        cambiandoVisible = inf.id
+        scope.launch {
+            try {
+                val r = AtencionRepo.cambiarVisibilidadInforme(inf.id, visible)
+                if (r.registrada) {
+                    Toaster.exito(mensajeVisibilidad(visible))
+                    // Al instante en la lista; la recarga confirma lo guardado.
+                    docs = docs?.map { if (it.id == inf.id) it.copy(visiblePaciente = visible) else it }
+                    recarga++
+                } else {
+                    Toaster.error(r.rechazo?.error ?: "No se pudo cambiar")
+                }
+            } finally {
+                cambiandoVisible = null
+            }
+        }
+    }
 
     fun imprimir(id: String, titulo: String) {
         if (abriendo != null) return
@@ -140,8 +167,11 @@ fun ContenidoDocumentosMedicos(
                     inf = inf,
                     abriendo = abriendo == inf.id,
                     puedeAnular = !inf.anulado && puedeEmitir && puedeFirmarComo(ctx.rol, ctx.miTerapeutaId, inf.terapeutaId),
+                    puedeVisibilidad = puedeCambiarVisibilidad(inf, puedeEmitir, ctx.rol, ctx.miTerapeutaId),
+                    cambiandoVisible = cambiandoVisible == inf.id,
                     onImprimir = { imprimir(inf.id, inf.numeroTexto) },
                     onAnular = { motivo = ""; anular = inf },
+                    onVisibilidad = { alternarVisible(inf) },
                 )
                 HorizontalDivider(color = c.borde)
             }
@@ -213,8 +243,11 @@ private fun FilaDocumentoMedico(
     inf: InformeMedicoApp,
     abriendo: Boolean,
     puedeAnular: Boolean,
+    puedeVisibilidad: Boolean,
+    cambiandoVisible: Boolean,
     onImprimir: () -> Unit,
     onAnular: () -> Unit,
+    onVisibilidad: () -> Unit,
 ) {
     val c = Sania.colors
     Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
@@ -228,6 +261,11 @@ private fun FilaDocumentoMedico(
             if (inf.ocultarDiagnostico) {
                 Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.chipBg).padding(horizontal = 8.dp, vertical = 2.dp)) {
                     Text("Dx reservado", color = c.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            if (visibleEnSuApp(inf)) {
+                Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.tealBg).padding(horizontal = 8.dp, vertical = 2.dp)) {
+                    Text("📱 En su app", color = c.teal, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -244,13 +282,32 @@ private fun FilaDocumentoMedico(
             inf.motivoAnulacion?.takeIf { inf.anulado }?.let { "Motivo: $it" },
         ).joinToString(" · ")
         if (sub.isNotBlank()) Text(sub, color = c.textoSuave, fontSize = 11.sp)
-        Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(
+            Modifier.padding(top = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             Box(
                 Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).border(1.dp, c.navy, RoundedCornerShape(Sania.shape.sm.dp))
                     .clickable(enabled = !abriendo) { onImprimir() }.padding(horizontal = 10.dp, vertical = 5.dp),
             ) {
                 Text(if (abriendo) "Abriendo…" else if (inf.anulado) "🖨 Ver" else "🖨 Imprimir",
                     color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+            if (puedeVisibilidad) {
+                Box(
+                    Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                        .clickable(enabled = !cambiandoVisible) { onVisibilidad() }.padding(horizontal = 10.dp, vertical = 5.dp),
+                ) {
+                    Text(
+                        when {
+                            cambiandoVisible -> "Guardando…"
+                            inf.visiblePaciente == true -> "🙈 Ocultar de su app"
+                            else -> "📱 Mostrar en su app"
+                        },
+                        color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    )
+                }
             }
             if (puedeAnular) {
                 Box(

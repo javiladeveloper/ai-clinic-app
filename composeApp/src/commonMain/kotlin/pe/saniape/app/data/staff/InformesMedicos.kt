@@ -99,7 +99,19 @@ data class BorradorInforme(
     val citaId: String? = null,
     val atencionId: String? = null,
     val tratamientoId: String? = null,
+    /**
+     * ¿Lo ve el paciente en su app? null = no se manda y el servidor pone el
+     * de su tipo ([visiblePacientePorDefecto]).
+     */
+    val visiblePaciente: Boolean? = null,
 )
+
+/**
+ * ¿El paciente ve el documento en su app al emitirlo? Descanso y orden: sí;
+ * informe: no (puede ser para un tercero). Gemelo de visiblePacientePorDefecto
+ * de lib/informes-medicos.ts (el servidor aplica el mismo si no se manda).
+ */
+fun visiblePacientePorDefecto(tipo: String): Boolean = tipo == DOC_DESCANSO || tipo == DOC_ORDEN
 
 /** Prellenado del formulario (PrefillInforme de la web). */
 data class PrefillInforme(
@@ -287,6 +299,7 @@ fun cuerpoEmitirInforme(b: BorradorInforme, claveCliente: String, seguimiento: B
         put("tratamientoId", t(b.tratamientoId))
         put("claveCliente", claveCliente)
         put("seguimiento", seguimiento && b.tipo == DOC_ORDEN)
+        b.visiblePaciente?.let { put("visiblePaciente", it) }
     }
 }
 
@@ -485,15 +498,20 @@ data class InformeMedicoApp(
     val examenes: List<ExamenOrden>,
     val profesionalNombre: String?,
     val profesionalColegiatura: String?,
+    /** ¿Lo ve el paciente en su app? null = la base aún no tiene la columna (no se ofrece cambiarlo). */
+    val visiblePaciente: Boolean? = null,
 ) {
     val anulado: Boolean get() = estado == "Anulado"
     val numeroTexto: String get() = formatearNumeroInforme(tipo, numero)
 }
 
 /** Columnas que la lista necesita (no el `*`: sin el cuerpo ni los datos congelados del paciente). */
-const val SELECT_INFORMES_STAFF =
+const val SELECT_INFORMES_STAFF_BASE =
     "id, tipo, numero, fecha, titulo, motivo, terapeuta_id, estado, motivo_anulacion, ocultar_diagnostico, " +
         "descanso_desde, descanso_hasta, descanso_dias, examenes, profesional, created_at"
+
+/** Con `visible_paciente` (migración 20261021300000); una base sin migrar cae a [SELECT_INFORMES_STAFF_BASE]. */
+const val SELECT_INFORMES_STAFF = "$SELECT_INFORMES_STAFF_BASE, visible_paciente"
 
 private fun JsonObject.s(k: String): String? =
     (this[k] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content?.takeIf { it.isNotBlank() }
@@ -525,8 +543,34 @@ fun aInformeMedico(o: JsonObject): InformeMedicoApp? {
         examenes = normalizarExamenesOrden(ex),
         profesionalNombre = prof?.s("nombre"),
         profesionalColegiatura = prof?.s("colegiatura"),
+        visiblePaciente = when (o.s("visible_paciente")?.lowercase()) {
+            "true" -> true
+            "false" -> false
+            else -> null
+        },
     )
 }
+
+/**
+ * ¿Se ofrece "📱 Mostrar / 🙈 Ocultar de su app"? Como la ficha web: emitido,
+ * con la columna en la base, y quien puede emitir y firmar como su autor (el
+ * propio profesional o el Admin). El servidor vuelve a validar (PROFESIONAL_AJENO).
+ */
+fun puedeCambiarVisibilidad(inf: InformeMedicoApp, puedeEmitir: Boolean, rol: String?, miTerapeutaId: String?): Boolean =
+    !inf.anulado && inf.visiblePaciente != null && puedeEmitir && puedeFirmarComo(rol, miTerapeutaId, inf.terapeutaId)
+
+/** ¿Lleva el distintivo "📱 En su app"? */
+fun visibleEnSuApp(inf: InformeMedicoApp): Boolean = !inf.anulado && inf.visiblePaciente == true
+
+/** El cuerpo de `POST /api/staff/informe/visibilidad`. */
+fun cuerpoVisibilidadInforme(id: String, visible: Boolean): JsonObject = buildJsonObject {
+    put("id", id)
+    put("visible", visible)
+}
+
+/** El aviso tras cambiarlo (los de la web). */
+fun mensajeVisibilidad(visible: Boolean): String =
+    if (visible) "El paciente ya lo ve en su app" else "Ya no aparece en la app del paciente"
 
 /** Una atención que se ofrece como origen del documento (AtencionOrigen de la web). */
 data class AtencionOrigenDoc(

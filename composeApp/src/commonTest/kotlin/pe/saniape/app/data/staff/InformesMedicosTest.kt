@@ -238,6 +238,50 @@ class InformesMedicosTest {
         assertEquals("Emitido", orden.estado)
     }
 
+    // ── ¿Lo ve el paciente en su app? ──
+
+    @Test fun visibleParaElPacientePorTipo() {
+        assertFalse(visiblePacientePorDefecto(DOC_INFORME))
+        assertTrue(visiblePacientePorDefecto(DOC_DESCANSO))
+        assertTrue(visiblePacientePorDefecto(DOC_ORDEN))
+        // Sin elegir (app vieja / null): no viaja y el servidor pone el de su tipo.
+        assertNull(cuerpoEmitirInforme(borrador(DOC_INFORME), "k", seguimiento = false)["visiblePaciente"])
+        val si = cuerpoEmitirInforme(borrador(DOC_INFORME).copy(visiblePaciente = true), "k", seguimiento = false)
+        assertEquals(true, si["visiblePaciente"]!!.jsonPrimitive.content.toBoolean())
+        val no = cuerpoEmitirInforme(borrador(DOC_DESCANSO).copy(visiblePaciente = false), "k", seguimiento = false)
+        assertEquals(false, no["visiblePaciente"]!!.jsonPrimitive.content.toBoolean())
+        val v = cuerpoVisibilidadInforme("i1", false)
+        assertEquals("i1", v["id"]!!.jsonPrimitive.content)
+        assertEquals(false, v["visible"]!!.jsonPrimitive.content.toBoolean())
+        assertTrue(SELECT_INFORMES_STAFF.endsWith("visible_paciente"))
+        assertFalse(SELECT_INFORMES_STAFF_BASE.contains("visible_paciente"))
+    }
+
+    @Test fun visibilidadEnLaListaYQuienLaCambia() {
+        fun fila(extra: String) = aInformeMedico(Json.parseToJsonElement(
+            """{"id":"i1","tipo":"informe","terapeuta_id":"t1","estado":"Emitido"$extra}""").jsonObject)!!
+        val visible = fila(""","visible_paciente":true""")
+        val oculto = fila(""","visible_paciente":false""")
+        val sinColumna = fila("")
+        val anulado = aInformeMedico(Json.parseToJsonElement(
+            """{"id":"i2","tipo":"descanso","terapeuta_id":"t1","estado":"Anulado","visible_paciente":true}""").jsonObject)!!
+        assertEquals(true, visible.visiblePaciente)
+        assertEquals(false, oculto.visiblePaciente)
+        assertNull(sinColumna.visiblePaciente)
+        assertTrue(visibleEnSuApp(visible))
+        assertFalse(visibleEnSuApp(oculto))
+        assertFalse(visibleEnSuApp(anulado))
+        // Quien lo emitió o el Admin; con la columna; nunca anulado; siempre con permiso de emitir.
+        assertTrue(puedeCambiarVisibilidad(oculto, puedeEmitir = true, rol = "Profesional", miTerapeutaId = "t1"))
+        assertTrue(puedeCambiarVisibilidad(visible, puedeEmitir = true, rol = "Admin", miTerapeutaId = null))
+        assertFalse(puedeCambiarVisibilidad(visible, puedeEmitir = true, rol = "Profesional", miTerapeutaId = "t2"))
+        assertFalse(puedeCambiarVisibilidad(visible, puedeEmitir = false, rol = "Admin", miTerapeutaId = null))
+        assertFalse(puedeCambiarVisibilidad(sinColumna, puedeEmitir = true, rol = "Admin", miTerapeutaId = null))
+        assertFalse(puedeCambiarVisibilidad(anulado, puedeEmitir = true, rol = "Admin", miTerapeutaId = null))
+        assertEquals("El paciente ya lo ve en su app", mensajeVisibilidad(true))
+        assertEquals("Ya no aparece en la app del paciente", mensajeVisibilidad(false))
+    }
+
     // ── Escalas ──
 
     /** Mini PHQ (3 ítems 0..3, cortes) para probar el cálculo orientativo. */

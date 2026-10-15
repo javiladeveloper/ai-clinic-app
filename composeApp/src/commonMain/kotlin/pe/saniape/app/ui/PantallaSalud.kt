@@ -49,6 +49,8 @@ import pe.saniape.app.data.AVISO_RECETA_POR_DEFECTO
 import pe.saniape.app.data.RecetasDelPaciente
 import pe.saniape.app.data.RecetasRepo
 import pe.saniape.app.data.ClaseArchivo
+import pe.saniape.app.data.DocumentosClinicos
+import pe.saniape.app.data.DocumentosClinicosRepo
 import pe.saniape.app.data.Documento
 import pe.saniape.app.data.FotoPortal
 import pe.saniape.app.data.MisEjercicios
@@ -72,7 +74,7 @@ import pe.saniape.app.ui.theme.Sania
 /**
  * Tab Salud — mi(s) tratamiento(s) con progreso + timeline, saldo (si la clínica
  * lo habilitó), mis ejercicios de apoyo, mi plan de alimentación y mi evolución,
- * mis recetas (si tiene) y mis documentos.
+ * mis recetas (si tiene), mis documentos médicos y mis documentos.
  * Igual que MiTratamiento, MisEjercicios, MiNutricion y MisRecetas de la web.
  */
 @Composable
@@ -112,6 +114,11 @@ fun PantallaSalud() {
     // no se sabe (servidor viejo, sin red y sin caché). Sin ninguna, la sección no aparece.
     var indicaciones by remember { mutableStateOf<List<IndicacionPortal>?>(null) }
     var verIndicacionesAnteriores by remember { mutableStateOf(false) }
+    // 🩺 Documentos médicos (informes, descansos, órdenes, presupuestos, cuotas): null =
+    // no se sabe (servidor viejo, sin red y sin caché). Sin nada, la sección no aparece.
+    var docsMedicos by remember { mutableStateOf<DocumentosClinicos?>(null) }
+    // La hoja que se está pidiendo (un doble toque no abre dos visores).
+    var abriendoDocMed by remember { mutableStateOf<String?>(null) }
 
     // En vivo: cuando la clinica confirma el vinculo desde la web, el historial
     // aparece solo. Esta pantalla cargaba una sola vez, asi que el paciente veia
@@ -134,6 +141,7 @@ fun PantallaSalud() {
         if (recetas == null) recetas = withContext(Dispatchers.Default) { RecetasRepo.guardadas() }
         if (nutricion == null) nutricion = withContext(Dispatchers.Default) { MiNutricionRepo.guardada() }
         if (indicaciones == null) indicaciones = withContext(Dispatchers.Default) { MisIndicacionesRepo.guardada() }
+        if (docsMedicos == null) docsMedicos = withContext(Dispatchers.Default) { DocumentosClinicosRepo.guardados() }
         try {
             // Las cuatro consultas EN PARALELO (antes iban en fila: la pantalla
             // esperaba la suma de todas). Cada una atrapa su propio fallo para no
@@ -146,6 +154,7 @@ fun PantallaSalud() {
                 val dEjercicios = async { runCatching { MisEjerciciosRepo.cargar() }.getOrNull() }
                 val dNutricion = async { runCatching { MiNutricionRepo.cargar() }.getOrNull() }
                 val dIndicaciones = async { runCatching { MisIndicacionesRepo.cargar() }.getOrNull() }
+                val dDocsMedicos = async { runCatching { DocumentosClinicosRepo.cargar() }.getOrNull() }
                 when (val rt = dTrat.await()) {
                     is ResultadoPortal.Ok -> tratamientos = rt.datos
                     is ResultadoPortal.Error -> errorCarga = true
@@ -167,6 +176,7 @@ fun PantallaSalud() {
                 dEjercicios.await()?.let { ejercicios = it }
                 dNutricion.await()?.let { nutricion = it }
                 dIndicaciones.await()?.let { indicaciones = it }
+                dDocsMedicos.await()?.let { docsMedicos = it }
             }
         } catch (_: Exception) { errorCarga = true }
         finally { cargando = false }
@@ -175,6 +185,22 @@ fun PantallaSalud() {
     val planesEjercicios = ejercicios?.planes.orEmpty()
     val datosNutricion = nutricion?.takeIf { it.tieneDatos }
     val listaIndicaciones = indicaciones.orEmpty()
+    val datosDocsMedicos = docsMedicos?.takeIf { it.tieneDatos }
+
+    /** "Ver / PDF": pide la hoja con el Bearer del paciente y la abre en el visor con impresión. */
+    fun verDocumentoMedico(d: pe.saniape.app.data.DocMedicoPortal) {
+        if (abriendoDocMed != null) return
+        abriendoDocMed = d.id
+        scope.launch {
+            try {
+                val html = DocumentosClinicosRepo.hoja(d.urlHtml)
+                if (html == null) Toaster.error("No se pudo abrir el documento. Revisa tu conexión e inténtalo de nuevo.")
+                else acciones.abrirHtml(html, d.numeroTexto.ifBlank { d.titulo })
+            } finally {
+                abriendoDocMed = null
+            }
+        }
+    }
 
     /**
      * "✓ Ya lo hice hoy" (o deshacer). Guarda y refleja el cambio en la copia local,
@@ -239,7 +265,8 @@ fun PantallaSalud() {
     var verCancelados by remember { mutableStateOf(false) }
     val hayTratamientos = separados.vigentes.isNotEmpty() || separados.cancelados.isNotEmpty()
     val sinNada = !hayTratamientos && documentos.isEmpty() && fotos.isEmpty() && listaRecetas.isEmpty() &&
-        planesEjercicios.isEmpty() && datosNutricion == null && listaIndicaciones.isEmpty()
+        planesEjercicios.isEmpty() && datosNutricion == null && listaIndicaciones.isEmpty() &&
+        datosDocsMedicos == null
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -366,6 +393,20 @@ fun PantallaSalud() {
                         items(listaRecetas, key = { "receta-" + it.id }) { r ->
                             TarjetaReceta(r, recetas?.aviso ?: AVISO_RECETA_POR_DEFECTO)
                         }
+                    }
+                    // 🩺 Documentos médicos: solo si la clínica le dejó alguno visible (un
+                    // paciente de fisio no ve nada nuevo).
+                    datosDocsMedicos?.let { d ->
+                        seccionDocumentosMedicos(
+                            datos = d,
+                            espacioArriba = hayTratamientos || planesEjercicios.isNotEmpty() ||
+                                datosNutricion != null || listaRecetas.isNotEmpty(),
+                            abriendo = abriendoDocMed,
+                            onVer = { verDocumentoMedico(it) },
+                            onAbrirPresupuesto = { p ->
+                                p.enlace?.let { acciones.abrirUrl("${pe.saniape.app.data.Supabase.SITE_URL}$it") }
+                            },
+                        )
                     }
                     // 📷 Mis fotos: las que la clínica marcó visibles (antes/durante/después).
                     if (fotos.isNotEmpty()) {

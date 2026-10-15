@@ -332,6 +332,13 @@ object AtencionRepo {
             put("motivo", motivo.trim())
         })
 
+    /**
+     * ¿El paciente ve este documento en su app? Solo quien lo emitió o el Admin
+     * (el servidor responde 403 PROFESIONAL_AJENO / 409 ANULADO si no).
+     */
+    suspend fun cambiarVisibilidadInforme(id: String, visible: Boolean): ResultadoEscritura =
+        postJson("/api/staff/informe/visibilidad", cuerpoVisibilidadInforme(id, visible))
+
     private suspend fun postJson(endpoint: String, cuerpo: JsonObject): ResultadoEscritura {
         val tk = token() ?: return sinSesion
         return try {
