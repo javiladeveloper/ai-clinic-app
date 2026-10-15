@@ -37,7 +37,9 @@ import pe.saniape.app.data.NinoCrecimientoPortal
 import pe.saniape.app.data.NinoVacunasPortal
 import pe.saniape.app.data.indicadoresCurvaPortal
 import pe.saniape.app.data.puntosPortal
-import pe.saniape.app.data.staff.DIAS_POR_MES
+import pe.saniape.app.data.mesesCurvaPortal
+import pe.saniape.app.data.staff.MESES_FIN_CORRECCION
+import pe.saniape.app.data.staff.textoSemanasDias
 import pe.saniape.app.data.staff.EstadoDosis
 import pe.saniape.app.data.staff.TablasOms
 import pe.saniape.app.data.staff.curvaReferencia
@@ -116,13 +118,16 @@ private fun TarjetaCrecimiento(n: NinoCrecimientoPortal) {
     val disponibles = remember(n) { indicadoresCurvaPortal(n) }
     var elegido by rememberSaveable(n.pacienteId) { mutableStateOf<String?>(null) }
     val ind = disponibles.firstOrNull { it.clave == elegido } ?: disponibles.firstOrNull()
-    val meses = ultMed?.edadDias?.let { it / DIAS_POR_MES }
+    // La ventana se elige con la edad corregida (si el servidor la aplicó); antes del término, sin curva.
+    val meses = remember(n) { mesesCurvaPortal(n) }
     val ventana = if (ind != null && meses != null) ventanaCurva(ind, meses) else null
 
     Column(Modifier.tarjetaPed()) {
         Text(
             listOfNotNull(
-                n.nombre, "Última medición: ${ultMed?.let { fechaHc(it.fecha) } ?: "—"}", ult?.edadTexto?.ifBlank { null },
+                n.nombre, "Última medición: ${ultMed?.let { fechaHc(it.fecha) } ?: "—"}",
+                ult?.edadTexto?.ifBlank { null }?.let { e -> e + (ult.edadCorregidaTexto?.let { " (corregida $it)" } ?: "") },
+                n.semanasAlNacer?.takeIf { n.prematuro }?.let { "🍼 nació de ${textoSemanasDias(it * 7 + (n.diasAlNacer ?: 0))}" },
                 n.clinica?.let { "🏥 ${it.nombre}" },
             ).joinToString(" · "),
             color = c.textoSuave, fontSize = 12.sp,
@@ -134,6 +139,13 @@ private fun TarjetaCrecimiento(n: NinoCrecimientoPortal) {
                 m.perimetroCefalico?.let { DatoPed("Perímetro cefálico", "${numeroHc(it)} cm") }
                 m.imc?.let { DatoPed("IMC", numeroHc(it)) }
             }
+        }
+        if (ult?.antesDelTermino == true) {
+            Text(
+                "Todavía no cumple 40 semanas de edad posmenstrual" + (ult.edadPostmenstrualTexto?.let { " ($it)" } ?: "") +
+                    ": las curvas de la OMS empiezan ahí. Mientras tanto, tu pediatra lo sigue con curvas para prematuros.",
+                color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp),
+            )
         }
         val clasificados = ult?.indicadores.orEmpty().filter { it.clasificacion != null }
         if (clasificados.isNotEmpty()) {
@@ -158,7 +170,9 @@ private fun TarjetaCrecimiento(n: NinoCrecimientoPortal) {
                 }
                 Spacer(Modifier.height(6.dp))
                 GraficoCrecimiento(ind, curva, puntos, ventana)
-                Text("La franja verde es lo esperado para su edad. Tu pediatra interpreta la curva en cada control.",
+                Text("La franja verde es lo esperado para su edad" +
+                    (if (n.prematuro) " (por nacer prematuro, hasta los $MESES_FIN_CORRECCION meses se usa su edad corregida)" else "") +
+                    ". Tu pediatra interpreta la curva en cada control.",
                     color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
             }
         }

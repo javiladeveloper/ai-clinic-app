@@ -1,6 +1,8 @@
 package pe.saniape.app.data.staff
 
+import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.plus
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.floor
@@ -120,9 +122,117 @@ fun textoEdad(dias: Int?): String {
 fun textoEdadEntre(fechaNacimiento: String?, fecha: String?): String {
     val dias = edadEnDias(fechaNacimiento, fecha) ?: return "—"
     if (dias < 31) return "$dias ${if (dias == 1) "día" else "días"}"
+    return textoMeses(mesesCumplidos(fechaNacimiento, fecha)!!)
+}
+
+/**
+ * Meses CUMPLIDOS por calendario (el día que cumple 2 años = 24). null si falta
+ * una fecha o es antes de nacer. Un 29 de febrero cumple el 1 de marzo.
+ */
+fun mesesCumplidos(fechaNacimiento: String?, fecha: String?): Int? {
+    if (edadEnDias(fechaNacimiento, fecha) == null) return null
     val (y1, m1, d1) = fechaNacimiento!!.take(10).split("-").map { it.toInt() }
     val (y2, m2, d2) = fecha!!.take(10).split("-").map { it.toInt() }
-    return textoMeses(maxOf(0, (y2 - y1) * 12 + (m2 - m1) - (if (d2 < d1) 1 else 0)))
+    return maxOf(0, (y2 - y1) * 12 + (m2 - m1) - (if (d2 < d1) 1 else 0))
+}
+
+// ─── Prematuridad: edad corregida ────────────────────────────────────────────
+//
+// Gemelo de la web (docs/superpowers/specs/2026-10-16-prematuridad-curvas-design.md):
+//  · Edad corregida = edad cronológica − (40 semanas − EG al nacer); edad
+//    postmenstrual (EPM) = EG al nacer + edad cronológica (AAP, Pediatrics 2004;114:1362).
+//  · Solo si nació PREMATURO (EG < 37 semanas, OMS) y solo hasta que CUMPLE 2
+//    años por calendario; desde ahí, la cronológica.
+//  · EPM < 40 semanas = antes del término: los patrones OMS no aplican (van
+//    INTERGROWTH-21st / Fenton, que no están acá). Ningún z-score: nunca uno falso.
+
+/** Edad gestacional al nacer: semanas completas + días (0–6). */
+data class EdadGestacional(val semanas: Int, val dias: Int? = null)
+
+const val EG_MIN_SEMANAS = 22
+const val EG_MAX_SEMANAS = 42
+/** 40 semanas: el término. */
+const val DIAS_TERMINO = 280
+/** 37 semanas: por debajo, pretérmino (OMS). */
+const val DIAS_PRETERMINO = 37 * 7
+/** Se corrige hasta los 24 meses de edad cronológica. */
+const val MESES_FIN_CORRECCION = 24
+
+/** ¿Semanas 22–42 y días 0–6 (o sin días)? Gemelo de `egValida` / pacientes_edad_gestacional_chk. */
+fun egValida(semanas: Int?, dias: Int? = null): Boolean =
+    semanas != null && semanas in EG_MIN_SEMANAS..EG_MAX_SEMANAS && (dias == null || dias in 0..6)
+
+/** La EG de las columnas de `pacientes` (null si no hay o está fuera de rango), como `egDePaciente`. */
+fun egDe(semanas: Int?, dias: Int?): EdadGestacional? = if (egValida(semanas, dias)) EdadGestacional(semanas!!, dias) else null
+
+/** EG en días totales (32+4 → 228). */
+fun egEnDias(eg: EdadGestacional): Int = eg.semanas * 7 + (eg.dias ?: 0)
+
+/** ¿Nació antes de las 37 semanas? */
+fun esPrematuro(eg: EdadGestacional?): Boolean = eg != null && egEnDias(eg) < DIAS_PRETERMINO
+
+/** Días como "34+2 sem" (o "34 sem" justo en la semana). */
+fun textoSemanasDias(diasTotales: Int): String {
+    val s = diasTotales / 7
+    val d = diasTotales % 7
+    return if (d != 0) "$s+$d sem" else "$s sem"
+}
+
+/** "32+4 sem", "38 sem"; "" sin dato. */
+fun textoEg(eg: EdadGestacional?): String = eg?.let { textoSemanasDias(egEnDias(it)) } ?: ""
+
+/**
+ * La fecha en que cumplió (o cumplirá) 40 semanas: nacimiento + (280 − EG)
+ * días. Desde ella se cuenta la edad corregida. null si no nació prematuro.
+ */
+fun fechaTermino(fechaNacimiento: String?, eg: EdadGestacional?): String? {
+    if (fechaNacimiento == null || !ISO_FECHA.matches(fechaNacimiento.take(10)) || !esPrematuro(eg)) return null
+    return runCatching {
+        LocalDate.parse(fechaNacimiento.take(10)).plus(DIAS_TERMINO - egEnDias(eg!!), DateTimeUnit.DAY).toString()
+    }.getOrNull()
+}
+
+data class EdadEvaluada(
+    /** La edad con la que se evalúa (días): corregida si aplica. null = antes del término (sin z-score). */
+    val dias: Int?,
+    val usaEdadCorregida: Boolean,
+    /** Edad postmenstrual < 40 semanas: los patrones OMS no aplican. */
+    val antesDelTermino: Boolean,
+    /** EG al nacer + edad cronológica (días); null sin EG. */
+    val postmenstrualDias: Int?,
+)
+
+/**
+ * La edad con la que se evalúa una medición, a partir de la cronológica y la EG
+ * al nacer. [mesesCal]: meses cumplidos por CALENDARIO ([mesesCumplidos]): el
+ * corte es "cumplió 2 años", no 730 días. Sin él se aproxima con meses OMS —
+ * usar [edadParaEvaluarEntre] cuando se tienen las fechas.
+ */
+fun edadParaEvaluar(diasCronologicos: Int, eg: EdadGestacional?, mesesCal: Int? = null): EdadEvaluada {
+    val postmenstrualDias = eg?.let { egEnDias(it) + diasCronologicos }
+    val cumplio2 = if (mesesCal != null) mesesCal >= MESES_FIN_CORRECCION
+    else mesesDeDias(diasCronologicos.toDouble()) >= MESES_FIN_CORRECCION
+    if (eg == null || !esPrematuro(eg) || cumplio2) {
+        return EdadEvaluada(diasCronologicos, usaEdadCorregida = false, antesDelTermino = false, postmenstrualDias = postmenstrualDias)
+    }
+    val corregida = postmenstrualDias!! - DIAS_TERMINO
+    if (corregida < 0) return EdadEvaluada(null, usaEdadCorregida = false, antesDelTermino = true, postmenstrualDias = postmenstrualDias)
+    return EdadEvaluada(corregida, usaEdadCorregida = true, antesDelTermino = false, postmenstrualDias = postmenstrualDias)
+}
+
+/** [edadParaEvaluar] desde las fechas (corte a los 2 años por calendario). null si falta una fecha o es antes de nacer. */
+fun edadParaEvaluarEntre(fechaNacimiento: String?, fecha: String?, eg: EdadGestacional?): EdadEvaluada? {
+    val dias = edadEnDias(fechaNacimiento, fecha) ?: return null
+    return edadParaEvaluar(dias, eg, mesesCumplidos(fechaNacimiento, fecha))
+}
+
+/**
+ * La edad corregida como TEXTO, por calendario desde la fecha de término
+ * ("5 meses"). null si a esa fecha no se corrige.
+ */
+fun textoEdadCorregida(fechaNacimiento: String?, fecha: String?, eg: EdadGestacional?): String? {
+    val e = edadParaEvaluarEntre(fechaNacimiento, fecha, eg)
+    return if (e?.usaEdadCorregida == true) textoEdadEntre(fechaTermino(fechaNacimiento, eg), fecha) else null
 }
 
 // ─── LMS ─────────────────────────────────────────────────────────────────────
@@ -330,6 +440,19 @@ data class EvaluacionCrecimiento(
     val edadTexto: String,
     val imc: Double?,
     val resultados: List<ResultadoIndicador>,
+    /**
+     * Prematuridad: la edad corregida con la que se evaluó (y dibuja). null si no
+     * se corrige (sin EG, a término, ≥ 2 años o antes del término).
+     */
+    val edadCorregidaDias: Int? = null,
+    val edadCorregidaMeses: Double? = null,
+    /** Por calendario desde la fecha de término ("5 meses"). */
+    val edadCorregidaTexto: String? = null,
+    val usaEdadCorregida: Boolean = false,
+    /** Edad postmenstrual < 40 semanas: sin z-score (`resultados` vacío). */
+    val antesDelTermino: Boolean = false,
+    /** "34+2 sem" — solo antes del término. */
+    val edadPostmenstrualTexto: String? = null,
 )
 
 private fun positivo(v: Double?): Double? = v?.takeIf { it.isFinite() && it > 0 }
@@ -343,11 +466,15 @@ fun imcDe(peso: Double?, tallaCm: Double?): Double? {
 /**
  * Todos los indicadores que aplican a una medición. null = falta la fecha de
  * nacimiento o la medición es de antes de nacer o después de los 19 años.
+ * [eg] (edad gestacional al nacer, opcional): si nació prematuro, evalúa con la
+ * edad corregida (ver [edadParaEvaluar]). Sin [eg], exactamente lo de siempre.
  */
-fun evaluarMedicion(tablas: TablasOms, sexo: String, fechaNacimiento: String?, m: MedicionCrecimiento): EvaluacionCrecimiento? {
-    val dias = edadEnDias(fechaNacimiento, m.fecha) ?: return null
-    val meses = mesesDeDias(dias.toDouble())
-    if (meses > MESES_MAX + 1) return null
+fun evaluarMedicion(
+    tablas: TablasOms, sexo: String, fechaNacimiento: String?, m: MedicionCrecimiento, eg: EdadGestacional? = null,
+): EvaluacionCrecimiento? {
+    val diasCrono = edadEnDias(fechaNacimiento, m.fecha) ?: return null
+    if (mesesDeDias(diasCrono.toDouble()) > MESES_MAX + 1) return null
+    val edad = edadParaEvaluar(diasCrono, eg, mesesCumplidos(fechaNacimiento, m.fecha))
     val peso = positivo(m.peso)
     val talla = positivo(m.talla)
     val pc = positivo(m.perimetroCefalico)
@@ -356,17 +483,74 @@ fun evaluarMedicion(tablas: TablasOms, sexo: String, fechaNacimiento: String?, m
         IndicadorCrecimiento.PESO_EDAD to peso, IndicadorCrecimiento.TALLA_EDAD to talla,
         IndicadorCrecimiento.PESO_TALLA to peso, IndicadorCrecimiento.IMC_EDAD to imcExacto, IndicadorCrecimiento.PC_EDAD to pc,
     )
-    val resultados = IndicadorCrecimiento.entries.mapNotNull { ind ->
+    // Antes del término no hay patrón OMS: ningún z (nunca uno falso).
+    val diasEval = edad.dias
+    val resultados = if (diasEval == null) emptyList() else IndicadorCrecimiento.entries.mapNotNull { ind ->
+        val meses = mesesDeDias(diasEval.toDouble())
         val valor = medidas[ind] ?: return@mapNotNull null
-        val zi = zIndicador(tablas, ind, sexo, dias.toDouble(), valor, if (ind == IndicadorCrecimiento.PESO_TALLA) talla else null)
+        val zi = zIndicador(tablas, ind, sexo, diasEval.toDouble(), valor, if (ind == IndicadorCrecimiento.PESO_TALLA) talla else null)
             ?: return@mapNotNull null
         ResultadoIndicador(
             ind, if (ind == IndicadorCrecimiento.IMC_EDAD) r1(valor) else valor, zi.z, zi.percentil, zi.fuente,
             clasificarZ(ind, zi.z, meses),
         )
     }
-    return EvaluacionCrecimiento(m.fecha, dias, r1(meses), textoEdadEntre(fechaNacimiento, m.fecha), imcDe(peso, talla), resultados)
+    val corr = if (edad.usaEdadCorregida) edad.dias else null
+    return EvaluacionCrecimiento(
+        fecha = m.fecha,
+        edadDias = diasCrono,
+        edadMeses = r1(mesesDeDias(diasCrono.toDouble())),
+        edadTexto = textoEdadEntre(fechaNacimiento, m.fecha),
+        imc = imcDe(peso, talla),
+        resultados = resultados,
+        edadCorregidaDias = corr,
+        edadCorregidaMeses = corr?.let { r1(mesesDeDias(it.toDouble())) },
+        edadCorregidaTexto = if (corr != null) textoEdadCorregida(fechaNacimiento, m.fecha, eg) else null,
+        usaEdadCorregida = edad.usaEdadCorregida,
+        antesDelTermino = edad.antesDelTermino,
+        edadPostmenstrualTexto = if (edad.antesDelTermino) textoSemanasDias(edad.postmenstrualDias!!) else null,
+    )
 }
+
+/** La edad en meses con la que se dibuja la curva: la corregida si aplica. null antes del término. */
+fun edadCurvaMeses(ev: EvaluacionCrecimiento): Double? =
+    if (ev.antesDelTermino) null else ev.edadCorregidaMeses ?: ev.edadMeses
+
+/**
+ * La edad para mostrar: "7 meses (corregida 5 meses)"; antes del término
+ * "20 días (34+2 sem posmenstruales)"; sin corrección, "7 meses".
+ * [corto]: "(corr. 5 meses)" / "(34+2 sem EPM)" para tablas.
+ */
+fun textoEdadEvaluada(ev: EvaluacionCrecimiento, corto: Boolean = false): String = when {
+    ev.antesDelTermino && ev.edadPostmenstrualTexto != null ->
+        "${ev.edadTexto} (${ev.edadPostmenstrualTexto} ${if (corto) "EPM" else "posmenstruales"})"
+    ev.edadCorregidaTexto != null -> "${ev.edadTexto} (${if (corto) "corr." else "corregida"} ${ev.edadCorregidaTexto})"
+    else -> ev.edadTexto
+}
+
+/** Leyenda de la corrección (pestaña, hoja, portal). null si no hay EG prematura. */
+fun leyendaPrematuridad(eg: EdadGestacional?): String? {
+    if (!esPrematuro(eg)) return null
+    return "Nació prematuro (${textoEg(eg)}): hasta los $MESES_FIN_CORRECCION meses se evalúa con la edad corregida " +
+        "(edad cronológica − (40 semanas − edad gestacional al nacer)). Antes de las 40 semanas de edad posmenstrual " +
+        "los patrones OMS no aplican: usar curvas INTERGROWTH-21st o Fenton."
+}
+
+/**
+ * La fecha de la PRIMERA evaluación de un prematuro que ya no se corrige
+ * (cumplió 2 años): ahí se avisa que desde los 2 años se evalúa con la edad
+ * real, porque el punto "salta" en la curva. null si no aplica.
+ */
+fun primeraSinCorreccion(evaluaciones: List<EvaluacionCrecimiento>, eg: EdadGestacional?): String? {
+    if (!esPrematuro(eg)) return null
+    return evaluaciones.sortedBy { it.fecha }.firstOrNull { !it.usaEdadCorregida && !it.antesDelTermino }?.fecha
+}
+
+const val AVISO_FIN_CORRECCION = "Cumplió 2 años: desde los 2 años se evalúa con la edad real (ya no se corrige por prematuridad)."
+
+/** Aviso cuando la última medición es de antes del término. */
+const val AVISO_ANTES_DEL_TERMINO =
+    "Aún antes del término: los patrones de la OMS empiezan a las 40 semanas de edad posmenstrual. Usar curvas INTERGROWTH-21st o Fenton."
 
 /** El peor nivel de una evaluación (para el chip del resumen). */
 fun peorNivel(clasificaciones: List<ClasificacionCrecimiento?>): NivelCrecimiento? =
@@ -445,16 +629,19 @@ fun curvaReferencia(tablas: TablasOms, indicador: IndicadorCrecimiento, sexo: St
 
 data class PuntoPaciente(val x: Double, val valor: Double, val fecha: String, val z: Double?)
 
-/** Los puntos del niño para un indicador (x = edad en meses o talla en cm), en la ventana. */
+/**
+ * Los puntos del niño para un indicador (x = edad en meses o talla en cm), en la
+ * ventana. Con [eg] prematura: x = edad corregida; antes del término no se dibuja.
+ */
 fun puntosPaciente(
     tablas: TablasOms, indicador: IndicadorCrecimiento, sexo: String, fechaNacimiento: String?,
-    mediciones: List<MedicionCrecimiento>, v: VentanaCurva,
+    mediciones: List<MedicionCrecimiento>, v: VentanaCurva, eg: EdadGestacional? = null,
 ): List<PuntoPaciente> {
     val out = mutableListOf<PuntoPaciente>()
     for (m in mediciones) {
-        val ev = evaluarMedicion(tablas, sexo, fechaNacimiento, m) ?: continue
+        val ev = evaluarMedicion(tablas, sexo, fechaNacimiento, m, eg) ?: continue
         val r = ev.resultados.firstOrNull { it.indicador == indicador } ?: continue
-        val x = if (v.ejeCm) positivo(m.talla) else ev.edadDias / DIAS_POR_MES
+        val x = if (v.ejeCm) positivo(m.talla) else (ev.edadCorregidaDias ?: ev.edadDias) / DIAS_POR_MES
         if (x == null || x < v.desde || x > v.hasta) continue
         out.add(PuntoPaciente(r2(x), r.valor, m.fecha, r.z))
     }

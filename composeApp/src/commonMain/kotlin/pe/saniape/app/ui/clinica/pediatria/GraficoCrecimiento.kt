@@ -44,6 +44,8 @@ fun GraficoCrecimiento(
     puntos: List<PuntoPaciente>,
     ventana: VentanaCurva,
     modifier: Modifier = Modifier,
+    /** Rótulo del eje x ("Edad (corregida hasta los 24 meses)" en prematuros); null = el de siempre. */
+    etiquetaEje: String? = null,
 ) {
     if (curva.size < 2) return
     val c = Sania.colors
@@ -85,7 +87,7 @@ fun GraficoCrecimiento(
             val t = medidor.measure(m.texto, estilo)
             drawText(t, topLeft = Offset((xx - t.size.width / 2f).coerceIn(0f, size.width - t.size.width), size.height - aba + 3.dp.toPx()))
         }
-        val eje = medidor.measure(if (ventana.ejeCm) "Talla (cm)" else "Edad", estilo)
+        val eje = medidor.measure(if (ventana.ejeCm) "Talla (cm)" else etiquetaEje ?: "Edad", estilo)
         drawText(eje, topLeft = Offset(izq + (ancho - eje.size.width) / 2f, size.height - eje.size.height.toFloat()))
         // Líneas de referencia OMS con su etiqueta al final
         val ultimo = curva.last()

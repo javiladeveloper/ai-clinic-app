@@ -52,6 +52,52 @@ class MiPediatriaPortalTest {
         assertTrue(!parsearMiCrecimiento("""{"ninos":[]}""")!!.tieneDatos)
     }
 
+    /** §11.1: 30 sem al nacer; la de 20 días es antes del término; la de 120 días, 50 corregidos. */
+    @Test fun prematuroEdadCorregidaEnLaCurva() {
+        val d = parsearMiCrecimiento("""{"ninos":[{
+            "pacienteId":"p1","nombre":"Mateo","sexo":"M","fechaNacimiento":"2026-01-01",
+            "semanasAlNacer":30,"diasAlNacer":0,"prematuro":true,
+            "mediciones":[
+              {"fecha":"2026-01-21","edadDias":20,"peso":1.9,"edadCorregidaDias":null,"usaEdadCorregida":false,"antesDelTermino":true},
+              {"fecha":"2026-05-01","edadDias":120,"peso":4.9,"talla":55,"edadCorregidaDias":50,"usaEdadCorregida":true,"antesDelTermino":false}
+            ],
+            "ultima":{"fecha":"2026-05-01","edadTexto":"4 meses","edadCorregidaTexto":"1 mes","edadCorregidaMeses":1.6,
+              "usaEdadCorregida":true,"antesDelTermino":false,"edadPostmenstrualTexto":null,
+              "indicadores":[{"indicador":"peso_edad","valor":4.9,"z":0.01,"percentil":50,"clasificacion":{"texto":"Normal","nivel":"ok"}}]}
+        }]}""")!!
+        val n = d.ninos.single()
+        assertEquals(30, n.semanasAlNacer); assertEquals(0, n.diasAlNacer); assertTrue(n.prematuro)
+        assertEquals("1 mes", n.ultima!!.edadCorregidaTexto)
+        assertEquals(1.6, n.ultima!!.edadCorregidaMeses)
+        // La ventana se elige con la edad corregida; el punto se ubica en 50 días, no en 120.
+        assertEquals(50 / pe.saniape.app.data.staff.DIAS_POR_MES, mesesCurvaPortal(n))
+        val v = ventanaCurva(IndicadorCrecimiento.PESO_EDAD, mesesCurvaPortal(n)!!)!!
+        val pts = puntosPortal(n, IndicadorCrecimiento.PESO_EDAD, v)
+        assertEquals(listOf(50 / pe.saniape.app.data.staff.DIAS_POR_MES), pts.map { it.x })
+        // P/T (eje talla): tampoco se dibuja la de antes del término.
+        val vpt = ventanaCurva(IndicadorCrecimiento.PESO_TALLA, 1.6)!!
+        assertEquals(listOf("2026-05-01"), puntosPortal(n, IndicadorCrecimiento.PESO_TALLA, vpt).map { it.fecha })
+
+        // Última medición antes del término: sin z (aunque llegara alguno) ni curva.
+        val antes = parsearMiCrecimiento("""{"ninos":[{
+            "pacienteId":"p1","nombre":"Mateo","sexo":"M","fechaNacimiento":"2026-01-01","semanasAlNacer":30,"prematuro":true,
+            "mediciones":[{"fecha":"2026-01-21","edadDias":20,"peso":1.9,"antesDelTermino":true}],
+            "ultima":{"fecha":"2026-01-21","edadTexto":"20 días","antesDelTermino":true,"edadPostmenstrualTexto":"32+6 sem",
+              "indicadores":[{"indicador":"peso_edad","valor":1.9,"z":-5,"percentil":0}]}
+        }]}""")!!.ninos.single()
+        assertTrue(antes.ultima!!.antesDelTermino)
+        assertEquals("32+6 sem", antes.ultima!!.edadPostmenstrualTexto)
+        assertTrue(antes.ultima!!.indicadores.isEmpty())
+        assertNull(mesesCurvaPortal(antes))
+        assertTrue(indicadoresCurvaPortal(antes).isEmpty())
+
+        // Servidor viejo (sin los campos): la edad cronológica, como antes.
+        val viejo = parsearMiCrecimiento(crecimiento)!!.ninos.single()
+        assertNull(viejo.semanasAlNacer); assertTrue(!viejo.prematuro)
+        assertTrue(viejo.mediciones.none { it.usaEdadCorregida || it.antesDelTermino })
+        assertEquals(365 / pe.saniape.app.data.staff.DIAS_POR_MES, mesesCurvaPortal(viejo))
+    }
+
     @Test fun vacunasYaCalculadas() {
         val d = parsearMisVacunas("""{"ninos":[{
             "pacienteId":"p1","nombre":"Mateo Quispe","fechaNacimiento":"2025-03-10","clinica":{"nombre":"BABYMED"},

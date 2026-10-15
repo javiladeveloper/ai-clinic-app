@@ -31,6 +31,34 @@ import pe.saniape.app.data.offline.ResultadoEscritura
 /** Un servidor sin /api/staff/vacunas todavía (404 sin el JSON del API). */
 const val VACUNAS_NO_DISPONIBLE = "El carné de vacunas todavía no está disponible. Inténtalo más tarde."
 
+/** 🍼 Lectura de la EG: [disponible] = false si la base aún no tiene las columnas (o sin red). */
+data class LecturaEg(val eg: EdadGestacional?, val disponible: Boolean)
+
+/** La EG de una fila de `pacientes` (`edad_gestacional_semanas` / `_dias`), como `egDePaciente`. */
+fun egDeFila(o: JsonObject): EdadGestacional? {
+    fun entero(k: String) = (o[k] as? JsonPrimitive)?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.content?.trim()
+        ?.takeIf { it.isNotEmpty() && it.all { ch -> ch.isDigit() } }?.toIntOrNull()
+    return egDe(entero("edad_gestacional_semanas"), entero("edad_gestacional_dias"))
+}
+
+/**
+ * Cuerpo de POST /api/staff/paciente/actualizar. La EG solo viaja con [tocarEg]:
+ * `edadGestacionalSemanas` (22–42 | null = borrar) y `edadGestacionalDias`
+ * (0–6; sin días = 0, van juntos).
+ */
+fun cuerpoActualizarFicha(
+    pacienteId: String, sexo: String? = null, tocarSexo: Boolean = false, fechaNacimiento: String? = null,
+    tocarEg: Boolean = false, eg: EdadGestacional? = null,
+): JsonObject = buildJsonObject {
+    put("pacienteId", pacienteId)
+    if (tocarSexo) put("sexo", sexoValido(sexo)?.let { JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
+    fechaNacimiento?.let { put("fechaNacimiento", it) }
+    if (tocarEg) {
+        put("edadGestacionalSemanas", eg?.let { JsonPrimitive(it.semanas) } ?: kotlinx.serialization.json.JsonNull)
+        put("edadGestacionalDias", eg?.let { JsonPrimitive(it.dias ?: 0) } ?: kotlinx.serialization.json.JsonNull)
+    }
+}
+
 /** Lectura del carné: [items] o, si no se pudo, [error] para mostrar. */
 data class LecturaVacunas(val items: List<VacunaPaciente>? = null, val error: String? = null)
 
@@ -128,13 +156,13 @@ object PediatriaRepo {
      * servidor que aún no conoce la clave responde `sinCambios`: se avisa que no
      * quedó guardado (en vez de fingir que sí).
      */
-    suspend fun actualizarFicha(pacienteId: String, sexo: String? = null, tocarSexo: Boolean = false, fechaNacimiento: String? = null): ResultadoEscritura {
+    suspend fun actualizarFicha(
+        pacienteId: String, sexo: String? = null, tocarSexo: Boolean = false, fechaNacimiento: String? = null,
+        /** 🍼 Prematuridad: con [tocarEg], guarda [eg] (null = quitar el dato; semanas y días van juntos). */
+        tocarEg: Boolean = false, eg: EdadGestacional? = null,
+    ): ResultadoEscritura {
         val tk = token() ?: return SIN_SESION
-        val cuerpo = buildJsonObject {
-            put("pacienteId", pacienteId)
-            if (tocarSexo) put("sexo", sexoValido(sexo)?.let { JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
-            fechaNacimiento?.let { put("fechaNacimiento", it) }
-        }.toString()
+        val cuerpo = cuerpoActualizarFicha(pacienteId, sexo, tocarSexo, fechaNacimiento, tocarEg, eg).toString()
         return try {
             pe.saniape.app.ui.conIndicador {
                 val resp = http.post("${Supabase.SITE_URL}$RUTA_ACTUALIZAR") {
@@ -149,6 +177,18 @@ object PediatriaRepo {
             }
         } catch (e: CancellationException) { throw e } catch (_: Exception) { SIN_RED }
     }
+
+    /**
+     * 🍼 La edad gestacional al nacer de la ficha. Lectura APARTE y a prueba de
+     * fallos: una base sin las columnas (migración aún no aplicada) o sin red
+     * devuelve `disponible = false` y la tarjeta no aparece (la ficha no depende de ella).
+     */
+    suspend fun edadGestacionalDe(pacienteId: String): LecturaEg = try {
+        val fila = Supabase.client.postgrest["pacientes"]
+            .select(Columns.raw("edad_gestacional_semanas,edad_gestacional_dias")) { filter { eq("id", pacienteId) } }
+            .decodeList<JsonObject>().firstOrNull()
+        LecturaEg(fila?.let { egDeFila(it) }, disponible = fila != null)
+    } catch (e: CancellationException) { throw e } catch (_: Exception) { LecturaEg(null, disponible = false) }
 
     /**
      * El sexo de la ficha ("F" / "M" / null). Lectura aparte y a prueba de fallos

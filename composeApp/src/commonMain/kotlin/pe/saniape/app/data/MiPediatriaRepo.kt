@@ -15,6 +15,8 @@ import kotlinx.serialization.json.jsonObject
 import pe.saniape.app.data.offline.CacheLectura
 import pe.saniape.app.data.staff.ClasificacionCrecimiento
 import pe.saniape.app.data.staff.DIAS_POR_MES
+import pe.saniape.app.data.staff.EG_MAX_SEMANAS
+import pe.saniape.app.data.staff.EG_MIN_SEMANAS
 import pe.saniape.app.data.staff.EstadoDosis
 import pe.saniape.app.data.staff.IndicadorCrecimiento
 import pe.saniape.app.data.staff.NivelCrecimiento
@@ -30,7 +32,15 @@ data class ClinicaNinoPortal(val nombre: String, val logoUrl: String?, val color
 /** Una medición del niño (sin notas: no vienen). */
 data class MedicionNinoPortal(
     val fecha: String, val edadDias: Int?, val peso: Double?, val talla: Double?, val perimetroCefalico: Double?, val imc: Double?,
-)
+    /** 🍼 Prematuridad (§11.1, aditivos; un servidor viejo no los manda = sin corrección). */
+    val edadCorregidaDias: Int? = null,
+    val usaEdadCorregida: Boolean = false,
+    /** Edad posmenstrual < 40 semanas: el punto NO se dibuja en la curva OMS. */
+    val antesDelTermino: Boolean = false,
+) {
+    /** Días del eje x de la curva: la edad corregida si se aplicó; null antes del término (no se dibuja). */
+    val diasCurva: Int? get() = if (antesDelTermino) null else edadCorregidaDias ?: edadDias
+}
 
 /** Un indicador de la última medición, ya calculado por el servidor. */
 data class IndicadorNinoPortal(
@@ -38,7 +48,17 @@ data class IndicadorNinoPortal(
     val z: Double, val percentil: Double, val clasificacion: ClasificacionCrecimiento?,
 )
 
-data class UltimaNinoPortal(val fecha: String, val edadTexto: String, val indicadores: List<IndicadorNinoPortal>)
+data class UltimaNinoPortal(
+    val fecha: String, val edadTexto: String, val indicadores: List<IndicadorNinoPortal>,
+    /** 🍼 "5 meses" si se corrigió por prematuridad (los z de [indicadores] ya vienen con ella). */
+    val edadCorregidaTexto: String? = null,
+    val edadCorregidaMeses: Double? = null,
+    val usaEdadCorregida: Boolean = false,
+    /** Antes de las 40 semanas de edad posmenstrual: [indicadores] vacío. */
+    val antesDelTermino: Boolean = false,
+    /** "32+6 sem" — solo antes del término. */
+    val edadPostmenstrualTexto: String? = null,
+)
 
 data class NinoCrecimientoPortal(
     val pacienteId: String,
@@ -50,6 +70,10 @@ data class NinoCrecimientoPortal(
     /** Cronológicas. */
     val mediciones: List<MedicionNinoPortal>,
     val ultima: UltimaNinoPortal?,
+    /** 🍼 Edad gestacional al nacer (22–42 | null) y si nació prematuro (< 37 sem). */
+    val semanasAlNacer: Int? = null,
+    val diasAlNacer: Int? = null,
+    val prematuro: Boolean = false,
 )
 
 data class MiCrecimiento(val ninos: List<NinoCrecimientoPortal>) {
@@ -103,6 +127,7 @@ private fun JsonObject.txtPed(k: String): String? =
 private fun JsonObject.numPed(k: String): Double? =
     (this[k] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content?.toDoubleOrNull()?.takeIf { it.isFinite() }
 private fun JsonObject.posPed(k: String): Double? = numPed(k)?.takeIf { it > 0 }
+private fun JsonObject.siPed(k: String): Boolean = (this[k] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content == "true"
 private val FECHA_PED = Regex("""^\d{4}-\d{2}-\d{2}$""")
 
 private fun clinicaNino(o: JsonObject): ClinicaNinoPortal? = (o["clinica"] as? JsonObject)?.let { c ->
@@ -125,6 +150,9 @@ fun parsearMiCrecimiento(texto: String): MiCrecimiento? {
             val fecha = m.txtPed("fecha")?.take(10)?.takeIf { FECHA_PED.matches(it) } ?: return@mapNotNull null
             val med = MedicionNinoPortal(
                 fecha, m.numPed("edadDias")?.toInt(), m.posPed("peso"), m.posPed("talla"), m.posPed("perimetroCefalico"), m.posPed("imc"),
+                edadCorregidaDias = m.numPed("edadCorregidaDias")?.takeIf { it >= 0 }?.toInt(),
+                usaEdadCorregida = m.siPed("usaEdadCorregida"),
+                antesDelTermino = m.siPed("antesDelTermino"),
             )
             if (med.peso == null && med.talla == null && med.perimetroCefalico == null) null else med
         }.sortedBy { it.fecha }
@@ -142,9 +170,22 @@ fun parsearMiCrecimiento(texto: String): MiCrecimiento? {
                 IndicadorNinoPortal(ind, i.txtPed("sigla") ?: ind.sigla, i.txtPed("nombre") ?: ind.nombre, valor,
                     i.txtPed("unidad") ?: ind.unidad, z, i.numPed("percentil") ?: 0.0, cl)
             }
-            UltimaNinoPortal(u.txtPed("fecha")?.take(10).orEmpty(), u.txtPed("edadTexto").orEmpty(), inds)
+            val antes = u.siPed("antesDelTermino")
+            UltimaNinoPortal(
+                u.txtPed("fecha")?.take(10).orEmpty(), u.txtPed("edadTexto").orEmpty(),
+                // Antes del término no hay z OMS: aunque llegara alguno, no se muestra.
+                if (antes) emptyList() else inds,
+                edadCorregidaTexto = u.txtPed("edadCorregidaTexto"), edadCorregidaMeses = u.numPed("edadCorregidaMeses"),
+                usaEdadCorregida = u.siPed("usaEdadCorregida"), antesDelTermino = antes,
+                edadPostmenstrualTexto = u.txtPed("edadPostmenstrualTexto"),
+            )
         }
-        NinoCrecimientoPortal(id, o.txtPed("nombre") ?: "Mi hijo/a", sexoValido(o.txtPed("sexo")), nac, clinicaNino(o), meds, ult)
+        val sem = o.numPed("semanasAlNacer")?.toInt()?.takeIf { it in EG_MIN_SEMANAS..EG_MAX_SEMANAS }
+        NinoCrecimientoPortal(
+            id, o.txtPed("nombre") ?: "Mi hijo/a", sexoValido(o.txtPed("sexo")), nac, clinicaNino(o), meds, ult,
+            semanasAlNacer = sem, diasAlNacer = sem?.let { o.numPed("diasAlNacer")?.toInt()?.takeIf { d -> d in 0..6 } },
+            prematuro = o.siPed("prematuro"),
+        )
     }.distinctBy { it.pacienteId }
     return MiCrecimiento(ninos)
 }
@@ -191,17 +232,26 @@ fun parsearMisVacunas(texto: String): MisVacunas? {
 
 // ─── Presentación (pura, testeable) ──────────────────────────────────────────
 
-/** Los indicadores con curva en el portal: los de la última medición que tienen ventana a esa edad. */
+/**
+ * Los indicadores con curva en el portal: los de la última medición que tienen
+ * ventana a esa edad (la corregida si el servidor la aplicó; antes del término, ninguno).
+ */
 fun indicadoresCurvaPortal(n: NinoCrecimientoPortal): List<IndicadorCrecimiento> {
-    val dias = n.mediciones.lastOrNull()?.edadDias ?: return emptyList()
-    val meses = dias / DIAS_POR_MES
+    val meses = mesesCurvaPortal(n) ?: return emptyList()
     return IndicadorCrecimiento.entries.filter { i -> ventanaCurva(i, meses) != null && n.ultima?.indicadores.orEmpty().any { it.indicador == i } }
 }
 
-/** Los puntos del niño para una curva (los valores ya vienen del servidor), como MiCrecimiento.tsx. */
+/** Los meses con los que se elige la ventana de la curva: la edad corregida si aplica; null antes del término. */
+fun mesesCurvaPortal(n: NinoCrecimientoPortal): Double? = n.mediciones.lastOrNull()?.diasCurva?.let { it / DIAS_POR_MES }
+
+/**
+ * Los puntos del niño para una curva (los valores ya vienen del servidor), como
+ * MiCrecimiento.tsx: x = (edadCorregidaDias ?? edadDias) / 30,4375; las de antes
+ * del término no se dibujan.
+ */
 fun puntosPortal(n: NinoCrecimientoPortal, ind: IndicadorCrecimiento, v: VentanaCurva): List<PuntoPaciente> =
     n.mediciones.mapNotNull { m ->
-        val dias = m.edadDias ?: return@mapNotNull null
+        val dias = m.diasCurva ?: return@mapNotNull null
         val valor = when (ind) {
             IndicadorCrecimiento.PESO_EDAD, IndicadorCrecimiento.PESO_TALLA -> m.peso
             IndicadorCrecimiento.TALLA_EDAD -> m.talla

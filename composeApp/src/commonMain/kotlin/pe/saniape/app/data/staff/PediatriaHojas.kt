@@ -187,23 +187,32 @@ fun htmlCurvaCrecimiento(
     clinicaDireccion: String?,
     logoUrl: String?,
     colorPrincipal: String?,
+    /** Edad gestacional al nacer (prematuridad); null = edad cronológica, como siempre. */
+    eg: EdadGestacional? = null,
 ): String {
     val color = colorHojaClinica(colorPrincipal)
-    val evals = mediciones.mapNotNull { m -> evaluarMedicion(tablas, sexo, fechaNacimiento, m)?.let { m to it } }
+    val evals = mediciones.mapNotNull { m -> evaluarMedicion(tablas, sexo, fechaNacimiento, m, eg)?.let { m to it } }
     val ultima = evals.lastOrNull()?.second
-    val indicadores = ultima?.let { u ->
-        IndicadorCrecimiento.entries.filter { i -> ventanaCurva(i, u.edadMeses) != null && u.resultados.any { it.indicador == i } }
-    }.orEmpty()
+    val mesesCurva = ultima?.let { edadCurvaMeses(it) }
+    val indicadores = if (ultima == null || mesesCurva == null) emptyList()
+    else IndicadorCrecimiento.entries.filter { i -> ventanaCurva(i, mesesCurva) != null && ultima.resultados.any { it.indicador == i } }
+    // Edad de HOY con su corrección ("7 meses (corregida 5 meses)").
+    val corrHoy = textoEdadCorregida(fechaNacimiento, hoy, eg)
+    val leyenda = leyendaPrematuridad(eg)
+    val finCorreccion = primeraSinCorreccion(evals.map { it.second }, eg)
     val pac = buildString {
         append("<span><b>Paciente:</b> ${escSvg(pacienteNombre?.takeIf { it.isNotBlank() } ?: "—")}</span>")
         pacienteDocumento?.takeIf { it.isNotBlank() }?.let { append("<span><b>Documento:</b> ${escSvg(it)}</span>") }
         append("<span><b>Sexo:</b> ${if (sexo == "F") "Femenino" else "Masculino"}</span>")
         append("<span><b>Nacimiento:</b> ${escSvg(fechaPed(fechaNacimiento))}</span>")
-        append("<span><b>Edad:</b> ${escSvg(textoEdadEntre(fechaNacimiento, hoy))}</span>")
+        append("<span><b>Edad:</b> ${escSvg(textoEdadEntre(fechaNacimiento, hoy) + (corrHoy?.let { " (corregida $it)" } ?: ""))}</span>")
+        eg?.let { append("<span><b>Al nacer:</b> ${escSvg(if (esPrematuro(it)) "prematuro de ${textoEg(it)}" else textoEg(it))}</span>") }
     }
     val cuerpo = buildString {
         if (ultima != null) {
-            append("<section><h2>Estado nutricional — ${escSvg(fechaPed(ultima.fecha))} (${escSvg(ultima.edadTexto)})</h2>")
+            append("<section><h2>Estado nutricional — ${escSvg(fechaPed(ultima.fecha))} (${escSvg(textoEdadEvaluada(ultima))})</h2>")
+            if (ultima.fecha == finCorreccion) append("<p style=\"font-size:9pt;font-weight:bold;color:#1d6fa8\">${escSvg(AVISO_FIN_CORRECCION)}</p>")
+            if (ultima.antesDelTermino) append("<p style=\"font-size:9pt;font-weight:bold;color:#d97706\">${escSvg(AVISO_ANTES_DEL_TERMINO)}</p>")
             append("<table><thead><tr><th>Indicador</th><th>Valor</th><th>z / percentil</th><th>Clasificación</th></tr></thead><tbody>")
             ultima.resultados.forEach { r ->
                 val cl = r.clasificacion
@@ -217,8 +226,8 @@ fun htmlCurvaCrecimiento(
         if (indicadores.isNotEmpty()) {
             append("<div class=\"curvas\">")
             indicadores.forEach { ind ->
-                val v = ventanaCurva(ind, ultima!!.edadMeses)!!
-                val svg = svgCurvaCrecimiento(ind, curvaReferencia(tablas, ind, sexo, v, 80), puntosPaciente(tablas, ind, sexo, fechaNacimiento, mediciones, v), v)
+                val v = ventanaCurva(ind, mesesCurva!!)!!
+                val svg = svgCurvaCrecimiento(ind, curvaReferencia(tablas, ind, sexo, v, 80), puntosPaciente(tablas, ind, sexo, fechaNacimiento, mediciones, v, eg), v)
                 append("<figure><figcaption>${escSvg(ind.sigla)} · ${escSvg(ind.nombre)} (${escSvg(ind.unidad)})</figcaption>$svg</figure>")
             }
             append("</div>")
@@ -226,7 +235,7 @@ fun htmlCurvaCrecimiento(
         if (evals.isNotEmpty()) {
             append("<section><h2>Mediciones</h2><table class=\"num\"><thead><tr><th>Fecha</th><th>Edad</th><th>Peso (kg)</th><th>Talla (cm)</th><th>P. cef. (cm)</th><th>IMC</th></tr></thead><tbody>")
             evals.forEach { (m, ev) ->
-                append("<tr><td>${escSvg(fechaPed(m.fecha))}</td><td>${escSvg(ev.edadTexto)}</td><td>${n1Hoja(m.peso)}</td>")
+                append("<tr><td>${escSvg(fechaPed(m.fecha))}</td><td>${escSvg(textoEdadEvaluada(ev, corto = true) + if (m.fecha == finCorreccion) " · desde aquí, edad real" else "")}</td><td>${n1Hoja(m.peso)}</td>")
                 append("<td>${n1Hoja(m.talla)}</td><td>${n1Hoja(m.perimetroCefalico)}</td><td>${ev.imc?.let { numJs(it) } ?: "—"}</td></tr>")
             }
             append("</tbody></table></section>")
@@ -235,7 +244,8 @@ fun htmlCurvaCrecimiento(
     return hojaPediatria(
         titulo = "Curva de crecimiento — ${pacienteNombre.orEmpty()}", documento = "CURVA DE CRECIMIENTO", hoy = hoy, color = color,
         logoUrl = logoUrl, clinicaNombre = clinicaNombre, clinicaDireccion = clinicaDireccion, pacienteLinea = pac, cuerpo = cuerpo,
-        pie = "Patrones de crecimiento OMS (2006, 0–5 años; referencia 2007, 5–19 años). Clasificación: NTS N° 238-MINSA/DGIESP-2025. Apoyo a la decisión clínica.",
+        pie = "Patrones de crecimiento OMS (2006, 0–5 años; referencia 2007, 5–19 años). Clasificación: NTS N° 238-MINSA/DGIESP-2025. Apoyo a la decisión clínica." +
+            (leyenda?.let { " ${escSvg(it)}" } ?: ""),
     )
 }
 
