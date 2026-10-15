@@ -118,7 +118,7 @@ data class TratamientoPaciente(
     /**
      * Multipaís: la sede donde se vendió (`tratamientos.sede_id`). Su moneda es
      * la del tratamiento (cuotas, pagos); null = sin sede o backend viejo → la
-     * del paciente ([monedaDeTratamiento]).
+     * del paciente → la principal ([regionalDeTratamiento]).
      */
     val sedeId: String? = null,
 ) {

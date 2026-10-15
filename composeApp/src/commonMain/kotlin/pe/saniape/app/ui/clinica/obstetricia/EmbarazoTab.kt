@@ -72,6 +72,8 @@ import pe.saniape.app.data.staff.ordenarEmbarazos
 import pe.saniape.app.data.staff.resumenEmbarazo
 import pe.saniape.app.data.staff.PA_DIAST_ELEVADA
 import pe.saniape.app.data.staff.PA_SIST_ELEVADA
+import pe.saniape.app.data.staff.PA_DIAST_SEVERA
+import pe.saniape.app.data.staff.PA_SIST_SEVERA
 import pe.saniape.app.data.staff.puntosPa
 import pe.saniape.app.data.staff.resumenAlertasPa
 import pe.saniape.app.data.staff.serieAu
@@ -83,6 +85,7 @@ import pe.saniape.app.data.staff.PuntoSerieHc
 import pe.saniape.app.ui.Toaster
 import pe.saniape.app.ui.clinica.historia.BandaGrafico
 import pe.saniape.app.ui.clinica.historia.EjeXGrafico
+import pe.saniape.app.ui.clinica.historia.AlertaPunto
 import pe.saniape.app.ui.clinica.historia.GraficoLineaHc
 import pe.saniape.app.ui.clinica.historia.LineaRefGrafico
 import pe.saniape.app.ui.clinica.historia.SerieGrafico
@@ -525,8 +528,14 @@ private fun GraficosEmbarazo(emb: Embarazo, controles: List<ControlPrenatal>) {
                 serie2 = SerieGrafico("Diastólica", pa.map { PuntoSerieHc(it.fecha, it.diastolica.toDouble()) }, c.teal),
                 ejeX = EjeXGrafico(pa.map { it.x }, minOf(8.0, pa.minOf { it.x }), maxOf(41.0, pa.maxOf { it.x }), "sem"),
                 lineas = listOf(LineaRefGrafico(PA_SIST_ELEVADA.toDouble(), "$PA_SIST_ELEVADA"), LineaRefGrafico(PA_DIAST_ELEVADA.toDouble(), "$PA_DIAST_ELEVADA")),
-                alerta = { serie, i -> pa.getOrNull(i)?.let { if (serie == 0) it.sistolicaAlta else it.diastolicaAlta } == true },
+                alerta = { serie, i ->
+                    pa.getOrNull(i)?.let { p ->
+                        val (alta, severa) = if (serie == 0) p.sistolicaAlta to p.sistolicaSevera else p.diastolicaAlta to p.diastolicaSevera
+                        if (severa) AlertaPunto.SEVERA else if (alta) AlertaPunto.ELEVADA else null
+                    }
+                },
                 leyendaAlerta = "≥ $PA_SIST_ELEVADA/$PA_DIAST_ELEVADA",
+                leyendaSevera = if (pa.any { it.nivel == "severa" }) "Severa ≥ $PA_SIST_SEVERA/$PA_DIAST_SEVERA" else null,
                 aviso = resumenAlertasPa(pa),
                 descripcion = "Presión arterial por semana de gestación: " + pa.joinToString("; ") { textoPuntoPa(it) },
                 textoPunto = { _, i -> textoPuntoPa(pa[i]) },

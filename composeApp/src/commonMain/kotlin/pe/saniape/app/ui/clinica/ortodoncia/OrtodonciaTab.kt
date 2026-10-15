@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -147,10 +148,12 @@ fun OrtodonciaTab(
     puedePagos: Boolean = false,
     /** "Ver pagos →": lleva a la pestaña 💰 Pagos de la ficha, donde se cobra. */
     onVerPagos: (() -> Unit)? = null,
+    /** "Hoy" en la zona de la sede del PACIENTE (`regPac.hoy()` de la web); null = la de la sede activa. */
+    hoyFicha: String? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
-    val hoy = hoyClinicaIso()
+    val hoy = hoyFicha ?: hoyClinicaIso()
     var token by remember { mutableStateOf(0) }
     var cargando by remember(pacienteId) { mutableStateOf(true) }
     var planes by remember(pacienteId) { mutableStateOf<List<PlanOrtodoncia>?>(null) }
@@ -587,6 +590,7 @@ private fun CabeceraPlan(
  * sol se mueve acá (se cobra en 💰 Pagos). Lee al abrir la pestaña; si no se
  * pudo leer (backend viejo, sin red), el recuadro no aparece.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CuotasPlanOrto(tratamientoId: String, hoy: String, monedaTratamiento: String?, onVerPagos: (() -> Unit)?) {
     val c = Sania.colors
@@ -602,7 +606,7 @@ private fun CuotasPlanOrto(tratamientoId: String, hoy: String, monedaTratamiento
     val r = remember(datos, hoy) { datos?.let { resumenCuotasOrto(it, hoy) } }
     Column(
         Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
-            .border(1.dp, if (r?.resumen?.alDia == false) c.error else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
             .padding(10.dp),
     ) {
         EtiquetaMapa("💰 Cuotas")
@@ -612,12 +616,11 @@ private fun CuotasPlanOrto(tratamientoId: String, hoy: String, monedaTratamiento
             res == null -> Text("Sin cronograma de cuotas · pagado ${formatearDinero(r.pagado, moneda)}", color = c.textoSuave, fontSize = 13.sp)
             else -> {
                 val total = r.cuotas.size
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("${res.pagadas} de $total pagadas", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f))
+                // Como la web: "5 de 16 pagadas · ⚠ 1 atrasada (S/ 125.00)" o "· al día".
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("${res.pagadas} de $total pagadas", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     val atraso = textoAtrasoCuotas(res, moneda)
-                    Text(atraso ?: if (res.proxima == null) "✓ Plan completo" else "✓ Al día",
-                        color = if (atraso != null) c.error else c.ok, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("· ${atraso ?: "al día"}", color = if (atraso != null) c.error else c.ok, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
                 val pct = if (total > 0) res.pagadas.toFloat() / total else 0f
                 Box(
@@ -626,7 +629,7 @@ private fun CuotasPlanOrto(tratamientoId: String, hoy: String, monedaTratamiento
                 ) {
                     if (pct > 0f) Box(Modifier.fillMaxWidth(pct).height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.ok))
                 }
-                textoProximaCuota(res, moneda)?.let { t ->
+                textoProximaCuota(res, moneda, hoy)?.let { t ->
                     val estado = res.proxima?.estado
                     Text(t, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp),
                         color = when (estado) {
@@ -640,7 +643,8 @@ private fun CuotasPlanOrto(tratamientoId: String, hoy: String, monedaTratamiento
         }
         if (r != null && onVerPagos != null) {
             Text("Ver pagos →", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 2.dp).heightIn(min = 44.dp).clickable(onClick = onVerPagos).padding(vertical = 12.dp))
+                modifier = Modifier.padding(top = 2.dp).heightIn(min = 44.dp).clickable(role = Role.Button, onClick = onVerPagos)
+                    .padding(vertical = 12.dp))
         }
     }
 }

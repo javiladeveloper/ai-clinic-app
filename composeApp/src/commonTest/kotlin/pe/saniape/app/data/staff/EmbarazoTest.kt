@@ -394,6 +394,9 @@ class EmbarazoTest {
         assertEquals(listOf(null, "elevada", "severa"), p.map { it.nivel })
         assertEquals(listOf(false, true, false), p.map { it.sistolicaAlta })
         assertEquals(listOf(false, false, true), p.map { it.diastolicaAlta })
+        // Severa por valor (≥ 160 / ≥ 110): el punto se dibuja distinto del elevado.
+        assertEquals(listOf(false, false, false), p.map { it.sistolicaSevera })
+        assertEquals(listOf(false, false, true), p.map { it.diastolicaSevera })
         // Los mismos puntos que seriePa (la serie de la web).
         val (sist, diast) = seriePa(cs, dSerie)
         assertEquals(sist.map { it.x to it.y }, p.map { it.x to it.sistolica.toDouble() })

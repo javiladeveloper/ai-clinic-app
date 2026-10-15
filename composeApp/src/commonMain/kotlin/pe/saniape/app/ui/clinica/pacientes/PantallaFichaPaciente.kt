@@ -116,7 +116,7 @@ fun PantallaFichaPaciente(
     androidx.compose.runtime.CompositionLocalProvider(
         pe.saniape.app.ui.LocalMoneda provides pe.saniape.app.data.staff.monedaDeFila(sedePaciente),
     ) {
-        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir)
+        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir, sedePaciente)
     }
 }
 
@@ -127,6 +127,8 @@ private fun PantallaFichaPacienteContenido(
     nutricionAlAbrir: pe.saniape.app.ui.clinica.nutricion.AperturaNutricion?,
     indicacionesAlAbrir: pe.saniape.app.data.staff.AperturaIndicaciones?,
     ortodonciaAlAbrir: pe.saniape.app.ui.clinica.ortodoncia.AperturaOrtodoncia?,
+    /** Multipaís: la sede del paciente (null = sin multisede o sin sede). */
+    sedePaciente: String? = null,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val tpl = LocalTerminologiaPaciente.current
@@ -1381,6 +1383,15 @@ private fun PantallaFichaPacienteContenido(
                         val inactiva = pe.saniape.app.data.staff.fichaInactiva(paciente.estado)
                         val editable = (ctx.puede("pacientes") || ctx.puede("sesiones")) && !inactiva
                         val deOrto = paciente.tratamientos.filter { it.estado != "Eliminado" && tratEsOrto(it) }
+                        // Multipaís (como la web): TODAS las sedes de la clínica, leídas una vez por
+                        // sesión al abrir la pestaña; mientras tanto (o si falla), las del contexto.
+                        var sedesTodas by remember(ctx.clinicaId) {
+                            mutableStateOf(pe.saniape.app.data.staff.SedesClinicaRepo.enCache(ctx.clinicaId) ?: ctx.sedes)
+                        }
+                        if (ctx.multiSede) LaunchedEffect(ctx.clinicaId) {
+                            pe.saniape.app.data.staff.SedesClinicaRepo.todas(ctx.clinicaId)?.let { sedesTodas = it }
+                        }
+                        val regPac = pe.saniape.app.data.staff.regionalDePaciente(ctx, sedesTodas, sedePaciente)
                         pe.saniape.app.ui.clinica.ortodoncia.OrtodonciaTab(
                             pacienteId = paciente.id,
                             pacienteNombre = paciente.nombre,
@@ -1393,8 +1404,8 @@ private fun PantallaFichaPacienteContenido(
                                     id = t.id, nombre = t.procedimiento ?: t.especialidadNombre ?: "Tratamiento", estado = t.estado,
                                     terapeutaId = t.terapeutaId,
                                     especialidadId = t.especialidadId ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id,
-                                    // Multipaís: su sede → la del paciente (la de la ficha).
-                                    moneda = pe.saniape.app.data.staff.monedaDeTratamiento(t.sedeId, pe.saniape.app.ui.monedaUI()),
+                                    // Multipaís: su sede → la del paciente → la principal (nunca la activa).
+                                    moneda = pe.saniape.app.data.staff.regionalDeTratamiento(ctx, sedesTodas, t.sedeId, sedePaciente).moneda,
                                 )
                             },
                             nombresServicio = paciente.tratamientos.mapNotNull { t -> t.procedimientoId?.let { id -> t.procedimiento?.let { id to it } } }.toMap(),
@@ -1408,6 +1419,7 @@ private fun PantallaFichaPacienteContenido(
                             // 💰 Cuotas del tratamiento (solo lectura), como `verCuotas={puede('pagos')}` de la web.
                             puedePagos = ctx.puede("pagos"),
                             onVerPagos = { tab = "pagos" },
+                            hoyFicha = pe.saniape.app.data.staff.hoyEnIso(regPac.zona),
                             // Tras la instalación: 📝 con la plantilla base "Cuidados con brackets" (por su clave
                             // del catálogo), vinculada a la cita del control. Se abre UNA vez.
                             onDejarCuidados = { citaId: String?, espId: String? ->

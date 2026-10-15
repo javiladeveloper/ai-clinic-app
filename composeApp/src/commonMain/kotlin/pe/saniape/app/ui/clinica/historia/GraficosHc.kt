@@ -77,10 +77,16 @@ internal fun GraficoLineaHc(
     serie2: SerieGrafico? = null,
     /** Líneas horizontales de umbral (PA 140/90…): discontinuas en rojo, con su etiqueta a la derecha. */
     lineas: List<LineaRefGrafico> = emptyList(),
-    /** ¿Se resalta el punto i de la serie (0 = principal, 1 = [serie2])? Relleno rojo con halo. */
-    alerta: ((serie: Int, i: Int) -> Boolean)? = null,
-    /** Texto de la leyenda para los puntos de [alerta] (p. ej. "≥ 140/90"). */
+    /**
+     * Cómo se resalta el punto i de la serie (0 = principal, 1 = [serie2]): null =
+     * normal; [AlertaPunto.ELEVADA] = relleno rojo con halo; [AlertaPunto.SEVERA] =
+     * además un aro rojo exterior (borde doble) y halo más intenso.
+     */
+    alerta: ((serie: Int, i: Int) -> AlertaPunto?)? = null,
+    /** Texto de la leyenda para los puntos ELEVADOS de [alerta] (p. ej. "≥ 140/90"). */
     leyendaAlerta: String? = null,
+    /** Texto de la leyenda para los puntos SEVEROS (p. ej. "≥ 160/110"). */
+    leyendaSevera: String? = null,
     /** Línea de aviso bajo el título (en rojo), p. ej. "⚠ 2 tomas ≥ 140/90". */
     aviso: String? = null,
     /** Descripción para TalkBack; null = la lista de puntos. */
@@ -157,8 +163,11 @@ internal fun GraficoLineaHc(
                     }
                     valores.forEachIndexed { i, v ->
                         val o = Offset(x(i), y(v))
-                        if (alerta?.invoke(serie, i) == true) {
-                            drawCircle(rojo.copy(alpha = 0.22f), 8.dp.toPx(), o)
+                        val nivel = alerta?.invoke(serie, i)
+                        if (nivel != null) {
+                            val severa = nivel == AlertaPunto.SEVERA
+                            drawCircle(rojo.copy(alpha = if (severa) 0.32f else 0.22f), (if (severa) 10 else 8).dp.toPx(), o)
+                            if (severa) drawCircle(rojo, 8.dp.toPx(), o, style = Stroke(1.5.dp.toPx()))
                             drawCircle(rojo, 5.dp.toPx(), o)
                             drawCircle(fondo, 5.dp.toPx(), o, style = Stroke(1.5.dp.toPx()))
                         } else {
@@ -177,7 +186,7 @@ internal fun GraficoLineaHc(
                 Text("${numeroHc(e.hasta)} ${e.etiqueta.orEmpty()}".trim(), color = c.textoSuave, fontSize = 8.sp)
             }
         }
-        if (serie2 != null || (alerta != null && leyendaAlerta != null)) {
+        if (serie2 != null || (alerta != null && (leyendaAlerta != null || leyendaSevera != null))) {
             FlowRow(
                 Modifier.fillMaxWidth().padding(start = 40.dp, top = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -187,7 +196,8 @@ internal fun GraficoLineaHc(
                     ItemLeyendaHc(serie2.nombre, serie2.color)
                 }
                 if (lineas.isNotEmpty()) ItemLeyendaHc("Umbral ${lineas.joinToString("/") { it.etiqueta }}", rojo, discontinua = true)
-                if (alerta != null && leyendaAlerta != null) ItemLeyendaHc(leyendaAlerta, rojo, alerta = true)
+                if (alerta != null && leyendaAlerta != null) ItemLeyendaHc(leyendaAlerta, rojo, alerta = AlertaPunto.ELEVADA)
+                if (alerta != null && leyendaSevera != null) ItemLeyendaHc(leyendaSevera, rojo, alerta = AlertaPunto.SEVERA)
             }
         }
         Text(
@@ -201,7 +211,7 @@ internal fun GraficoLineaHc(
 
 /** Una entrada de la leyenda: punto (serie), punto con halo (alerta) o trazo discontinuo (umbral). */
 @Composable
-private fun ItemLeyendaHc(texto: String, color: Color, discontinua: Boolean = false, alerta: Boolean = false) {
+private fun ItemLeyendaHc(texto: String, color: Color, discontinua: Boolean = false, alerta: AlertaPunto? = null) {
     val c = Sania.colors
     Row(verticalAlignment = Alignment.CenterVertically) {
         when {
@@ -209,15 +219,23 @@ private fun ItemLeyendaHc(texto: String, color: Color, discontinua: Boolean = fa
                 drawLine(color, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), strokeWidth = 1.5.dp.toPx(),
                     pathEffect = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 2.dp.toPx())))
             })
-            alerta -> Box(Modifier.size(10.dp).drawBehind {
+            alerta == AlertaPunto.ELEVADA -> Box(Modifier.size(12.dp).drawBehind {
                 drawCircle(color.copy(alpha = 0.22f), size.minDimension / 2)
-                drawCircle(color, size.minDimension / 3.2f)
+                drawCircle(color, size.minDimension / 3.6f)
+            })
+            alerta == AlertaPunto.SEVERA -> Box(Modifier.size(12.dp).drawBehind {
+                drawCircle(color.copy(alpha = 0.32f), size.minDimension / 2)
+                drawCircle(color, size.minDimension / 2.6f, style = Stroke(1.dp.toPx()))
+                drawCircle(color, size.minDimension / 3.6f)
             })
             else -> Box(Modifier.size(8.dp).clip(CircleShape).drawBehind { drawCircle(color) })
         }
         Text(texto, color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(start = 4.dp))
     }
 }
+
+/** Cómo se resalta un punto de [GraficoLineaHc]. */
+internal enum class AlertaPunto { ELEVADA, SEVERA }
 
 /** Segunda serie de [GraficoLineaHc] (mismo eje X que la principal, punto a punto). */
 internal data class SerieGrafico(val nombre: String, val puntos: List<PuntoSerieHc>, val color: Color)

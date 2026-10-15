@@ -72,7 +72,7 @@ class CuotasOrtoTest {
         assertEquals(0, r.atrasadas)
         assertTrue(r.alDia)
         assertNull(r.proxima)
-        assertNull(textoProximaCuota(r, "PEN"))
+        assertNull(textoProximaCuota(r, "PEN", "2030-01-01"))
         assertNull(textoAtrasoCuotas(r, "PEN"))
     }
 
@@ -89,16 +89,24 @@ class CuotasOrtoTest {
         val res = assertNotNull(r.resumen)
         assertEquals(17, r.cuotas.size)
         assertEquals("⚠ 1 atrasada (S/ 125.00)", textoAtrasoCuotas(res, "PEN"))
-        assertEquals("5 de 16: S/ 125.00 — atrasada 10 días (15/10/2026)", textoProximaCuota(res, "PEN"))
+        assertEquals("5 de 16: S/ 125.00 — atrasada 10 días (15 oct.)", textoProximaCuota(res, "PEN", "2026-10-25"))
         // Otra moneda: su símbolo, nunca soles.
         assertEquals("⚠ 1 atrasada (Bs 125.00)", textoAtrasoCuotas(res, "BOB"))
         // Dos atrasadas, en plural, con el saldo de cada una (la parcial cuenta lo que falta).
         val dos = resumenCuotas(estadoCuotas(plan, 700.0 + 60, "2026-07-20"))
         assertEquals("⚠ 2 atrasadas (S/ 190.00)", textoAtrasoCuotas(dos, "PEN"))
-        assertEquals("1 de 16: S/ 65.00 — atrasada 35 días · parcial (15/06/2026)", textoProximaCuota(dos, "PEN"))
+        assertEquals("1 de 16: S/ 65.00 — atrasada 35 días · parcial (15 jun.)", textoProximaCuota(dos, "PEN", "2026-07-20"))
         // La inicial pendiente se nombra "Inicial".
         val ini = resumenCuotas(estadoCuotas(plan, 0.0, "2026-05-15"))
-        assertEquals("Inicial: S/ 700.00 — vence hoy (15/05/2026)", textoProximaCuota(ini, "PEN"))
+        assertEquals("Inicial: S/ 700.00 — vence hoy (15 may.)", textoProximaCuota(ini, "PEN", "2026-05-15"))
+    }
+
+    @Test fun fechaCortaComoLaWeb() {
+        // toLocaleDateString('es-PE', { day: 'numeric', month: 'short' }); otro año, con el año.
+        assertEquals("15 oct.", fechaCortaCuota("2026-10-15", "2026-10-25"))
+        assertEquals("5 set.", fechaCortaCuota("2026-09-05", "2026-10-25"))
+        assertEquals("5 ene. 2027", fechaCortaCuota("2027-01-05", "2026-10-25"))
+        assertEquals("basura", fechaCortaCuota("basura", "2026-10-25"))
     }
 
     @Test fun sinCronogramaSoloLoPagado() {

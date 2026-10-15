@@ -450,7 +450,7 @@ data class TratamientoOrto(
     val estado: String?,
     val terapeutaId: String? = null,
     val especialidadId: String? = null,
-    /** Multipaís: moneda del tratamiento (las cuotas), por SU sede (`monedaDeTratamiento`); null = la de la ficha. */
+    /** Multipaís: moneda del tratamiento (las cuotas), por SU sede (`regionalDeTratamiento`); null = la de la ficha. */
     val moneda: String? = null,
 )
 
@@ -966,11 +966,24 @@ fun textoAtrasoCuotas(r: ResumenCuotas, moneda: String): String? =
     if (r.atrasadas == 0) null
     else "⚠ ${r.atrasadas} atrasada${if (r.atrasadas == 1) "" else "s"} (${formatearDinero(r.montoAtrasado, moneda)})"
 
-/** "5 de 16: S/ 125.00 — atrasada 10 días (25/09/2026)" — la próxima por pagar, como la web. */
-fun textoProximaCuota(r: ResumenCuotas, moneda: String): String? {
+private val MESES_CORTOS = listOf("ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "set.", "oct.", "nov.", "dic.")
+
+/**
+ * `fechaCorta` de la web (toLocaleDateString es-PE, día y mes corto): "15 oct.";
+ * de otro año que [hoy], con el año: "5 ene. 2027". Otra cosa se deja como vino.
+ */
+fun fechaCortaCuota(iso: String, hoy: String): String {
+    val m = Regex("""^(\d{4})-(\d{2})-(\d{2})""").find(iso) ?: return iso
+    val (a, mes, d) = m.destructured
+    val nombre = MESES_CORTOS.getOrNull(mes.toInt() - 1) ?: return iso
+    return "${d.toInt()} $nombre" + if (a != hoy.take(4)) " $a" else ""
+}
+
+/** "5 de 16: S/ 125.00 — atrasada 10 días (15 oct.)" — la próxima por pagar, como la web. */
+fun textoProximaCuota(r: ResumenCuotas, moneda: String, hoy: String): String? {
     val p = r.proxima ?: return null
     return "${etiquetaCuota(p.numero, r.nCuotas)}: ${formatearDinero(p.saldo, moneda)} — " +
-        "${textoEstadoCuota(p).lowercase()} (${fechaIndicacion(p.vence)})"
+        "${textoEstadoCuota(p).lowercase()} (${fechaCortaCuota(p.vence, hoy)})"
 }
 
 // ─── Textos ──────────────────────────────────────────────────────────────────

@@ -727,6 +727,8 @@ fun seriePa(controles: List<ControlPrenatal>, d: Datacion?): Pair<List<PuntoSeri
 data class PuntoPa(val x: Double, val sistolica: Int, val diastolica: Int, val fecha: String, val nivel: String?) {
     val sistolicaAlta: Boolean get() = sistolica >= PA_SIST_ELEVADA
     val diastolicaAlta: Boolean get() = diastolica >= PA_DIAST_ELEVADA
+    val sistolicaSevera: Boolean get() = sistolica >= PA_SIST_SEVERA
+    val diastolicaSevera: Boolean get() = diastolica >= PA_DIAST_SEVERA
 }
 
 /** Las tomas de PA (con EG y los dos valores), en orden cronológico — los mismos puntos que [seriePa]. */

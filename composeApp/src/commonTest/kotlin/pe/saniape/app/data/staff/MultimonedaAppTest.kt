@@ -167,24 +167,60 @@ class MultimonedaAppTest {
         assertEquals("PE", sinPais.copy(sedes = listOf(SedeRef("y", "Y", pais = "Bolivia"))).paisDeSede("y"))
     }
 
-    // ── Moneda de un tratamiento: SU sede → la del paciente → activa → principal ──
+    // ── Ficha: moneda/zona del paciente y del tratamiento contra TODAS las sedes ──
+    // (gemelo de regionalDeSede + sedeDelTratamiento de la web: nunca la activa)
+
+    /** Todas las sedes de la clínica, con una inactiva / no permitida (Cusco, USD) que ctx.sedes no trae. */
+    private val todas = listOf(
+        SedeRef("s-tacna", "Tacna", esPrincipal = true, moneda = "PEN", zona = "America/Lima"),
+        SedeRef("s-lapaz", "La Paz", moneda = "BOB", zona = "America/La_Paz"),
+        SedeRef("s-cusco", "Cusco (cerrada)", moneda = "usd", zona = "America/Lima"),
+        SedeRef("s-sinmoneda", "Sin moneda", moneda = null, zona = "zona/rota"),
+    )
 
     @Test
-    fun moneda_del_tratamiento_por_su_sede_y_luego_la_del_paciente() {
+    fun moneda_del_tratamiento_su_sede_luego_la_del_paciente_luego_la_principal() {
         val ctx = ctxDosPaises
         // Paciente de Tacna con un tratamiento vendido en La Paz: Bs, nunca S/.
-        assertEquals("BOB", monedaDeTratamiento(ctx, sedeActiva = null, sedeTratamiento = "s-lapaz", sedePaciente = "s-tacna"))
-        // Y al revés: el tratamiento manda sobre el paciente y la sede activa.
-        assertEquals("PEN", monedaDeTratamiento(ctx, sedeActiva = "s-lapaz", sedeTratamiento = "s-tacna", sedePaciente = "s-lapaz"))
+        assertEquals(RegionalFicha("BOB", "America/La_Paz"), regionalDeTratamiento(ctx, todas, "s-lapaz", "s-tacna"))
+        // El tratamiento manda sobre el paciente.
+        assertEquals("PEN", regionalDeTratamiento(ctx, todas, "s-tacna", "s-lapaz").moneda)
         // Sin sede propia (backend viejo o tratamiento antiguo): la del paciente.
-        assertEquals("BOB", monedaDeTratamiento(ctx, sedeActiva = null, sedeTratamiento = null, sedePaciente = "s-lapaz"))
-        assertEquals("BOB", monedaDeTratamiento(ctx, sedeActiva = null, sedeTratamiento = "", sedePaciente = "s-lapaz"))
-        // Ni tratamiento ni paciente: la activa; consolidado → la principal.
-        assertEquals("BOB", monedaDeTratamiento(ctx, sedeActiva = "s-lapaz", sedeTratamiento = null, sedePaciente = null))
-        assertEquals("PEN", monedaDeTratamiento(ctx, sedeActiva = null, sedeTratamiento = null, sedePaciente = null))
-        // Con la moneda del paciente ya resuelta y sin sede del tratamiento: esa, tal cual.
-        assertEquals("BOB", monedaDeTratamiento(sedeTratamiento = null, monedaPaciente = "BOB"))
-        assertEquals("BOB", monedaDeTratamiento(sedeTratamiento = " ", monedaPaciente = "BOB"))
+        assertEquals("BOB", regionalDeTratamiento(ctx, todas, null, "s-lapaz").moneda)
+        assertEquals("BOB", regionalDeTratamiento(ctx, todas, " ", "s-lapaz").moneda)
+        // Ni tratamiento ni paciente: la PRINCIPAL (aunque se esté trabajando en La Paz).
+        assertEquals(RegionalFicha("PEN", "America/Lima"), regionalDeTratamiento(ctx, todas, null, null))
+        // Una sede que ctx.sedes no trae (inactiva / no permitida) se resuelve igual.
+        assertEquals("USD", regionalDeTratamiento(ctx, todas, "s-cusco", "s-tacna").moneda)
+        assertEquals("PEN", monedaDeFila(ctx, null, "s-cusco")) // el camino viejo NO la conocía
+        // Sede sin moneda/zona válidas → lo de la clínica (no la principal), como resolverRegional.
+        assertEquals(RegionalFicha("PEN", "America/Lima"), regionalDeSede(ctx.copy(moneda = "PEN"), todas, "s-sinmoneda"))
+        // Sede desconocida → la principal.
+        assertEquals("PEN", regionalDeSede(ctx, todas, "s-borrada").moneda)
+        // Solo con ctx.sedes (si la lectura de todas falló): mismo orden, sin la activa.
+        assertEquals("BOB", regionalDeTratamiento(ctx, ctx.sedes, "s-lapaz", null).moneda)
+        assertEquals("PEN", regionalDeTratamiento(ctx, ctx.sedes, null, null).moneda)
+        // Sin sedes ni contexto (DALU / tests): PEN y Lima, como siempre.
+        assertEquals(RegionalFicha("PEN", "America/Lima"), regionalDePaciente(null, emptyList(), null))
+        // Hoy de la ficha en la zona del paciente.
+        assertEquals("America/La_Paz", regionalDePaciente(ctx, todas, "s-lapaz").zona)
+    }
+
+    @Test
+    fun filas_de_sedes_tolerantes() {
+        val filas = Json.parseToJsonElement("""[
+            {"id":"a","nombre":"Tacna","es_principal":true,"moneda":"PEN","zona_horaria":"America/Lima","pais":"PE"},
+            {"id":"b","nombre":null,"es_principal":false,"moneda":null,"zona_horaria":null,"pais":"Perú"},
+            {"nombre":"sin id"},
+            {"id":"a","nombre":"duplicada"}
+        ]""") as kotlinx.serialization.json.JsonArray
+        val s = sedesDeFilas(filas.map { it as JsonObject })
+        assertEquals(listOf("a", "b"), s.map { it.id })
+        assertTrue(s[0].esPrincipal)
+        assertEquals("America/Lima", s[0].zona)
+        assertEquals("Sede", s[1].nombre)
+        assertNull(s[1].moneda)
+        assertNull(s[1].pais)
     }
 
     // ── Moneda de cada fila: su sede → la activa → principal → clínica → PEN ──

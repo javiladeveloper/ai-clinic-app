@@ -52,21 +52,42 @@ fun monedaDeFila(sedeId: String?): String {
     return monedaDeFila(ctx, sedeActivaDe(ctx), sedeId)
 }
 
-/**
- * Moneda de un TRATAMIENTO (sus cuotas y pagos), puro — gemelo de
- * `sedeDelTratamiento` + `monedaTrat` de la web: la sede del tratamiento → la
- * del paciente → la activa → principal → clínica → PEN.
- */
-fun monedaDeTratamiento(ctx: ContextoStaff?, sedeActiva: String?, sedeTratamiento: String?, sedePaciente: String?): String =
-    monedaDeFila(ctx, sedeActiva, sedeTratamiento?.takeIf { it.isNotBlank() } ?: sedePaciente)
+// ── Ficha del paciente: moneda/zona contra TODAS las sedes (nunca la activa) ──
+
+/** Moneda ISO 4217 y zona IANA ya resueltas (las de la ficha o de un tratamiento). */
+data class RegionalFicha(val moneda: String, val zona: String)
+
+private val RE_MONEDA = Regex("^[A-Z]{3}$")
 
 /**
- * Lo mismo con el contexto vigente, cuando la pantalla ya tiene la moneda del
- * paciente resuelta ([monedaPaciente], p. ej. `monedaUI()` en la ficha): con
- * sede propia manda la del tratamiento; sin sede, la del paciente.
+ * Gemelo de `regionalDeSede` (SedeProvider) + `resolverRegional` de la web,
+ * contra TODAS las sedes de la clínica ([todas]: activas o no, permitidas o no):
+ *   la sede (si está) → sin sede o no encontrada, la marcada PRINCIPAL →
+ *   lo de la clínica (`ctx.moneda`/`ctx.zona`) → PEN / America/Lima.
+ * La sede ACTIVA no entra nunca: la ficha es del paciente, no de donde se trabaja.
  */
-fun monedaDeTratamiento(sedeTratamiento: String?, monedaPaciente: String): String =
-    sedeTratamiento?.takeIf { it.isNotBlank() }?.let { monedaDeFila(it) } ?: monedaPaciente
+fun regionalDeSede(ctx: ContextoStaff?, todas: List<SedeRef>, sedeId: String?): RegionalFicha {
+    val id = sedeId?.takeIf { it.isNotBlank() }
+    val sede = id?.let { i -> todas.firstOrNull { it.id == i } }
+    val base = sede ?: (todas.firstOrNull { it.esPrincipal }
+        ?: ctx?.sedePrincipalId?.let { p -> todas.firstOrNull { it.id == p } })
+    val moneda = listOf(base?.moneda, ctx?.moneda).firstNotNullOfOrNull { m ->
+        m?.trim()?.uppercase()?.takeIf { RE_MONEDA.matches(it) }
+    } ?: MONEDA_POR_DEFECTO
+    val zona = listOf(base?.zona, ctx?.zona).firstOrNull { esZonaValida(it) }?.trim() ?: ZONA_POR_DEFECTO
+    return RegionalFicha(moneda, zona)
+}
+
+/** La de la ficha: la sede del paciente → principal → clínica (`useRegionalPaciente(...)`.moneda/.hoy de la web). */
+fun regionalDePaciente(ctx: ContextoStaff?, todas: List<SedeRef>, sedePaciente: String?): RegionalFicha =
+    regionalDeSede(ctx, todas, sedePaciente)
+
+/**
+ * La de un TRATAMIENTO (sus cuotas y pagos) — `sedeDelTratamiento` + `monedaTrat`
+ * de la web: la sede del tratamiento → la del paciente → principal → clínica.
+ */
+fun regionalDeTratamiento(ctx: ContextoStaff?, todas: List<SedeRef>, sedeTratamiento: String?, sedePaciente: String?): RegionalFicha =
+    regionalDeSede(ctx, todas, sedeTratamiento?.takeIf { it.isNotBlank() } ?: sedePaciente)
 
 /** País (ISO-2) de la sede activa. */
 fun paisActivo(): String {
