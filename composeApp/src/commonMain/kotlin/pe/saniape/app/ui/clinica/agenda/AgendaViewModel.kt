@@ -762,6 +762,8 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             espServicio = espServicio ?: esp
         }
         val espId = cita.especialidadId ?: espServicio
+        // Psiquiatría nunca (como la web): la especialidad puede conocerse recién aquí.
+        if (pe.saniape.app.data.staff.esPsiquiatria(especialidades.find { it.id == espId }?.nombre)) return null
         val cat = pe.saniape.app.data.staff.IndicacionesRepo.catalogoParaAtencion(ctx.clinicaId, espId, servicio) ?: return null
         val sugerida = cat.plantillaSugerida ?: return null
         return OfertaIndicaciones(cita, sugerida, espId, servicio)
@@ -1048,6 +1050,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                         ofreceReceta = recetaAplica(cita, terapeutaId),
                         esMedicaGuiada = esMedicaGuiada(cita),
                         otraEntrega = otraEntrega || planOfrecido,
+                        especialidadNombre = especialidades.find { it.id == (cita.especialidadId ?: cita.especialidadServicioId) }?.nombre,
                     )
                     if (candidata) {
                         val atendida = cita.copy(terapeutaId = terapeutaId ?: cita.terapeutaId, estado = "Completada")

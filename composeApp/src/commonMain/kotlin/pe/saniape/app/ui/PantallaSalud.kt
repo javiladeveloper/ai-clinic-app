@@ -400,7 +400,7 @@ fun PantallaSalud() {
                         seccionDocumentosMedicos(
                             datos = d,
                             espacioArriba = hayTratamientos || planesEjercicios.isNotEmpty() ||
-                                datosNutricion != null || listaRecetas.isNotEmpty(),
+                                datosNutricion != null || listaRecetas.isNotEmpty() || listaIndicaciones.isNotEmpty(),
                             abriendo = abriendoDocMed,
                             onVer = { verDocumentoMedico(it) },
                             onAbrirPresupuesto = { p ->

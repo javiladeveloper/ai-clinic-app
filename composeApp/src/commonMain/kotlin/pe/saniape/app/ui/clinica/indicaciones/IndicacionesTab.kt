@@ -649,6 +649,8 @@ private fun EditorIndicaciones(
     var visible by remember { mutableStateOf(indicacion?.visiblePaciente ?: true) }
     var errores by remember { mutableStateOf<List<String>>(emptyList()) }
     var guardando by remember { mutableStateOf(false) }
+    // "Cambiar" de plantilla con lo escrito a medias: se confirma antes de perderlo.
+    var confirmarCambio by remember { mutableStateOf(false) }
     // Chips base (catálogo) y autocompletado que aprende: UN viaje al abrir (caché de la sesión).
     var catalogo by remember { mutableStateOf<CatalogoIndicaciones?>(null) }
     var sugerencias by remember { mutableStateOf<SugerenciasIndicaciones?>(null) }
@@ -704,7 +706,22 @@ private fun EditorIndicaciones(
                     color = c.texto, fontSize = 12.sp, modifier = Modifier.weight(1f),
                 )
                 Text("Cambiar", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable(enabled = !guardando, onClick = onCambiarPlantilla).padding(8.dp))
+                    modifier = Modifier.clickable(enabled = !guardando) {
+                        if (pe.saniape.app.data.staff.hayCambiosEditorIndicaciones(cont, origen?.contenido)) confirmarCambio = true
+                        else onCambiarPlantilla()
+                    }.padding(8.dp))
+            }
+            if (confirmarCambio) {
+                Column(
+                    Modifier.fillMaxWidth().padding(bottom = 12.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .border(1.dp, c.pend, RoundedCornerShape(Sania.shape.sm.dp)).padding(horizontal = 10.dp, vertical = 8.dp),
+                ) {
+                    Text("Se pierden los cambios que hiciste. ¿Cambiar de plantilla?", color = c.texto, fontSize = 12.sp)
+                    Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        BotonInd("Sí, cambiar") { confirmarCambio = false; onCambiarPlantilla() }
+                        BotonInd("Seguir editando", lleno = true) { confirmarCambio = false }
+                    }
+                }
             }
         }
         EtqForm("Título")

@@ -250,6 +250,16 @@ fun contenidoEditorDesde(f: ContenidoIndicacionesFuente?): ContenidoEditorIndica
         control = f.control.orEmpty(),
     )
 
+/**
+ * ¿El editor tiene cambios respecto de donde partió? (para confirmar antes de
+ * "Cambiar" de plantilla, como la web). Sin contar espacios de los extremos.
+ */
+fun hayCambiosEditorIndicaciones(actual: ContenidoEditorIndicaciones, origen: ContenidoEditorIndicaciones?): Boolean {
+    val o = origen ?: ContenidoEditorIndicaciones()
+    fun n(c: ContenidoEditorIndicaciones) = listOf(c.titulo, c.indicaciones, c.evitar, c.signosAlarma, c.control).map { it.trim() }
+    return n(actual) != n(o)
+}
+
 /** Editor → borrador para validar y enviar (los vacíos van como null, como la web). */
 fun borradorIndicacionDesdeEditor(
     pacienteId: String, fecha: String, c: ContenidoEditorIndicaciones, visiblePaciente: Boolean,
@@ -545,7 +555,8 @@ $cuerpo
  *  · la cita quedó completada EN el servidor (sin señal quedó en la cola: el
  *    catálogo y la ficha necesitan red);
  *  · no es de nutrición (ya se ofrecen medidas → plan), ni de las que ofrecen
- *    receta / indicaciones médicas, ni de la consulta guiada;
+ *    receta / indicaciones médicas, ni de la consulta guiada, ni de psiquiatría
+ *    (por el NOMBRE de la especialidad, como la web: [esPsiquiatria]);
  *  · en ese cierre no salió OTRA entrega (receta, ejercicios, medidas, el plan
  *    de tratamiento). "📅 Agendar siguiente" NO cuenta: convive.
  * La última palabra la tiene [ofrecerIndicacionesTrasCompletar]: solo si el
@@ -560,8 +571,10 @@ fun candidataIndicacionesTrasCompletar(
     ofreceReceta: Boolean,
     esMedicaGuiada: Boolean,
     otraEntrega: Boolean,
+    /** Nombre de la especialidad de la cita (la de la cita o la del servicio), si se conoce. */
+    especialidadNombre: String? = null,
 ): Boolean = !pacienteId.isNullOrBlank() && (puedePacientes || puedeSesiones) && !encolada &&
-    !esNutricion && !ofreceReceta && !esMedicaGuiada && !otraEntrega
+    !esNutricion && !ofreceReceta && !esMedicaGuiada && !otraEntrega && !esPsiquiatria(especialidadNombre)
 
 /** Se ofrece solo si era candidata Y el catálogo dio una plantilla sugerida para el servicio. */
 fun ofrecerIndicacionesTrasCompletar(candidata: Boolean, sugerida: PlantillaBaseIndicaciones?): Boolean =
