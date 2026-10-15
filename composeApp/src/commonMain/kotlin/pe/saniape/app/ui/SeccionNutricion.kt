@@ -231,7 +231,20 @@ private fun DetallePlan(p: PlanNutricionPortal) {
                             Text(comida.tiempo.uppercase(), color = c.navy, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             horaPlan(comida.hora)?.let { Text(" · $it", color = c.textoSuave, fontSize = 11.sp) }
                         }
-                        Text(comida.detalle, color = c.texto, fontSize = 14.sp, lineHeight = 19.sp)
+                        // Los alimentos con su cantidad, SIN nutrientes (§13); debajo, el texto libre.
+                        // (Las comidas ya vienen de comidasParaMostrar: el detalle automático no se repite.)
+                        comida.items.forEach { it ->
+                            Text(
+                                androidx.compose.ui.text.buildAnnotatedString {
+                                    append("• ${it.nombre} ")
+                                    pushStyle(androidx.compose.ui.text.SpanStyle(color = c.textoSuave))
+                                    append("— ${pe.saniape.app.data.staff.textoCantidad(it)}")
+                                    pop()
+                                },
+                                color = c.texto, fontSize = 14.sp, lineHeight = 19.sp,
+                            )
+                        }
+                        if (comida.detalle.isNotEmpty()) Text(comida.detalle, color = c.texto, fontSize = 14.sp, lineHeight = 19.sp)
                     }
                 }
             }
