@@ -97,6 +97,11 @@ fun PantallaFichaPaciente(
      * el servicio y la cita vinculada.
      */
     indicacionesAlAbrir: pe.saniape.app.data.staff.AperturaIndicaciones? = null,
+    /**
+     * 😁 Ortodoncia (desde la agenda, "😁 Registrar control"): la ficha arranca en
+     * la pestaña 😁 con el control vinculado a esa cita (el suyo si ya lo tiene).
+     */
+    ortodonciaAlAbrir: pe.saniape.app.ui.clinica.ortodoncia.AperturaOrtodoncia? = null,
 ) {
     // Multipaís: el dinero de la ficha va en la moneda de la sede del paciente
     // (solo con "pacientes por sede"; si no, la de la sede activa). Una clínica de
@@ -110,7 +115,7 @@ fun PantallaFichaPaciente(
     androidx.compose.runtime.CompositionLocalProvider(
         pe.saniape.app.ui.LocalMoneda provides pe.saniape.app.data.staff.monedaDeFila(sedePaciente),
     ) {
-        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir)
+        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir)
     }
 }
 
@@ -120,6 +125,7 @@ private fun PantallaFichaPacienteContenido(
     ejerciciosAlAbrir: pe.saniape.app.ui.clinica.fisio.IndicarEjercicios?,
     nutricionAlAbrir: pe.saniape.app.ui.clinica.nutricion.AperturaNutricion?,
     indicacionesAlAbrir: pe.saniape.app.data.staff.AperturaIndicaciones?,
+    ortodonciaAlAbrir: pe.saniape.app.ui.clinica.ortodoncia.AperturaOrtodoncia?,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val tpl = LocalTerminologiaPaciente.current
@@ -158,6 +164,7 @@ private fun PantallaFichaPacienteContenido(
         mutableStateOf(
             if (ejerciciosAlAbrir != null) "ejercicios"
             else if (indicacionesAlAbrir != null) "indicaciones"
+            else if (ortodonciaAlAbrir != null) "ortodoncia"
             else nutricionAlAbrir?.tab ?: "atenciones",
         )
     }
@@ -166,6 +173,9 @@ private fun PantallaFichaPacienteContenido(
     var flujoInd by remember {
         mutableStateOf(pe.saniape.app.data.staff.FlujoIndicacionesFicha.desde(indicacionesAlAbrir))
     }
+    // 😁 Ortodoncia: la cita de la agenda (vale una vez: se suelta al registrar su
+    // control o al pasar a otra pestaña).
+    var flujoOrto by remember { mutableStateOf(ortodonciaAlAbrir) }
     // Nutrición: el flujo medidas → plan con la cita de la que se viene (los
     // "abrir de una" valen una vez: al pasar a otra pestaña se apagan).
     var flujoNutri by remember {
@@ -201,8 +211,10 @@ private fun PantallaFichaPacienteContenido(
     // También en una clínica mixta con podología o estética: de ahí sale de qué
     // especialidades es quien mira (el podólogo / el de estética ve la pestaña en un
     // paciente nuevo). No cambia lo dental: sin mapa mixto dental, la 🦷 no depende de esto.
+    // Y con especialidades de ortodoncia: el ortodoncista ve la 😁 en un paciente nuevo.
     val mixtaMapas = (ctx.mapaPodologia.ids.isNotEmpty() && !ctx.mapaPodologia.solo) ||
-        (ctx.mapaEstetica.ids.isNotEmpty() && !ctx.mapaEstetica.solo)
+        (ctx.mapaEstetica.ids.isNotEmpty() && !ctx.mapaEstetica.solo) ||
+        ctx.mapaOrtodoncia.ids.isNotEmpty()
     LaunchedEffect(paciente.id, mixtaDental, mixtaMapas, recargarToken) {
         if (mixtaDental || mixtaMapas) datosDentales = pe.saniape.app.data.staff.OdontogramaRepo
             .datosDentalesPaciente(paciente.id, ctx.miTerapeutaId)
@@ -318,6 +330,26 @@ private fun PantallaFichaPacienteContenido(
     val esPacienteEstetica = pe.saniape.app.data.staff.pacienteEsEstetica(
         ctx.mapaEstetica, atenciones = atencionesConCitas, tieneAplicaciones = tieneAplicaciones,
         especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
+    )
+    // ── 😁 Ortodoncia, por PACIENTE (gemelo de `pacienteEsOrtodoncia`) ──
+    // Dentro de lo dental (la regla de la 🦷): los tratamientos cuyo SERVICIO o
+    // especialidad es de ortodoncia (por nombre). Solo si no se ve ninguno se
+    // pregunta, liviano, si ya tiene un plan guardado. Sin nada → ni pestaña ni consulta.
+    val tratEsOrto = { t: TratamientoPaciente ->
+        val esp = t.especialidadId ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id
+        pe.saniape.app.data.staff.esServicioDental(esp, ctx.mapaDental) &&
+            pe.saniape.app.data.staff.esAtencionOrtodoncia(ctx.mapaOrtodoncia, servicio = t.procedimiento, especialidadServicioId = esp)
+    }
+    val hayAtencionOrto = esOdontologia && (paciente.tratamientos.any { it.estado != "Eliminado" && tratEsOrto(it) } ||
+        datosDentales.especialidadesDeCitas.any { it in ctx.mapaOrtodoncia.ids })
+    var tienePlanOrto by remember(paciente.id) { mutableStateOf(false) }
+    LaunchedEffect(paciente.id, esOdontologia, hayAtencionOrto) {
+        if (esOdontologia && !hayAtencionOrto) tienePlanOrto = pe.saniape.app.data.staff.OrtodonciaRepo.tienePlan(paciente.id) == true
+    }
+    // Se llegó desde una cita de ortodoncia de la agenda: el paciente ES de ortodoncia.
+    val esPacienteOrtodoncia = ortodonciaAlAbrir != null || pe.saniape.app.data.staff.pacienteEsOrtodoncia(
+        ctx.mapaOrtodoncia, esDental = esOdontologia, tienePlan = hayAtencionOrto || tienePlanOrto,
+        especialidadesDeQuienMira = datosDentales.especialidadesDeQuienMira,
     )
     // ── 💊 Recetas, por PACIENTE (gemelo de `pacienteRecibeRecetas`) ──
     // Con el interruptor apagado (DALU, RENOVA) el mapa llega vacío: ni la
@@ -824,6 +856,8 @@ private fun PantallaFichaPacienteContenido(
                     // clínica de fisio o estética nunca ve esta pestaña, y en
                     // una mixta tampoco el paciente que solo es de fisio.
                     if (esOdontologia) add("odontograma" to "🦷 Odontograma")
+                    // 😁 SOLO ortodoncia (dental + servicio/especialidad de ortodoncia o plan guardado).
+                    if (esPacienteOrtodoncia) add("ortodoncia" to "😁 Ortodoncia")
                     // SOLO pacientes de fisioterapia (`esPacienteFisio`, arriba).
                     if (esPacienteFisio) add("evaluacion" to "📏 Evaluación")
                     // 🏠 Ejercicios de apoyo: mismo candado que la 📏 (solo fisioterapia).
@@ -869,6 +903,7 @@ private fun PantallaFichaPacienteContenido(
                                     if (key != "ejercicios") indicarEjercicios = null
                                     flujoNutri = flujoNutri.alCambiarTab(key)
                                     flujoInd = flujoInd.alCambiarTab(key)
+                                    if (key != "ortodoncia") flujoOrto = null
                                 }
                                 .padding(horizontal = 14.dp, vertical = 8.dp),
                         ) { Text(label, color = if (activo) c.sobreNavy else c.texto, fontSize = 12.sp,
@@ -1245,6 +1280,47 @@ private fun PantallaFichaPacienteContenido(
                                 }?.let { editarTratamiento = it.copy(cantidadUnidades = cantidad) }
                                 Unit
                             }.takeIf { ctx.puede("sesiones") && !inactiva },
+                        )
+                    }
+                    // 😁 Ortodoncia: consulta SOLO al abrirse. Mismo permiso que el API.
+                    "ortodoncia" -> if (esPacienteOrtodoncia) {
+                        val inactiva = pe.saniape.app.data.staff.fichaInactiva(paciente.estado)
+                        val editable = (ctx.puede("pacientes") || ctx.puede("sesiones")) && !inactiva
+                        val deOrto = paciente.tratamientos.filter { it.estado != "Eliminado" && tratEsOrto(it) }
+                        pe.saniape.app.ui.clinica.ortodoncia.OrtodonciaTab(
+                            pacienteId = paciente.id,
+                            pacienteNombre = paciente.nombre,
+                            pacienteDocumento = paciente.dni,
+                            puedeEditar = editable,
+                            mapaDental = ctx.mapaDental,
+                            mapaOrtodoncia = ctx.mapaOrtodoncia,
+                            tratamientos = deOrto.map { t ->
+                                pe.saniape.app.data.staff.TratamientoOrto(
+                                    id = t.id, nombre = t.procedimiento ?: t.especialidadNombre ?: "Tratamiento", estado = t.estado,
+                                    terapeutaId = t.terapeutaId,
+                                    especialidadId = t.especialidadId ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id,
+                                )
+                            },
+                            nombresServicio = paciente.tratamientos.mapNotNull { t -> t.procedimientoId?.let { id -> t.procedimiento?.let { id to it } } }.toMap(),
+                            clinicaNombre = ctx.clinicaNombre,
+                            clinicaDireccion = ctx.clinicaDireccion,
+                            logoUrl = ctx.logoUrl,
+                            colorPrincipal = ctx.colorPrincipal,
+                            clinicaId = ctx.clinicaId,
+                            apertura = flujoOrto,
+                            onAperturaConsumida = { flujoOrto = null },
+                            // Tras la instalación: 📝 con la plantilla base "Cuidados con brackets" (por su clave
+                            // del catálogo), vinculada a la cita del control. Se abre UNA vez.
+                            onDejarCuidados = { citaId: String?, espId: String? ->
+                                flujoInd = pe.saniape.app.data.staff.FlujoIndicacionesFicha(
+                                    citaId = citaId, abrirNuevo = true,
+                                    plantillaClave = pe.saniape.app.data.staff.PLANTILLA_CUIDADOS_BRACKETS,
+                                    especialidadId = espId,
+                                    servicio = pe.saniape.app.data.staff.SERVICIO_CUIDADOS_BRACKETS,
+                                )
+                                flujoOrto = null
+                                tab = "indicaciones"
+                            }.takeIf { editable },
                         )
                     }
                     "odontograma" -> if (esOdontologia) {
