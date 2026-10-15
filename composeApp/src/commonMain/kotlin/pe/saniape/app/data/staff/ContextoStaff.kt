@@ -167,6 +167,13 @@ data class ContextoStaff(
      * backend sin el campo deja el mapa vacío y la pestaña no aparece.
      */
     val mapaEstetica: MapaEstetica = MapaEstetica(),
+    /**
+     * Qué especialidades son de ortodoncia (pestaña 😁 Ortodoncia, por paciente
+     * con `pacienteEsOrtodoncia`, siempre dentro de lo dental; la web las reconoce
+     * por el NOMBRE). Un backend sin el campo deja el mapa vacío y queda solo la
+     * regla del servicio por nombre (`esServicioOrtodoncia`).
+     */
+    val mapaOrtodoncia: MapaOrtodoncia = MapaOrtodoncia(),
     val clinicas: List<ClinicaRef>,
     val tienePortal: Boolean,
     /**
