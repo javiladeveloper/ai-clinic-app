@@ -249,6 +249,7 @@ data class ContextoStaff(
         "ajustes" -> permisos.ajustes
         "reportes" -> permisos.reportes
         "marketing" -> permisos.marketing
+        "datos_personales" -> permisos.datosPersonales
         else -> false
     }
 
@@ -314,6 +315,12 @@ data class Permisos(
     val reportes: Boolean = false,
     /** Marketing (campañas): junto con "servicios" abre Campañas, como la web. */
     val marketing: Boolean = false,
+    /**
+     * Datos personales (DNI, teléfono, contacto): verlos y editarlos. Default
+     * false: un backend sin la clave no los muestra (antes la app no leía la
+     * clave y `puede("datos_personales")` era siempre false).
+     */
+    val datosPersonales: Boolean = false,
 )
 
 data class PlanEstado(
