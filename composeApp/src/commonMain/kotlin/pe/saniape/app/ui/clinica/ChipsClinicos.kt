@@ -34,8 +34,8 @@ private val FISIO = ChipsEspecialidad(
     sintomas = listOf("Hinchazón", "Ardor", "Tirón", "Fibrosis", "Adherencia", "Hematoma", "Adormecimiento", "Calambre", "Contractura", "Tendinitis", "Dolor", "Rigidez", "Inflamación"),
 )
 private val DENTAL = ChipsEspecialidad(
-    tipos = listOf("Caries", "Periodontal", "Ortodoncia", "Endodoncia"),
-    sintomas = listOf("Dolor dental", "Sangrado de encías", "Sensibilidad", "Mal aliento"),
+    tipos = listOf("Caries", "Periodontal", "Ortodoncia", "Endodoncia", "Cirugía / extracción", "Prótesis", "Estética dental", "Odontopediatría"),
+    sintomas = listOf("Dolor dental", "Sangrado de encías", "Sensibilidad", "Mal aliento", "Diente roto o flojo", "Hinchazón", "Rechina los dientes"),
 )
 private val CAPILAR = ChipsEspecialidad(
     tipos = listOf("Alopecia androgenética", "Alopecia areata", "Efluvio telógeno", "Calvicie", "Entradas", "Coronilla", "Alopecia difusa", "Post-injerto"),
@@ -60,8 +60,8 @@ internal val CHIPS_POR_ESPECIALIDAD: List<Pair<String, ChipsEspecialidad>> = lis
     // 'ortodon' y no 'orto': "Ortopedia" / "Traumatología y ortopedia" caían en
     // los chips de ortodoncia.
     "ortodon" to ChipsEspecialidad(
-        tipos = listOf("Apiñamiento", "Diastema", "Mordida abierta", "Sobremordida", "Mordida cruzada", "Maloclusión Clase I", "Maloclusión Clase II", "Maloclusión Clase III"),
-        sintomas = listOf("Dientes torcidos", "Espacios entre dientes", "Dificultad al morder", "Protrusión"),
+        tipos = listOf("Apiñamiento", "Diastema", "Mordida abierta", "Sobremordida", "Mordida cruzada", "Maloclusión Clase I", "Maloclusión Clase II", "Maloclusión Clase III", "Diente retenido", "Recidiva (se movieron)"),
+        sintomas = listOf("Dientes torcidos", "Espacios entre dientes", "Dificultad al morder", "Protrusión", "Respira por la boca", "Dolor en la mandíbula (ATM)", "Rechina los dientes", "Chupa el dedo"),
     ),
     "dermato" to ChipsEspecialidad(
         tipos = listOf("Acné", "Dermatitis", "Alérgica", "Infecciosa"),
@@ -84,9 +84,10 @@ internal val CHIPS_POR_ESPECIALIDAD: List<Pair<String, ChipsEspecialidad>> = lis
         tipos = listOf("Ansiedad", "Depresión", "Trastorno bipolar", "Trastorno del sueño", "Psicótica", "Adicciones"),
         sintomas = listOf("Insomnio", "Irritabilidad", "Tristeza persistente", "Angustia", "Aislamiento", "Falta de concentración"),
     ),
+    // Nutrición (2026-10-14): gemelo de lib/chipsClinicos.ts.
     "nutri" to ChipsEspecialidad(
-        tipos = listOf("Sobrepeso", "Diabetes", "Hipertensión", "Desnutrición"),
-        sintomas = listOf("Fatiga", "Ansiedad por comida", "Digestión pesada"),
+        tipos = listOf("Sobrepeso", "Obesidad", "Diabetes", "Resistencia a la insulina", "Colesterol / triglicéridos altos", "Hipertensión", "Hígado graso", "Desnutrición", "Anemia", "Embarazo / lactancia", "Deportista", "Gastritis / colon irritable"),
+        sintomas = listOf("Fatiga", "Ansiedad por comida", "Digestión pesada", "Hinchazón abdominal", "Estreñimiento", "Reflujo", "Antojos de dulce", "Retención de líquidos", "Sueño después de comer"),
     ),
     "medicina general" to ChipsEspecialidad(
         tipos = listOf("Respiratoria", "Digestiva", "Cardiovascular", "Metabólica"),
