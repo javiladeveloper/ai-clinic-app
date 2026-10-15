@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
@@ -424,6 +425,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     /** Nueva selección del filtro de especialidad (vacía = Todas). Se recuerda en el teléfono. */
     fun cambiarSeleccionEspecialidades(v: List<String>) {
         seleccionEspGuardada = v
+        asegurarMes()
         claveFiltroEsp?.let { clave ->
             runCatching {
                 pe.saniape.app.data.Preferencias.setFiltroEspecialidadAgenda(clave, pe.saniape.app.data.staff.codificarSeleccion(v))
@@ -457,6 +459,8 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                 .collect {
                     pagina = 0
                     if (verHistorial) cargarLista() else cargarDia(fechaSel)
+                    // La clave de la caché lleva la sede: el mes de esta sede se pide aparte.
+                    asegurarMes()
                     recargarBanners()
                 }
         }
@@ -474,6 +478,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         realtimeJob = RealtimeAgenda.suscribir(viewModelScope) {
             // Recarga lo que esté visible ahora mismo (día concreto o lista), sin spinner.
             if (verHistorial) cargarLista() else cargarDia(fechaSel)
+            invalidarMes()
         }
     }
 
@@ -487,8 +492,121 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         verHistorial = false
         fechaSel = iso
         citaAgendadaEn = null
+        // El mes del encabezado sigue al día elegido (calendario cerrado o no).
+        pe.saniape.app.data.staff.MesAgenda.de(iso)?.let { if (it != mesVisible) irAMes(it) }
         cargarDia(iso)
     }
+
+    // ── 📅 Calendario del mes (gemelo del calendario de /citas web) ──
+    /** El mes que muestra el encabezado "◀ Octubre 2026 ▶" y la grilla. */
+    var mesVisible by mutableStateOf(pe.saniape.app.data.staff.MesAgenda.de(hoy) ?: pe.saniape.app.data.staff.mesDeHoy(null)); private set
+    var calendarioAbierto by mutableStateOf(false); private set
+    /** Cargando el conteo del mes visible (aviso sutil; la grilla se ve igual). */
+    var cargandoMes by mutableStateOf(false); private set
+    /** El conteo del mes visible no se pudo leer (la grilla se ve sin números). */
+    var errorMes by mutableStateOf(false); private set
+
+    /**
+     * Caché por mes de las filas LIVIANAS (clave: mes + alcance + sede + con/sin
+     * servicio). Los filtros de pantalla se aplican sobre ellas sin volver a
+     * consultar; un cambio de citas (realtime, acciones) la invalida.
+     */
+    private var cacheMes by mutableStateOf<Map<String, List<pe.saniape.app.data.staff.FilaCitaMes>>>(emptyMap())
+    private var mesJob: kotlinx.coroutines.Job? = null
+    /**
+     * Meses de la caché que ya no valen (cambió alguna cita). Se siguen
+     * MOSTRANDO mientras se releen (no se vacía la grilla), pero se vuelven a pedir.
+     */
+    private val mesesVencidos = mutableSetOf<String>()
+
+    private val necesitaServicioMes: Boolean get() = seleccionEspecialidades.isNotEmpty()
+
+    private fun claveMes(mes: pe.saniape.app.data.staff.MesAgenda): String =
+        mes.clave + (ctx.miTerapeutaId?.let { ":$it" } ?: "") +
+            (pe.saniape.app.data.staff.SedeActiva.filtro?.clave ?: "") +
+            (if (necesitaServicioMes) ":srv" else "")
+
+    /** Conteo por día del mes visible, con los MISMOS filtros que la agenda. */
+    val conteosMes: Map<String, pe.saniape.app.data.staff.ConteoDia>
+        get() {
+            val filas = cacheMes[claveMes(mesVisible)] ?: return emptyMap()
+            val sel = seleccionEspecialidades
+            val ofrecidos = especialidades.map { it.id }.toSet()
+            return pe.saniape.app.data.staff.conteosPorDia(filas, filtroEstado) { f ->
+                (filtroTipo == null || f.tipo == filtroTipo) &&
+                    (filtroTerapeuta == null || f.terapeutaId == filtroTerapeuta) &&
+                    (sel.isEmpty() || pe.saniape.app.data.staff.pasaFiltroEspecialidad(
+                        pe.saniape.app.data.staff.opcionDeEspecialidad(
+                            pe.saniape.app.data.staff.especialidadIdDeCita(
+                                f.especialidadId, f.especialidadServicioId, f.terapeutaId?.let { espsPorTerapeuta[it] },
+                            ),
+                            ofrecidos,
+                        ),
+                        sel,
+                    ))
+            }
+        }
+
+    fun alternarCalendario() {
+        calendarioAbierto = !calendarioAbierto
+        if (calendarioAbierto) cargarMes(mesVisible)
+    }
+    fun cerrarCalendario() { calendarioAbierto = false }
+
+    /** ◀ / ▶: cambia de mes y abre el calendario (desde la tira también). */
+    fun mesAnterior() { calendarioAbierto = true; irAMes(mesVisible.anterior()) }
+    fun mesSiguiente() { calendarioAbierto = true; irAMes(mesVisible.siguiente()) }
+
+    private fun irAMes(mes: pe.saniape.app.data.staff.MesAgenda) {
+        mesVisible = mes
+        errorMes = false
+        if (calendarioAbierto) cargarMes(mes)
+    }
+
+    /** Tocar un día del calendario: la tira y la línea de tiempo saltan ahí. */
+    fun elegirDiaDelCalendario(iso: String) {
+        calendarioAbierto = false
+        seleccionarDia(iso)
+    }
+
+    /** "Hoy": vuelve al día de hoy (en la zona de la sede) y a su mes. */
+    fun irAHoy() {
+        calendarioAbierto = false
+        seleccionarDia(hoy)
+    }
+
+    /**
+     * Lee (en segundo plano) las filas del mes si no están en caché. Un solo
+     * pedido a la vez: cambiar de mes rápido cancela el anterior. Si falla, la
+     * grilla se ve igual, sin números (nunca bloquea la agenda).
+     */
+    private fun cargarMes(mes: pe.saniape.app.data.staff.MesAgenda, forzar: Boolean = false) {
+        val clave = claveMes(mes)
+        if (!forzar && cacheMes.containsKey(clave) && clave !in mesesVencidos) { cargandoMes = false; errorMes = false; return }
+        mesJob?.cancel()
+        val conServicio = necesitaServicioMes
+        mesJob = viewModelScope.launch {
+            cargandoMes = true; errorMes = false
+            val r = runCatching { AgendaRepo.filasDelMes(mes, ctx.miTerapeutaId, conServicio) }
+            // Cancelado (se cambió de mes): el pedido nuevo maneja los indicadores.
+            if (!kotlinx.coroutines.currentCoroutineContext().isActive) return@launch
+            r.getOrNull()?.let { cacheMes = cacheMes + (clave to it); mesesVencidos.remove(clave) }
+            errorMes = r.isFailure
+            cargandoMes = false
+        }
+    }
+
+    /** Las citas cambiaron: la caché del mes ya no vale; si el calendario está abierto, se relee. */
+    private fun invalidarMes() {
+        mesesVencidos.addAll(cacheMes.keys)
+        if (calendarioAbierto) cargarMes(mesVisible)
+    }
+
+    /** "Reintentar" del calendario tras un fallo de lectura. */
+    fun reintentarMes() = cargarMes(mesVisible, forzar = true)
+
+    /** El filtro de especialidad cambia qué columnas hacen falta: relee si hace falta. */
+    private fun asegurarMes() { if (calendarioAbierto) cargarMes(mesVisible) }
 
     /**
      * Fecha de la cita recién agendada cuando NO es el día que se está mirando:
@@ -573,6 +691,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
 
     /** Recarga las citas según el modo actual (lista paginada vs día). */
     private suspend fun recargarCitas() {
+        invalidarMes()
         recargarLlegadas()
         ponerCitas(runCatching {
             if (verHistorial) AgendaRepo.citasPaginadas(verHistorial, pagina, ctx.miTerapeutaId, hoy)

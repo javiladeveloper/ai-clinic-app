@@ -10,10 +10,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,23 +34,35 @@ data class DiaTira(val iso: String, val diaSemana: String, val diaMes: String)
 
 private val DIAS_ES = listOf("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom")
 
-/** Tira horizontal de días (desde -2 hasta +12, como la web). */
+/**
+ * Tira horizontal de días (desde -2 hasta +12, como la web). Si desde el
+ * calendario del mes se salta a un día fuera de ese rango, la tira se arma
+ * alrededor de ese día (gemelo de la base movible de la web) y lo deja a la vista.
+ */
 @Composable
 fun TiraDias(hoy: String, seleccionado: String, onSeleccionar: (String) -> Unit) {
     val c = Sania.colors
-    val dias = remember(hoy) { construirDias(hoy, offset = -2, n = 15) }
+    val base = pe.saniape.app.data.staff.baseTiraDias(hoy, seleccionado)
+    val dias = remember(base) { construirDias(base, offset = -2, n = 15) }
+    val estado = rememberLazyListState()
+    LaunchedEffect(base, seleccionado) {
+        val i = dias.indexOfFirst { it.iso == seleccionado }
+        if (i >= 0) estado.animateScrollToItem((i - 2).coerceAtLeast(0))
+    }
     LazyRow(
         Modifier.fillMaxWidth().padding(vertical = Sania.dim.sm),
+        state = estado,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(horizontal = Sania.dim.lg),
     ) {
-        items(dias) { dia ->
+        itemsIndexed(dias, key = { _, d -> d.iso }) { _, dia ->
             val activo = dia.iso == seleccionado
             Column(
                 Modifier.size(width = 52.dp, height = 64.dp)
                     .clip(RoundedCornerShape(Sania.shape.md.dp))
                     .background(if (activo) c.navy else c.superficie)
-                    .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.md.dp))
+                    .border(if (dia.iso == hoy && !activo) 2.dp else 1.dp,
+                        if (activo) c.navy else if (dia.iso == hoy) c.lav else c.borde, RoundedCornerShape(Sania.shape.md.dp))
                     .clickable { onSeleccionar(dia.iso) }
                     .padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,

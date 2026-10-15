@@ -143,6 +143,57 @@ object AgendaRepo {
 
     const val PAGE_SIZE = 10
 
+    /** Tope por página de PostgREST (max_rows): el mes se pide en tandas de este tamaño. */
+    private const val TANDA_MES = 1000L
+    /** Freno: un mes de más de 10 000 citas es un error, no una agenda. */
+    private const val MAX_TANDAS_MES = 10
+
+    /**
+     * Citas del MES para el calendario, en filas LIVIANAS (fecha, estado, tipo,
+     * profesional, especialidad): nada de paciente/terapeuta/tratamiento. Con el
+     * mismo alcance de servidor que la agenda: "mi agenda" y sede activa. Los
+     * filtros de pantalla (estado/tipo/profesional/especialidad) se aplican en el
+     * teléfono sobre estas filas, así cambiar un filtro no vuelve a consultar.
+     * [conServicio] trae la especialidad del servicio (un join 1-a-1 por FK, solo
+     * cuando el filtro de especialidad está puesto).
+     */
+    suspend fun filasDelMes(mes: MesAgenda, miTerapeutaId: String?, conServicio: Boolean): List<FilaCitaMes> {
+        val sede = SedeActiva.filtro
+        val cols = "fecha, estado, tipo, terapeuta_id, especialidad_id" +
+            if (conServicio) ", tratamiento:tratamientos!citas_tratamiento_id_fkey(procedimiento:procedimientos(especialidad_id))" else ""
+        val out = mutableListOf<FilaCitaMes>()
+        var desde = 0L
+        repeat(MAX_TANDAS_MES) {
+            val filas = Supabase.client.postgrest["citas"]
+                .select(Columns.raw(cols)) {
+                    filter {
+                        gte("fecha", mes.desdeIso)
+                        lte("fecha", mes.hastaIso)
+                        if (miTerapeutaId != null) eq("terapeuta_id", miTerapeutaId)
+                        filtroSede(sede)
+                    }
+                    order("fecha", Order.ASCENDING)
+                    order("id", Order.ASCENDING)
+                    range(desde, desde + TANDA_MES - 1)
+                }
+                .decodeList<JsonObject>()
+            filas.mapTo(out) { mapearFilaMes(it) }
+            if (filas.size < TANDA_MES) return out
+            desde += TANDA_MES
+        }
+        return out
+    }
+
+    /** Fila liviana del mes (tolerante: campos que falten quedan null). */
+    fun mapearFilaMes(o: JsonObject): FilaCitaMes = FilaCitaMes(
+        fecha = o.str("fecha").orEmpty(),
+        estado = o.str("estado").orEmpty(),
+        tipo = o.str("tipo"),
+        terapeutaId = o.str("terapeuta_id"),
+        especialidadId = o.str("especialidad_id"),
+        especialidadServicioId = o.nested("tratamiento")?.nested("procedimiento")?.str("especialidad_id"),
+    )
+
     /** Columnas comunes de una cita (con joins). Una sola fuente. */
     const val SELECT_CITA =
         "id, fecha, hora, estado, tipo, costo, pagada_at, duracion, origen, confirmada_por_paciente, " +

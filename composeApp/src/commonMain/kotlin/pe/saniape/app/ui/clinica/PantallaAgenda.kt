@@ -47,6 +47,8 @@ import pe.saniape.app.ui.clinica.agenda.componentes.AccionTarjeta
 import pe.saniape.app.ui.clinica.agenda.componentes.FiltrosAgenda
 import pe.saniape.app.ui.clinica.agenda.componentes.TarjetaCita
 import pe.saniape.app.ui.clinica.agenda.componentes.TiraDias
+import pe.saniape.app.ui.clinica.agenda.componentes.CalendarioMes
+import pe.saniape.app.ui.clinica.agenda.componentes.EncabezadoMesAgenda
 import pe.saniape.app.ui.clinica.agenda.modales.ConfirmacionAccion
 import pe.saniape.app.ui.clinica.agenda.modales.ModalCobrarCita
 import pe.saniape.app.ui.clinica.agenda.modales.ModalCompletar
@@ -454,7 +456,32 @@ fun PantallaAgenda(
             }
 
             // La tira de días solo aplica en modo "día" (no en la lista/historial).
+            // Encima, el mes ("◀ Octubre 2026 ▶ · Hoy") que despliega el calendario
+            // del mes con el conteo de citas por día (como la web).
             if (!vm.modoLista) {
+                EncabezadoMesAgenda(
+                    mes = vm.mesVisible,
+                    abierto = vm.calendarioAbierto,
+                    mostrarHoy = vm.fechaSel != vm.hoy || vm.calendarioAbierto,
+                    onAnterior = { vm.mesAnterior() },
+                    onSiguiente = { vm.mesSiguiente() },
+                    onAlternar = { vm.alternarCalendario() },
+                    onHoy = { vm.irAHoy() },
+                )
+                if (vm.calendarioAbierto) {
+                    CalendarioMes(
+                        mes = vm.mesVisible,
+                        hoy = vm.hoy,
+                        seleccionado = vm.fechaSel,
+                        conteos = vm.conteosMes,
+                        cargando = vm.cargandoMes,
+                        error = vm.errorMes,
+                        onElegir = { vm.elegirDiaDelCalendario(it) },
+                        onAnterior = { vm.mesAnterior() },
+                        onSiguiente = { vm.mesSiguiente() },
+                        onReintentar = { vm.reintentarMes() },
+                    )
+                }
                 TiraDias(hoy = vm.hoy, seleccionado = vm.fechaSel, onSeleccionar = { vm.seleccionarDia(it) })
             }
 
