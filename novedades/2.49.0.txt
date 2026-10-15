@@ -1,0 +1,11 @@
+# Novedades de la 2.49.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Indicaciones para casa en todas las especialidades y tus documentos médicos en la app.
+---
+Clínicas:
+• Nueva pestaña 📝 Indicaciones: cuidados para casa con plantillas listas por especialidad (toxina, peeling, injerto capilar, pie diabético, extracción dental y más), chips que aprenden, PDF y WhatsApp.
+• Al terminar una cita, la agenda te ofrece dejar las indicaciones que corresponden al servicio.
+• Decide qué informes ve el paciente en su app (descansos y órdenes se comparten solos).
+• Más diagnósticos rápidos; dermatología pasa a consulta médica con receta y CIE-10; frases para pediatría.
+Pacientes:
+• Nuevas secciones 📝 Mis indicaciones y 🩺 Documentos médicos (informes, descansos, órdenes, presupuestos y cuotas) en la pestaña Salud.
