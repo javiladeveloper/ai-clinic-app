@@ -49,6 +49,8 @@ fun BannersAgendaUI(
     onReagendarVencida: (CitaStaff) -> Unit,
     onAgendarDerivacion: (Derivacion) -> Unit,
     onMarcarDerivacion: (Derivacion) -> Unit,
+    /** La cita vencida cuyo "✓ Sí vino" está decidiendo el cierre: "Abriendo…" y sin otro toque. */
+    decidiendoId: String? = null,
 ) {
     val c = Sania.colors
     val acciones = recordarAcciones()
@@ -113,8 +115,11 @@ fun BannersAgendaUI(
                             }
                         }
                         Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            MiniBoton("✓ Sí vino", c.ok) { onCerrarVencida(cita, true) }
-                            MiniBoton("✗ No vino", c.error) { onCerrarVencida(cita, false) }
+                            val decidiendo = decidiendoId == cita.id
+                            MiniBoton(if (decidiendo) "Abriendo…" else "✓ Sí vino", c.ok, habilitado = decidiendoId == null) {
+                                onCerrarVencida(cita, true)
+                            }
+                            MiniBoton("✗ No vino", c.error, habilitado = !decidiendo) { onCerrarVencida(cita, false) }
                             MiniBoton("📅 Reagendar", c.navy) { onReagendarVencida(cita) }
                         }
                     }
@@ -214,12 +219,17 @@ private fun BannerColapsable(
 }
 
 @Composable
-private fun MiniBoton(texto: String, color: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+private fun MiniBoton(
+    texto: String,
+    color: androidx.compose.ui.graphics.Color,
+    habilitado: Boolean = true,
+    onClick: () -> Unit,
+) {
     androidx.compose.foundation.layout.Box(
         Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp))
             .background(color.copy(alpha = 0.12f))
             .border(1.dp, color, RoundedCornerShape(Sania.shape.sm.dp))
-            .clickable { onClick() }.padding(horizontal = 10.dp, vertical = 6.dp),
+            .clickable(enabled = habilitado) { onClick() }.padding(horizontal = 10.dp, vertical = 6.dp),
     ) { Text(texto, color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
 }
 

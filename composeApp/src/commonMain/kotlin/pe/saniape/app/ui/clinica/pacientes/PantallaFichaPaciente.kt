@@ -569,9 +569,13 @@ private fun PantallaFichaPacienteContenido(
     // siguiente control sin 'agendar' (ofreceAgendarControlNutri). Solo al abrir
     // 🥗 Plan alimentario y solo si hace falta: con 'agendar' no se pregunta, y
     // un tratamiento suyo ya cargado basta. Lo que no se pudo leer es NO.
+    // Guardado por paciente: un "sí" ya no se relee al volver a la pestaña. Un
+    // "no" sí (guardar ahí su primer plan alimentario lo vuelve "sí", como el SWR
+    // de la web).
     var atendioNutri by remember(paciente.id) { mutableStateOf(false) }
     val miTerNutri = ctx.miTerapeutaId
     LaunchedEffect(tab, paciente.id, paciente.tratamientos, miTerNutri) {
+        if (atendioNutri) return@LaunchedEffect
         if (tab != "plan" || ctx.puede("agendar") || !ctx.puede("sesiones") || miTerNutri.isNullOrBlank()) return@LaunchedEffect
         atendioNutri = pe.saniape.app.data.staff.atendioAlPaciente(
             miTerNutri,

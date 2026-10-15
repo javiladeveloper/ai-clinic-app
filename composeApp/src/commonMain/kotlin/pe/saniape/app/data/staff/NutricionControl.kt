@@ -172,6 +172,15 @@ suspend fun abreEvaluacionAlCompletar(
     return !(s != null && esControlDeNutricion(cita, s))
 }
 
+/**
+ * Ya decidido [abreEvaluacionAlCompletar]: ¿el cierre abre una ventana (la de
+ * la evaluación, o la de la Sesión)? false = se completa directo (la Consulta
+ * de seguimiento, el control de nutrición). "✓ Completar" de la tarjeta y
+ * "✓ Sí vino" de las vencidas, como la web (citas/page.tsx).
+ */
+fun abreVentanaAlCompletar(abreEvaluacion: Boolean, tipo: String?): Boolean =
+    abreEvaluacion || tipo == "Sesión"
+
 // ─────────────────────────────────────────────────────────────────────────────
 // "📅 Agendar siguiente control" — el control de un paciente PROPIO.
 //

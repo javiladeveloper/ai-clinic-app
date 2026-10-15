@@ -504,10 +504,17 @@ fun PantallaAgenda(
                         BannersAgendaUI(
                             banners = b,
                             onVerCitaManana = { vm.seleccionarDia(it.fecha) },
+                            // "✓ Sí vino" = el mismo cierre que "✓ Completar" (como la web): la
+                            // cita que evalúa pide diagnóstico (dental: revisión previa), el
+                            // control de nutrición no; la Sesión, su ventana. Antes la Consulta
+                            // se cerraba directo, sin diagnóstico, también la primera.
+                            decidiendoId = vm.decidiendoCita,
                             onCerrarVencida = { cita, vino ->
                                 if (vino) {
-                                    if (cita.tipo == "Evaluación" || cita.tipo == "Sesión") completar = cita
-                                    else vm.ejecutar(AccionCita.Completar, cita)
+                                    vm.decidirCompletar(cita) { abreEvaluacion ->
+                                        if (pe.saniape.app.data.staff.abreVentanaAlCompletar(abreEvaluacion, cita.tipo)) completar = cita
+                                        else vm.ejecutar(AccionCita.Completar, cita)
+                                    }
                                 } else noVino = cita   // confirma y registra "No asistió" (no cancela de un toque)
                             },
                             onReagendarVencida = { editar = it },   // abre el modal de fecha/hora
@@ -620,7 +627,7 @@ fun PantallaAgenda(
                                             // El CONTROL de nutrición no: se cierra como consulta de
                                             // seguimiento y ofrece "⚖️ Registrar medidas" (decidirCompletar).
                                             vm.decidirCompletar(cita) { abreEvaluacion ->
-                                                if (abreEvaluacion || cita.tipo == "Sesión") completar = cita
+                                                if (pe.saniape.app.data.staff.abreVentanaAlCompletar(abreEvaluacion, cita.tipo)) completar = cita
                                                 else vm.ejecutar(AccionCita.Completar, cita)
                                             }
                                         AccionTarjeta.Cancelar -> confirmar = cita to AccionCita.Cancelar

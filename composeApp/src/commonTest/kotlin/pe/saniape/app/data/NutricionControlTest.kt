@@ -10,6 +10,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import pe.saniape.app.data.staff.AtencionNutricion
 import pe.saniape.app.data.staff.CitaNutricionControl
+import pe.saniape.app.data.staff.FlujoClinica
+import pe.saniape.app.data.staff.abreVentanaAlCompletar
 import pe.saniape.app.data.staff.FilaAtendio
 import pe.saniape.app.data.staff.FilaCitaNutricion
 import pe.saniape.app.data.staff.FilaPlanNutricion
@@ -228,6 +230,52 @@ class NutricionControlTest {
         var lecturas = 0
         assertTrue(correr { abreEvaluacionAlCompletar(citaC, null, true, false, true) { lecturas++; conHistoria } })
         assertEquals(0, lecturas)
+    }
+
+    // ── "✓ Completar" / "✓ Sí vino": ¿ventana de cierre o directo? (citas/page.tsx) ──
+
+    /** La decisión completa de la agenda: flujo de la cita → abre evaluación → ventana. */
+    private fun ventana(
+        tipo: String, flujo: FlujoClinica, dental: Boolean = false, nutri: Boolean = false,
+        seg: SeguimientoNutricion? = vacio,
+    ): Boolean {
+        val cita = citaC.copy(tipo = tipo)
+        val abre = correr {
+            abreEvaluacionAlCompletar(cita, "p1", flujo.esCitaQueEvalua(tipo), dental, nutri) { seg }
+        }
+        return abreVentanaAlCompletar(abre, tipo)
+    }
+
+    private val sinEvaluacion = FlujoClinica(usaConsulta = true, usaEvaluacion = false)   // medicina, estética, nutrición
+    private val conEvaluacion = FlujoClinica(usaConsulta = true, usaEvaluacion = true)    // fisio, odontología
+
+    @Test fun siVinoConsultaQueEvaluaPideDiagnostico() {
+        // Medicina (también la consulta médica guiada: en "Sí vino" la web abre la evaluación) y estética.
+        assertTrue(ventana("Consulta", sinEvaluacion))
+        // La primera consulta de nutrición, también.
+        assertTrue(ventana("Consulta", sinEvaluacion, nutri = true, seg = vacio))
+    }
+
+    @Test fun siVinoControlDeNutricionSeCierraDirecto() =
+        assertFalse(ventana("Consulta", sinEvaluacion, nutri = true, seg = conHistoria))
+
+    @Test fun siVinoNutricionConLecturaFallidaPideDiagnostico() =
+        assertTrue(ventana("Consulta", sinEvaluacion, nutri = true, seg = null))
+
+    @Test fun siVinoEvaluacionYDentalAbrenLaVentana() {
+        assertTrue(ventana("Evaluación", conEvaluacion))
+        // Odontología: la ventana es la revisión previa (dental + evalúa), como setRevisionPrevia.
+        assertTrue(ventana("Evaluación", conEvaluacion, dental = true))
+        // Aunque la dental fuera de nutrición, no se lee nada: evalúa.
+        assertTrue(ventana("Evaluación", conEvaluacion, dental = true, nutri = true, seg = conHistoria))
+    }
+
+    @Test fun siVinoConsultaDeFlujoConEvaluacionSeCierraDirecto() =
+        assertFalse(ventana("Consulta", conEvaluacion))
+
+    @Test fun siVinoSesionAbreSuVentana() {
+        assertTrue(ventana("Sesión", conEvaluacion))
+        assertTrue(ventana("Sesión", sinEvaluacion, nutri = true, seg = conHistoria))
     }
 
     // ── armarSeguimientoNutricion (el armado de leerSeguimientoNutricion) ─────
