@@ -54,7 +54,8 @@ internal fun PanelAltaRapida(
     pais: String?,
     /** Reactivar pide 'datos_personales' en el servidor (como el botón de la web). */
     puedeReactivar: Boolean,
-    onListo: (RefNombre) -> Unit,
+    /** [creado] = ficha nueva (se ofrece completar datos); false = reactivada (ya los tiene). */
+    onListo: (ref: RefNombre, creado: Boolean) -> Unit,
 ) {
     val c = Sania.colors
     val tpl = LocalTerminologiaPaciente.current
@@ -97,7 +98,7 @@ internal fun PanelAltaRapida(
                 }
                 else -> {
                     Toaster.exito("${tpl.Paciente} registrado")
-                    onListo(RefNombre(r.id!!, nombre.trim(), documento, sedeId = r.sedeId))
+                    onListo(RefNombre(r.id!!, nombre.trim(), documento, sedeId = r.sedeId), true)
                 }
             }
         }
@@ -111,7 +112,7 @@ internal fun PanelAltaRapida(
             reactivando = false
             if (!r.ok || r.id == null) { hallazgo = HallazgoPadron.Error(r.error ?: "No se pudo reactivar"); baja = null; return@launch }
             Toaster.exito("Ficha reactivada")
-            onListo(RefNombre(r.id, f.nombre, f.dni ?: documento))
+            onListo(RefNombre(r.id, f.nombre, f.dni ?: documento), false)
         }
     }
 

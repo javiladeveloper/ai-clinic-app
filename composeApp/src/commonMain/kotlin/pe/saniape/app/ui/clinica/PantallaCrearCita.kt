@@ -187,6 +187,8 @@ fun PantallaCrearCita(
     var mostrarHorarios by remember { mutableStateOf(false) }    // modal "ver horarios" de todos
     var guardando by remember { mutableStateOf(false) }
     var mensaje by remember { mutableStateOf<String?>(null) }
+    // Recién registrado desde el buscador: "Completar datos de…" (paciente, ¿sin DNI?).
+    var completarDatos by remember { mutableStateOf<Pair<RefNombre, Boolean>?>(null) }
 
     // Clínica multi-especialidad → mostrar selector que filtra los profesionales.
     val multiEspecialidad = especialidadesClinica.size > 1
@@ -426,6 +428,23 @@ fun PantallaCrearCita(
     // "＋ Crear tratamiento": el MISMO form de la ficha, prellenado con lo que ya se
     // eligió en la cita, solo con servicios por sesiones de su especialidad. Sin
     // "Agendarla ahora": la sesión #1 es esta cita.
+    completarDatos?.let { (nuevo, sinDni) ->
+        DialogoCompletarDatosPaciente(
+            pacienteId = nuevo.id, nombreInicial = nuevo.nombre, sinDni = sinDni,
+            puedeAgregarDni = ctx.puede("datos_personales"),
+            pais = pe.saniape.app.data.staff.paisDeFila(sedeId),
+            chipsTipos = remember(especialidadesClinica) { chipsDeClinica(especialidadesClinica.map { it.aChips() }).tipos },
+            chipsSintomas = remember(especialidadesClinica) { chipsDeClinica(especialidadesClinica.map { it.aChips() }).sintomas },
+            onListo = { completarDatos = null },
+            onDniGuardado = { dni, nombre ->
+                // El DNI (y quizá el nombre del padrón) a la lista y al elegido.
+                val act = nuevo.copy(nombre = nombre, dni = dni)
+                pacientes = pacientes.map { if (it.id == nuevo.id) act else it }
+                if (paciente?.id == nuevo.id) paciente = act
+            },
+        )
+    }
+
     val pacTrat = paciente
     if (crearTratamiento && pacTrat != null) {
         pe.saniape.app.ui.clinica.pacientes.ModalCrearTratamiento(
@@ -694,12 +713,16 @@ fun PantallaCrearCita(
                         // primera cita) y para quien agenda. Con el país de la sede.
                         altaRapida = pe.saniape.app.data.staff.altaRapidaPermitida(tipo, ctx.puede("agendar"), soloSesion),
                         pais = pe.saniape.app.data.staff.paisDeFila(sedeId),
-                        puedeReactivar = ctx.puede("datos_personales"),
-                        onRegistrado = { nuevo ->
+                        verDatosPersonales = ctx.puede("datos_personales"),
+                        onRegistrado = { nuevo, como ->
                             // El recién creado entra a la lista local (si no, el selector
                             // tendría elegido un id que su copia desconoce).
                             pacientes = listOf(nuevo) + pacientes.filter { it.id != nuevo.id }
                             paciente = nuevo; terapeuta = null; tratamiento = null; terapeutaAMano = false; precargado = null
+                            // Ficha NUEVA (por DNI o solo con el nombre): ofrecer completar sus
+                            // datos, como la web. Opcional: con cola, "Ahora no" y a seguir.
+                            // Reactivada: no (ya los tiene y el popup los pisaría con vacíos).
+                            if (como != AltaEnCita.REACTIVADO) completarDatos = nuevo to (como == AltaEnCita.SIN_DNI)
                         },
                     )
                 }
@@ -952,7 +975,7 @@ private fun TarjetaTipo(info: TipoInfo,activo: Boolean, etiqueta: String = info.
 }
 
 @Composable
-private fun SelectorBoton(valor: String, bloqueado: Boolean = false, onClick: () -> Unit) {
+internal fun SelectorBoton(valor: String, bloqueado: Boolean = false, onClick: () -> Unit) {
     val c = Sania.colors
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
@@ -984,109 +1007,6 @@ private fun <T> SelectorLista(
                     Text(etiqueta(item), color = c.texto, fontSize = Sania.txt.cuerpo,
                         modifier = Modifier.fillMaxWidth().clickable { onElegir(item); abierto = false }
                             .padding(horizontal = 14.dp, vertical = 12.dp))
-                }
-            }
-        }
-    }
-}
-
-/**
- * Selector de paciente con BUSCADOR: al abrir muestra un campo de texto; escribir
- * filtra por nombre o DNI. Misma regla que la lista de pacientes
- * (`coincideBusqueda`: sin tildes, cada palabra en cualquier orden). Filtra al
- * instante lo que ya está en el teléfono y, desde 2 letras, pregunta también al
- * servidor (con pausa): así aparece quien no entró en los 500 precargados
- * (DALU tiene más). Sin señal se queda con lo local.
- */
-@Composable
-private fun SelectorPacienteBuscable(
-    items: List<RefNombre>, elegido: RefNombre?, onElegir: (RefNombre) -> Unit, termino: String = "paciente",
-    /** ¿Se ofrece registrar un documento que no está? (ver `altaRapidaPermitida`) */
-    altaRapida: Boolean = false,
-    /** País de la sede de la cita: RENIEC solo en Perú. */
-    pais: String? = null,
-    puedeReactivar: Boolean = false,
-    /** Paciente recién registrado (o reactivado): queda elegido. */
-    onRegistrado: (RefNombre) -> Unit = onElegir,
-) {
-    val c = Sania.colors
-    var abierto by remember { mutableStateOf(false) }
-    var query by remember { mutableStateOf("") }
-
-    Column {
-        SelectorBoton(elegido?.nombre ?: "Buscar $termino por nombre o DNI…") {
-            abierto = !abierto
-            if (abierto) query = ""
-        }
-        if (abierto) {
-            Column(Modifier.fillMaxWidth().padding(top = 4.dp)
-                .clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.superficie)
-                .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                .padding(8.dp)) {
-                OutlinedTextField(
-                    value = query, onValueChange = { query = it },
-                    placeholder = { Text("Nombre o DNI…", color = c.textoSuave) },
-                    singleLine = true, modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(6.dp))
-                // Resultados del servidor para la búsqueda actual (null = aún no / sin señal).
-                var remotos by remember { mutableStateOf<Pair<String, List<RefNombre>>?>(null) }
-                var buscandoRemoto by remember { mutableStateOf(false) }
-                // La última búsqueda que el servidor ya contestó (o que falló sin señal).
-                // El alta rápida espera a esto: ofrecer "registrar" antes de saber si
-                // está entre los que no se precargaron sería abrir la puerta a un duplicado.
-                var consultado by remember { mutableStateOf<String?>(null) }
-                LaunchedEffect(query) {
-                    val q = query.trim()
-                    if (q.length < 2) { remotos = null; buscandoRemoto = false; return@LaunchedEffect }
-                    kotlinx.coroutines.delay(300)   // pausa: no una consulta por tecla
-                    buscandoRemoto = true
-                    val r = runCatching { AgendaRepo.buscarPacientes(q) }.getOrNull()
-                    buscandoRemoto = false
-                    if (r != null) remotos = q to r
-                    consultado = q
-                }
-                val filtrados = remember(query, items, remotos) {
-                    val q = query.trim()
-                    if (q.isBlank()) items.take(30)
-                    else {
-                        val delServidor = remotos?.takeIf { it.first == q }?.second.orEmpty()
-                        (items + delServidor).distinctBy { it.id }
-                            .filter { pe.saniape.app.ui.clinica.pacientes.coincideBusqueda(it.nombre, it.dni, null, q) }
-                            .take(40)
-                    }
-                }
-                Column(Modifier.fillMaxWidth().heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
-                    // Documento que no está en la clínica → alta al vuelo (como la web).
-                    val docNuevo = if (altaRapida && !buscandoRemoto && consultado == query.trim())
-                        pe.saniape.app.data.staff.documentoParaAltaRapida(query, filtrados.isNotEmpty()) else null
-                    if (docNuevo != null) {
-                        PanelAltaRapida(
-                            documento = docNuevo, pais = pais, puedeReactivar = puedeReactivar,
-                            onListo = { nuevo -> onRegistrado(nuevo); abierto = false; query = "" },
-                        )
-                    } else if (filtrados.isEmpty()) {
-                        Text(
-                            when {
-                                query.isBlank() -> "Escribe para buscar."
-                                buscandoRemoto || (altaRapida && query.trim().length >= 2 && consultado != query.trim()) -> "Buscando…"
-                                else -> "Sin coincidencias."
-                            },
-                            color = c.textoSuave, fontSize = Sania.txt.pequeno,
-                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
-                        )
-                    } else filtrados.forEach { item ->
-                        Column(
-                            Modifier.fillMaxWidth()
-                                .clickable { onElegir(item); abierto = false; query = "" }
-                                .padding(horizontal = 10.dp, vertical = 10.dp),
-                        ) {
-                            Text(item.nombre, color = c.texto, fontSize = Sania.txt.cuerpo)
-                            item.dni?.takeIf { it.isNotBlank() }?.let {
-                                Text("DNI $it", color = c.textoSuave, fontSize = 11.sp)
-                            }
-                        }
-                    }
                 }
             }
         }
