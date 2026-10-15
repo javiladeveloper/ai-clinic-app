@@ -1,0 +1,10 @@
+# Novedades de la 2.48.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Nutrición más rápida: chips que aprenden, flujo guiado y el plan en la app del paciente.
+---
+Clínicas:
+• Plan alimentario con chips y autocompletado: opciones comunes de cada comida, alimentos a evitar, recomendaciones e hidratación, y lo que tu clínica ya escribió antes.
+• Al completar un control de nutrición, la agenda te lleva a registrar las medidas y de ahí al plan; al guardarlo, imprimes, envías por WhatsApp o agendas el siguiente control.
+• Decide si cada plan se ve en la app del paciente.
+Pacientes:
+• Nueva sección 🥗 Mi plan de alimentación (con PDF) y ⚖️ Mi evolución en la pestaña Salud.
