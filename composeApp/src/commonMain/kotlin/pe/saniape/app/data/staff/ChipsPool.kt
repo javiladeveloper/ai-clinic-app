@@ -233,16 +233,24 @@ private val RE_SISTEMA = Regex("""autom[aá]tic|protocolo|confirmar (hora|con)|c
 private val RE_DOS_LETRAS = Regex("""[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]{2}""")
 private val RE_SIMBOLOS = Regex("""[\[\]{}<>@]""")
 
-/** DNI, teléfono, correo, fecha (gemelo de `pareceDatoPersonal` sin el cruce de nombre). */
-internal fun pareceDatoPersonal(frase: String): Boolean {
+/**
+ * DNI, teléfono, correo, fecha y, con [nombrePaciente], su nombre (cada palabra
+ * de 3+ letras, sin tildes, como palabra suelta). Gemelo de `pareceDatoPersonal`.
+ */
+internal fun pareceDatoPersonal(frase: String, nombrePaciente: String? = null): Boolean {
     if ('@' in frase) return true
     if (Regex("""\d{7,}""").containsMatchIn(frase.replace(Regex("""[\s\-.()]"""), ""))) return true
     if (RE_FECHA.containsMatchIn(frase)) return true
-    return RE_PALABRA_DATO.containsMatchIn(frase.lowercase())
+    if (RE_PALABRA_DATO.containsMatchIn(frase.lowercase())) return true
+    if (nombrePaciente.isNullOrBlank()) return false
+    val n = claveChip(frase)
+    return claveChip(nombrePaciente).split(' ').filter { it.length >= 3 }.any { t ->
+        Regex("(^|[^a-z0-9ñ])${Regex.escape(t)}([^a-z0-9ñ]|$)").containsMatchIn(n)
+    }
 }
 
 /** ¿Lleva emoji o pictograma? (sustitutos UTF-16 o el bloque de símbolos varios). */
-private fun tieneEmoji(s: String): Boolean = s.any { it.isSurrogate() || it.code in 0x2600..0x27BF }
+internal fun tieneEmoji(s: String): Boolean = s.any { it.isSurrogate() || it.code in 0x2600..0x27BF }
 
 /**
  * ¿Se guarda como sugerencia PROPIA? Nunca con datos del paciente ni marcas del
