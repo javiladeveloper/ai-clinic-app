@@ -154,6 +154,7 @@ object StaffContextoRepo {
         return ContextoStaff(
             clinicaId = o.str("clinicaId") ?: "",
             clinicaNombre = o.str("clinicaNombre") ?: "Clínica",
+            clinicaDireccion = o.str("clinicaDireccion")?.takeIf { it.isNotBlank() },
             logoUrl = o.str("logoUrl"),
             colorPrincipal = o.str("colorPrincipal"),
             terminologiaProfesional = o.str("terminologiaProfesional") ?: "Profesional",

@@ -188,6 +188,8 @@ data class ContextoStaff(
     val moneda: String = MONEDA_POR_DEFECTO,
     val zona: String = ZONA_POR_DEFECTO,
     val pais: String = PAIS_POR_DEFECTO,
+    /** Dirección de la clínica (WhatsApp prearmado de la cita). Servidor viejo → null. */
+    val clinicaDireccion: String? = null,
 ) {
     /** Permiso granular (mismo significado que puede() en la web). */
     fun puede(key: String): Boolean = when (key) {

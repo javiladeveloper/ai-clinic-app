@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.pacientes
 
+import pe.saniape.app.ui.urlEncode
 import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
@@ -2844,16 +2845,6 @@ private fun FilaClinica(etq: String, valor: String?) {
         Text(valor?.takeIf { it.isNotBlank() } ?: "—",
             color = if (valor.isNullOrBlank()) c.textoSuave else c.texto, fontSize = 12.sp,
             fontWeight = if (valor.isNullOrBlank()) FontWeight.Normal else FontWeight.Medium)
-    }
-}
-
-/** Codifica un texto para usarlo en una URL (mensaje de WhatsApp) — percent-encoding UTF-8. */
-private fun urlEncode(s: String): String = buildString {
-    for (b in s.encodeToByteArray()) {
-        val c = b.toInt() and 0xFF
-        if (c.toChar() in 'A'..'Z' || c.toChar() in 'a'..'z' || c.toChar() in '0'..'9' ||
-            c.toChar() in "-_.~") append(c.toChar())
-        else append('%').append(c.toString(16).uppercase().padStart(2, '0'))
     }
 }
 

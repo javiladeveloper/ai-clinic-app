@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.agenda.componentes
 
+import pe.saniape.app.data.staff.zonaDeSede
 import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import pe.saniape.app.data.staff.FlujoClinica
 import androidx.compose.foundation.background
@@ -39,7 +40,6 @@ import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.recordarAcciones
 import pe.saniape.app.ui.theme.EstadosColor
 import pe.saniape.app.ui.theme.Sania
-import pe.saniape.app.ui.nombreDeSaludo
 import pe.saniape.app.tutoriales.tourAncla
 import pe.saniape.app.data.staff.simboloMoneda
 
@@ -185,15 +185,13 @@ fun TarjetaCita(
                 cita.pacienteTelefono?.takeIf { it.isNotBlank() }?.let { tel ->
                     IconoContacto("📞", c.navy) { acciones.abrirUrl("tel:${tel.filter { ch -> ch.isDigit() }}") }
                     Spacer(Modifier.width(6.dp))
-                    // WhatsApp con el RECORDATORIO de la cita prellenado (como el 📱 de la web):
-                    // un toque y el mensaje sale listo para enviar.
+                    // WhatsApp con la confirmación/recordatorio de la cita prellenado (el
+                    // mismo texto que el 📱 de la web): un toque y sale listo para enviar.
+                    // Cita pasada o cerrada: el chat vacío, como la web.
                     IconoContacto("💬", pe.saniape.app.ui.theme.Paleta.WhatsApp) {
                         val n = pe.saniape.app.data.staff.numeroWhatsApp(tel, pe.saniape.app.data.staff.paisActivo())
-                        val nombre = nombreDeSaludo(cita.pacienteNombre) ?: ""
-                        val msg = "Hola $nombre 👋 Te recordamos tu cita" +
-                            (cita.tipo?.let { " de ${flujo.nombreTipo(it).lowercase()}" } ?: "") +
-                            " el ${cita.fecha} a las ${hora12(cita.hora)}. ¿Nos confirmas tu asistencia? 🙌"
-                        acciones.abrirUrl("https://wa.me/$n?text=${pe.saniape.app.ui.urlEncode(msg)}")
+                        val msg = mensajeWhatsAppDeCita(cita, flujo)
+                        acciones.abrirUrl("https://wa.me/$n" + (msg?.let { "?text=${pe.saniape.app.ui.urlEncode(it)}" } ?: ""))
                     }
                 }
             }
@@ -495,4 +493,35 @@ fun BadgeEstadoCita(estado: String, confirmadaPaciente: Boolean = false) {
 private fun formato2(n: Double): String {
     val cent = (n * 100).toLong()
     return "${cent / 100}.${(cent % 100).toString().padStart(2, '0')}"
+}
+
+/**
+ * El WhatsApp prearmado de la cita (gemelo de whatsappDeCita en /citas web):
+ * nombre completo, fecha, hora, servicio, profesional y dirección; si la cita
+ * se agendó hoy, "Hemos confirmado su cita en …" (Centro OMER, 2026-10-14).
+ * null = cita pasada o cerrada (se abre el chat vacío).
+ */
+private fun mensajeWhatsAppDeCita(cita: CitaStaff, flujo: FlujoClinica): String? {
+    val ctx = pe.saniape.app.data.staff.StaffContextoRepo.actual
+    val zona = ctx?.zonaDeSede(cita.sedeId)
+    val hoy = pe.saniape.app.data.staff.hoyEnIso(zona)
+    val porVenir = (cita.estado == "Pendiente" || cita.estado == "Confirmada") && cita.fecha.take(10) >= hoy
+    if (!porVenir) return null
+    // La dirección de la sede de la cita (sin sede: la principal); si no, la de la clínica.
+    val sede = ctx?.sedes?.let { s -> s.firstOrNull { it.id == cita.sedeId } ?: s.firstOrNull { it.esPrincipal } }
+    val enlace = cita.confirmacionToken?.let {
+        "${pe.saniape.app.data.Supabase.SITE_URL.trimEnd('/')}/cita/${pe.saniape.app.ui.urlEncode(it)}"
+    }
+    return pe.saniape.app.ui.mensajeCita(
+        nombrePaciente = cita.pacienteNombre,
+        fecha = cita.fecha,
+        hora = cita.hora,
+        clinica = ctx?.clinicaNombre,
+        hoy = hoy,
+        enlace = enlace,
+        servicio = cita.procedimiento ?: cita.tipo?.let { flujo.nombreTipo(it) },
+        profesional = cita.terapeutaNombre,
+        direccion = sede?.direccion?.takeIf { it.isNotBlank() } ?: ctx?.clinicaDireccion,
+        recienAgendada = pe.saniape.app.ui.citaRecienAgendada(cita.creadaAt, hoy, pe.saniape.app.data.staff.zonaDe(zona)),
+    )
 }

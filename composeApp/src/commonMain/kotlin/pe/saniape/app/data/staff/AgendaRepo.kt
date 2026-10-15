@@ -62,6 +62,10 @@ data class CitaStaff(
     val procedimientoId: String? = null,
     /** Multisede/multipaís: la sede de la cita (su moneda en "todas las sedes"). null = la principal. */
     val sedeId: String? = null,
+    /** Enlace público /cita/<token> para que el paciente confirme (WhatsApp prearmado). */
+    val confirmacionToken: String? = null,
+    /** created_at (UTC): si se agendó hoy, el WhatsApp prearmado confirma en vez de recordar. */
+    val creadaAt: String? = null,
     /** La sesión vinculada (citas.sesion_id): la receta de la sesión también es de la cita. */
     val sesionId: String? = null,
 )
@@ -142,7 +146,7 @@ object AgendaRepo {
     /** Columnas comunes de una cita (con joins). Una sola fuente. */
     const val SELECT_CITA =
         "id, fecha, hora, estado, tipo, costo, pagada_at, duracion, origen, confirmada_por_paciente, " +
-            "terapeuta_id, paciente_id, tratamiento_id, especialidad_id, procedimiento_id, sede_id, sesion_id, " +
+            "terapeuta_id, paciente_id, tratamiento_id, especialidad_id, procedimiento_id, sede_id, sesion_id, confirmacion_token, created_at, " +
             "paciente:pacientes(nombre, telefono, edad, fecha_nacimiento, requiere_apoderado), terapeuta:terapeutas(nombre), " +
             "tratamiento:tratamientos!citas_tratamiento_id_fkey(nota_recepcion, procedimiento:procedimientos(id, nombre, especialidad_id)), " +
             "sesion:sesiones!citas_sesion_id_fkey(numero)"
@@ -175,6 +179,8 @@ object AgendaRepo {
                 notaRecepcion = (obj("tratamiento")?.get("nota_recepcion") as? JsonPrimitive)
                     ?.content?.takeIf { it != "null" && it.isNotBlank() },
                 pagadaAt = s("pagada_at"),
+                confirmacionToken = s("confirmacion_token")?.takeIf { it.isNotBlank() },
+                creadaAt = s("created_at"),
                 // El del tratamiento embebido o, si la RLS no lo dejó ver (quien atiende
                 // sin el permiso `pacientes`), el servicio de la propia cita (como /citas web).
                 procedimientoId = (obj("tratamiento")?.get("procedimiento") as? JsonObject)
