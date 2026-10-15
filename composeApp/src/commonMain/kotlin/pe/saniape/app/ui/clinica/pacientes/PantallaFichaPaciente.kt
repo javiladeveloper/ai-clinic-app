@@ -202,7 +202,8 @@ private fun PantallaFichaPacienteContenido(
     // especialidades es quien mira (el podólogo / el de estética ve la pestaña en un
     // paciente nuevo). No cambia lo dental: sin mapa mixto dental, la 🦷 no depende de esto.
     val mixtaMapas = (ctx.mapaPodologia.ids.isNotEmpty() && !ctx.mapaPodologia.solo) ||
-        (ctx.mapaEstetica.ids.isNotEmpty() && !ctx.mapaEstetica.solo)
+        (ctx.mapaEstetica.ids.isNotEmpty() && !ctx.mapaEstetica.solo) ||
+        (ctx.mapaPediatria.ids.isNotEmpty() && !ctx.mapaPediatria.solo)
     LaunchedEffect(paciente.id, mixtaDental, mixtaMapas, recargarToken) {
         if (mixtaDental || mixtaMapas) datosDentales = pe.saniape.app.data.staff.OdontogramaRepo
             .datosDentalesPaciente(paciente.id, ctx.miTerapeutaId)
@@ -319,6 +320,26 @@ private fun PantallaFichaPacienteContenido(
         ctx.mapaEstetica, atenciones = atencionesConCitas, tieneAplicaciones = tieneAplicaciones,
         especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
     )
+    // ── 👶 Pediatría, por PACIENTE (gemelo de `pacienteEsPediatria`): sin el mapa
+    // (backend viejo o clínica sin pediatría: DALU, RENOVA…) ni la pestaña ni una
+    // consulta. Mixta: cita/tratamiento de pediatría, vacunas ya registradas, quien
+    // mira es pediatra o (señal secundaria) es menor de 18.
+    val mixtaPediatria = ctx.mapaPediatria.ids.isNotEmpty() && !ctx.mapaPediatria.solo
+    var tieneVacunas by remember(paciente.id) { mutableStateOf(false) }
+    LaunchedEffect(paciente.id, mixtaPediatria) {
+        if (mixtaPediatria) tieneVacunas = pe.saniape.app.data.staff.PediatriaRepo.tieneVacunas(paciente.id)
+    }
+    val esPacientePediatria = pe.saniape.app.data.staff.pacienteEsPediatria(
+        ctx.mapaPediatria, atenciones = atencionesConCitas, tieneVacunas = tieneVacunas,
+        especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
+        edadAnios = pe.saniape.app.data.staff.edadDe(paciente.fechaNacimiento, paciente.edad, pe.saniape.app.data.staff.hoyClinicaIso()),
+    )
+    // Sexo de la ficha (curvas OMS): lectura aparte y a prueba de fallos, solo en
+    // clínicas con pediatría. El aviso de la pestaña y el formulario lo actualizan.
+    var sexoPaciente by remember(paciente.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(paciente.id, ctx.mapaPediatria.activo, recargarToken) {
+        if (ctx.mapaPediatria.activo) sexoPaciente = pe.saniape.app.data.staff.PediatriaRepo.sexoDe(paciente.id)
+    }
     // ── 💊 Recetas, por PACIENTE (gemelo de `pacienteRecibeRecetas`) ──
     // Con el interruptor apagado (DALU, RENOVA) el mapa llega vacío: ni la
     // pestaña ni una sola consulta. Solo en una clínica MIXTA se pregunta,
@@ -836,6 +857,8 @@ private fun PantallaFichaPacienteContenido(
                     if (esPacienteEstetica) add("aplicaciones" to "💉 Aplicaciones")
                     // SOLO pacientes de podología (`esPacientePodologia`): mapa del pie + riesgo IWGDF.
                     if (esPacientePodologia) add("evaluacion_pie" to "🦶 Evaluación del pie")
+                    // SOLO pacientes de pediatría (`esPacientePediatria`): curvas OMS + 💉 carné de vacunas.
+                    if (esPacientePediatria) add("crecimiento" to "👶 Crecimiento")
                     // SOLO pacientes de especialidades que recetan (`esPacienteReceta`).
                     // + documentos médicos (informe/descanso/orden) en clínicas médicas.
                     if (esPacienteReceta || esPacienteDocs) {
@@ -1201,6 +1224,25 @@ private fun PantallaFichaPacienteContenido(
                             }.takeIf { editable },
                         )
                     }
+                    // 👶 Crecimiento (pediatría): consulta SOLO al abrirse (mediciones + vacunas).
+                    // Escribe quien puede 'pacientes' o 'sesiones' (como los API); el resto la ve e imprime.
+                    "crecimiento" -> if (esPacientePediatria) {
+                        val inactiva = pe.saniape.app.data.staff.fichaInactiva(paciente.estado)
+                        pe.saniape.app.ui.clinica.pediatria.CrecimientoTab(
+                            pacienteId = paciente.id,
+                            pacienteNombre = paciente.nombre,
+                            pacienteDocumento = paciente.dni,
+                            fechaNacimiento = paciente.fechaNacimiento,
+                            sexo = sexoPaciente,
+                            puedeEditar = (ctx.puede("pacientes") || ctx.puede("sesiones")) && !inactiva,
+                            clinicaNombre = ctx.clinicaNombre,
+                            clinicaDireccion = ctx.clinicaDireccion,
+                            logoUrl = ctx.logoUrl,
+                            colorPrincipal = ctx.colorPrincipal,
+                            onSexoGuardado = { sexoPaciente = it },
+                            onNacimientoGuardado = { f -> paciente = paciente.copy(fechaNacimiento = f); recargar() },
+                        )
+                    }
                     // 💉 Aplicaciones (estética): consulta SOLO al abrirse. Mismo permiso que el API.
                     "aplicaciones" -> if (esPacienteEstetica) {
                         val inactiva = pe.saniape.app.data.staff.fichaInactiva(paciente.estado)
@@ -1524,6 +1566,7 @@ private fun PantallaFichaPacienteContenido(
     if (editandoPaciente) {
         ModalEditarPaciente(
             paciente = paciente,
+            sexoInicial = sexoPaciente,
             onCancelar = { editandoPaciente = false },
             onGuardar = { e ->
                 editandoPaciente = false
@@ -1534,6 +1577,13 @@ private fun PantallaFichaPacienteContenido(
                         talla = e.talla, peso = e.peso, observaciones = e.observaciones,
                         tocarExtra = true, apoderado = e.apoderado, fechaIngreso = e.fechaIngreso,
                         tocarTipoDocumento = e.tocarTipoDocumento, tipoDocumento = e.tipoDocumento)
+                    // Sexo (curvas OMS): por el endpoint de la web, solo si cambió. Un servidor
+                    // viejo no lo guarda (lo avisa): el resto de la ficha ya quedó.
+                    if (ok && e.tocarSexo) {
+                        val rs = pe.saniape.app.data.staff.PediatriaRepo.actualizarFicha(paciente.id, sexo = e.sexo, tocarSexo = true)
+                        if (rs.registrada) sexoPaciente = e.sexo
+                        else pe.saniape.app.ui.Toaster.error(rs.rechazo?.error ?: "No se pudo guardar el sexo")
+                    }
                     if (ok) pe.saniape.app.ui.Toaster.exito("${tpl.Paciente} actualizado") else pe.saniape.app.ui.Toaster.error("No se pudo guardar")
                     recargar()
                 }
@@ -2383,6 +2433,8 @@ private fun <T> SelectorListaFicha(items: List<T>, elegido: T?, etiqueta: (T) ->
 @Composable
 private fun ModalEditarPaciente(
     paciente: PacienteStaff,
+    /** "F" / "M" / null (ya leído por la ficha; si no, se lee al abrir). */
+    sexoInicial: String?,
     onCancelar: () -> Unit,
     onGuardar: (EdicionPaciente) -> Unit,
 ) {
@@ -2409,6 +2461,17 @@ private fun ModalEditarPaciente(
     var email by remember { mutableStateOf(paciente.email ?: "") }
     var ocupacion by remember { mutableStateOf(paciente.ocupacion ?: "") }
     var edad by remember { mutableStateOf(paciente.edad?.toString() ?: "") }
+    // Sexo (opcional; las curvas OMS son por sexo). Solo se escribe si se cambia.
+    var sexoOriginal by remember { mutableStateOf(sexoInicial) }
+    var sexo by remember { mutableStateOf(sexoInicial) }
+    var sexoTocado by remember { mutableStateOf(false) }
+    LaunchedEffect(paciente.id) {
+        if (sexoInicial == null) {
+            val leido = pe.saniape.app.data.staff.PediatriaRepo.sexoDe(paciente.id)
+            sexoOriginal = leido
+            if (!sexoTocado) sexo = leido
+        }
+    }
     var talla by remember { mutableStateOf(paciente.talla?.toString() ?: "") }
     var peso by remember { mutableStateOf(paciente.peso?.toString() ?: "") }
     var observaciones by remember { mutableStateOf(paciente.observaciones ?: "") }
@@ -2443,6 +2506,8 @@ private fun ModalEditarPaciente(
                 fechaIngreso = fechaIngreso.takeIf { it != ingresoOriginal && fechaIngresoValida(it) },
                 tocarTipoDocumento = tipoTocado || (dni.isBlank() && tipoGuardado != null),
                 tipoDocumento = pe.saniape.app.data.staff.tipoDocumentoAGuardar(tipoDoc, dni, tipoTocado),
+                tocarSexo = sexoTocado && sexo != sexoOriginal,
+                sexo = sexo,
             ))
         },
     ) {
@@ -2471,6 +2536,9 @@ private fun ModalEditarPaciente(
                     CampoFicha("Peso (kg)", peso) { peso = it.filter { ch -> ch.isDigit() || ch == '.' }.take(6) }
                 }
             }
+            Spacer(Modifier.height(8.dp))
+            EtqForm("Sexo — opcional")
+            SelectorSexo(sexo) { sexo = it; sexoTocado = true }
             Spacer(Modifier.height(8.dp))
             CampoFicha("Motivo / Diagnóstico", diagnostico, multilinea = true) { diagnostico = it }
             Spacer(Modifier.height(8.dp))
@@ -2535,6 +2603,9 @@ private data class EdicionPaciente(
     /** true = se escribe el tipo de documento (cambió él o el documento). */
     val tocarTipoDocumento: Boolean = false,
     val tipoDocumento: String? = null,
+    /** true = se escribe [sexo] (cambió). */
+    val tocarSexo: Boolean = false,
+    val sexo: String? = null,
 )
 
 @Composable
