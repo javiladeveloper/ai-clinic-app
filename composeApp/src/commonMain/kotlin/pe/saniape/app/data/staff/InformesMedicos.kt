@@ -606,8 +606,11 @@ fun resumenInforme(inf: InformeMedicoApp): String = when (inf.tipo) {
 fun esPsiquiatria(nombre: String?): Boolean =
     nombre.orEmpty().lowercase().map { TILDES_EX[it] ?: it }.joinToString("").contains("psiquiatr")
 
-/** Especialidad de la clínica con su nombre y estado (para decidir psiquiatría). */
-data class EspecialidadNombre(val id: String, val nombre: String, val estado: String? = null)
+/**
+ * Especialidad de la clínica con su nombre, estado y rubro (para decidir
+ * psiquiatría, ginecología, dermatología o pediatría en la atención).
+ */
+data class EspecialidadNombre(val id: String, val nombre: String, val estado: String? = null, val rubro: String? = null)
 
 /**
  * ¿La atención es de psiquiatría? (esPsiq de ConsultaGuiada.tsx): por la

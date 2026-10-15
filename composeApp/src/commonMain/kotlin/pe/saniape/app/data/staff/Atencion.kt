@@ -246,7 +246,13 @@ data class ProfesionalPlan(
 )
 
 @Serializable
-data class FraseFrecuenteApp(val campo: String, val texto: String, val usos: Int = 0)
+data class FraseFrecuenteApp(
+    val campo: String,
+    val texto: String,
+    val usos: Int = 0,
+    /** Texto corto del chip de una frase BASE (`etiqueta` de la web). No viaja: lo pone la app. */
+    @kotlinx.serialization.Transient val etiqueta: String? = null,
+)
 
 @Serializable
 data class FlagsConsulta(
@@ -266,6 +272,13 @@ data class FlagsConsulta(
     val faltantesAtencion: List<String> = emptyList(),
     val avisosCierre: List<String> = emptyList(),
     val consentimientosEmitidos: Int = 0,
+    /**
+     * Dermatología / pediatría según el servidor (flagsDeCita, 2026-10-15). Un
+     * servidor viejo no los manda (null). La app los decide con las
+     * especialidades (variantesAtencion); estos son el respaldo si no las leyó.
+     */
+    val derma: Boolean? = null,
+    val pediatria: Boolean? = null,
 )
 
 @Serializable

@@ -78,13 +78,13 @@ internal fun PasoMotivo(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura:
         CampoTextoClinico(
             label = "Motivo de consulta",
             valor = t["motivo_consulta"].orEmpty(), onChange = { vm.texto("motivo_consulta", it) },
-            frases = frasesDe(d, "motivo"), soloLectura = soloLectura, minLineas = 2,
+            frases = frasesDe(d, "motivo", vm.pediatria), soloLectura = soloLectura, minLineas = 2,
             placeholder = if (dental) "Ej. Dolor dental al masticar" else "Ej. Dolor de garganta y fiebre",
         )
         CampoTextoClinico(
             label = if (dental) "Tiempo de enfermedad (opcional)" else "Tiempo de enfermedad",
             valor = t["tiempo_enfermedad"].orEmpty(), onChange = { vm.texto("tiempo_enfermedad", it) },
-            frases = frasesDe(d, "tiempo"), soloLectura = soloLectura, minLineas = 1,
+            frases = frasesDe(d, "tiempo", vm.pediatria), soloLectura = soloLectura, minLineas = 1,
             placeholder = "Ej. 3 días · inicio brusco · curso progresivo",
         )
         CampoTextoClinico(
@@ -192,7 +192,7 @@ internal fun PasoExamen(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura:
                 else -> "Examen físico: general y regional"
             },
             valor = vm.borrador.textos["examen_fisico"].orEmpty(), onChange = { vm.texto("examen_fisico", it) },
-            frases = frasesDe(d, "examen"), soloLectura = soloLectura, minLineas = if (psiq) 3 else 6,
+            frases = frasesDe(d, "examen", vm.pediatria), soloLectura = soloLectura, minLineas = if (psiq) 3 else 6,
             placeholder = if (dental) "Ej. Tejidos blandos sin alteraciones; pieza 36 con cavidad profunda…"
             else "Ej. BEG, LOTEP. Orofaringe congestiva, amígdalas hipertróficas con exudado…",
             porLinea = true,
@@ -483,7 +483,7 @@ internal fun CampoTextoClinico(
                 visibles.forEach { f ->
                     val puesto = fraseUsada(valor, f.texto)
                     ChipFrase(
-                        texto = (if (puesto) "✓ " else "+ ") + etiquetaFrase(f.texto),
+                        texto = (if (puesto) "✓ " else "+ ") + (f.etiqueta ?: etiquetaFrase(f.texto)),
                         puesto = puesto,
                         onClick = { onChange(if (puesto) quitarFrase(valor, f.texto, porLinea) else insertarFrase(valor, f.texto, porLinea)) },
                     )
@@ -555,12 +555,16 @@ internal fun BotonChico(
 /**
  * Frases aprendidas de un campo, las más usadas primero. Odontología guarda
  * aparte con prefijo (`odonto_motivo`), como `claveFrase` de la web.
+ * PEDIATRÍA (varianteFrases de la web): su base para niños delante, y lo
+ * aprendido en las mismas claves que medicina (frasesConBase).
  */
-internal fun frasesDe(d: DatosConsultaApp, campo: String): List<FraseFrecuenteApp> {
+internal fun frasesDe(d: DatosConsultaApp, campo: String, pediatria: Boolean = false): List<FraseFrecuenteApp> {
     val clave = if (d.flags.dental) "odonto_$campo" else campo
-    return d.frases.filter { it.campo == clave && it.texto.isNotBlank() }
+    val aprendidas = d.frases.filter { it.campo == clave && it.texto.isNotBlank() }
         .distinctBy { normalizarFrase(it.texto) }
         .sortedByDescending { it.usos }
+    val base = if (pediatria && !d.flags.dental) FRASES_BASE_PEDIATRIA[campo].orEmpty() else emptyList()
+    return frasesConBase(base, aprendidas)
 }
 
 /**

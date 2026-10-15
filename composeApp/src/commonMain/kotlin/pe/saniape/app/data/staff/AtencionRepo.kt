@@ -134,8 +134,13 @@ object AtencionRepo {
         }
     }
 
-    /** Buscador CIE-10 (máx. 30). `q` < 2 letras = los frecuentes del rubro. Vacío si falla. */
-    suspend fun buscarCie10(q: String, dental: Boolean, psiq: Boolean = false): List<DiagnosticoCie> {
+    /**
+     * Buscador CIE-10 (máx. 30). `q` < 2 letras = los frecuentes del rubro. Vacío si falla.
+     * Dermatología: sus frecuentes viajan en la app (frecuentesCie10Locales), así
+     * que funcionan con un servidor que aún no los conoce.
+     */
+    suspend fun buscarCie10(q: String, dental: Boolean, psiq: Boolean = false, derma: Boolean = false): List<DiagnosticoCie> {
+        if (q.trim().length < 2) frecuentesCie10Locales(dental, psiq, derma)?.let { return it }
         val tk = token() ?: return emptyList()
         return try {
             val resp = http.get("${Supabase.SITE_URL}/api/staff/cie10") {

@@ -98,8 +98,8 @@ object InformesMedicosRepo {
     /** Especialidades de la clínica con nombre y estado (¿la atención es de psiquiatría?). Vacío si falla. */
     suspend fun especialidades(): List<EspecialidadNombre> = intentar {
         Supabase.client.postgrest["especialidades"]
-            .select(Columns.list("id", "nombre", "estado")) { limit(200) }
+            .select(Columns.list("id", "nombre", "estado", "rubro")) { limit(200) }
             .decodeList<JsonObject>()
-            .mapNotNull { o -> o.s("id")?.let { EspecialidadNombre(it, o.s("nombre").orEmpty(), o.s("estado")) } }
+            .mapNotNull { o -> o.s("id")?.let { EspecialidadNombre(it, o.s("nombre").orEmpty(), o.s("estado"), o.s("rubro")) } }
     }.getOrDefault(emptyList())
 }

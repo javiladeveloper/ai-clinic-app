@@ -72,6 +72,7 @@ internal fun PasoDiagnostico(vm: AtencionViewModel, d: DatosConsultaApp, soloLec
         soloLectura = soloLectura,
         dental = d.flags.dental,
         psiq = vm.psiq,
+        derma = vm.derma,
     )
 }
 
@@ -89,6 +90,8 @@ internal fun EditorDiagnosticosCie(
     dental: Boolean = false,
     /** Psiquiatría: los frecuentes del capítulo F (el servidor los manda con `psiq=1`). */
     psiq: Boolean = false,
+    /** Dermatología: los frecuentes del capítulo L (viajan en la app: frecuentesCie10Locales). */
+    derma: Boolean = false,
     /** La nota de arriba (la de la consulta cita la NTS 139). */
     nota: String = "CIE-10 con tipo: Presuntivo, Definitivo o Repetido (NTS 139, 4.2.9). Sin siglas.",
 ) {
@@ -102,8 +105,8 @@ internal fun EditorDiagnosticosCie(
     val consulta = q.trim()
     val editable = !soloLectura && !lleno
     // Los frecuentes del rubro (el servidor los manda con q vacío): una vez.
-    LaunchedEffect(dental, psiq, editable) {
-        if (editable && frecuentesRubro.isEmpty()) frecuentesRubro = AtencionRepo.buscarCie10("", dental, psiq)
+    LaunchedEffect(dental, psiq, derma, editable) {
+        if (editable && frecuentesRubro.isEmpty()) frecuentesRubro = AtencionRepo.buscarCie10("", dental, psiq, derma)
     }
     // Búsqueda con debounce de 300 ms (cada letra nueva cancela la anterior).
     LaunchedEffect(consulta, dental, editable) {

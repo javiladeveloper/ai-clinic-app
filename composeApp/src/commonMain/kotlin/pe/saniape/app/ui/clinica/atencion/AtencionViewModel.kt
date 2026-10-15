@@ -95,6 +95,13 @@ class AtencionViewModel(
      * entonces se mandan esas columnas al guardar.
      */
     var psiq by mutableStateOf(false); private set
+    /**
+     * DERMATOLOGÍA (atencionEsDermatologia de la web): el buscador CIE-10 abre
+     * con sus frecuentes (capítulo L). PEDIATRÍA: frases rápidas para niños.
+     * Gineco y psiquiatría mandan antes (variantesAtencion).
+     */
+    var derma by mutableStateOf(false); private set
+    var pediatria by mutableStateOf(false); private set
     /** Definiciones de las escalas (PHQ-9, GAD-7…). null = cargando o no disponibles. */
     var instrumentos by mutableStateOf<List<InstrumentoPsico>?>(null); private set
     /** Pidiendo las definiciones (la pantalla muestra "Cargando…", no un error). */
@@ -144,6 +151,9 @@ class AtencionViewModel(
                     val d = r.datos
                     datos = d
                     psiq = !d.flags.esProcedimiento && atencionEsPsiquiatria(esps, d.flags.especialidadId, d.flags.dental)
+                    val variantes = pe.saniape.app.data.staff.variantesAtencion(esps, d.flags, psiq)
+                    derma = variantes.derma
+                    pediatria = variantes.pediatria
                     borrador = borradorDesde(d, miTerapeutaId, psiq)
                     if (psiq && instrumentos == null) cargarInstrumentos()
                     triajePrestado = if (d.flags.soloLectura) null else pe.saniape.app.data.staff.triajeDeHoyAplicable(d)

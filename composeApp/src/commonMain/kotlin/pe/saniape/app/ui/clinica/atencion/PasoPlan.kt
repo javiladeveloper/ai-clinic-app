@@ -129,7 +129,7 @@ internal fun PasoPlan(
             CampoTextoClinico(
                 label = "Indicaciones para el ${LocalTerminologiaPaciente.current.paciente}",
                 valor = vm.borrador.textos["tratamiento"].orEmpty(), onChange = { vm.texto("tratamiento", it) },
-                frases = frasesDe(d, "indicaciones"), soloLectura = soloLectura, minLineas = 3,
+                frases = frasesDe(d, "indicaciones", vm.pediatria), soloLectura = soloLectura, minLineas = 3,
                 placeholder = "Medidas generales: reposo, dieta, signos de alarma… (los medicamentos van en la receta)",
                 porLinea = true,
             )
