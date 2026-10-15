@@ -1,0 +1,11 @@
+# Novedades de la 2.50.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Herramientas propias para fisioterapia, podología, estética y medicina capilar.
+---
+Clínicas:
+• Fisioterapia: rutinas de ejercicios reutilizables (de tu clínica y de base) y la hoja de ejercicios en PDF con tu logo.
+• Podología: 🦶 Evaluación del pie con mapa de ambos pies, tamizaje de pie diabético y riesgo IWGDF con su próximo control.
+• Estética: 💉 Mapa de aplicaciones en el rostro (toxina, rellenos, bioestimuladores) con dosis, lote y vencimiento, y registro imprimible.
+• Medicina capilar: 💇 Tricoscopía por zonas, escala Norwood/Ludwig, evolución y estimación para trasplante.
+Pacientes:
+• Ejercicios para casa en PDF y nueva sección 🔬 Mi evolución capilar.
