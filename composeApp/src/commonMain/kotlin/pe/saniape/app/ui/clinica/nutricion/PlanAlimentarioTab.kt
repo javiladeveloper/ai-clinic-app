@@ -157,7 +157,7 @@ fun PlanAlimentarioTab(
         Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(msg, color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
             Text("↻ Reintentar", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 8.dp).clickable { cargando = true; token++ }.padding(8.dp))
+                modifier = Modifier.padding(top = 8.dp).clickable { error = null; cargando = true; token++ }.padding(8.dp))
         }
         return
     }
@@ -241,7 +241,8 @@ fun PlanAlimentarioTab(
                     scope.launch {
                         val r = PlanAlimentacionRepo.borrar(p.id)
                         borrando = false
-                        if (r.registrada) {
+                        // Ya lo había borrado otro equipo: para el usuario es lo mismo.
+                        if (r.registrada || r.rechazo?.codigo == "NO_ENCONTRADO") {
                             confirmarBorrar = null
                             items = planes.filter { it.id != p.id }
                             Toaster.exito("Plan eliminado")
