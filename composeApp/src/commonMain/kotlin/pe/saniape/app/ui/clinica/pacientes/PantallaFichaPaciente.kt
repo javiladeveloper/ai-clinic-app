@@ -198,8 +198,13 @@ private fun PantallaFichaPacienteContenido(
     // citas y hallazgos; en una solo dental o sin odontología ya se sabe.
     val mixtaDental = ctx.mapaDental.ids.isNotEmpty() && !ctx.mapaDental.solo
     var datosDentales by remember { mutableStateOf(pe.saniape.app.data.staff.DatosDentalesPaciente()) }
-    LaunchedEffect(paciente.id, mixtaDental, recargarToken) {
-        if (mixtaDental) datosDentales = pe.saniape.app.data.staff.OdontogramaRepo
+    // También en una clínica mixta con podología o estética: de ahí sale de qué
+    // especialidades es quien mira (el podólogo / el de estética ve la pestaña en un
+    // paciente nuevo). No cambia lo dental: sin mapa mixto dental, la 🦷 no depende de esto.
+    val mixtaMapas = (ctx.mapaPodologia.ids.isNotEmpty() && !ctx.mapaPodologia.solo) ||
+        (ctx.mapaEstetica.ids.isNotEmpty() && !ctx.mapaEstetica.solo)
+    LaunchedEffect(paciente.id, mixtaDental, mixtaMapas, recargarToken) {
+        if (mixtaDental || mixtaMapas) datosDentales = pe.saniape.app.data.staff.OdontogramaRepo
             .datosDentalesPaciente(paciente.id, ctx.miTerapeutaId)
     }
     val esOdontologia = pe.saniape.app.data.staff.pacienteEsDental(
@@ -263,31 +268,56 @@ private fun PantallaFichaPacienteContenido(
         },
         especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
     )
-    // ── 💇 Tricoscopía, por PACIENTE (gemelo de `pacienteEsCapilar`) ──
-    // Solo por el rubro GUARDADO. RENOVA (solo capilar) → siempre; sin capilar (o un
-    // backend sin `especialidadesCapilar`) → ni la pestaña ni una consulta. Solo en una
-    // clínica MIXTA (GLAM) se pregunta, liviano, si ya tiene evaluaciones y de qué
-    // especialidades es quien mira. Con solo 'citas' la RLS escondería todo: sin
-    // permiso de pacientes ni de sesiones no hay pestaña (como la web).
+    // ── 💇 Tricoscopía, 🦶 Podología y 💉 Estética, por PACIENTE (gemelos de
+    // `pacienteEsCapilar` / `pacienteEsPodologia` / `pacienteEsEstetica`). Sin el
+    // mapa (backend viejo o clínica sin el rubro) → ni la pestaña ni una consulta.
+    // Solo en una clínica MIXTA se pregunta, liviano, si ya tiene evaluaciones /
+    // mapas (así no pierde la pestaña si cambió la especialidad de sus citas); las
+    // lecturas que hagan falta van EN PARALELO. Tricoscopía: con solo 'citas' la RLS
+    // escondería todo, sin permiso de pacientes ni de sesiones no hay pestaña (como la web).
+    val atencionesPaciente = paciente.tratamientos.map { t ->
+        pe.saniape.app.data.staff.AtencionFisio(
+            especialidadServicioId = t.especialidadId
+                ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id,
+            especialidadesProfesional = t.especialidadesProfesional,
+        )
+    } + (hitos?.let { it.evaluaciones + it.consultas }.orEmpty()).map {
+        pe.saniape.app.data.staff.AtencionFisio(especialidadId = it.especialidadId)
+    }
     val puedeTricoscopia = ctx.puede("pacientes") || ctx.puede("sesiones")
     val mixtaCapilar = puedeTricoscopia && ctx.mapaCapilar.ids.isNotEmpty() && !ctx.mapaCapilar.solo
+    val mixtaPodo = ctx.mapaPodologia.ids.isNotEmpty() && !ctx.mapaPodologia.solo
+    val mixtaEstetica = ctx.mapaEstetica.ids.isNotEmpty() && !ctx.mapaEstetica.solo
     var datosCapilar by remember { mutableStateOf(false to emptyList<String>()) }
-    LaunchedEffect(paciente.id, mixtaCapilar) {
-        if (mixtaCapilar) datosCapilar = pe.saniape.app.data.staff.TricoscopiaRepo.datosMixta(paciente.id, ctx.miTerapeutaId)
+    var tieneEvalPodo by remember(paciente.id) { mutableStateOf(false) }
+    var tieneAplicaciones by remember(paciente.id) { mutableStateOf(false) }
+    LaunchedEffect(paciente.id, mixtaCapilar, mixtaPodo, mixtaEstetica) {
+        coroutineScope {
+            val capilarD = async { if (mixtaCapilar) pe.saniape.app.data.staff.TricoscopiaRepo.datosMixta(paciente.id, ctx.miTerapeutaId) else null }
+            val podoD = async { if (mixtaPodo) pe.saniape.app.data.staff.EvaluacionPodologicaRepo.tieneEvaluaciones(paciente.id) else null }
+            val esteticaD = async { if (mixtaEstetica) pe.saniape.app.data.staff.AplicacionesEsteticasRepo.tieneAplicaciones(paciente.id) else null }
+            capilarD.await()?.let { datosCapilar = it }
+            podoD.await()?.let { tieneEvalPodo = it }
+            esteticaD.await()?.let { tieneAplicaciones = it }
+        }
     }
     val esPacienteCapilar = puedeTricoscopia && pe.saniape.app.data.staff.pacienteEsCapilar(
         ctx.mapaCapilar,
-        atenciones = paciente.tratamientos.map { t ->
-            pe.saniape.app.data.staff.AtencionFisio(
-                especialidadServicioId = t.especialidadId
-                    ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id,
-                especialidadesProfesional = t.especialidadesProfesional,
-            )
-        } + (hitos?.let { it.evaluaciones + it.consultas }.orEmpty()).map {
-            pe.saniape.app.data.staff.AtencionFisio(especialidadId = it.especialidadId)
-        },
+        atenciones = atencionesPaciente,
         tieneEvaluaciones = datosCapilar.first,
         especialidadesDeQuienMira = datosCapilar.second,
+    )
+    // Podología y estética también cuentan las especialidades de sus citas (de la
+    // lectura liviana que ya se hace en las clínicas mixtas).
+    val atencionesConCitas = atencionesPaciente +
+        datosDentales.especialidadesDeCitas.map { pe.saniape.app.data.staff.AtencionFisio(especialidadId = it) }
+    val esPacientePodologia = pe.saniape.app.data.staff.pacienteEsPodologia(
+        ctx.mapaPodologia, atenciones = atencionesConCitas, tieneEvaluaciones = tieneEvalPodo,
+        especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
+    )
+    val esPacienteEstetica = pe.saniape.app.data.staff.pacienteEsEstetica(
+        ctx.mapaEstetica, atenciones = atencionesConCitas, tieneAplicaciones = tieneAplicaciones,
+        especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
     )
     // ── 💊 Recetas, por PACIENTE (gemelo de `pacienteRecibeRecetas`) ──
     // Con el interruptor apagado (DALU, RENOVA) el mapa llega vacío: ni la
@@ -802,6 +832,10 @@ private fun PantallaFichaPacienteContenido(
                     if (esPacienteNutricion) add("medidas" to "⚖️ Medidas")
                     // 🥗 Plan alimentario: mismo candado que ⚖️ Medidas (solo nutrición).
                     if (esPacienteNutricion) add("plan" to "🥗 Plan alimentario")
+                    // SOLO pacientes de estética (`esPacienteEstetica`): el mapa facial de cada sesión.
+                    if (esPacienteEstetica) add("aplicaciones" to "💉 Aplicaciones")
+                    // SOLO pacientes de podología (`esPacientePodologia`): mapa del pie + riesgo IWGDF.
+                    if (esPacientePodologia) add("evaluacion_pie" to "🦶 Evaluación del pie")
                     // SOLO pacientes de especialidades que recetan (`esPacienteReceta`).
                     // + documentos médicos (informe/descanso/orden) en clínicas médicas.
                     if (esPacienteReceta || esPacienteDocs) {
@@ -1124,6 +1158,93 @@ private fun PantallaFichaPacienteContenido(
                             logoUrl = ctx.logoUrl,
                             colorPrincipal = ctx.colorPrincipal,
                             pacienteDocumento = paciente.dni,
+                        )
+                    }
+                    // 🦶 Evaluación del pie (podología): consulta SOLO al abrirse. Escribe quien
+                    // puede 'pacientes' o 'sesiones' (como el API); el resto la ve e imprime.
+                    "evaluacion_pie" -> if (esPacientePodologia) {
+                        val inactiva = pe.saniape.app.data.staff.fichaInactiva(paciente.estado)
+                        val editable = (ctx.puede("pacientes") || ctx.puede("sesiones")) && !inactiva
+                        pe.saniape.app.ui.clinica.podologia.EvaluacionPieTab(
+                            pacienteId = paciente.id,
+                            pacienteNombre = paciente.nombre,
+                            pacienteDocumento = paciente.dni,
+                            antecedentes = paciente.antecedentes,
+                            diagnostico = paciente.diagnostico,
+                            puedeEditar = editable,
+                            clinicaNombre = ctx.clinicaNombre,
+                            clinicaDireccion = ctx.clinicaDireccion,
+                            logoUrl = ctx.logoUrl,
+                            colorPrincipal = ctx.colorPrincipal,
+                            clinicaId = ctx.clinicaId,
+                            // "📅 Agendar próximo control": la fecha la pone la categoría IWGDF; va como
+                            // la entrada del flujo, con quien evaluó y la especialidad de podología
+                            // (gemelo de `agendarControlPodo`), en el formulario de cita de siempre.
+                            onAgendarControl = { fechaCtl: String, ev: pe.saniape.app.data.staff.EvaluacionPodologica ->
+                                val hoyCtl = pe.saniape.app.data.staff.hoyClinicaIso()
+                                val espPodo = datosDentales.especialidadesDeQuienMira.firstOrNull { it in ctx.mapaPodologia.ids }
+                                    ?: ctx.mapaPodologia.ids.firstOrNull()
+                                crearCita = pe.saniape.app.ui.clinica.PrefillCita(
+                                    tipo = pe.saniape.app.ui.clinica.podologia.tipoEntradaFlujo(ctx.flujo.usaConsulta, ctx.flujo.usaEvaluacion),
+                                    pacienteId = paciente.id, pacienteNombre = paciente.nombre,
+                                    fecha = fechaCtl,
+                                    hora = pe.saniape.app.data.staff.horaInicialNuevaCita(fechaCtl, hoyCtl, pe.saniape.app.ui.proximaHoraEnPunto()),
+                                    terapeutaId = ev.terapeutaId ?: ctx.miTerapeutaId,
+                                    especialidadId = espPodo,
+                                )
+                            }.takeIf { (ctx.puede("agendar") || ctx.puede("sesiones")) && !inactiva },
+                            // "📝 Cuidado diario del pie diabético" (riesgo ≥ 2): la pestaña 📝 con la
+                            // plantilla que sugiere ese servicio (se abre UNA vez).
+                            onIndicacionesPieDiabetico = {
+                                flujoInd = pe.saniape.app.data.staff.FlujoIndicacionesFicha(abrirNuevo = true, servicio = "Cuidado de pie diabético")
+                                tab = "indicaciones"
+                            }.takeIf { editable },
+                        )
+                    }
+                    // 💉 Aplicaciones (estética): consulta SOLO al abrirse. Mismo permiso que el API.
+                    "aplicaciones" -> if (esPacienteEstetica) {
+                        val inactiva = pe.saniape.app.data.staff.fichaInactiva(paciente.estado)
+                        val editable = (ctx.puede("pacientes") || ctx.puede("sesiones")) && !inactiva
+                        val deEstetica = paciente.tratamientos.filter { t ->
+                            pe.saniape.app.data.staff.citaEsEstetica(
+                                ctx.mapaEstetica,
+                                especialidadServicioId = t.especialidadId
+                                    ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id,
+                                especialidadesProfesional = t.especialidadesProfesional,
+                            )
+                        }
+                        pe.saniape.app.ui.clinica.estetica.AplicacionesTab(
+                            pacienteId = paciente.id,
+                            pacienteNombre = paciente.nombre,
+                            pacienteDocumento = paciente.dni,
+                            puedeEditar = editable,
+                            mapaEstetica = ctx.mapaEstetica,
+                            tratamientos = deEstetica.map {
+                                pe.saniape.app.data.staff.TratamientoParaMapa(
+                                    it.id, it.procedimiento ?: it.especialidadNombre ?: "Tratamiento", it.estado.orEmpty(),
+                                    it.modalidad, it.unidadLabel, it.cantidadUnidades,
+                                )
+                            },
+                            nombresServicio = paciente.tratamientos.mapNotNull { t -> t.procedimientoId?.let { id -> t.procedimiento?.let { id to it } } }.toMap(),
+                            clinicaNombre = ctx.clinicaNombre,
+                            clinicaDireccion = ctx.clinicaDireccion,
+                            logoUrl = ctx.logoUrl,
+                            colorPrincipal = ctx.colorPrincipal,
+                            clinicaId = ctx.clinicaId,
+                            // 📝 Dejar indicaciones: la pestaña 📝 con la plantilla base del producto.
+                            onDejarIndicaciones = { servicio: String?, citaId: String? ->
+                                flujoInd = pe.saniape.app.data.staff.FlujoIndicacionesFicha(citaId = citaId, abrirNuevo = true, servicio = servicio)
+                                tab = "indicaciones"
+                            }.takeIf { editable },
+                            // 🔢 Solo PRE-LLENA el formulario de editar tratamiento de siempre (como la
+                            // web): el usuario revisa y guarda; el dinero no se toca acá. Mismo
+                            // permiso que "✏ Editar" del tratamiento.
+                            onUsarUnidades = { tratamientoId: String, cantidad: Int ->
+                                paciente.tratamientos.firstOrNull {
+                                    it.id == tratamientoId && it.tipo == pe.saniape.app.data.staff.TipoTratamiento.UNIDADES
+                                }?.let { editarTratamiento = it.copy(cantidadUnidades = cantidad) }
+                                Unit
+                            }.takeIf { ctx.puede("sesiones") && !inactiva },
                         )
                     }
                     "odontograma" -> if (esOdontologia) {

@@ -197,6 +197,17 @@ object StaffContextoRepo {
                     .mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } },
                 solo = o.boolOrNull("soloCapilar") ?: false,
             ),
+            // Podología y estética: igual que nutrición, sin el campo (backend viejo) → vacío y nada nuevo.
+            mapaPodologia = MapaPodologia(
+                ids = (o["especialidadesPodologia"] as? kotlinx.serialization.json.JsonArray).orEmpty()
+                    .mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } },
+                solo = o.boolOrNull("soloPodologia") ?: false,
+            ),
+            mapaEstetica = MapaEstetica(
+                ids = (o["especialidadesEstetica"] as? kotlinx.serialization.json.JsonArray).orEmpty()
+                    .mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } },
+                solo = o.boolOrNull("soloEstetica") ?: false,
+            ),
             // Con defaults: una app nueva contra un backend viejo (o al revés)
             // no puede quedarse sin nombres para sus citas.
             flujo = o.obj("flujo")?.let { f ->
