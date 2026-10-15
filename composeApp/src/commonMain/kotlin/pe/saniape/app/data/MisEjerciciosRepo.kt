@@ -3,6 +3,7 @@ package pe.saniape.app.data
 import io.github.jan.supabase.auth.auth
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -149,6 +150,30 @@ internal fun cuerpoMarcarEjercicio(itemId: String, hecho: Boolean, dolor: Int?):
     put("dolor", if (hecho && dolor != null) JsonPrimitive(dolor) else JsonNull)
 }
 
+/** Resultado de pedir la hoja imprimible de un plan. */
+sealed class ResultadoHojaEjercicios {
+    data class Ok(val hoja: pe.saniape.app.data.staff.HojaEjerciciosPortal) : ResultadoHojaEjercicios()
+    /** La web aún no tiene el endpoint (404 sin JSON): el botón se oculta. */
+    data object NoDisponible : ResultadoHojaEjercicios()
+    data class Error(val mensaje: String) : ResultadoHojaEjercicios()
+}
+
+/**
+ * Qué hacer con la respuesta de GET /api/paciente/mis-ejercicios/hoja. Un 404 con
+ * su JSON de error es "ese plan ya no está" (se muestra el texto); un 404 sin JSON
+ * es una web vieja sin la ruta (se oculta el botón).
+ */
+internal fun resultadoHojaDe(status: Int, texto: String?): ResultadoHojaEjercicios {
+    if (status == 200) {
+        return texto?.let { pe.saniape.app.data.staff.parsearHojaEjercicios(it) }?.let { ResultadoHojaEjercicios.Ok(it) }
+            ?: ResultadoHojaEjercicios.Error("No se pudo leer la hoja de ejercicios.")
+    }
+    val error = texto?.let { t -> runCatching { Json.parseToJsonElement(t).jsonObject["error"] as? JsonPrimitive }.getOrNull() }
+        ?.takeIf { it !is JsonNull }?.content?.takeIf { it.isNotBlank() }
+    if (status == 404 && error == null) return ResultadoHojaEjercicios.NoDisponible
+    return ResultadoHojaEjercicios.Error(error ?: "No se pudo abrir la hoja. Inténtalo de nuevo.")
+}
+
 /** Qué pasó al marcar un ejercicio. [recargar] = el plan cambió (409): hay que volver a pedirlo. */
 data class ResultadoMarcar(val ok: Boolean, val error: String? = null, val recargar: Boolean = false)
 
@@ -181,6 +206,24 @@ object MisEjerciciosRepo {
         if (resp.status != HttpStatusCode.OK) return null
         val texto = runCatching { resp.bodyAsText() }.getOrNull() ?: return null
         return parsearMisEjercicios(texto)
+    }
+
+    /**
+     * "🖨 Descargar PDF": la hoja "Ejercicios para casa" de un plan suyo, ya armada
+     * por el servidor (identidad verificada). La app la pinta con htmlHojaEjercicios.
+     */
+    suspend fun hoja(planId: String): ResultadoHojaEjercicios {
+        val tk = Supabase.client.auth.currentSessionOrNull()?.accessToken
+            ?: return ResultadoHojaEjercicios.Error("Tu sesión expiró. Vuelve a entrar.")
+        val resp = withTimeoutOrNull(15_000) {
+            runCatching {
+                http.get("${Supabase.SITE_URL}$RUTA/hoja") {
+                    header("Authorization", "Bearer $tk")
+                    parameter("plan", planId)
+                }
+            }.getOrNull()
+        } ?: return ResultadoHojaEjercicios.Error("Sin conexión. Inténtalo de nuevo.")
+        return resultadoHojaDe(resp.status.value, runCatching { resp.bodyAsText() }.getOrNull())
     }
 
     /**
