@@ -125,6 +125,10 @@ object EvaluacionFisioRepo {
             put("fecha", (fecha?.takeIf { it.isNotBlank() } ?: hoyClinicaIso()).take(10))
             put("datos", datosAJson(datos))
         }
+        // Re-completar (o reintentar) la misma cita pisa su evaluación: lo que ya
+        // tenía no vuelve a sumar usos al autocompletado. null = no se pudo leer:
+        // esta vez no se aprende (mejor eso que contar dos veces).
+        val antes = textoPrevioDeCita(citaId, datos.localizacion)
         val tabla = Supabase.client.postgrest["evaluaciones_fisio"]
         val res = if (citaId != null) {
             tabla.upsert(fila) {
@@ -135,6 +139,8 @@ object EvaluacionFisioRepo {
             tabla.insert(fila) { select(Columns.list("id")) }
         }
         val id = res.decodeSingle<JsonObject>().str("id") ?: error("sin id")
+        // Autocompletado que aprende: en segundo plano, nunca frena el guardado.
+        if (antes != null) FrasesCampoRepo.registrar(ClaveFrase.FISIO_CARACTERISTICAS, datos.localizacion, antes, pacienteId = pacienteId)
         if (objs.isNotEmpty()) {
             // Idempotente con la evaluación de una cita (upsert): si se reintenta, no se repiten.
             val existentes = if (citaId != null) {
@@ -186,8 +192,13 @@ object EvaluacionFisioRepo {
         } catch (e: CancellationException) { throw e } catch (_: Exception) { false }
     }
 
+    /**
+     * [antesLocalizacion] (opcional): las características del dolor que tenía, para
+     * aprender solo el texto NUEVO (null = no se aprende nada al editar), y de qué paciente.
+     */
     suspend fun actualizar(
         id: String, datos: EvaluacionFisioDatos, tipo: String, fecha: String, terapeutaId: String?, tratamientoId: String?,
+        antesLocalizacion: String? = null, pacienteId: String? = null,
     ): Boolean = try {
         Supabase.client.postgrest["evaluaciones_fisio"].update(buildJsonObject {
             put("datos", datosAJson(datos))
@@ -196,8 +207,27 @@ object EvaluacionFisioRepo {
             put("terapeuta_id", terapeutaId?.takeIf { it.isNotBlank() }?.let { JsonPrimitive(it) } ?: JsonNull)
             put("tratamiento_id", tratamientoId?.takeIf { it.isNotBlank() }?.let { JsonPrimitive(it) } ?: JsonNull)
         }) { filter { eq("id", id) } }
+        if (antesLocalizacion != null) {
+            FrasesCampoRepo.registrar(ClaveFrase.FISIO_CARACTERISTICAS, datos.localizacion, antesLocalizacion, pacienteId = pacienteId)
+        }
         true
     } catch (e: CancellationException) { throw e } catch (_: Exception) { false }
+
+    /**
+     * Las características del dolor que ya tenía la evaluación de esa cita (""
+     * si no había, o no hay texto que aprender; null si la lectura falló).
+     * Gemelo de `textoPrevioDeCita` (lib/evaluacion-fisio-db.ts).
+     */
+    private suspend fun textoPrevioDeCita(citaId: String?, texto: String?): String? {
+        if (citaId == null || texto.isNullOrBlank()) return ""
+        return try {
+            Supabase.client.postgrest["evaluaciones_fisio"].select(Columns.list("datos")) {
+                filter { eq("cita_id", citaId) }
+                limit(1)
+            }.decodeList<JsonObject>().firstOrNull()
+                ?.let { (it["datos"] as? JsonObject)?.str("localizacion") }.orEmpty()
+        } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+    }
 
     suspend fun borrar(id: String): Boolean = try {
         Supabase.client.postgrest["evaluaciones_fisio"].delete { filter { eq("id", id) } }

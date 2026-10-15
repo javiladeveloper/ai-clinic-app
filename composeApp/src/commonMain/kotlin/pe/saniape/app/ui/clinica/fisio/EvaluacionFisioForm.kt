@@ -49,6 +49,7 @@ import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.delay
 import pe.saniape.app.data.staff.ARTICULACIONES
 import pe.saniape.app.data.staff.BorradorEvaluacionFisio
+import pe.saniape.app.data.staff.ClaveFrase
 import pe.saniape.app.data.staff.ESCALA_FUERZA
 import pe.saniape.app.data.staff.EvaluacionFisioDatos
 import pe.saniape.app.data.staff.FuerzaMedida
@@ -70,6 +71,8 @@ import pe.saniape.app.data.staff.regionesProbables
 import pe.saniape.app.data.staff.sugerirObjetivos
 import pe.saniape.app.data.staff.textoZonas
 import pe.saniape.app.data.staff.tieneDatos
+import pe.saniape.app.ui.clinica.CampoConFrases
+import pe.saniape.app.ui.clinica.recordarFrasesCampos
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.tutoriales.tourAncla
 
@@ -137,6 +140,9 @@ fun EvaluacionFisioForm(
     val grupos = remember(regiones) { ordenarPorRegion(GRUPOS_MUSCULARES, regiones) { it.region } }
     val pruebas = remember(regiones) { ordenarPorRegion(PRUEBAS_ESPECIALES, regiones) { it.region } }
     val testSugerido = regiones.firstNotNullOfOrNull { TEST_POR_REGION[it] }
+    // Características del dolor que aprenden (base + lo que la clínica escribe): se
+    // piden al desplegar la evaluación; se aprenden al GUARDARLA (EvaluacionFisioRepo).
+    val frases = recordarFrasesCampos(listOf(ClaveFrase.FISIO_CARACTERISTICAS), activo = abierto)
 
     fun set(nuevo: EvaluacionFisioDatos) { datos = nuevo }
     fun toggleBloque(b: Bloque) { visibles = if (b in visibles) visibles - b else visibles + b }
@@ -196,8 +202,13 @@ fun EvaluacionFisioForm(
             Spacer(Modifier.height(10.dp))
             MapaCorporal(datos.zonas, onChange = { set(datos.copy(zonas = it)) }, ancho = 140.dp)
             Spacer(Modifier.height(8.dp))
-            CampoTextoEval(datos.localizacion ?: "", { set(datos.copy(localizacion = it)) },
-                "Características (irradia, punzante, nocturno…) — opcional", Modifier.fillMaxWidth())
+            CampoConFrases(
+                label = "Características del dolor", valor = datos.localizacion ?: "",
+                onChange = { set(datos.copy(localizacion = it)) },
+                frases = frases[ClaveFrase.FISIO_CARACTERISTICAS],
+                placeholder = "Características (irradia, punzante, nocturno…) — opcional",
+                minLineas = 1, chipsVisibles = 6, mostrarEtiqueta = false, campo = ClaveFrase.FISIO_CARACTERISTICAS,
+            )
         }
 
         // ── Rangos articulares ──

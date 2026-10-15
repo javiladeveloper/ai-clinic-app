@@ -549,7 +549,8 @@ private fun ModalEvaluacionFisio(
         guardando = true
         scope.launch {
             val ok = if (ed != null) {
-                EvaluacionFisioRepo.actualizar(ed.id, b.datos, tipo, fecha, terId, tratId)
+                EvaluacionFisioRepo.actualizar(ed.id, b.datos, tipo, fecha, terId, tratId,
+                    antesLocalizacion = ed.datos.localizacion.orEmpty(), pacienteId = pacienteId)
             } else runCatching {
                 EvaluacionFisioRepo.guardar(
                     pacienteId = pacienteId, tipo = tipo, datos = b.datos, objetivos = b.objetivos,
