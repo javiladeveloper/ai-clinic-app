@@ -161,7 +161,11 @@ private fun ListaSecciones(d: JsonObject, ctx: ContextoStaff, scroll: ScrollStat
             add(FilaSeccion("resenas", "⭐  Reseñas de pacientes", if (plan.b("reservas")) "Aprueba cuáles se muestran" else "🔒 Plan Plus"))
             add(FilaSeccion("consentimientos", "✍  Compromiso y consentimiento", "Lo que el paciente lee y firma antes de empezar"))
             if (d.b("informePsico")) add(FilaSeccion("informe-psico", "🧠  Plantilla del informe psicológico", "Secciones, encabezado y pie"))
+            // Con HC de norma, como siempre. Desde 2026-10-15 también las clínicas que
+            // solo usan el consentimiento (estética, capilar, podología): el servidor
+            // manda `consentimientoInformado`; uno viejo no lo manda (= como antes).
             if (d.b("historiaMedica")) add(FilaSeccion("historia-clinica", "📄  Historia clínica y consentimiento informado", "IPRESS y plantillas por procedimiento"))
+            else if (d.b("consentimientoInformado")) add(FilaSeccion("historia-clinica", "📄  Consentimiento informado", "Plantillas por procedimiento"))
             add(FilaSeccion("app-paciente", "📱  App del paciente", "Reservar, pagar y ver su saldo"))
         },
         "MENSAJES Y COBROS" to listOf(

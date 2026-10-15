@@ -1,5 +1,7 @@
 package pe.saniape.app.ui.clinica.especialidades
 
+import pe.saniape.app.data.staff.PALABRAS_RUBRO
+import pe.saniape.app.data.staff.rubroPorNombre
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

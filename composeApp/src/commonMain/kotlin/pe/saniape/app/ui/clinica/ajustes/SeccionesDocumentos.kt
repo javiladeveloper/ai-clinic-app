@@ -1,5 +1,9 @@
 package pe.saniape.app.ui.clinica.ajustes
 
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.JsonArray
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -359,6 +363,10 @@ internal fun SeccionHistoriaClinica(d: JsonObject, onVolver: () -> Unit) {
         }
     }
     val servicios = dd?.objetos("servicios") ?: emptyList()
+    // `historiaMedica` del GET (2026-10-15): false = la clínica solo usa el
+    // consentimiento (estética, capilar, podología) → sin IPRESS ni típicos. Un
+    // servidor viejo no lo manda: se muestra todo, como siempre.
+    val conHistoriaMedica = seccionConHistoriaMedica(dd)
     if (elegirCategoria && dd != null) DialogoLista("Categoría", listOf("" to "Sin categorizar todavía") + dd.objetos("categorias").map { it.t("valor") to it.t("nombre") },
         { categoria = it; elegirCategoria = false }, { elegirCategoria = false })
     asociar?.let { p ->
@@ -370,10 +378,10 @@ internal fun SeccionHistoriaClinica(d: JsonObject, onVolver: () -> Unit) {
             }, { asociar = null })
     }
 
-    SubPantalla("Historia clínica", onVolver) {
+    SubPantalla(if (conHistoriaMedica) "Historia clínica" else "Consentimiento informado", onVolver) {
         if (dd == null && errorCarga != null) { ErrorCarga(errorCarga) { errorCarga = null; recarga++ }; return@SubPantalla }
         if (dd == null) { CargandoLista(); return@SubPantalla }
-        Tarjeta("Identificación del establecimiento (IPRESS)") {
+        if (conHistoriaMedica) Tarjeta("Identificación del establecimiento (IPRESS)") {
             Ayuda("La NTS 139-MINSA pide la categoría del establecimiento en el encabezado de la historia clínica y del consentimiento. La asigna la DIRESA al categorizarte; el código RENIPRESS lo da SUSALUD al inscribirte.")
             Selector("Categoría", dd.objetos("categorias").firstOrNull { it.t("valor") == categoria }?.t("nombre") ?: "", "Sin categorizar todavía", habilitado = esAdmin) { elegirCategoria = true }
             Campo("Código RENIPRESS", renipress, { renipress = it }, placeholder = "Ej. 00012345", teclado = androidx.compose.ui.text.input.KeyboardType.Number, habilitado = esAdmin, max = 20)
@@ -381,7 +389,7 @@ internal fun SeccionHistoriaClinica(d: JsonObject, onVolver: () -> Unit) {
                 accion(buildJsonObject { put("accion", "ipress"); put("categoria", categoria); put("renipress", renipress) }) { "Guardado" }
             }
         }
-        val tipicos = dd.a("tipicos").mapNotNull { (it as? JsonPrimitive)?.content }
+        val tipicos = if (conHistoriaMedica) dd.a("tipicos").mapNotNull { (it as? JsonPrimitive)?.content } else emptyList()
         if (tipicos.isNotEmpty()) Tarjeta("Procedimientos típicos") {
             Ayuda("${tipicos.joinToString(", ")}. Se agregan como servicios (si no los tienes) con su consentimiento asociado donde corresponde.")
             if (esAdmin) Boton(if (ocupado) "Cargando…" else "🩹 Cargar procedimientos típicos", primario = false, habilitado = !ocupado) {
@@ -401,7 +409,14 @@ internal fun SeccionHistoriaClinica(d: JsonObject, onVolver: () -> Unit) {
             Ayuda("Se imprime para firma manuscrita y huella del paciente (la norma no acepta la firma electrónica del paciente para esto). La biblioteca es un punto de partida en lenguaje sencillo: revísala con tu criterio clínico antes de usarla.")
             // Lo que el código hace de verdad (asegurarConsentimientosDeCita en la web):
             // agendar desde la agenda NO lo genera. Gemelo de CUANDO_SE_GENERA_CONSENTIMIENTO.
-            Ayuda("Asocia cada plantilla a su servicio: el consentimiento se genera solo, pendiente de firma, cuando el médico indica ese procedimiento en la consulta guiada o abre su atención (▶ Atender). Agendarlo desde la agenda no lo genera: aparece al atenderlo.")
+            Ayuda(
+                if (conHistoriaMedica) "Asocia cada plantilla a su servicio: el consentimiento se genera solo, pendiente de firma, cuando el médico indica ese procedimiento en la consulta guiada o abre su atención (▶ Atender). Agendarlo desde la agenda no lo genera: aparece al atenderlo."
+                // Gemelo de CUANDO_SE_GENERA_CONSENTIMIENTO_FICHA (clínicas sin consulta guiada).
+                else CUANDO_SE_GENERA_CONSENTIMIENTO_FICHA
+            )
+            // Sin modelos para sus especialidades (fisio, psiquiatría sola…): se dice,
+            // y las plantillas propias (+ Nueva) funcionan igual (SIN_MODELOS_BIBLIOTECA).
+            if (bibliotecaSinModelos(dd)) Ayuda(SIN_MODELOS_BIBLIOTECA)
             if (esAdmin) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val faltan = dd.i("faltanBiblioteca") ?: 0
                 if (faltan > 0) Boton("📚 Agregar biblioteca ($faltan)", primario = false, habilitado = !ocupado, modifier = Modifier.weight(1f)) {
@@ -464,4 +479,37 @@ private fun EditorPlantillaCI(p: JsonObject, secciones: List<JsonObject>, onVolv
             }
         }
     }
+}
+
+/** Texto de Ajustes cuando la biblioteca no trae modelos (SIN_MODELOS_BIBLIOTECA de la web). */
+internal const val SIN_MODELOS_BIBLIOTECA = "Aún no hay modelos para tu especialidad; puedes crear el tuyo con «+ Nueva»."
+
+/** CUANDO_SE_GENERA_CONSENTIMIENTO_FICHA de la web (clínicas sin consulta guiada). */
+internal const val CUANDO_SE_GENERA_CONSENTIMIENTO_FICHA =
+    "Asocia cada plantilla a su servicio (y, si quieres, a su especialidad). Se emite desde la ficha del paciente, en \"📄 Consentimientos informados\": vienen marcados los del servicio de la cita."
+
+/**
+ * ¿La sección muestra la HC de norma (IPRESS, típicos)? `historiaMedica` del GET
+ * de historia-clínica; sin la clave (servidor viejo, que solo deja entrar a las
+ * clínicas con HC de norma) = true, como siempre.
+ */
+internal fun seccionConHistoriaMedica(datos: JsonObject?): Boolean =
+    (datos?.get("historiaMedica") as? JsonPrimitive)?.booleanOrNull ?: true
+
+/**
+ * ¿La biblioteca no trae modelos para las especialidades activas? Como la web
+ * (`espsActivas.length > 0 && biblioteca.length === 0`) con lo que manda el
+ * GET: hay especialidades, no falta nada por agregar y ninguna plantilla salió
+ * de la biblioteca. Solo con un servidor nuevo (manda `historiaMedica`): con
+ * uno viejo la pantalla queda como siempre.
+ */
+internal fun bibliotecaSinModelos(datos: JsonObject?): Boolean {
+    if (datos == null || datos["historiaMedica"] == null) return false
+    val esps = (datos["especialidades"] as? JsonArray)?.size ?: 0
+    val faltan = (datos["faltanBiblioteca"] as? JsonPrimitive)?.intOrNull ?: 0
+    val deBiblioteca = (datos["plantillas"] as? JsonArray).orEmpty().any {
+        val clave = ((it as? JsonObject)?.get("clave_biblioteca") as? JsonPrimitive)?.contentOrNull
+        !clave.isNullOrBlank()
+    }
+    return esps > 0 && faltan == 0 && !deBiblioteca
 }
