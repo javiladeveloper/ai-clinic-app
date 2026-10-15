@@ -1,0 +1,8 @@
+# Novedades de la 2.52.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Sugerencias que aprenden lo que escribe tu clínica, en más campos.
+---
+Clínicas:
+• Evaluación psicológica, características del dolor (fisio), aplicaciones estéticas, tricoscopía y 💊 indicaciones del tratamiento ahora sugieren las frases que tu clínica usa seguido: tócalas como chips o elígelas al escribir.
+• En psicología solo se sugieren frases repetidas en varios pacientes, y nunca datos personales.
+• "Editar consulta" con el botón de guardar visible aunque el teclado esté abierto.
