@@ -56,11 +56,15 @@ object RutinasEjerciciosRepo {
     private val http = crearHttpClient()
 
     /**
-     * false cuando el servidor dijo que la función no existe (web vieja) o está
-     * apagada para la clínica: los botones de rutina se ocultan hasta reiniciar la app.
+     * Dónde el servidor dijo que la función no existe (web vieja) o está apagada
+     * (MODULO_APAGADO): por usuario Y clínica, así apagarla en una clínica no
+     * esconde las rutinas en otra (ni tras cambiar de cuenta) hasta reiniciar.
      */
-    var disponible: Boolean = true
-        private set
+    private val noDisponibleEn = mutableSetOf<String>()
+    private fun claveClinica(): String = "${usuario()}|${StaffContextoRepo.actual?.clinicaId.orEmpty()}"
+
+    /** false = en ESTA clínica (y usuario) los botones de rutina se ocultan. */
+    val disponible: Boolean get() = claveClinica() !in noDisponibleEn
 
     private var baseEnMemoria: Triple<String, Long, List<RutinaEjercicios>>? = null
     private const val VIGENCIA_BASE_MS = 60L * 60 * 1000
@@ -83,7 +87,7 @@ object RutinasEjerciciosRepo {
         val o = obj(texto)
         val codigo = (o?.get("codigo") as? JsonPrimitive)?.contentOrNull
         if (funcionNoDisponible(status, codigo, o?.containsKey("error") == true)) {
-            disponible = false
+            noDisponibleEn += claveClinica()
             return CargaRutinas.NoDisponible
         }
         return CargaRutinas.Error((o?.get("error") as? JsonPrimitive)?.contentOrNull ?: "No se pudieron cargar las rutinas.")

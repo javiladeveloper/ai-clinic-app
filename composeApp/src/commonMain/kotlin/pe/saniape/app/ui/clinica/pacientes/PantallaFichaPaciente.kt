@@ -288,7 +288,7 @@ private fun PantallaFichaPacienteContenido(
     val mixtaCapilar = puedeTricoscopia && ctx.mapaCapilar.ids.isNotEmpty() && !ctx.mapaCapilar.solo
     val mixtaPodo = ctx.mapaPodologia.ids.isNotEmpty() && !ctx.mapaPodologia.solo
     val mixtaEstetica = ctx.mapaEstetica.ids.isNotEmpty() && !ctx.mapaEstetica.solo
-    var datosCapilar by remember { mutableStateOf(false to emptyList<String>()) }
+    var datosCapilar by remember(paciente.id) { mutableStateOf(false to emptyList<String>()) }
     var tieneEvalPodo by remember(paciente.id) { mutableStateOf(false) }
     var tieneAplicaciones by remember(paciente.id) { mutableStateOf(false) }
     LaunchedEffect(paciente.id, mixtaCapilar, mixtaPodo, mixtaEstetica) {

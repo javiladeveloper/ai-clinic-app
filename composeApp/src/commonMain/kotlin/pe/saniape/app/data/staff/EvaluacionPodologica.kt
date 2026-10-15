@@ -584,7 +584,11 @@ fun estadoRiesgo(tamizaje: TamizajePodo?, riesgoIwgdf: Int?): EstadoRiesgoPodo {
     val t = tamizaje?.let { normalizarTamizaje(it) }
     if (t == null || !t.diabetes) return EstadoRiesgoPodo(null, sinDeterminar = false, incompleto = false)
     val completo = tamizajeCompleto(t)
-    return EstadoRiesgoPodo(categoria, sinDeterminar = categoria == null, incompleto = categoria != null && !completo)
+    // Una fila guardada ANTES de la regla puede traer 0 con el tamizaje incompleto:
+    // la categoría 0 exige descartar LOPS y EAP, así que también es "sin determinar"
+    // (nunca "Muy bajo" ni el control anual).
+    if (categoria == null || (categoria == 0 && !completo)) return EstadoRiesgoPodo(null, sinDeterminar = true, incompleto = false)
+    return EstadoRiesgoPodo(categoria, sinDeterminar = false, incompleto = !completo)
 }
 
 fun estadoRiesgo(ev: EvaluacionPodologica): EstadoRiesgoPodo = estadoRiesgo(ev.tamizaje, ev.riesgoIwgdf)
@@ -608,9 +612,10 @@ fun fechaProximoControl(hoy: String, categoria: Int?): String? {
  * sin determinar: primero se completa el tamizaje).
  */
 fun fechaControlParaAgendar(ev: EvaluacionPodologica, hoy: String): String? {
-    if (estadoRiesgo(ev).sinDeterminar) return null
-    val desde = fechaProximoControl(ev.fecha, ev.riesgoIwgdf)
-    return if (desde != null && desde >= hoy) desde else fechaProximoControl(hoy, ev.riesgoIwgdf)
+    val est = estadoRiesgo(ev)
+    if (est.sinDeterminar) return null
+    val desde = fechaProximoControl(ev.fecha, est.categoria)
+    return if (desde != null && desde >= hoy) desde else fechaProximoControl(hoy, est.categoria)
 }
 
 /** Gemelo de `sumarMeses` (lib/cuotas): mismo día, recortado al último del mes. */

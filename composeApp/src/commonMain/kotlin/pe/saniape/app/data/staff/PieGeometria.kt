@@ -140,7 +140,7 @@ fun htmlEvaluacionPodo(
     val colorRiesgo = cat?.color ?: "#6b7280"
     val tamizaje = lineasTamizaje(ev.tamizaje)
     val datos = paresDatosGenerales(ev.tipoPie, ev.pisada, ev.higiene, ev.calzado)
-    val recomendaciones = recomendacionesRiesgo(ev.riesgoIwgdf)
+    val recomendaciones = recomendacionesRiesgo(est.categoria)
     val comp = compararEvaluacionesPodo(ev, anterior)
     val logo = logoUrl?.trim()?.takeIf { it.startsWith("https://") }
         ?.let { "<img src=\"${escSvg(it)}\" alt=\"\" class=\"logo\">" }.orEmpty()

@@ -316,6 +316,7 @@ fun AplicacionesTab(
                         recien = a.id
                         items = ordenarAplicaciones(if (esNuevo) listOf(a) + lista else lista.map { if (it.id == a.id) a else it })
                     },
+                    onGuardadoSinFila = { editor = null; recien = null; token++ },
                 )
             }
         }
@@ -507,6 +508,8 @@ private fun EditorMapa(
     onCerrar: () -> Unit,
     onYaExiste: (String) -> Unit,
     onGuardado: (AplicacionEstetica, Boolean) -> Unit,
+    /** Guardado, pero sin la fila en la respuesta: el padre cierra y recarga. */
+    onGuardadoSinFila: () -> Unit,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -631,6 +634,12 @@ private fun EditorMapa(
                 AplicacionesEsteticasRepo.olvidarRecientes()
                 Toaster.exito(if (nuevo) "Mapa de aplicación guardado" else "Mapa actualizado")
                 onGuardado(fila, nuevo)
+            } else if (r.registrada) {
+                // El servidor lo guardó pero no devolvió la fila: se cierra y se recarga la
+                // lista (un "No se pudo guardar" llevaría a reintentar y duplicar el mapa).
+                AplicacionesEsteticasRepo.olvidarRecientes()
+                Toaster.exito(if (nuevo) "Mapa de aplicación guardado" else "Mapa actualizado")
+                onGuardadoSinFila()
             } else {
                 val msg = r.rechazo?.error ?: "No se pudo guardar. Intenta de nuevo."
                 errores = listOf(msg)

@@ -178,6 +178,16 @@ class EvaluacionPodologicaTest {
         assertNull(textoRiesgo(EstadoRiesgoPodo(null, false, false)))
     }
 
+    @Test fun ceroGuardadoAntesDeLaReglaConTamizajeIncompletoEsSinDeterminar() {
+        // Fila vieja: riesgo 0 con el monofilamento a medias → nunca "Muy bajo" ni el control anual.
+        val t = tamizajeVacio(true).let { it.copy(monofilamento = it.monofilamento + ("der_hallux" to true)) }
+        assertEquals(EstadoRiesgoPodo(null, sinDeterminar = true, incompleto = false), estadoRiesgo(t, 0))
+        val ev = EvaluacionPodologica("e", "p", fecha = "2026-10-01", tamizaje = t, riesgoIwgdf = 0)
+        assertNull(fechaControlParaAgendar(ev, "2026-10-15"))
+        // Con el tamizaje completo, el 0 sigue siendo 0.
+        assertEquals(EstadoRiesgoPodo(0, sinDeterminar = false, incompleto = false), estadoRiesgo(normal(), 0))
+    }
+
     // ── Intervalo de control ──
 
     @Test fun fechaSugeridaPorCategoria() {

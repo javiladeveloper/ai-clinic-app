@@ -591,18 +591,23 @@ fun unidadesCobrables(totales: TotalesAplicacion?, unidadLabel: String?): Unidad
 
 // ─── Historial ───────────────────────────────────────────────────────────────
 
-/** Días entre dos fechas YYYY-MM-DD (b − a). */
-fun diasEntreIso(a: String, b: String): Int {
-    fun d(s: String): Long = kotlinx.datetime.LocalDate.parse(s.take(10)).toEpochDays().toLong()
-    return (d(b) - d(a)).toInt()
+/** Días entre dos fechas YYYY-MM-DD (b − a). null si alguna no es una fecha válida. */
+fun diasEntreIso(a: String, b: String): Int? {
+    fun d(s: String): Long? = if (!RE_FECHA_AP.matches(s.take(10))) null
+    else runCatching { kotlinx.datetime.LocalDate.parse(s.take(10)).toEpochDays().toLong() }.getOrNull()
+    val da = d(a) ?: return null
+    val db = d(b) ?: return null
+    return (db - da).toInt()
 }
 
 data class UltimaToxina(val fecha: String, val semanas: Int, val nivel: String?, val texto: String)
 
 /** La última sesión con toxina (hasta hoy) y cuánto pasó. null = nunca. */
 fun ultimaToxina(items: List<AplicacionEstetica>, hoy: String): UltimaToxina? {
-    val fecha = items.filter { it.fecha <= hoy && it.aplicaciones.any { a -> a.tipoProducto == TOX } }.map { it.fecha }.maxOrNull() ?: return null
-    val dias = diasEntreIso(fecha, hoy)
+    // Las filas sin una fecha válida no cuentan (y nunca rompen la pestaña).
+    val fecha = items.filter { RE_FECHA_AP.matches(it.fecha) && it.fecha <= hoy && it.aplicaciones.any { a -> a.tipoProducto == TOX } }
+        .map { it.fecha }.maxOrNull() ?: return null
+    val dias = diasEntreIso(fecha, hoy) ?: return null
     val semanas = floor(dias / 7.0).toInt()
     val hace = when {
         dias == 0 -> "hoy"

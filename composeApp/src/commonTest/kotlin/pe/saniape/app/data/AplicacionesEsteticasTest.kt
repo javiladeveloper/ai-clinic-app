@@ -384,6 +384,12 @@ class AplicacionesEsteticasTest {
         assertNull(ultimaToxina(listOf(fila("2026-09-01", "acido_hialuronico")), "2026-10-15"))
         // Una futura (cargada por error) no cuenta.
         assertNull(ultimaToxina(listOf(fila("2026-12-01", "toxina")), "2026-10-15"))
+        // Fechas inválidas o vacías: se saltan, nunca lanzan.
+        assertNull(diasEntreIso("", "2026-10-15"))
+        assertNull(diasEntreIso("2026-02-30", "2026-10-15"))
+        assertNull(ultimaToxina(listOf(fila("", "toxina"), fila("basura", "toxina")), "2026-10-15"))
+        assertEquals("2026-09-01", ultimaToxina(listOf(fila("", "toxina"), fila("2026-09-01", "toxina")), "2026-10-15")!!.fecha)
+        assertNull(ultimaToxina(listOf(fila("2026-09-01", "toxina")), "mal"))
     }
 
     @Test fun repetirSinLoteVencimientoNiNotas() {
