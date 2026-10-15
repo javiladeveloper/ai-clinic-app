@@ -16,7 +16,9 @@ import pe.saniape.app.data.staff.ComidaPlan
 import pe.saniape.app.data.staff.ItemComida
 import pe.saniape.app.data.staff.PlanAlimentacion
 import pe.saniape.app.data.staff.PlantillaPlan
+import pe.saniape.app.data.staff.avisoItemsIlegibles
 import pe.saniape.app.data.staff.borradorDesdeEditor
+import pe.saniape.app.data.staff.itemsIlegibles
 import pe.saniape.app.data.staff.comidasParaMostrar
 import pe.saniape.app.data.staff.contenidoDesde
 import pe.saniape.app.data.staff.cuerpoPlan
@@ -158,6 +160,22 @@ class PlanAlimentacionItemsTest {
         assertEquals("", (comidas[0]["detalle"] as JsonPrimitive).content)
         assertFalse("detalleAuto" in comidas[0])
         assertEquals(1, (comidas[0]["items"] as JsonArray).size)
+    }
+
+    @Test fun alimentosIlegiblesNoSeBorranEnSilencio() {
+        // Un ítem guardado que esta app no puede validar (p. ej. sin foto de nutrientes).
+        val raro = QUINUA.copy(por100 = null)
+        val p = PlanAlimentacion(id = "p", pacienteId = pac, fecha = "2026-10-25", comidas = listOf(
+            ComidaPlan("Almuerzo", null, "", listOf(QUINUA, raro)),
+            ComidaPlan("Cena", null, "", listOf(raro)),
+        ))
+        assertEquals(2, itemsIlegibles(p.comidas))
+        val ed = contenidoDesde(p)
+        assertEquals(2, ed.itemsIlegibles)
+        assertEquals(listOf(listOf(QUINUA)), ed.comidas.map { it.items }) // el editor no los muestra…
+        assertTrue(avisoItemsIlegibles(ed.itemsIlegibles)!!.contains("2 alimentos")) // …y al editar, el guardado se bloquea
+        assertNull(avisoItemsIlegibles(0))
+        assertEquals(0, contenidoDesde(p.copy(comidas = listOf(ComidaPlan("Cena", null, "Sopa", listOf(PECHUGA))))).itemsIlegibles)
     }
 
     @Test fun portalConItemsSinNutrientes() {

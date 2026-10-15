@@ -282,7 +282,22 @@ data class ContenidoEditorPlan(
     val recomendaciones: String = "",
     val evitar: String = "",
     val hidratacion: String = "",
+    /**
+     * Alimentos del plan de partida que esta app no puede leer (datos que no
+     * pasan la validación). No se muestran; al EDITAR ese plan el guardado se
+     * bloquea ([avisoItemsIlegibles]): con `itemsV: 1` se borrarían en silencio.
+     */
+    val itemsIlegibles: Int = 0,
 )
+
+/** Cuántos alimentos de estas comidas no pasan la validación (y el editor no mostraría). */
+fun itemsIlegibles(comidas: List<ComidaPlan>?): Int =
+    comidas.orEmpty().sumOf { c -> c.items.size - normalizarItems(c.items).size.coerceAtMost(c.items.size) }
+
+/** El aviso que bloquea guardar un plan con alimentos que la app no puede leer (null = nada que avisar). */
+fun avisoItemsIlegibles(n: Int): String? = if (n <= 0) null else
+    "Este plan tiene ${if (n == 1) "1 alimento que esta versión de la app no puede leer" else "$n alimentos que esta versión de la app no puede leer"}: " +
+        "si lo guardas desde aquí se perderían. Edítalo desde la web (saniape.com) o actualiza la app."
 
 private var siguienteK = 1
 /** En el editor el detalle automático (los alimentos en texto, para las apps viejas) no se muestra. */
@@ -307,6 +322,7 @@ fun contenidoDesde(b: ContenidoPlanFuente?): ContenidoEditorPlan {
         recomendaciones = b.recomendaciones.orEmpty(),
         evitar = b.evitar.orEmpty(),
         hidratacion = b.hidratacion.orEmpty(),
+        itemsIlegibles = itemsIlegibles(b.comidas),
     )
 }
 

@@ -30,6 +30,8 @@ import pe.saniape.app.data.staff.alimentosFrecuentesDeJson
 import pe.saniape.app.data.staff.buscarAlimentos
 import pe.saniape.app.data.staff.cambiarUnidad
 import pe.saniape.app.data.staff.catalogoDeJson
+import pe.saniape.app.data.staff.comparadorNombresEs
+import pe.saniape.app.data.staff.compararNombresEsAprox
 import pe.saniape.app.data.staff.conCantidad
 import pe.saniape.app.data.staff.cuerpoAlimentoClinica
 import pe.saniape.app.data.staff.erroresItems
@@ -184,6 +186,20 @@ class AlimentosTest {
             "Pollo, pecho y ala de, con piel a la brasa", "Pollo, nuggets de pechuga de, crudo, envasado",
             "Pollo, pechuga de, sin piel, sancochada sin sal", "Pollo, pechuga de, sin piel, frita en aceite vegetal, sin sal",
         ), real("pech poll"))
+    }
+
+    @Test fun empatesComoLocaleCompareEs() {
+        // Mismo puntaje (largo normalizado y marcas iguales): decide el orden alfabético español.
+        val empates = indexarAlimentos(listOf("Ñame", "Nuez", "Té", "Te", "Ajo", "Ají").map { F("X-$it", it, normalizarBusqueda(it), false, false) })
+        assertEquals(listOf("Nuez", "Ñame"), buscarAlimentos(empates, "n").map { it.nombre }) // la ñ va después de la n
+        assertEquals(listOf("Te", "Té"), buscarAlimentos(empates, "te").map { it.nombre })   // sin tilde primero
+        assertEquals(listOf("Ají", "Ajo"), buscarAlimentos(empates, "aj").map { it.nombre }) // la tilde no cambia la letra
+        // La versión sin plataforma (iOS) ordena igual que el Collator.
+        val pares = listOf("Nuez" to "Ñame", "Te" to "Té", "Ají" to "Ajo", "papa" to "Papa", "Pan 2" to "Pan b")
+        val col = comparadorNombresEs()
+        for ((x, y) in pares) assertEquals(col.compare(x, y) < 0, compararNombresEsAprox(x, y) < 0, "$x vs $y")
+        // Signos: como ICU (V8 y Android), el espacio va antes que la coma (el Collator del JVM de escritorio los ignora).
+        assertTrue(compararNombresEsAprox("Pan blanco", "Pan, blanco") < 0)
     }
 
     // ── Filas → Alimento ──

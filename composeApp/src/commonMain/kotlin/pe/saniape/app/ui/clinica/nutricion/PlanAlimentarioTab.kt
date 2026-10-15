@@ -78,6 +78,7 @@ import pe.saniape.app.data.staff.kcalParaUsar
 import pe.saniape.app.data.staff.macrosDePlan
 import pe.saniape.app.data.staff.normalizarComidas
 import pe.saniape.app.data.staff.LimitesAlimento
+import pe.saniape.app.data.staff.avisoItemsIlegibles
 import pe.saniape.app.data.staff.detalleVisible
 import pe.saniape.app.data.staff.itemConHabitual
 import pe.saniape.app.data.staff.redondearJs
@@ -542,6 +543,12 @@ private fun EditorPlan(
 
     fun guardar() {
         if (guardando) return
+        // Al EDITAR, alimentos guardados que la app no puede leer se perderían con itemsV: 1.
+        if (!nuevo) avisoItemsIlegibles(cont.itemsIlegibles)?.let { aviso ->
+            errores = listOf(aviso)
+            Toaster.error(aviso)
+            return
+        }
         val b = borradorDesdeEditor(pacienteId, fecha, cont, calculo,
             citaId = if (nuevo) citaId else null, visiblePaciente = visible)
         val e = validarPlan(b)
@@ -747,6 +754,16 @@ private fun EditorPlan(
             }
         }
         Text("Las comidas sin alimentos ni detalle no se guardan.", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+        if (cont.itemsIlegibles > 0) {
+            val n = cont.itemsIlegibles
+            Text(
+                if (nuevo) "${if (n == 1) "1 alimento" else "$n alimentos"} del plan de partida no se pudieron leer y no se copian."
+                else avisoItemsIlegibles(n).orEmpty(),
+                color = c.pend, fontSize = 12.sp,
+                modifier = Modifier.padding(top = 6.dp).fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .background(c.pendBg).padding(horizontal = 10.dp, vertical = 8.dp),
+            )
+        }
         Spacer(Modifier.height(8.dp))
         ResumenAporteUi(
             itemsPorComida = cont.comidas.map { it.items },

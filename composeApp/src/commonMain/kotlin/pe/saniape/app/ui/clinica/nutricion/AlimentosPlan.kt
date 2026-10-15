@@ -45,9 +45,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import pe.saniape.app.data.staff.Adecuacion
 import pe.saniape.app.data.staff.Alimento
 import pe.saniape.app.data.staff.AlimentoFrecuente
@@ -136,6 +140,8 @@ class DatosAlimentos(
     val propios: List<FilaAlimentoClinica>,
     /** Cambia la lista de propios (tras crear / editar / borrar) sin volver a pedir el catálogo. */
     val mutarPropios: ((List<FilaAlimentoClinica>) -> List<FilaAlimentoClinica>) -> Unit,
+    /** El catálogo no se pudo bajar: volver a pedirlo (la caché solo guarda lo bueno). */
+    val reintentar: () -> Unit,
 ) {
     /** Backend viejo sin la ruta: sin buscador ni propios (el texto libre sigue). */
     val disponible: Boolean get() = estado != EstadoCatalogo.NO_DISPONIBLE
@@ -151,7 +157,10 @@ fun recordarDatosAlimentos(frecuentes: List<AlimentoFrecuente>): DatosAlimentos 
     var error by remember { mutableStateOf<String?>(null) }
     var catalogo by remember { mutableStateOf<List<Alimento>>(emptyList()) }
     var propios by remember { mutableStateOf<List<FilaAlimentoClinica>>(emptyList()) }
-    LaunchedEffect(Unit) {
+    var intento by remember { mutableStateOf(0) }
+    LaunchedEffect(intento) {
+        estado = EstadoCatalogo.CARGANDO
+        error = null
         when (val r = AlimentosRepo.catalogo()) {
             is LecturaCatalogo.Listo -> { catalogo = r.catalogo.alimentos; estado = EstadoCatalogo.LISTO }
             LecturaCatalogo.NoDisponible -> estado = EstadoCatalogo.NO_DISPONIBLE
@@ -164,7 +173,14 @@ fun recordarDatosAlimentos(frecuentes: List<AlimentoFrecuente>): DatosAlimentos 
     val porRef = remember(lista) { lista.associateBy { refAlimento(it) } }
     val habitual = remember(frecuentes) { frecuentes.associateBy { refAlimento(it) } }
     val usos = remember(frecuentes) { frecuentes.associate { refAlimento(it) to it.usos } }
-    return DatosAlimentos(estado, error, indice, porRef, frecuentes, habitual, usos, propios) { f -> propios = f(propios) }
+    // Recordado con las claves del estado: el objeto cambia solo cuando cambia algo (no en cada tecla del plan).
+    return remember(estado, error, indice, porRef, frecuentes, habitual, usos, propios) {
+        DatosAlimentos(
+            estado, error, indice, porRef, frecuentes, habitual, usos, propios,
+            mutarPropios = { f -> propios = f(propios) },
+            reintentar = { intento++ },
+        )
+    }
 }
 
 // ─── Los alimentos de una comida (editor) ───────────────────────────────────
@@ -190,13 +206,30 @@ fun AlimentosComidaEditor(
     var enfocar by remember { mutableStateOf<Int?>(null) }
     val lleno = items.size >= LimitesAlimento.ITEMS_POR_COMIDA
 
-    val opciones = remember(q, datos.indice, datos.usos, datos.frecuentes, datos.porRef) {
-        if (q.isNotBlank()) buscarAlimentos(datos.indice, q, MAX_OPCIONES, datos.usos)
-        else datos.frecuentes.mapNotNull { datos.porRef[refAlimento(it)] }.take(MAX_OPCIONES)
+    // Vacío: lo que más usa la clínica (al instante). Con texto: ~120 ms después de la
+    // última tecla y fuera del hilo de la UI. [buscado] = el texto al que corresponden.
+    val frecuentes = remember(datos.frecuentes, datos.porRef) {
+        datos.frecuentes.mapNotNull { datos.porRef[refAlimento(it)] }.take(MAX_OPCIONES)
     }
+    var resultados by remember { mutableStateOf<List<Alimento>>(emptyList()) }
+    var buscado by remember { mutableStateOf("") }
+    LaunchedEffect(q, datos.indice, datos.usos) {
+        if (q.isBlank()) return@LaunchedEffect
+        delay(120)
+        val texto = q
+        resultados = withContext(Dispatchers.Default) { buscarAlimentos(datos.indice, texto, MAX_OPCIONES, datos.usos) }
+        buscado = texto
+    }
+    val opciones = if (q.isBlank()) frecuentes else if (buscado == q) resultados else emptyList()
+    val buscando = q.isNotBlank() && buscado != q
     val puedeCrear = onCrear != null && q.trim().length >= 2 && datos.estado == EstadoCatalogo.LISTO
+    // Anti doble toque: dos toques en el mismo cuadro agregaban dos veces (se libera al cambiar la comida o el texto).
+    val pidio = remember { booleanArrayOf(false) }
+    LaunchedEffect(q, items.size) { pidio[0] = false }
 
     fun agregar(a: Alimento) {
+        if (pidio[0]) return
+        pidio[0] = true
         val it = itemConHabitual(a, datos.habitual[refAlimento(a)])
         enfocar = items.size
         onChange(items + it)
@@ -234,7 +267,10 @@ fun AlimentosComidaEditor(
                 modifier = Modifier.fillMaxWidth().onFocusChanged { enfocado = it.isFocused },
                 colors = coloresCampoForm(),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { opciones.firstOrNull()?.let(::agregar) }),
+                keyboardActions = KeyboardActions(onSearch = {
+                    // Enter no espera la pausa: busca ya con lo escrito.
+                    (if (q.isBlank()) frecuentes else buscarAlimentos(datos.indice, q, 1, datos.usos)).firstOrNull()?.let(::agregar)
+                }),
                 trailingIcon = if (q.isNotEmpty()) ({
                     Text("✕", color = c.textoSuave, fontSize = 14.sp,
                         modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable { q = "" }.padding(8.dp))
@@ -250,7 +286,13 @@ fun AlimentosComidaEditor(
                         datos.estado == EstadoCatalogo.CARGANDO && opciones.isEmpty() ->
                             AvisoBuscador("Cargando la base de alimentos…", c.textoSuave)
                         datos.estado == EstadoCatalogo.ERROR && opciones.isEmpty() ->
-                            AvisoBuscador(datos.error ?: "No se pudo cargar la base de alimentos", c.error)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.weight(1f)) { AvisoBuscador(datos.error ?: "No se pudo cargar la base de alimentos", c.error) }
+                                Text("↻ Reintentar", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable { datos.reintentar() }
+                                        .padding(horizontal = 12.dp, vertical = 12.dp))
+                            }
+                        buscando -> AvisoBuscador("Buscando…", c.textoSuave)
                         q.isBlank() && opciones.isNotEmpty() ->
                             Text("LOS QUE MÁS USA LA CLÍNICA", color = c.textoSuave, fontSize = 9.sp, fontWeight = FontWeight.Bold,
                                 letterSpacing = 0.5.sp, modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 2.dp))
@@ -266,7 +308,11 @@ fun AlimentosComidaEditor(
                         Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
                         Text("＋ Crear «${q.trim()}» como alimento de la clínica", color = c.navy, fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.fillMaxWidth().clickable { val n = q.trim(); q = ""; onCrear!!(n) }
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                if (pidio[0]) return@clickable
+                                pidio[0] = true
+                                val n = q.trim(); q = ""; onCrear!!(n)
+                            }
                                 .heightIn(min = 44.dp).padding(horizontal = 12.dp, vertical = 12.dp))
                     }
                 }
@@ -504,16 +550,18 @@ fun ResumenAporteUi(
             Column(Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.Top) {
                     Text(f.nombre, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
-                        Text(f.valor, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        f.adec?.let { ad ->
-                            Text("de ${numJs(ad.meta)}${if (f.nombre == "Energía") "" else " g"} · ${ad.pct} % (${ad.estado.palabra})",
-                                color = colorEstado(ad.estado), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                        f.pct?.let { p ->
-                            Text("${numJs(p)} % de la energía${f.metaPct?.let { m -> " (plan: ${numJs(m)} %)" }.orEmpty()}",
-                                color = c.textoSuave, fontSize = 10.sp)
-                        }
+                    // "≥ 73 g · sin dato en 2 alimentos" no empuja el nombre: tiene peso y hasta 2 líneas.
+                    Text(f.valor, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 2,
+                        textAlign = TextAlign.End, modifier = Modifier.weight(1.6f, fill = false).padding(start = 8.dp))
+                }
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+                    f.adec?.let { ad ->
+                        Text("de ${numJs(ad.meta)}${if (f.nombre == "Energía") "" else " g"} · ${ad.pct} % (${ad.estado.palabra})",
+                            color = colorEstado(ad.estado), fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
+                    }
+                    f.pct?.let { p ->
+                        Text("${numJs(p)} % de la energía${f.metaPct?.let { m -> " (plan: ${numJs(m)} %)" }.orEmpty()}",
+                            color = c.textoSuave, fontSize = 10.sp, textAlign = TextAlign.End)
                     }
                 }
                 f.adec?.let { ad -> BarraAdecuacion(ad) }
@@ -684,6 +732,8 @@ private fun FormAlimentoClinica(
     var guardando by remember { mutableStateOf(false) }
     var confirmar by remember { mutableStateOf(false) }
     var existente by remember { mutableStateOf<FilaAlimentoClinica?>(null) }
+    // Anti doble toque en "Agregar el que ya existe" (lo agregaría dos veces).
+    var usado by remember { mutableStateOf(false) }
 
     fun vacio(t: String) = t.trim().ifEmpty { null }
     fun borrador() = BorradorAlimentoClinica(
@@ -819,7 +869,8 @@ private fun FormAlimentoClinica(
             Text("＋ Agregar «${ex.nombre}», el que ya existe", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(top = 8.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
                     .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                    .clickable { onUsarExistente(ex) }.padding(horizontal = 12.dp, vertical = 10.dp))
+                    .clickable(enabled = !usado) { if (!usado) { usado = true; onUsarExistente(ex) } }
+                    .padding(horizontal = 12.dp, vertical = 10.dp))
         }
 
         if (fila != null) {

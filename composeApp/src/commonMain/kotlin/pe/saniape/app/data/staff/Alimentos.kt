@@ -348,18 +348,44 @@ fun indexarAlimentos(lista: List<Alimento>): List<EntradaAlimento> = lista.map {
 }
 
 /**
- * Clave de orden de `localeCompare(…, 'es')` para los empates: sin mayúsculas
- * ni tildes, con la ñ después de la n.
+ * Orden de `localeCompare(…, 'es')` (ICU) para los EMPATES de la búsqueda.
+ * En Android, el `Collator` español del sistema ([comparadorNombresEs]); esta
+ * es la versión equivalente sin plataforma (iOS): primero las letras sin
+ * tildes ni mayúsculas (espacio < signos < dígitos < letras, la ñ después de
+ * la n), luego sin tilde antes que con tilde, luego minúscula antes que mayúscula.
  */
-private fun claveOrden(s: String): String = buildString {
-    for (ch in s.lowercase()) {
-        if (ch == 'ñ') { append("n~"); continue }
-        val i = CON_TILDE.indexOf(ch)
-        append(if (i >= 0) SIN_TILDE[i].lowercaseChar() else ch)
+fun compararNombresEsAprox(a: String, b: String): Int {
+    fun peso(ch0: Char): Int {
+        val i = CON_TILDE.indexOf(ch0)
+        val ch = (if (i >= 0) SIN_TILDE[i] else ch0).lowercaseChar()
+        return when {
+            ch0 == 'ñ' || ch0 == 'Ñ' -> 400 + ('n' - 'a') * 2 + 1
+            ch.isWhitespace() -> 1
+            ch in '0'..'9' -> 300 + (ch - '0')
+            ch in 'a'..'z' -> 400 + (ch - 'a') * 2
+            ch.isLetter() -> 1000 + ch.code
+            else -> 10 + (ch.code % 250) // signos: antes que los dígitos
+        }
     }
+    fun tilde(ch: Char): Int = if (CON_TILDE.indexOf(ch) >= 0 && ch != 'ñ' && ch != 'Ñ') 1 else 0
+    fun mayus(ch: Char): Int = if (ch.isUpperCase()) 1 else 0
+    for (nivel in 0..2) {
+        val n = min(a.length, b.length)
+        for (k in 0 until n) {
+            val d = when (nivel) {
+                0 -> peso(a[k]) - peso(b[k])
+                1 -> tilde(a[k]) - tilde(b[k])
+                else -> mayus(a[k]) - mayus(b[k])
+            }
+            if (d != 0) return d
+        }
+        if (nivel == 0 && a.length != b.length) return a.length - b.length
+    }
+    return a.compareTo(b)
 }
 
-private val ORDEN_NOMBRE: Comparator<Alimento> = compareBy<Alimento> { claveOrden(it.nombre) }.thenBy { it.nombre }
+/** Comparador de nombres como `localeCompare(…, 'es')`: Collator del sistema en Android. Uno nuevo por orden (no es seguro entre hilos). */
+expect fun comparadorNombresEs(): Comparator<String>
 
 /**
  * Alimentos que calzan con lo escrito, mejores primero (gemelo exacto de
@@ -400,9 +426,10 @@ fun buscarAlimentos(
         p -= e.nombre.length * P.POR_CARACTER
         puntuados += e.a to p
     }
+    val nombres = comparadorNombresEs()
     val orden = Comparator<Pair<Alimento, Double>> { x, y ->
         val d = y.second - x.second
-        if (d != 0.0) (if (d > 0) 1 else -1) else ORDEN_NOMBRE.compare(x.first, y.first)
+        if (d != 0.0) (if (d > 0) 1 else -1) else nombres.compare(x.first.nombre, y.first.nombre)
     }
     return puntuados.sortedWith(orden).take(limite).map { it.first }
 }
