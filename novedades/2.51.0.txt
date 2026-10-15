@@ -1,0 +1,11 @@
+# Novedades de la 2.51.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Embarazo, ortodoncia y pediatría con herramientas propias.
+---
+Clínicas:
+• Obstetricia: 🤰 Embarazo con controles prenatales, edad gestacional y fecha probable de parto, alertas de apoyo y carné perinatal imprimible.
+• Ortodoncia: 😁 plan de tratamiento y controles mensuales (arcos, ligaduras, elásticos, brackets por pieza) con su línea de tiempo.
+• Pediatría: 👶 curvas de crecimiento OMS con su clasificación y 💉 carnet de vacunas del esquema nacional.
+• Sexo del paciente (opcional) en la ficha.
+Pacientes:
+• Nuevas secciones Mi embarazo, Mi ortodoncia, Crecimiento y Vacunas en la pestaña Salud.
