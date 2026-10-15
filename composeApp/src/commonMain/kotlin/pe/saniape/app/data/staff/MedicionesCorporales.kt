@@ -78,6 +78,8 @@ data class MedicionCorporal(
     val perimetroAbdominal: Double? = null,
     val grasaPct: Double? = null,
     val masaMuscular: Double? = null,
+    /** Perímetro cefálico (cm, pediatría). Una base sin la columna lo deja null. */
+    val perimetroCefalico: Double? = null,
     val notas: String? = null,
     val citaId: String? = null,
     val tratamientoId: String? = null,
@@ -104,6 +106,7 @@ fun medicionDeJson(o: JsonObject): MedicionCorporal? {
         perimetroAbdominal = o.numMed("perimetro_abdominal"),
         grasaPct = o.numMed("grasa_pct"),
         masaMuscular = o.numMed("masa_muscular"),
+        perimetroCefalico = o.numMed("perimetro_cefalico"),
         notas = o.txtMed("notas"),
         citaId = o.txtMed("cita_id"),
         tratamientoId = o.txtMed("tratamiento_id"),
@@ -122,7 +125,7 @@ data class RangoMedicion(val min: Double, val max: Double, val nombre: String, v
 
 /** Columnas medibles, en el orden de la web. */
 val CAMPOS_MEDICION: List<String> =
-    listOf("peso", "talla", "cintura", "cadera", "perimetro_abdominal", "grasa_pct", "masa_muscular")
+    listOf("peso", "talla", "cintura", "cadera", "perimetro_abdominal", "grasa_pct", "masa_muscular", "perimetro_cefalico")
 
 /** Rangos POSIBLES (no "normales"). Gemelos de `mediciones_corporales_rangos_chk`. */
 val RANGO_MEDICION: Map<String, RangoMedicion> = mapOf(
@@ -133,6 +136,7 @@ val RANGO_MEDICION: Map<String, RangoMedicion> = mapOf(
     "perimetro_abdominal" to RangoMedicion(20.0, 250.0, "Perímetro abdominal", "cm"),
     "grasa_pct" to RangoMedicion(1.0, 80.0, "Grasa corporal", "%"),
     "masa_muscular" to RangoMedicion(1.0, 200.0, "Masa muscular", "kg"),
+    "perimetro_cefalico" to RangoMedicion(20.0, 70.0, "Perímetro cefálico", "cm"),
 )
 
 /** Lo que se escribió en el formulario: columna → texto (vacío = no se midió). */
@@ -163,13 +167,22 @@ fun validarMedicion(b: BorradorMedicion): List<String> {
         alguna = true
     }
     if (!alguna && e.isEmpty()) e.add("Anota al menos una medida.")
+    // El perímetro cefálico va con el peso o la talla (control CRED): la CHECK
+    // `mediciones_corporales_algo_chk` de la base no lo cuenta como "una medida".
+    if (e.isEmpty() && soloPerimetroCefalico(b)) e.add("Anota también el peso o la talla junto con el perímetro cefálico.")
     return e
+}
+
+private fun soloPerimetroCefalico(b: BorradorMedicion): Boolean {
+    fun hay(k: String) = numeroMedicion(k, b.valores[k])?.let { !it.isNaN() } == true
+    return hay("perimetro_cefalico") && CAMPOS_MEDICION.none { it != "perimetro_cefalico" && hay(it) }
 }
 
 /** Nombres del cuerpo del POST (camelCase del API). */
 private val CLAVE_API = mapOf(
     "peso" to "peso", "talla" to "talla", "cintura" to "cintura", "cadera" to "cadera",
     "perimetro_abdominal" to "perimetroAbdominal", "grasa_pct" to "grasaPct", "masa_muscular" to "masaMuscular",
+    "perimetro_cefalico" to "perimetroCefalico",
 )
 
 /** Cuerpo del POST (ya validado): solo lo medido; talla en cm; notas recortadas. */
@@ -315,6 +328,7 @@ fun lineaMedidas(m: MedicionCorporal): String = listOfNotNull(
     m.perimetroAbdominal?.let { "P. abdominal ${numeroHc(it)} cm" },
     m.grasaPct?.let { "Grasa ${numeroHc(it)} %" },
     m.masaMuscular?.let { "Masa muscular ${numeroHc(it)} kg" },
+    m.perimetroCefalico?.let { "P. cefálico ${numeroHc(it)} cm" },
 ).joinToString(" · ")
 
 /** Texto para el campo del formulario (sin ".0"): 170.0 → "170". */

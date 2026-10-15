@@ -174,6 +174,13 @@ data class ContextoStaff(
      * regla del servicio por nombre (`esServicioOrtodoncia`).
      */
     val mapaOrtodoncia: MapaOrtodoncia = MapaOrtodoncia(),
+    /**
+     * Qué especialidades son de pediatría (pestaña 👶 Crecimiento, por paciente
+     * con `pacienteEsPediatria`; la web las reconoce por el NOMBRE). Un backend
+     * sin `especialidadesPediatria`/`soloPediatria` deja el mapa vacío y la
+     * pestaña no aparece.
+     */
+    val mapaPediatria: MapaPediatria = MapaPediatria(),
     val clinicas: List<ClinicaRef>,
     val tienePortal: Boolean,
     /**

@@ -63,6 +63,9 @@ import pe.saniape.app.data.MiEvolucionCapilar
 import pe.saniape.app.data.MiEvolucionCapilarRepo
 import pe.saniape.app.data.MiOrtodoncia
 import pe.saniape.app.data.MiOrtodonciaRepo
+import pe.saniape.app.data.MiCrecimiento
+import pe.saniape.app.data.MisVacunas
+import pe.saniape.app.data.MiPediatriaRepo
 import pe.saniape.app.data.IndicacionPortal
 import pe.saniape.app.data.MisIndicacionesRepo
 import pe.saniape.app.data.conEjercicioMarcado
@@ -122,6 +125,10 @@ fun PantallaSalud() {
     // 😁 Mi ortodoncia: null = no se sabe (servidor viejo, sin red y sin caché). Sin
     // planes, la sección no aparece.
     var ortodoncia by remember { mutableStateOf<MiOrtodoncia?>(null) }
+    // 👶 Crecimiento y 💉 Carné de vacunas de sus niños (pediatría): null = no se sabe
+    // (servidor viejo, sin red y sin caché). Sin niños con datos, no aparecen.
+    var crecimiento by remember { mutableStateOf<MiCrecimiento?>(null) }
+    var vacunas by remember { mutableStateOf<MisVacunas?>(null) }
     // 📝 Indicaciones para casa que le dejó su clínica (cualquier especialidad): null =
     // no se sabe (servidor viejo, sin red y sin caché). Sin ninguna, la sección no aparece.
     var indicaciones by remember { mutableStateOf<List<IndicacionPortal>?>(null) }
@@ -158,6 +165,8 @@ fun PantallaSalud() {
         if (nutricion == null) nutricion = withContext(Dispatchers.Default) { MiNutricionRepo.guardada() }
         if (capilar == null) capilar = withContext(Dispatchers.Default) { MiEvolucionCapilarRepo.guardada() }
         if (ortodoncia == null) ortodoncia = withContext(Dispatchers.Default) { MiOrtodonciaRepo.guardada() }
+        if (crecimiento == null) crecimiento = withContext(Dispatchers.Default) { MiPediatriaRepo.crecimientoGuardado() }
+        if (vacunas == null) vacunas = withContext(Dispatchers.Default) { MiPediatriaRepo.vacunasGuardadas() }
         if (indicaciones == null) indicaciones = withContext(Dispatchers.Default) { MisIndicacionesRepo.guardada() }
         if (docsMedicos == null) docsMedicos = withContext(Dispatchers.Default) { DocumentosClinicosRepo.guardados() }
         try {
@@ -173,6 +182,8 @@ fun PantallaSalud() {
                 val dNutricion = async { runCatching { MiNutricionRepo.cargar() }.getOrNull() }
                 val dCapilar = async { runCatching { MiEvolucionCapilarRepo.cargar() }.getOrNull() }
                 val dOrtodoncia = async { runCatching { MiOrtodonciaRepo.cargar() }.getOrNull() }
+                val dCrecimiento = async { runCatching { MiPediatriaRepo.crecimiento() }.getOrNull() }
+                val dVacunas = async { runCatching { MiPediatriaRepo.vacunas() }.getOrNull() }
                 val dIndicaciones = async { runCatching { MisIndicacionesRepo.cargar() }.getOrNull() }
                 val dDocsMedicos = async { runCatching { DocumentosClinicosRepo.cargar() }.getOrNull() }
                 when (val rt = dTrat.await()) {
@@ -197,6 +208,8 @@ fun PantallaSalud() {
                 dNutricion.await()?.let { nutricion = it }
                 dCapilar.await()?.let { capilar = it }
                 dOrtodoncia.await()?.let { ortodoncia = it }
+                dCrecimiento.await()?.let { crecimiento = it }
+                dVacunas.await()?.let { vacunas = it }
                 dIndicaciones.await()?.let { indicaciones = it }
                 dDocsMedicos.await()?.let { docsMedicos = it }
             }
@@ -208,6 +221,8 @@ fun PantallaSalud() {
     val datosNutricion = nutricion?.takeIf { it.tieneDatos }
     val datosCapilar = capilar?.takeIf { it.tieneDatos }
     val datosOrto = ortodoncia?.takeIf { it.tieneDatos }
+    val datosCrecimiento = crecimiento?.takeIf { it.tieneDatos }
+    val datosVacunas = vacunas?.takeIf { it.tieneDatos }
     val listaIndicaciones = indicaciones.orEmpty()
     val datosDocsMedicos = docsMedicos?.takeIf { it.tieneDatos }
 
@@ -315,7 +330,7 @@ fun PantallaSalud() {
     val hayTratamientos = separados.vigentes.isNotEmpty() || separados.cancelados.isNotEmpty()
     val sinNada = !hayTratamientos && documentos.isEmpty() && fotos.isEmpty() && listaRecetas.isEmpty() &&
         planesEjercicios.isEmpty() && datosNutricion == null && datosCapilar == null && datosOrto == null && listaIndicaciones.isEmpty() &&
-        datosDocsMedicos == null
+        datosDocsMedicos == null && datosCrecimiento == null && datosVacunas == null
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -432,12 +447,17 @@ fun PantallaSalud() {
                             espacioArriba = hayTratamientos || planesEjercicios.isNotEmpty() || datosNutricion != null,
                         )
                     }
+                    // 👶 Crecimiento y 💉 Carné de vacunas de sus niños (pediatría): solo si su
+                    // clínica con pediatría les registró algo (como la web: tras capilar).
+                    val arribaPediatria = hayTratamientos || planesEjercicios.isNotEmpty() || datosNutricion != null ||
+                        datosCapilar != null
+                    datosCrecimiento?.let { d -> seccionCrecimiento(datos = d, espacioArriba = arribaPediatria) }
+                    datosVacunas?.let { d -> seccionVacunas(datos = d, espacioArriba = arribaPediatria || datosCrecimiento != null) }
                     // 😁 Mi ortodoncia: solo si su ortodoncista le registró un plan.
                     datosOrto?.let { d ->
                         seccionOrtodoncia(
                             datos = d,
-                            espacioArriba = hayTratamientos || planesEjercicios.isNotEmpty() || datosNutricion != null ||
-                                datosCapilar != null,
+                            espacioArriba = arribaPediatria || datosCrecimiento != null || datosVacunas != null,
                         )
                     }
                     // 📝 Mis indicaciones para casa: junto al plan de alimentación, solo si
