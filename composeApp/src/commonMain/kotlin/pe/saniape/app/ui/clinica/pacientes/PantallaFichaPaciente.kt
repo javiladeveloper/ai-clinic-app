@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.pacientes
 
+import pe.saniape.app.data.staff.zonaDeSede
 import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
@@ -202,7 +203,8 @@ private fun PantallaFichaPacienteContenido(
     // especialidades es quien mira (el podólogo / el de estética ve la pestaña en un
     // paciente nuevo). No cambia lo dental: sin mapa mixto dental, la 🦷 no depende de esto.
     val mixtaMapas = (ctx.mapaPodologia.ids.isNotEmpty() && !ctx.mapaPodologia.solo) ||
-        (ctx.mapaEstetica.ids.isNotEmpty() && !ctx.mapaEstetica.solo)
+        (ctx.mapaEstetica.ids.isNotEmpty() && !ctx.mapaEstetica.solo) ||
+        (ctx.mapaGineco.ids.isNotEmpty() && !ctx.mapaGineco.solo)
     LaunchedEffect(paciente.id, mixtaDental, mixtaMapas, recargarToken) {
         if (mixtaDental || mixtaMapas) datosDentales = pe.saniape.app.data.staff.OdontogramaRepo
             .datosDentalesPaciente(paciente.id, ctx.miTerapeutaId)
@@ -288,17 +290,21 @@ private fun PantallaFichaPacienteContenido(
     val mixtaCapilar = puedeTricoscopia && ctx.mapaCapilar.ids.isNotEmpty() && !ctx.mapaCapilar.solo
     val mixtaPodo = ctx.mapaPodologia.ids.isNotEmpty() && !ctx.mapaPodologia.solo
     val mixtaEstetica = ctx.mapaEstetica.ids.isNotEmpty() && !ctx.mapaEstetica.solo
+    val mixtaGineco = ctx.mapaGineco.ids.isNotEmpty() && !ctx.mapaGineco.solo
+    var tieneEmbarazos by remember(paciente.id) { mutableStateOf(false) }
     var datosCapilar by remember(paciente.id) { mutableStateOf(false to emptyList<String>()) }
     var tieneEvalPodo by remember(paciente.id) { mutableStateOf(false) }
     var tieneAplicaciones by remember(paciente.id) { mutableStateOf(false) }
-    LaunchedEffect(paciente.id, mixtaCapilar, mixtaPodo, mixtaEstetica) {
+    LaunchedEffect(paciente.id, mixtaCapilar, mixtaPodo, mixtaEstetica, mixtaGineco) {
         coroutineScope {
+            val ginecoD = async { if (mixtaGineco) pe.saniape.app.data.staff.EmbarazoRepo.tieneEmbarazos(paciente.id) else null }
             val capilarD = async { if (mixtaCapilar) pe.saniape.app.data.staff.TricoscopiaRepo.datosMixta(paciente.id, ctx.miTerapeutaId) else null }
             val podoD = async { if (mixtaPodo) pe.saniape.app.data.staff.EvaluacionPodologicaRepo.tieneEvaluaciones(paciente.id) else null }
             val esteticaD = async { if (mixtaEstetica) pe.saniape.app.data.staff.AplicacionesEsteticasRepo.tieneAplicaciones(paciente.id) else null }
             capilarD.await()?.let { datosCapilar = it }
             podoD.await()?.let { tieneEvalPodo = it }
             esteticaD.await()?.let { tieneAplicaciones = it }
+            ginecoD.await()?.let { tieneEmbarazos = it }
         }
     }
     val esPacienteCapilar = puedeTricoscopia && pe.saniape.app.data.staff.pacienteEsCapilar(
@@ -313,6 +319,11 @@ private fun PantallaFichaPacienteContenido(
         datosDentales.especialidadesDeCitas.map { pe.saniape.app.data.staff.AtencionFisio(especialidadId = it) }
     val esPacientePodologia = pe.saniape.app.data.staff.pacienteEsPodologia(
         ctx.mapaPodologia, atenciones = atencionesConCitas, tieneEvaluaciones = tieneEvalPodo,
+        especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
+    )
+    // 🤰 Gineco-obstetricia (carné perinatal): misma cadena, solo por el rubro guardado.
+    val esPacienteGineco = pe.saniape.app.data.staff.pacienteEsGineco(
+        ctx.mapaGineco, atenciones = atencionesConCitas, tieneEmbarazos = tieneEmbarazos,
         especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
     )
     val esPacienteEstetica = pe.saniape.app.data.staff.pacienteEsEstetica(
@@ -836,6 +847,8 @@ private fun PantallaFichaPacienteContenido(
                     if (esPacienteEstetica) add("aplicaciones" to "💉 Aplicaciones")
                     // SOLO pacientes de podología (`esPacientePodologia`): mapa del pie + riesgo IWGDF.
                     if (esPacientePodologia) add("evaluacion_pie" to "🦶 Evaluación del pie")
+                    // SOLO pacientes de gineco-obstetricia (`esPacienteGineco`): el carné perinatal.
+                    if (esPacienteGineco) add("embarazo" to "🤰 Embarazo")
                     // SOLO pacientes de especialidades que recetan (`esPacienteReceta`).
                     // + documentos médicos (informe/descanso/orden) en clínicas médicas.
                     if (esPacienteReceta || esPacienteDocs) {
@@ -1199,6 +1212,45 @@ private fun PantallaFichaPacienteContenido(
                                 flujoInd = pe.saniape.app.data.staff.FlujoIndicacionesFicha(abrirNuevo = true, servicio = "Cuidado de pie diabético")
                                 tab = "indicaciones"
                             }.takeIf { editable },
+                        )
+                    }
+                    // 🤰 Embarazo (gineco-obstetricia): consulta SOLO al abrirse. Escribe quien
+                    // puede 'pacientes' o 'sesiones' (como el API); el resto lo ve e imprime.
+                    "embarazo" -> if (esPacienteGineco) {
+                        val inactiva = pe.saniape.app.data.staff.fichaInactiva(paciente.estado)
+                        val editable = (ctx.puede("pacientes") || ctx.puede("sesiones")) && !inactiva
+                        val espGineco = datosDentales.especialidadesDeQuienMira.firstOrNull { it in ctx.mapaGineco.ids }
+                            ?: ctx.mapaGineco.ids.singleOrNull()
+                        pe.saniape.app.ui.clinica.obstetricia.EmbarazoTab(
+                            pacienteId = paciente.id,
+                            pacienteNombre = paciente.nombre,
+                            pacienteDocumento = paciente.dni,
+                            pacienteEdad = paciente.edad,
+                            pacienteTelefono = paciente.telefono,
+                            pacienteTalla = paciente.talla,
+                            puedeEditar = editable,
+                            mapaGineco = ctx.mapaGineco,
+                            especialidadId = espGineco,
+                            // "Hoy" en la zona de la sede de la paciente (multipaís), como la API.
+                            hoyDeSede = { sedeId -> pe.saniape.app.data.staff.hoyEnIso(ctx.zonaDeSede(sedeId)) },
+                            clinicaId = ctx.clinicaId,
+                            clinicaNombre = ctx.clinicaNombre,
+                            clinicaDireccion = ctx.clinicaDireccion,
+                            logoUrl = ctx.logoUrl,
+                            colorPrincipal = ctx.colorPrincipal,
+                            // "📅 Agendar próximo control" (gemelo de `agendarControlGineco`): la entrada del
+                            // flujo, con la especialidad de gineco de quien mira (o la primera de la clínica).
+                            onAgendarControl = { fechaCtl: String ->
+                                val hoyCtl = pe.saniape.app.data.staff.hoyClinicaIso()
+                                crearCita = pe.saniape.app.ui.clinica.PrefillCita(
+                                    tipo = pe.saniape.app.ui.clinica.podologia.tipoEntradaFlujo(ctx.flujo.usaConsulta, ctx.flujo.usaEvaluacion),
+                                    pacienteId = paciente.id, pacienteNombre = paciente.nombre,
+                                    fecha = fechaCtl,
+                                    hora = pe.saniape.app.data.staff.horaInicialNuevaCita(fechaCtl, hoyCtl, pe.saniape.app.ui.proximaHoraEnPunto()),
+                                    terapeutaId = ctx.miTerapeutaId,
+                                    especialidadId = espGineco ?: ctx.mapaGineco.ids.firstOrNull(),
+                                )
+                            }.takeIf { (ctx.puede("agendar") || ctx.puede("sesiones")) && !inactiva },
                         )
                     }
                     // 💉 Aplicaciones (estética): consulta SOLO al abrirse. Mismo permiso que el API.
