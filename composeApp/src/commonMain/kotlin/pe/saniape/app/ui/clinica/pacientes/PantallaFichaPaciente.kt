@@ -217,6 +217,22 @@ private fun PantallaFichaPacienteContenido(
         },
         especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
     )
+    // ¿Pestaña 📏 Medidas? (nutrición, gemelo de `pacienteEsNutricion`). Misma receta
+    // que la de fisio: con lo que la ficha ya tiene, sin consultas extra. Un backend sin
+    // `especialidadesNutricion`/`soloNutricion` deja el mapa vacío y no aparece.
+    val esPacienteNutricion = pe.saniape.app.data.staff.pacienteEsNutricion(
+        ctx.mapaNutricion,
+        atenciones = paciente.tratamientos.map { t ->
+            pe.saniape.app.data.staff.AtencionFisio(
+                especialidadServicioId = t.especialidadId
+                    ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id,
+                especialidadesProfesional = t.especialidadesProfesional,
+            )
+        } + (hitos?.let { it.evaluaciones + it.consultas }.orEmpty()).map {
+            pe.saniape.app.data.staff.AtencionFisio(especialidadId = it.especialidadId)
+        },
+        especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
+    )
     // ── 💊 Recetas, por PACIENTE (gemelo de `pacienteRecibeRecetas`) ──
     // Con el interruptor apagado (DALU, RENOVA) el mapa llega vacío: ni la
     // pestaña ni una sola consulta. Solo en una clínica MIXTA se pregunta,
@@ -693,6 +709,8 @@ private fun PantallaFichaPacienteContenido(
                     if (esPacienteFisio) add("evaluacion" to "📏 Evaluación")
                     // 🏠 Ejercicios de apoyo: mismo candado que la 📏 (solo fisioterapia).
                     if (esPacienteFisio) add("ejercicios" to "🏠 Ejercicios")
+                    // SOLO pacientes de nutrición (`esPacienteNutricion`, arriba).
+                    if (esPacienteNutricion) add("medidas" to "📏 Medidas")
                     // SOLO pacientes de especialidades que recetan (`esPacienteReceta`).
                     // + documentos médicos (informe/descanso/orden) en clínicas médicas.
                     if (esPacienteReceta || esPacienteDocs) {
@@ -855,6 +873,18 @@ private fun PantallaFichaPacienteContenido(
                             textoRegion = paciente.diagnostico,
                             puedeEditar = ctx.puede("sesiones") && !pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
                             miTerapeutaId = ctx.miTerapeutaId,
+                        )
+                    }
+                    // 📏 Medidas (nutrición): consulta SOLO al abrirse. Escribe quien puede
+                    // 'pacientes' o 'sesiones' (como el API); el resto la ve en solo lectura.
+                    "medidas" -> if (esPacienteNutricion) {
+                        pe.saniape.app.ui.clinica.nutricion.MedidasNutricionTab(
+                            pacienteId = paciente.id,
+                            puedeEditar = (ctx.puede("pacientes") || ctx.puede("sesiones")) &&
+                                !pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
+                            edad = pe.saniape.app.data.staff.edadDe(
+                                paciente.fechaNacimiento, paciente.edad, pe.saniape.app.data.staff.hoyClinicaIso(),
+                            ),
                         )
                     }
                     // 🏠 Ejercicios de apoyo (fisio): consulta SOLO al abrirse, como la 📏.

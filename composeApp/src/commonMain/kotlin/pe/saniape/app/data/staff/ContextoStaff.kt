@@ -143,6 +143,12 @@ data class ContextoStaff(
      * backend sin el campo deja el mapa vacío y la app se comporta como antes.
      */
     val mapaFisio: MapaFisio = MapaFisio(),
+    /**
+     * Qué especialidades son de nutrición (pestaña 📏 Medidas, por paciente con
+     * `pacienteEsNutricion`). Lo arma la web; un backend sin el campo deja el mapa
+     * vacío y la ficha queda como antes.
+     */
+    val mapaNutricion: MapaNutricion = MapaNutricion(),
     val clinicas: List<ClinicaRef>,
     val tienePortal: Boolean,
     /**
