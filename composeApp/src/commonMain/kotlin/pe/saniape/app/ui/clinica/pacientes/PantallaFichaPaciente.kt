@@ -1599,6 +1599,14 @@ private fun PantallaFichaPacienteContenido(
                         pe.saniape.app.data.staff.claveChip(t.diagnostico.orEmpty())) {
                         pe.saniape.app.data.staff.DiagnosticosRepo.registrar(e.diagnostico, t.especialidadId, paciente.nombre)
                     }
+                    // Y las 💊 indicaciones NUEVAS (autocompletado que aprende), en segundo plano.
+                    if (ok && e.medicacion.isNotBlank() && e.medicacion.trim() != t.medicacion?.trim()) {
+                        pe.saniape.app.data.staff.FrasesCampoRepo.registrar(
+                            pe.saniape.app.data.staff.ClaveFrase.TRATAMIENTO_INDICACIONES, e.medicacion,
+                            antes = t.medicacion, especialidadId = t.especialidadId,
+                            pacienteId = paciente.id, nombrePaciente = paciente.nombre,
+                        )
+                    }
                     citaConsulta?.let { ci ->
                         if (e.fecha.isNotBlank()) PacientesRepo.editarCitaHito(ci.id, e.fecha, e.hora, ci.notas)
                     }

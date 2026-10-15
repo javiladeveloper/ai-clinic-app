@@ -49,6 +49,9 @@ import pe.saniape.app.data.staff.PlantillaRef
 import pe.saniape.app.data.staff.ProcedimientoRef
 import pe.saniape.app.data.staff.TarifarioRef
 import pe.saniape.app.data.staff.TerapeutaConEsp
+import pe.saniape.app.ui.clinica.CampoConFrases
+import pe.saniape.app.ui.clinica.recordarFrasesCampos
+import pe.saniape.app.data.staff.rubroFrasesDe
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.tutoriales.tourAncla
 import pe.saniape.app.data.staff.simboloMoneda
@@ -88,6 +91,12 @@ data class TratamientoNuevo(
      */
     val diagnosticoAprender: String? = null,
     val especialidadDiagnostico: String? = null,
+    /**
+     * Las indicaciones (`medicacion`) con que se abrió el formulario (las que puso
+     * la plantilla, o vacío): lo que trae la plantilla no es "escrito por el
+     * profesional" y no se aprende; solo lo NUEVO ([aprenderIndicacionesDe]).
+     */
+    val indicacionesAntes: String? = null,
     /** Tipo del tratamiento (decide qué cita ofrecer agendar tras crearlo). */
     val tipo: pe.saniape.app.data.staff.TipoTratamientoNuevo = pe.saniape.app.data.staff.TipoTratamientoNuevo.SESIONES,
 )
@@ -97,6 +106,20 @@ fun aprenderDiagnosticoDe(nuevo: TratamientoNuevo, nombrePaciente: String?) {
     nuevo.diagnosticoAprender?.let {
         pe.saniape.app.data.staff.DiagnosticosRepo.registrar(it, nuevo.especialidadDiagnostico, nombrePaciente)
     }
+}
+
+/**
+ * Tras crear el tratamiento: aprende las 💊 Indicaciones NUEVAS (autocompletado
+ * abierto, `tratamiento.indicaciones`) con su especialidad y el paciente. En
+ * segundo plano y una sola vez (la cola offline reintenta el crear, no esto).
+ */
+fun aprenderIndicacionesDe(nuevo: TratamientoNuevo, pacienteId: String, nombrePaciente: String?) {
+    val m = nuevo.medicacion?.trim().orEmpty()
+    if (m.isEmpty() || m == nuevo.indicacionesAntes?.trim()) return
+    pe.saniape.app.data.staff.FrasesCampoRepo.registrar(
+        pe.saniape.app.data.staff.ClaveFrase.TRATAMIENTO_INDICACIONES, m, antes = nuevo.indicacionesAntes,
+        especialidadId = nuevo.especialidadDiagnostico, pacienteId = pacienteId, nombrePaciente = nombrePaciente,
+    )
 }
 
 /**
@@ -169,6 +192,8 @@ fun ModalCrearTratamiento(
     var terSinPlantilla by remember { mutableStateOf<TerapeutaConEsp?>(null) }
     // Indicaciones → medicación y "control en X días" → próximo control (de la plantilla).
     var medicacion by remember { mutableStateOf("") }
+    // Lo que puso la plantilla en las indicaciones: no se aprende (solo lo que se escriba encima).
+    var medicacionPlantilla by remember { mutableStateOf("") }
     var proximoControl by remember { mutableStateOf<String?>(null) }
     var mostrarFechaControl by remember { mutableStateOf(false) }
     // Aviso si los precios de la plantilla no se copiaron (moneda / precio de la sede).
@@ -408,6 +433,7 @@ fun ModalCrearTratamiento(
         }
         diagnostico = pl?.diagnostico?.takeIf { it.isNotBlank() } ?: dxSinPlantilla
         medicacion = pe.saniape.app.data.staff.medicacionDePlantilla(pl?.indicaciones).orEmpty()
+        medicacionPlantilla = medicacion
         proximoControl = pe.saniape.app.data.staff.proximoControlDePlantilla(
             pl?.controlDias, hoySede(), servicioConProtocolo = pr?.controlesDias?.isNotEmpty() == true,
         )
@@ -477,6 +503,15 @@ fun ModalCrearTratamiento(
     if (mostrarHoraPrimera) DialogoHora(horaPrimera, onElegir = { horaPrimera = it; primeraTocada = true }, onCerrar = { mostrarHoraPrimera = false })
     if (mostrarFechaControl) DialogoFecha(onElegir = { proximoControl = it }, onCerrar = { mostrarFechaControl = false }, inicial = proximoControl ?: hoySede())
 
+    // 💊 Indicaciones que aprenden: base del rubro del servicio + lo de su especialidad.
+    // Se piden solo cuando la tarjeta está a la vista (la plantilla trajo indicaciones).
+    val espIndicaciones = proc?.especialidadId
+    val frasesIndicaciones = recordarFrasesCampos(
+        listOf(pe.saniape.app.data.staff.ClaveFrase.TRATAMIENTO_INDICACIONES),
+        especialidadId = espIndicaciones,
+        rubro = pe.saniape.app.data.staff.StaffContextoRepo.actual.rubroFrasesDe(espIndicaciones),
+        activo = proc != null && (medicacion.isNotBlank() || proximoControl != null),
+    )
     // Crear: la misma acción desde el pie y desde la cabecera (con teclado).
     var enviado by remember { mutableStateOf(false) }
     fun crear() {
@@ -535,6 +570,7 @@ fun ModalCrearTratamiento(
                                     tipo = tipoFinal,
                                     diagnosticoAprender = dxAprender,
                                     especialidadDiagnostico = p.especialidadId,
+                                    indicacionesAntes = medicacionPlantilla,
                                     fechaInicio = if (esUnidades) null else fechaInicio,
                                 )
                             )
@@ -864,9 +900,15 @@ fun ModalCrearTratamiento(
                     Spacer(Modifier.height(12.dp))
                     Tarjeta(titulo = "Indicaciones de la plantilla", icono = "💊") {
                         Etq("Medicación / cuidados")
-                        OutlinedTextField(colors = coloresCampoForm(), value = medicacion,
-                            onValueChange = { medicacion = it.take(2000) }, minLines = 2,
-                            modifier = Modifier.fillMaxWidth())
+                        // Chips + autocompletado que aprende (base del rubro del servicio + lo
+                        // que la clínica escribe para esa especialidad). Se aprende al crear.
+                        CampoConFrases(
+                            label = "Medicación / cuidados", valor = medicacion,
+                            onChange = { medicacion = it.take(2000) },
+                            frases = frasesIndicaciones[pe.saniape.app.data.staff.ClaveFrase.TRATAMIENTO_INDICACIONES],
+                            minLineas = 2, chipsVisibles = 6, mostrarEtiqueta = false,
+                            campo = pe.saniape.app.data.staff.ClaveFrase.TRATAMIENTO_INDICACIONES,
+                        )
                         if (proc?.controlesDias?.isNotEmpty() == true) {
                             Text("Los controles los programa el protocolo del servicio.",
                                 color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp))
@@ -1030,6 +1072,7 @@ private suspend fun trasCrear(
     // El contador de la plantilla cuenta SOLO tratamientos guardados.
     nuevo.plantillaId?.let { runCatching { PacientesRepo.contarUsoPlantilla(it) } }
     aprenderDiagnosticoDe(nuevo, nombrePaciente)
+    aprenderIndicacionesDe(nuevo, pacienteId, nombrePaciente)
     if (!pe.saniape.app.data.staff.ofrecerAgendarTrasCrear(id, primeraAgendada) || id == null) return null
     return ofertaPrimeraCitaDe(
         tratamientoId = id, pacienteId = pacienteId, pacienteNombre = nombrePaciente, tipo = nuevo.tipo,
@@ -1424,6 +1467,13 @@ fun ModalEditarConsulta(
     var medicacion by remember { mutableStateOf(t.medicacion ?: "") }
     var proximoControl by remember { mutableStateOf(t.proximoControl ?: "") }
     var costo by remember { mutableStateOf(t.precioAcordado?.toString() ?: "") }
+    // 💊 Indicaciones que aprenden (base del rubro + lo de la especialidad de la
+    // consulta). Se aprenden al guardar (PantallaFichaPaciente), solo lo nuevo.
+    val frasesIndicaciones = recordarFrasesCampos(
+        listOf(pe.saniape.app.data.staff.ClaveFrase.TRATAMIENTO_INDICACIONES),
+        especialidadId = t.especialidadId,
+        rubro = pe.saniape.app.data.staff.StaffContextoRepo.actual.rubroFrasesDe(t.especialidadId),
+    )
     var mostrarFechaCita by remember { mutableStateOf(false) }
     var mostrarHoraCita by remember { mutableStateOf(false) }
     var mostrarProxControl by remember { mutableStateOf(false) }
@@ -1504,9 +1554,12 @@ fun ModalEditarConsulta(
                         minLines = 2, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(10.dp))
                     Etq("Medicación / receta")
-                    OutlinedTextField(colors = coloresCampoForm(), value = medicacion, onValueChange = { medicacion = it },
-                        placeholder = { Text("Indicaciones, receta…", color = c.textoSuave) },
-                        minLines = 2, modifier = Modifier.fillMaxWidth())
+                    CampoConFrases(
+                        label = "Medicación / receta", valor = medicacion, onChange = { medicacion = it.take(2000) },
+                        frases = frasesIndicaciones[pe.saniape.app.data.staff.ClaveFrase.TRATAMIENTO_INDICACIONES],
+                        placeholder = "Indicaciones, receta…", minLineas = 2, chipsVisibles = 6, mostrarEtiqueta = false,
+                        campo = pe.saniape.app.data.staff.ClaveFrase.TRATAMIENTO_INDICACIONES,
+                    )
                     Spacer(Modifier.height(10.dp))
                     Etq("Próximo control (opcional)")
                     Row(verticalAlignment = Alignment.CenterVertically) {
