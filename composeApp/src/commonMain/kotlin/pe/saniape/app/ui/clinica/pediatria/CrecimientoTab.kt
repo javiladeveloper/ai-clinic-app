@@ -46,7 +46,6 @@ import pe.saniape.app.data.staff.AVISO_ANTES_DEL_TERMINO
 import pe.saniape.app.data.staff.AVISO_FIN_CORRECCION
 import pe.saniape.app.data.staff.BorradorMedicion
 import pe.saniape.app.data.staff.EdadGestacional
-import pe.saniape.app.data.staff.LecturaEg
 import pe.saniape.app.data.staff.MESES_FIN_CORRECCION
 import pe.saniape.app.data.staff.edadCurvaMeses
 import pe.saniape.app.data.staff.edadParaEvaluarEntre
@@ -119,6 +118,15 @@ fun CrecimientoTab(
     fechaNacimiento: String?,
     /** "F" / "M" / null. */
     sexo: String?,
+    /** 🍼 Edad gestacional al nacer (de la MISMA lectura que el sexo). */
+    edadGestacional: EdadGestacional?,
+    /**
+     * Lectura de sexo + EG: null = leyendo (no se evalúa: nunca un z sin corregir un
+     * instante); false = falló (≠ sin dato): aviso con Reintentar, sin curvas ni impresión.
+     */
+    datosCurvaLeidos: Boolean?,
+    onEgGuardada: (EdadGestacional?) -> Unit,
+    onReintentarDatos: () -> Unit,
     /** `puede('pacientes') || puede('sesiones')` y ficha no dada de baja (como el API). */
     puedeEditar: Boolean,
     clinicaNombre: String?,
@@ -145,11 +153,7 @@ fun CrecimientoTab(
     // Las tablas de la OMS: se arman la primera vez (perezosas), fuera del hilo de la UI.
     var tablas by remember { mutableStateOf<TablasOms?>(null) }
     LaunchedEffect(Unit) { tablas = withContext(Dispatchers.Default) { TablasOms.cargar() } }
-    // 🍼 Edad gestacional al nacer: lectura aparte y tolerante (una base sin las
-    // columnas → no disponible: todo como antes, sin la tarjeta).
-    var lecturaEg by remember(pacienteId) { mutableStateOf<LecturaEg?>(null) }
-    LaunchedEffect(pacienteId) { lecturaEg = PediatriaRepo.edadGestacionalDe(pacienteId) }
-    val eg = lecturaEg?.eg
+    val eg = edadGestacional
     var registrar by remember { mutableStateOf(false) }
     var confirmarBorrar by remember { mutableStateOf<MedicionCorporal?>(null) }
     var borrando by remember { mutableStateOf(false) }
@@ -174,9 +178,9 @@ fun CrecimientoTab(
     val lista = remember(items) { ordenarMediciones(items.orEmpty()) }
     val nac = fechaNacimiento?.take(10)
     val hoy = hoyClinicaIso()
-    val evaluaciones: Map<String, EvaluacionCrecimiento> = remember(tablas, sexo, nac, lista, eg) {
+    val evaluaciones: Map<String, EvaluacionCrecimiento> = remember(tablas, sexo, nac, lista, eg, datosCurvaLeidos) {
         val t = tablas
-        if (t == null || sexo == null || nac == null) emptyMap()
+        if (t == null || sexo == null || nac == null || datosCurvaLeidos != true) emptyMap()
         else lista.mapNotNull { m -> evaluarMedicion(t, sexo, nac, m.aCrecimiento(), eg)?.let { m.id to it } }.toMap()
     }
     val edadHoy = edadEnDias(nac, hoy)
@@ -189,17 +193,24 @@ fun CrecimientoTab(
         Text("👶 Crecimiento", color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
 
         if (nac == null) AvisoNacimiento(pacienteId, puedeEditar, onNacimientoGuardado)
-        if (sexo == null) AvisoSexo(pacienteId, puedeEditar, onSexoGuardado)
+        if (datosCurvaLeidos == false) {
+            // Falló la lectura (no es "sin dato"): sin curvas ni impresión hasta leerla bien.
+            TarjetaAviso {
+                Text("No se pudieron leer el sexo y la edad gestacional de la ficha.", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("Sin ellos no se dibujan las curvas (podrían quedar sin corregir por prematuridad).", color = c.textoSuave, fontSize = 12.sp)
+                Box(Modifier.padding(top = 8.dp)) { BotonPed("↻ Reintentar", onClick = onReintentarDatos) }
+            }
+        } else if (datosCurvaLeidos == true && sexo == null) AvisoSexo(pacienteId, puedeEditar, onSexoGuardado)
         if (fuera) Tarjeta { Text("Tiene más de 19 años: las curvas de la OMS no aplican.", color = c.textoSuave, fontSize = 12.sp) }
         // 🍼 Prematuridad: se ofrece mientras corrige (aún no cumple 2 años) o si ya hay dato.
-        if (lecturaEg?.disponible == true && nac != null && edadHoy != null &&
+        if (datosCurvaLeidos == true && nac != null && edadHoy != null &&
             (eg != null || (mesesCumplidos(nac, hoy) ?: MESES_FIN_CORRECCION) < MESES_FIN_CORRECCION)
         ) {
-            TarjetaNacimiento(pacienteId, nac, hoy, eg, puedeEditar) { nueva -> lecturaEg = LecturaEg(nueva, disponible = true) }
+            TarjetaNacimiento(pacienteId, nac, hoy, eg, puedeEditar, onEgGuardada)
         }
 
         val t = tablas
-        val puedeImprimir = lista.isNotEmpty() && sexo != null && nac != null && t != null
+        val puedeImprimir = datosCurvaLeidos == true && lista.isNotEmpty() && sexo != null && nac != null && t != null
         if (puedeEditar || puedeImprimir) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (puedeEditar) BotonPed("＋ Registrar peso y talla", primario = true) { registrar = true }
@@ -454,22 +465,17 @@ private fun DialogoEdadGestacional(
         textoAccion = if (guardando) "Guardando…" else "Guardar",
         accionHabilitada = !guardando && valida,
         onCancelar = { if (!guardando) onCerrar() },
-        onAccion = { if (nuevo != null) guardar(nuevo) else error = "Indica las semanas al nacer (22 a 42)." },
+        onAccion = { nuevo?.let(::guardar) },
     ) {
         EtqForm("Semanas al nacer")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             SEMANAS_RAPIDAS.forEach { s -> ChipPed("$s", activo = sem == s && otra.isEmpty()) { semanas = s.toString(); otra = "" } }
-            Box(
-                Modifier.width(76.dp).clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.superficie)
-                    .border(1.dp, if (otra.isNotEmpty()) c.navy else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
-                    .padding(horizontal = 12.dp, vertical = 7.dp),
-            ) {
-                CampoTextoEval(
-                    valor = otra,
-                    onChange = { v -> val d = v.filter { ch -> ch.isDigit() }.take(2); otra = d; semanas = d },
-                    placeholder = "Otra", modifier = Modifier.fillMaxWidth(), teclado = KeyboardType.Number,
-                )
-            }
+            CampoTextoEval(
+                valor = otra,
+                onChange = { v -> val d = v.filter { ch -> ch.isDigit() }.take(2); otra = d; semanas = d },
+                placeholder = "Otra", modifier = Modifier.width(76.dp), teclado = KeyboardType.Number,
+                borde = if (otra.isNotEmpty()) c.navy else null,
+            )
         }
         Spacer(Modifier.height(12.dp))
         EtqForm("Días (opcional)")
@@ -517,11 +523,9 @@ private fun UltimosZ(ev: EvaluacionCrecimiento, eg: EdadGestacional?, finCorrecc
         return
     }
     Tarjeta {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
-            Text("📊 Estado nutricional", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Text("${fechaHc(ev.fecha)} · Edad: ${textoEdadEvaluada(ev)}", color = c.textoSuave, fontSize = 11.sp,
-                textAlign = TextAlign.End, modifier = Modifier.padding(start = 8.dp))
-        }
+        Text("📊 Estado nutricional", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text("${fechaHc(ev.fecha)} · Edad: ${textoEdadEvaluada(ev)}", color = c.textoSuave, fontSize = 11.sp,
+            modifier = Modifier.padding(top = 2.dp, bottom = 8.dp))
         if (finCorreccion) {
             Text(
                 "🍼 $AVISO_FIN_CORRECCION El punto puede “saltar” en la curva respecto de los controles anteriores.",

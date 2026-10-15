@@ -13,6 +13,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import pe.saniape.app.data.staff.AVISO_FIN_CORRECCION
 import pe.saniape.app.data.staff.DIAS_POR_MES
+import pe.saniape.app.data.staff.DatosCurvaFicha
+import pe.saniape.app.data.staff.datosCurvaDeFila
 import pe.saniape.app.data.staff.EdadEvaluada
 import pe.saniape.app.data.staff.EdadGestacional
 import pe.saniape.app.data.staff.IndicadorCrecimiento.PESO_EDAD
@@ -230,9 +232,30 @@ class PrematuridadTest {
         assertTrue(html.contains("4 meses (corregida 1 mes)"))
         assertTrue(html.contains("20 días (32+6 sem EPM)"))
         assertTrue(html.contains("INTERGROWTH-21st o Fenton"))
+        assertTrue(html.contains("Edad (corregida hasta los 24 meses)"))
+        val aTermino = htmlCurvaCrecimiento(t, "M", nac, listOf(MedicionCrecimiento("2026-05-01", peso = 4.9)), "2026-05-02", "Mateo", null, "BABYMED", null, null, null, null)
+        assertFalse(aTermino.contains("corregida hasta"))
     }
 
     // ─── Lectura y escritura de la ficha (staff) ─────────────────────────────
+
+    @Test fun falloDeLecturaNoEsSinDato() {
+        // Leída sin EG: sexo presente, eg null, leida = true (curvas con la edad cronológica, como siempre).
+        val sinDato = datosCurvaDeFila(buildJsonObject {
+            put("sexo", JsonPrimitive("M")); put("edad_gestacional_semanas", JsonNull); put("edad_gestacional_dias", JsonNull)
+        })
+        assertEquals(DatosCurvaFicha("M", null, leida = true), sinDato)
+        // Leída con EG.
+        assertEquals(DatosCurvaFicha("F", EdadGestacional(32, 4), leida = true), datosCurvaDeFila(buildJsonObject {
+            put("sexo", JsonPrimitive("F")); put("edad_gestacional_semanas", JsonPrimitive(32)); put("edad_gestacional_dias", JsonPrimitive(4))
+        }))
+        // Falló (o no vino la fila): leida = false y SIN sexo → no se dibuja ninguna curva (nunca una sin corregir).
+        val fallo = datosCurvaDeFila(null)
+        assertEquals(DatosCurvaFicha.FALLO, fallo)
+        assertFalse(fallo.leida)
+        assertNull(fallo.sexo)
+        assertTrue(fallo != sinDato)
+    }
 
     @Test fun filaYCuerpoDelEndpoint() {
         assertEquals(EdadGestacional(32, 4), egDeFila(buildJsonObject { put("edad_gestacional_semanas", JsonPrimitive(32)); put("edad_gestacional_dias", JsonPrimitive(4)) }))

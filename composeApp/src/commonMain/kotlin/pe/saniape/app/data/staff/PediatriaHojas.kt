@@ -86,7 +86,11 @@ private fun f1(n: Double): String {
  * con `impresion`: bandas −3…+3 DE, las 5 líneas OMS y los puntos del niño.
  * Vacío si la curva tiene menos de 2 puntos.
  */
-fun svgCurvaCrecimiento(indicador: IndicadorCrecimiento, curva: List<PuntoCurva>, puntos: List<PuntoPaciente>, v: VentanaCurva): String {
+fun svgCurvaCrecimiento(
+    indicador: IndicadorCrecimiento, curva: List<PuntoCurva>, puntos: List<PuntoPaciente>, v: VentanaCurva,
+    /** Rótulo del eje x ("Edad (corregida hasta los 24 meses)" en prematuros); null = el de siempre. */
+    etiquetaEje: String? = null,
+): String {
     if (curva.size < 2) return ""
     val w = 640.0; val h = 340.0
     val izq = 40.0; val der = 30.0; val arr = 12.0; val aba = 34.0
@@ -113,7 +117,7 @@ fun svgCurvaCrecimiento(indicador: IndicadorCrecimiento, curva: List<PuntoCurva>
             append("<line x1=\"${f1(px(t.x))}\" x2=\"${f1(px(t.x))}\" y1=\"$arr\" y2=\"${h - aba}\" stroke=\"$grilla\" stroke-width=\"0.4\"/>")
             append("<text x=\"${f1(px(t.x))}\" y=\"${h - aba + 14}\" text-anchor=\"middle\" font-size=\"10\" fill=\"$texto\">${escSvg(t.texto)}</text>")
         }
-        append("<text x=\"${(izq + w - der) / 2}\" y=\"${h - 4}\" text-anchor=\"middle\" font-size=\"10\" fill=\"$texto\">${if (v.ejeCm) "Talla (cm)" else "Edad"}</text>")
+        append("<text x=\"${(izq + w - der) / 2}\" y=\"${h - 4}\" text-anchor=\"middle\" font-size=\"10\" fill=\"$texto\">${escSvg(if (v.ejeCm) "Talla (cm)" else etiquetaEje ?: "Edad")}</text>")
         append("<text x=\"10\" y=\"${arr + 10}\" font-size=\"10\" fill=\"$texto\">${escSvg(indicador.unidad)}</text>")
         listOf(Triple(3, "+3", rojo), Triple(2, "+2", ambar), Triple(0, "0", verde), Triple(-2, "−2", ambar), Triple(-3, "−3", rojo)).forEach { (z, txt, color) ->
             val guion = if (z == 3 || z == -3) " stroke-dasharray=\"4 3\"" else ""
@@ -227,7 +231,8 @@ fun htmlCurvaCrecimiento(
             append("<div class=\"curvas\">")
             indicadores.forEach { ind ->
                 val v = ventanaCurva(ind, mesesCurva!!)!!
-                val svg = svgCurvaCrecimiento(ind, curvaReferencia(tablas, ind, sexo, v, 80), puntosPaciente(tablas, ind, sexo, fechaNacimiento, mediciones, v, eg), v)
+                val svg = svgCurvaCrecimiento(ind, curvaReferencia(tablas, ind, sexo, v, 80), puntosPaciente(tablas, ind, sexo, fechaNacimiento, mediciones, v, eg), v,
+                    etiquetaEje = if (esPrematuro(eg) && !v.ejeCm && v.desde < MESES_FIN_CORRECCION) "Edad (corregida hasta los 24 meses)" else null)
                 append("<figure><figcaption>${escSvg(ind.sigla)} · ${escSvg(ind.nombre)} (${escSvg(ind.unidad)})</figcaption>$svg</figure>")
             }
             append("</div>")

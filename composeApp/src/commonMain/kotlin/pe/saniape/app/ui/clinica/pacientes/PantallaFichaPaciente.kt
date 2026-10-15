@@ -381,9 +381,18 @@ private fun PantallaFichaPacienteContenido(
     )
     // Sexo de la ficha (curvas OMS): lectura aparte y a prueba de fallos, solo en
     // clínicas con pediatría. El aviso de la pestaña y el formulario lo actualizan.
+    // 🍼 La edad gestacional viene en el MISMO select: si falla, sin sexo no hay curva.
     var sexoPaciente by remember(paciente.id) { mutableStateOf<String?>(null) }
+    var egPaciente by remember(paciente.id) { mutableStateOf<pe.saniape.app.data.staff.EdadGestacional?>(null) }
+    // null = leyendo (la pestaña no evalúa todavía); false = falló; true = leída.
+    var datosCurvaLeidos by remember(paciente.id) { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(paciente.id, ctx.mapaPediatria.activo, recargarToken) {
-        if (ctx.mapaPediatria.activo) sexoPaciente = pe.saniape.app.data.staff.PediatriaRepo.sexoDe(paciente.id)
+        if (ctx.mapaPediatria.activo) {
+            val d = pe.saniape.app.data.staff.PediatriaRepo.datosCurvaDe(paciente.id)
+            sexoPaciente = d.sexo
+            egPaciente = d.eg
+            datosCurvaLeidos = d.leida
+        }
     }
     // ── 💊 Recetas, por PACIENTE (gemelo de `pacienteRecibeRecetas`) ──
     // Con el interruptor apagado (DALU, RENOVA) el mapa llega vacío: ni la
@@ -1284,6 +1293,10 @@ private fun PantallaFichaPacienteContenido(
                             pacienteDocumento = paciente.dni,
                             fechaNacimiento = paciente.fechaNacimiento,
                             sexo = sexoPaciente,
+                            edadGestacional = egPaciente,
+                            datosCurvaLeidos = datosCurvaLeidos,
+                            onEgGuardada = { egPaciente = it },
+                            onReintentarDatos = { recargar() },
                             puedeEditar = (ctx.puede("pacientes") || ctx.puede("sesiones")) && !inactiva,
                             clinicaNombre = ctx.clinicaNombre,
                             clinicaDireccion = ctx.clinicaDireccion,

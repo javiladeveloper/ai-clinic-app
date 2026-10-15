@@ -31,8 +31,21 @@ import pe.saniape.app.data.offline.ResultadoEscritura
 /** Un servidor sin /api/staff/vacunas todavía (404 sin el JSON del API). */
 const val VACUNAS_NO_DISPONIBLE = "El carné de vacunas todavía no está disponible. Inténtalo más tarde."
 
-/** 🍼 Lectura de la EG: [disponible] = false si la base aún no tiene las columnas (o sin red). */
-data class LecturaEg(val eg: EdadGestacional?, val disponible: Boolean)
+/**
+ * Sexo y edad gestacional de la ficha, de UNA sola lectura (las curvas dependen
+ * de los dos). [leida] = false: la lectura falló → sin sexo no se dibuja curva,
+ * nunca una curva evaluada sin corregir. Distinto de "sin dato" (leída, EG null).
+ */
+data class DatosCurvaFicha(val sexo: String?, val eg: EdadGestacional?, val leida: Boolean) {
+    companion object {
+        val FALLO = DatosCurvaFicha(null, null, leida = false)
+    }
+}
+
+/** La fila leída → datos; null (no vino la fila o falló la consulta) → [DatosCurvaFicha.FALLO]. */
+fun datosCurvaDeFila(fila: JsonObject?): DatosCurvaFicha =
+    fila?.let { DatosCurvaFicha(sexoValido((it["sexo"] as? JsonPrimitive)?.takeIf { p -> p !is kotlinx.serialization.json.JsonNull }?.content), egDeFila(it), leida = true) }
+        ?: DatosCurvaFicha.FALLO
 
 /** La EG de una fila de `pacientes` (`edad_gestacional_semanas` / `_dias`), como `egDePaciente`. */
 fun egDeFila(o: JsonObject): EdadGestacional? {
@@ -179,16 +192,16 @@ object PediatriaRepo {
     }
 
     /**
-     * 🍼 La edad gestacional al nacer de la ficha. Lectura APARTE y a prueba de
-     * fallos: una base sin las columnas (migración aún no aplicada) o sin red
-     * devuelve `disponible = false` y la tarjeta no aparece (la ficha no depende de ella).
+     * 👶 Sexo + 🍼 edad gestacional al nacer, en el MISMO select: si falla, el
+     * sexo queda null y la pestaña no dibuja curva (nunca una sin corregir).
      */
-    suspend fun edadGestacionalDe(pacienteId: String): LecturaEg = try {
-        val fila = Supabase.client.postgrest["pacientes"]
-            .select(Columns.raw("edad_gestacional_semanas,edad_gestacional_dias")) { filter { eq("id", pacienteId) } }
-            .decodeList<JsonObject>().firstOrNull()
-        LecturaEg(fila?.let { egDeFila(it) }, disponible = fila != null)
-    } catch (e: CancellationException) { throw e } catch (_: Exception) { LecturaEg(null, disponible = false) }
+    suspend fun datosCurvaDe(pacienteId: String): DatosCurvaFicha = try {
+        datosCurvaDeFila(
+            Supabase.client.postgrest["pacientes"]
+                .select(Columns.raw("sexo,edad_gestacional_semanas,edad_gestacional_dias")) { filter { eq("id", pacienteId) } }
+                .decodeList<JsonObject>().firstOrNull(),
+        )
+    } catch (e: CancellationException) { throw e } catch (_: Exception) { DatosCurvaFicha.FALLO }
 
     /**
      * El sexo de la ficha ("F" / "M" / null). Lectura aparte y a prueba de fallos
