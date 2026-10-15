@@ -1,0 +1,7 @@
+# Novedades de la 2.46.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Nutrición: registra peso y medidas en cada control y mira su evolución.
+---
+Clínicas:
+• Nueva pestaña ⚖️ Medidas en la ficha de los pacientes de nutrición: peso, talla, cintura, cadera, perímetro abdominal, % de grasa y masa muscular por visita.
+• IMC al instante, resumen de cambios desde la primera visita y gráfico de evolución.
