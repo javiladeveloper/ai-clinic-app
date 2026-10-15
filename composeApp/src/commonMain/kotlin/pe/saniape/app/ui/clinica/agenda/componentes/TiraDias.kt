@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,19 +36,26 @@ data class DiaTira(val iso: String, val diaSemana: String, val diaMes: String)
 private val DIAS_ES = listOf("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom")
 
 /**
- * Tira horizontal de días (desde -2 hasta +12, como la web). Si desde el
- * calendario del mes se salta a un día fuera de ese rango, la tira se arma
- * alrededor de ese día (gemelo de la base movible de la web) y lo deja a la vista.
+ * Tira horizontal de días (desde -2 hasta +12, como la web). Tocar un día de la
+ * tira se comporta como siempre: la tira no se rearma ni se desplaza. Solo si
+ * se salta a un día FUERA de ella (calendario del mes, "Hoy", aviso de cita) se
+ * arma alrededor de ese día, y se desplaza solo si el día no quedó a la vista.
  */
 @Composable
 fun TiraDias(hoy: String, seleccionado: String, onSeleccionar: (String) -> Unit) {
     val c = Sania.colors
-    val base = pe.saniape.app.data.staff.baseTiraDias(hoy, seleccionado)
+    // La base vive mientras viva la tira; se mueve SOLO si el elegido queda fuera.
+    val baseGuardada = remember(hoy) { arrayOf(hoy) }
+    val base = pe.saniape.app.data.staff.baseTiraDias(baseGuardada[0], seleccionado).also { baseGuardada[0] = it }
     val dias = remember(base) { construirDias(base, offset = -2, n = 15) }
     val estado = rememberLazyListState()
     LaunchedEffect(base, seleccionado) {
         val i = dias.indexOfFirst { it.iso == seleccionado }
-        if (i >= 0) estado.animateScrollToItem((i - 2).coerceAtLeast(0))
+        if (i < 0) return@LaunchedEffect
+        withFrameNanos { }   // que la tira (quizá recién rearmada) ya esté medida
+        // Tocar un día de la tira (siempre a la vista, aunque sea en el borde) no desplaza.
+        val aLaVista = estado.layoutInfo.visibleItemsInfo.any { it.index == i }
+        if (!aLaVista) estado.animateScrollToItem((i - 2).coerceAtLeast(0))
     }
     LazyRow(
         Modifier.fillMaxWidth().padding(vertical = Sania.dim.sm),

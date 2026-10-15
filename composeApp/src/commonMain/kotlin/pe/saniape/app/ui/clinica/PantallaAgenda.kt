@@ -468,21 +468,12 @@ fun PantallaAgenda(
                     onAlternar = { vm.alternarCalendario() },
                     onHoy = { vm.irAHoy() },
                 )
-                if (vm.calendarioAbierto) {
-                    CalendarioMes(
-                        mes = vm.mesVisible,
-                        hoy = vm.hoy,
-                        seleccionado = vm.fechaSel,
-                        conteos = vm.conteosMes,
-                        cargando = vm.cargandoMes,
-                        error = vm.errorMes,
-                        onElegir = { vm.elegirDiaDelCalendario(it) },
-                        onAnterior = { vm.mesAnterior() },
-                        onSiguiente = { vm.mesSiguiente() },
-                        onReintentar = { vm.reintentarMes() },
-                    )
+                // Con el calendario abierto la tira sobra (el mes ya muestra los días):
+                // el calendario va DENTRO de la lista, así se desplaza con ella y la
+                // línea de tiempo no queda aplastada (ni con letra grande).
+                if (!vm.calendarioAbierto) {
+                    TiraDias(hoy = vm.hoy, seleccionado = vm.fechaSel, onSeleccionar = { vm.seleccionarDia(it) })
                 }
-                TiraDias(hoy = vm.hoy, seleccionado = vm.fechaSel, onSeleccionar = { vm.seleccionarDia(it) })
             }
 
             FiltrosAgenda(
@@ -520,10 +511,34 @@ fun PantallaAgenda(
                 }
             }
 
+            // Al abrir el calendario (primer ítem) la lista sube para que se vea.
+            val estadoLista = androidx.compose.foundation.lazy.rememberLazyListState()
+            LaunchedEffect(vm.calendarioAbierto) {
+                if (vm.calendarioAbierto) estadoLista.scrollToItem(0)
+            }
             LazyColumn(
                 Modifier.fillMaxSize(),
+                state = estadoLista,
                 contentPadding = PaddingValues(bottom = Sania.dim.xl),
             ) {
+                // 📅 Calendario del mes (desplegado desde el encabezado del mes).
+                if (!vm.modoLista && vm.calendarioAbierto) {
+                    item(key = "calendario-mes") {
+                        CalendarioMes(
+                            mes = vm.mesVisible,
+                            hoy = vm.hoy,
+                            seleccionado = vm.fechaSel,
+                            conteos = vm.conteosMes,
+                            cargando = vm.cargandoMes,
+                            error = vm.errorMes,
+                            parcial = vm.mesParcial,
+                            onElegir = { vm.elegirDiaDelCalendario(it) },
+                            onAnterior = { vm.mesAnterior() },
+                            onSiguiente = { vm.mesSiguiente() },
+                            onReintentar = { vm.reintentarMes() },
+                        )
+                    }
+                }
                 // Banners (mañana / vencidas / derivaciones)
                 // Con el filtro de especialidad aplicado (sin filtro: los de siempre).
                 vm.bannersVisibles?.let { b ->

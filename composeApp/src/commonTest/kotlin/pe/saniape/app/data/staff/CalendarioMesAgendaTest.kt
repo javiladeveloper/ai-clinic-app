@@ -1,6 +1,11 @@
 package pe.saniape.app.data.staff
 
 import kotlinx.datetime.Instant
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.coroutines.startCoroutine
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -185,10 +190,16 @@ class CalendarioMesAgendaTest {
     @Test
     fun descripcionParaLectorDePantalla() {
         val c = conteosPorDia(filas)
-        assertEquals("15 de octubre, 3 citas", descripcionDia("2026-10-15", c["2026-10-15"]))
+        assertEquals("15 de octubre, 3 citas", descripcionDia("2026-10-15", conteosPorDia(filas) { it.estado != "Cancelada" }["2026-10-15"]))
+        // Con activas, las canceladas se dicen aparte (no suman al número).
+        assertEquals("15 de octubre, 3 citas, 1 cancelada", descripcionDia("2026-10-15", c["2026-10-15"]))
         assertEquals("20 de octubre, 1 cita", descripcionDia("2026-10-20", c["2026-10-20"]))
         assertEquals("17 de octubre, sin citas", descripcionDia("2026-10-17", null))
         assertEquals("1 de enero, hoy, sin citas, seleccionado", descripcionDia("2027-01-01", null, esHoy = true, elegido = true))
+        // Solo canceladas: no es "sin citas".
+        assertEquals("16 de octubre, 1 cita cancelada", descripcionDia("2026-10-16", c["2026-10-16"]))
+        val dosCanc = conteosPorDia(listOf(FilaCitaMes("2026-10-16", "Cancelada"), FilaCitaMes("2026-10-16", "Cancelada")))
+        assertEquals("16 de octubre, 2 citas canceladas", descripcionDia("2026-10-16", dosCanc["2026-10-16"]))
     }
 
     // ── La tira de días salta al día elegido en el calendario ──
@@ -201,5 +212,149 @@ class CalendarioMesAgendaTest {
         assertEquals("2026-10-28", baseTiraDias("2026-10-15", "2026-10-28"))  // fuera: se mueve
         assertEquals("2026-09-01", baseTiraDias("2026-10-15", "2026-09-01"))
         assertEquals("2026-10-15", baseTiraDias("2026-10-15", "basura"))
+    }
+
+    @Test
+    fun laTiraNoSeMueveMientrasElDiaSigaEnElla() {
+        // Ya movida al 28: tocar el 30 o el 26 (dentro de su tira) no la rearma.
+        assertEquals("2026-10-28", baseTiraDias("2026-10-28", "2026-10-30"))
+        assertEquals("2026-10-28", baseTiraDias("2026-10-28", "2026-10-26"))
+        // "Hoy" (fuera de la tira movida) la trae de vuelta.
+        assertEquals("2026-10-15", baseTiraDias("2026-10-28", "2026-10-15"))
+    }
+
+    // ── Fila liviana desde JSON (tolerancia a backend viejo) ──
+
+    private fun json(texto: String) = Json.parseToJsonElement(texto) as JsonObject
+
+    @Test
+    fun mapeaLaFilaLivianaYToleraFaltantes() {
+        val o = json(
+            """{"fecha":"2026-10-15","estado":"Confirmada","tipo":"Sesión","terapeuta_id":"t1","especialidad_id":null,
+               "tratamiento":{"procedimiento":{"especialidad_id":"fisio"}}}"""
+        )
+        assertEquals(FilaCitaMes("2026-10-15", "Confirmada", "Sesión", "t1", null, "fisio"), filaCitaMesDeJson(o))
+        // Sin el join (pedido sin servicio) o con el tratamiento null.
+        assertEquals(FilaCitaMes("2026-10-15", "Pendiente"), filaCitaMesDeJson(json("""{"fecha":"2026-10-15","estado":"Pendiente","tratamiento":null}""")))
+        // Vacía: no revienta, y el conteo la descarta por no tener fecha.
+        val vacia = filaCitaMesDeJson(JsonObject(emptyMap()))
+        assertEquals("", vacia.fecha)
+        assertTrue(conteosPorDia(listOf(vacia)).isEmpty())
+    }
+
+    // ── Paginado hasta una tanda vacía ──
+
+    /** Corre un suspend que no suspende de verdad (las fuentes falsas de abajo). */
+    private fun <T> correr(bloque: suspend () -> T): T {
+        var res: Result<T>? = null
+        bloque.startCoroutine(Continuation(EmptyCoroutineContext) { res = it })
+        return res!!.getOrThrow()
+    }
+
+    /** Servidor falso con [total] filas y un max_rows de [maxRows]. */
+    private fun fuente(total: Int, maxRows: Int, pedidos: MutableList<Pair<Long, Long>>): suspend (Long, Long) -> List<Int> =
+        { desde, hasta ->
+            pedidos.add(desde to hasta)
+            val fin = minOf(hasta + 1, desde + maxRows, total.toLong())
+            (desde until fin).map { it.toInt() }
+        }
+
+    @Test
+    fun paginaHastaTandaVaciaAunqueMaxRowsSeaMenor() {
+        val pedidos = mutableListOf<Pair<Long, Long>>()
+        // max_rows 500 < tanda 1000: una tanda "corta" NO es el final.
+        val r = correr { paginarHastaVacia(1000, 20_000, fuente(1_200, 500, pedidos)) }
+        assertEquals((0 until 1_200).toList(), r.filas)   // sin huecos ni repetidas
+        assertFalse(r.llegoAlTope)
+        assertEquals(listOf(0L to 999L, 500L to 1499L, 1000L to 1999L, 1200L to 2199L), pedidos)
+    }
+
+    @Test
+    fun mesVacioEsUnSoloPedido() {
+        val pedidos = mutableListOf<Pair<Long, Long>>()
+        val r = correr { paginarHastaVacia(1000, 20_000, fuente(0, 1000, pedidos)) }
+        assertTrue(r.filas.isEmpty()); assertFalse(r.llegoAlTope)
+        assertEquals(1, pedidos.size)
+    }
+
+    @Test
+    fun avisaElTopeEnVezDeCortarEnSilencio() {
+        val pedidos = mutableListOf<Pair<Long, Long>>()
+        val r = correr { paginarHastaVacia(1000, 2_500, fuente(10_000, 1000, pedidos)) }
+        assertEquals(2_500, r.filas.size)
+        assertTrue(r.llegoAlTope)
+        assertEquals(3, pedidos.size)   // no sigue pidiendo pasado el tope
+    }
+
+    // ── Caché por mes: frescura, vencimiento y carreras ──
+
+    @Test
+    fun cacheFrescaNoSePideDeNuevo() {
+        val cache = CacheMesAgenda<String>()
+        val t = cache.empezar("2026-10")
+        assertTrue(cache.enCurso("2026-10")); assertFalse(cache.fresco("2026-10"))
+        assertTrue(cache.terminar("2026-10", t, "oct"))
+        assertTrue(cache.fresco("2026-10")); assertEquals("oct", cache.datos("2026-10"))
+        assertFalse(cache.enCurso("2026-10"))
+    }
+
+    @Test
+    fun venceSoloElMesDelCambioYConservaLoMostrado() {
+        val cache = CacheMesAgenda<String>()
+        listOf("2026-10", "2026-10:t1:sede=s1", "2026-11", "2026-01").forEach { cache.terminar(it, cache.empezar(it), it) }
+        cache.vencer(setOf("2026-10"))
+        assertFalse(cache.fresco("2026-10")); assertFalse(cache.fresco("2026-10:t1:sede=s1"))
+        assertTrue(cache.fresco("2026-11")); assertTrue(cache.fresco("2026-01"))
+        // Vencido se sigue mostrando mientras se relee (la grilla no se vacía).
+        assertEquals("2026-10", cache.datos("2026-10"))
+        // null = no se sabe qué mes: todos.
+        cache.vencer(null)
+        assertFalse(cache.fresco("2026-11"))
+    }
+
+    @Test
+    fun unFalloNoBorraLoQueHabia() {
+        val cache = CacheMesAgenda<String>()
+        cache.terminar("2026-10", cache.empezar("2026-10"), "viejo")
+        cache.vencer(setOf("2026-10"))
+        val t = cache.empezar("2026-10")
+        assertFalse(cache.terminar("2026-10", t, null))
+        assertEquals("viejo", cache.datos("2026-10"))
+        assertFalse(cache.fresco("2026-10"))
+    }
+
+    @Test
+    fun unPedidoViejoNoPisaAlNuevo() {
+        val cache = CacheMesAgenda<String>()
+        val viejo = cache.empezar("2026-10")
+        val nuevo = cache.empezar("2026-10")   // se reemplazó (reintento)
+        assertTrue(cache.terminar("2026-10", nuevo, "nuevo"))
+        assertFalse(cache.terminar("2026-10", viejo, "viejo"))
+        assertEquals("nuevo", cache.datos("2026-10"))
+    }
+
+    @Test
+    fun siVenceMientrasSeLeeQuedaParaReleer() {
+        val cache = CacheMesAgenda<String>()
+        val t = cache.empezar("2026-10")
+        cache.vencer(setOf("2026-10"))          // llega un cambio con el pedido en vuelo
+        assertFalse(cache.terminar("2026-10", t, "quizá viejo"))
+        assertEquals("quizá viejo", cache.datos("2026-10"))   // se muestra…
+        assertFalse(cache.fresco("2026-10"))                    // …pero se vuelve a pedir
+        assertTrue(cache.terminar("2026-10", cache.empezar("2026-10"), "al día"))
+    }
+
+    // ── Realtime: qué meses vencer ──
+
+    @Test
+    fun mesesDeUnCambio() {
+        assertEquals(setOf("2026-10"), mesesDeCambio("2026-10-15", null))
+        assertEquals(setOf("2026-10", "2026-11"), mesesDeCambio("2026-11-02", "2026-10-30"))   // reprogramada
+        assertEquals(setOf("2026-10"), mesesDeCambio("2026-10-15", "2026-10-01"))
+        assertNull(mesesDeCambio(null, null))   // sin fecha: todos
+        assertEquals(setOf("2026-10", "2026-11"), unirMeses(setOf("2026-10"), setOf("2026-11")))
+        assertNull(unirMeses(setOf("2026-10"), null))
+        assertNull(unirMeses(null, setOf("2026-10")))
+        assertEquals(setOf("2026-10"), unirMeses(emptySet(), setOf("2026-10")))
     }
 }

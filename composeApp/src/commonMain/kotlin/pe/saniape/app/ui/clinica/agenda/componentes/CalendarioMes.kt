@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,6 +36,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.CeldaMes
@@ -77,7 +79,10 @@ fun EncabezadoMesAgenda(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("📅 ${mes.titulo}", color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(
+                "📅 ${mes.titulo}", color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+            )
             Spacer(Modifier.width(4.dp))
             Text(if (abierto) "▴" else "▾", color = c.textoSuave, fontSize = 13.sp)
         }
@@ -99,7 +104,7 @@ fun EncabezadoMesAgenda(
 private fun BotonFlecha(simbolo: String, descripcion: String, onClick: () -> Unit) {
     val c = Sania.colors
     Box(
-        Modifier.size(40.dp).clip(CircleShape).clickable { onClick() }
+        Modifier.size(48.dp).clip(CircleShape).clickable { onClick() }
             .clearAndSetSemantics { contentDescription = descripcion; role = Role.Button },
         contentAlignment = Alignment.Center,
     ) { Text(simbolo, color = c.navy, fontSize = 14.sp) }
@@ -119,6 +124,8 @@ fun CalendarioMes(
     conteos: Map<String, ConteoDia>,
     cargando: Boolean,
     error: Boolean,
+    /** El mes pasó el tope de filas: el conteo es parcial. */
+    parcial: Boolean,
     onElegir: (String) -> Unit,
     onAnterior: () -> Unit,
     onSiguiente: () -> Unit,
@@ -127,6 +134,9 @@ fun CalendarioMes(
     val c = Sania.colors
     val celdas = remember(mes, hoy) { grillaMes(mes, hoy) }
     val umbral = with(LocalDensity.current) { 64.dp.toPx() }
+    // Alto de cada día según el tamaño de letra del teléfono: el mismo para
+    // todos (semanas parejas) y con lugar para número + conteo + puntos.
+    val altoCelda = maxOf(48f, 20f + 34f * LocalDensity.current.fontScale).dp
     Column(
         Modifier.fillMaxWidth().padding(horizontal = Sania.dim.lg, vertical = 6.dp)
             .clip(RoundedCornerShape(Sania.shape.md.dp))
@@ -160,12 +170,16 @@ fun CalendarioMes(
                 semana.forEach { celda ->
                     CeldaDia(
                         celda, conteos[celda.iso], celda.iso == seleccionado, onElegir,
-                        Modifier.weight(1f),
+                        Modifier.weight(1f).heightIn(min = altoCelda),
                     )
                 }
             }
         }
         // Estado de la lectura (nunca bloquea: la grilla se usa igual).
+        if (parcial) Text(
+            "Mes con demasiadas citas: el conteo es parcial", color = c.pend, fontSize = 11.sp,
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp), textAlign = TextAlign.Center,
+        )
         when {
             cargando -> Text(
                 "Contando citas…", color = c.textoSuave, fontSize = 11.sp,
@@ -207,7 +221,7 @@ private fun CeldaDia(
     val forma = RoundedCornerShape(Sania.shape.sm.dp)
     if (!celda.delMes) {
         // Relleno del mes anterior/siguiente: atenuado, sin conteo ni toque (como la web).
-        Box(modifier.height(48.dp).clearAndSetSemantics { }, contentAlignment = Alignment.TopCenter) {
+        Box(modifier.clearAndSetSemantics { }, contentAlignment = Alignment.TopCenter) {
             Text(
                 celda.dia.toString(), color = c.textoSuave.copy(alpha = 0.35f), fontSize = 13.sp,
                 modifier = Modifier.padding(top = 6.dp),
@@ -219,7 +233,7 @@ private fun CeldaDia(
     val puntos = conteo?.estadosPuntos.orEmpty()
     val descripcion = descripcionDia(celda.iso, conteo, celda.esHoy, elegido)
     Column(
-        modifier.height(48.dp).padding(2.dp)
+        modifier.padding(2.dp)
             .clip(forma)
             .background(if (elegido) c.navy else if (celda.esHoy) c.chipBg else c.superficie)
             .then(if (celda.esHoy && !elegido) Modifier.border(2.dp, c.lav, forma) else Modifier)
@@ -238,17 +252,18 @@ private fun CeldaDia(
             fontSize = 14.sp,
             fontWeight = if (celda.esHoy || elegido) FontWeight.Bold else FontWeight.Normal,
         )
-        if (total > 0 || puntos.isNotEmpty()) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 1.dp)) {
-                if (total > 0) {
-                    val colorNum = if (elegido) c.sobreNavy
-                        else EstadosColor.cita(puntos.firstOrNull { it != "Cancelada" } ?: puntos.firstOrNull()).fg
-                    Text(
-                        if (total > 99) "99+" else total.toString(),
-                        color = colorNum, fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                    )
-                    Spacer(Modifier.width(2.dp))
-                }
+        // Número y puntos en líneas separadas: con letra grande, en una sola fila
+        // no caben en el ancho de un día a 390 dp.
+        if (total > 0) {
+            val colorNum = if (elegido) c.sobreNavy
+                else EstadosColor.cita(puntos.firstOrNull { it != "Cancelada" } ?: puntos.firstOrNull()).fg
+            Text(
+                if (total > 99) "99+" else total.toString(),
+                color = colorNum, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+            )
+        }
+        if (puntos.isNotEmpty()) {
+            Row(Modifier.padding(top = 1.dp, bottom = 3.dp)) {
                 puntos.forEach { e ->
                     Box(
                         Modifier.padding(horizontal = 1.dp).size(5.dp).clip(CircleShape)
