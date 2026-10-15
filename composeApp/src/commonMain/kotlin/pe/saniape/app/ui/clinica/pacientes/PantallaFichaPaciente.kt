@@ -263,6 +263,32 @@ private fun PantallaFichaPacienteContenido(
         },
         especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
     )
+    // ── 💇 Tricoscopía, por PACIENTE (gemelo de `pacienteEsCapilar`) ──
+    // Solo por el rubro GUARDADO. RENOVA (solo capilar) → siempre; sin capilar (o un
+    // backend sin `especialidadesCapilar`) → ni la pestaña ni una consulta. Solo en una
+    // clínica MIXTA (GLAM) se pregunta, liviano, si ya tiene evaluaciones y de qué
+    // especialidades es quien mira. Con solo 'citas' la RLS escondería todo: sin
+    // permiso de pacientes ni de sesiones no hay pestaña (como la web).
+    val puedeTricoscopia = ctx.puede("pacientes") || ctx.puede("sesiones")
+    val mixtaCapilar = puedeTricoscopia && ctx.mapaCapilar.ids.isNotEmpty() && !ctx.mapaCapilar.solo
+    var datosCapilar by remember { mutableStateOf(false to emptyList<String>()) }
+    LaunchedEffect(paciente.id, mixtaCapilar) {
+        if (mixtaCapilar) datosCapilar = pe.saniape.app.data.staff.TricoscopiaRepo.datosMixta(paciente.id, ctx.miTerapeutaId)
+    }
+    val esPacienteCapilar = puedeTricoscopia && pe.saniape.app.data.staff.pacienteEsCapilar(
+        ctx.mapaCapilar,
+        atenciones = paciente.tratamientos.map { t ->
+            pe.saniape.app.data.staff.AtencionFisio(
+                especialidadServicioId = t.especialidadId
+                    ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id,
+                especialidadesProfesional = t.especialidadesProfesional,
+            )
+        } + (hitos?.let { it.evaluaciones + it.consultas }.orEmpty()).map {
+            pe.saniape.app.data.staff.AtencionFisio(especialidadId = it.especialidadId)
+        },
+        tieneEvaluaciones = datosCapilar.first,
+        especialidadesDeQuienMira = datosCapilar.second,
+    )
     // ── 💊 Recetas, por PACIENTE (gemelo de `pacienteRecibeRecetas`) ──
     // Con el interruptor apagado (DALU, RENOVA) el mapa llega vacío: ni la
     // pestaña ni una sola consulta. Solo en una clínica MIXTA se pregunta,
@@ -781,6 +807,8 @@ private fun PantallaFichaPacienteContenido(
                     if (esPacienteReceta || esPacienteDocs) {
                         add("recetas" to pe.saniape.app.data.staff.etiquetaPestanaRecetas(esPacienteReceta, esPacienteDocs))
                     }
+                    // SOLO pacientes capilares (`esPacienteCapilar`). 💇 y no 🔬: 🔬 ya es Exámenes.
+                    if (esPacienteCapilar) add("tricoscopia" to "💇 Tricoscopía")
                     // 📝 Indicaciones para casa: TODO paciente (todas las especialidades),
                     // después de las de la especialidad y antes de Pagos/Resumen (como la web).
                     // 📝 y no 📋: 📋 ya es Resumen en esta misma barra.
@@ -1029,6 +1057,43 @@ private fun PantallaFichaPacienteContenido(
                             abrirNuevo = flujoInd.abrirNuevo,
                             onAbiertoNuevo = { flujoInd = flujoInd.consumido() },
                             onGuardadaNueva = { flujoInd = flujoInd.trasGuardar() },
+                        )
+                    }
+                    // 💇 Tricoscopía (capilar): consulta SOLO al abrirse. Escribe quien puede
+                    // 'pacientes' o 'sesiones' (como el API) con la ficha activa.
+                    "tricoscopia" -> if (esPacienteCapilar) {
+                        // Los tratamientos capilares (el activo más reciente primero): la
+                        // evaluación se vincula al primero, como la web.
+                        val capilares = paciente.tratamientos
+                            .filter { t ->
+                                t.estado != "Eliminado" && pe.saniape.app.data.staff.citaEsCapilar(
+                                    ctx.mapaCapilar,
+                                    especialidadServicioId = t.especialidadId
+                                        ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id,
+                                    especialidadesProfesional = t.especialidadesProfesional,
+                                )
+                            }
+                            .sortedWith(compareByDescending<TratamientoPaciente> { it.estado == "Activo" }
+                                .thenByDescending { it.fechaInicio ?: it.createdAt.orEmpty() })
+                        pe.saniape.app.ui.clinica.capilar.TricoscopiaTab(
+                            pacienteId = paciente.id,
+                            pacienteNombre = paciente.nombre,
+                            pacienteDocumento = paciente.dni,
+                            puedeEditar = puedeTricoscopia && !pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
+                            tratamientos = capilares.map { t ->
+                                pe.saniape.app.ui.clinica.capilar.TratamientoCapilar(
+                                    id = t.id,
+                                    nombre = listOfNotNull(
+                                        t.procedimiento ?: "Tratamiento",
+                                        t.fechaInicio?.let { "desde ${pe.saniape.app.ui.clinica.historia.fechaHc(it)}" },
+                                    ).joinToString(" · "),
+                                    activo = t.estado == "Activo",
+                                )
+                            },
+                            clinicaNombre = ctx.clinicaNombre,
+                            clinicaDireccion = ctx.clinicaDireccion,
+                            logoUrl = ctx.logoUrl,
+                            colorPrincipal = ctx.colorPrincipal,
                         )
                     }
                     // 🏠 Ejercicios de apoyo (fisio): consulta SOLO al abrirse, como la 📏.

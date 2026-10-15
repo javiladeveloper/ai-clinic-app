@@ -38,6 +38,11 @@ internal fun GraficoLineaHc(
     unidad: String,
     puntos: List<PuntoSerieHc>,
     color: Color = Sania.colors.teal,
+    /**
+     * Eje de TIEMPO real: la distancia entre puntos es proporcional a los días
+     * entre tomas (tricoscopía). Por defecto, equiespaciados como siempre.
+     */
+    ejeTiempo: Boolean = false,
 ) {
     if (puntos.isEmpty()) return
     val c = Sania.colors
@@ -46,6 +51,9 @@ internal fun GraficoLineaHc(
     val min = remember(puntos) { puntos.minOf { it.valor } }
     val max = remember(puntos) { puntos.maxOf { it.valor } }
     val rango = (max - min).takeIf { it > 0.0001 } ?: 1.0
+    val fracciones = remember(puntos, ejeTiempo) {
+        if (ejeTiempo) pe.saniape.app.data.staff.fraccionesTiempo(puntos.map { it.fecha }) else null
+    }
     val descripcion = "$titulo: " + puntos.joinToString("; ") { "${it.fecha} ${numeroHc(it.valor)} $unidad" }
 
     Column(Modifier.fillMaxWidth().semantics { contentDescription = descripcion }) {
@@ -60,7 +68,11 @@ internal fun GraficoLineaHc(
                 val padX = 8.dp.toPx()
                 val iw = size.width - padX * 2
                 val ih = size.height - padY * 2
-                fun x(i: Int) = padX + if (puntos.size == 1) iw / 2 else i * iw / (puntos.size - 1)
+                fun x(i: Int) = padX + when {
+                    puntos.size == 1 -> iw / 2
+                    fracciones != null -> fracciones[i].toFloat() * iw
+                    else -> i * iw / (puntos.size - 1)
+                }
                 fun y(v: Double) = padY + ih - (((v - min) / rango).toFloat()) * ih
                 drawLine(rejilla, Offset(0f, y(max)), Offset(size.width, y(max)), strokeWidth = 1.dp.toPx())
                 drawLine(rejilla, Offset(0f, y(min)), Offset(size.width, y(min)), strokeWidth = 1.dp.toPx())

@@ -149,6 +149,12 @@ data class ContextoStaff(
      * vacío y la ficha queda como antes.
      */
     val mapaNutricion: MapaNutricion = MapaNutricion(),
+    /**
+     * Qué especialidades son capilares (pestaña 💇 Tricoscopía, por paciente con
+     * `pacienteEsCapilar`). Solo por el rubro GUARDADO. Lo arma la web; un backend
+     * sin el campo deja el mapa vacío y la ficha queda como antes.
+     */
+    val mapaCapilar: MapaCapilar = MapaCapilar(),
     val clinicas: List<ClinicaRef>,
     val tienePortal: Boolean,
     /**
