@@ -1,0 +1,8 @@
+# Novedades de la 2.56.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Controles de nutrición sin pasos de más y "Sí vino" igual que en la web.
+---
+Clínicas:
+• Nutrición: el control de un paciente que ya atendiste se completa directo (sin pedir diagnóstico de nuevo) y te ofrece registrar sus medidas.
+• Nutrición: la nutricionista puede agendar el siguiente control de su paciente desde la ficha.
+• "✓ Sí vino" en citas vencidas: la primera consulta te pide el diagnóstico, como en la web.
