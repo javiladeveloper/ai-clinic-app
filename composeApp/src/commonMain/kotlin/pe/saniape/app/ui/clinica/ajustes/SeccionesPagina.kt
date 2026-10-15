@@ -94,7 +94,7 @@ internal fun SeccionTuPagina(d: JsonObject, onVolver: () -> Unit) {
             }
             Boton("💬 Compartir por WhatsApp") {
                 val texto = "¡Hola! 👋 Conoce $nombre: nuestros servicios, horarios y ubicación aquí:\n$url"
-                acciones.abrirUrl("https://wa.me/?text=${pe.saniape.app.ui.urlEncode(texto)}")
+                acciones.abrirUrl(pe.saniape.app.ui.urlWhatsApp("", texto))
                 pe.saniape.app.ui.clinica.paginaCompartida(scope)
             }
         }

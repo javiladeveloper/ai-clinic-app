@@ -292,7 +292,7 @@ fun TarjetaPrimerosPasos(ctx: ContextoStaff, onIr: (String) -> Unit) {
                                                         scope.launch { delay(800); cargar() }
                                                     } else {
                                                         val txt = "Hola, quiero publicar la página de mi clínica \"${ctx.clinicaNombre}\" en Sania."
-                                                        acciones.abrirUrl("https://wa.me/$SOPORTE_WA?text=${pe.saniape.app.ui.urlEncode(txt)}")
+                                                        acciones.abrirUrl(pe.saniape.app.ui.urlWhatsApp(SOPORTE_WA, txt))
                                                     }
                                                 }
                                             }

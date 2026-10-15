@@ -1,6 +1,5 @@
 package pe.saniape.app.ui.clinica.pacientes
 
-import pe.saniape.app.ui.urlEncode
 import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
@@ -491,7 +490,7 @@ private fun PantallaFichaPacienteContenido(
                                     menuPaciente = false
                                     val tel = paciente.telefono!!.filter { it.isDigit() }
                                     val wa = pe.saniape.app.data.staff.numeroWhatsApp(tel, pe.saniape.app.data.staff.paisActivo())
-                                    acciones.abrirUrl("https://wa.me/$wa?text=${urlEncode(msg)}")
+                                    acciones.abrirUrl(pe.saniape.app.ui.urlWhatsApp(wa, msg))
                                 }.padding(horizontal = Sania.dim.xl, vertical = Sania.dim.md))
                             Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
                         }

@@ -191,7 +191,7 @@ fun TarjetaCita(
                     IconoContacto("💬", pe.saniape.app.ui.theme.Paleta.WhatsApp) {
                         val n = pe.saniape.app.data.staff.numeroWhatsApp(tel, pe.saniape.app.data.staff.paisActivo())
                         val msg = mensajeWhatsAppDeCita(cita, flujo)
-                        acciones.abrirUrl("https://wa.me/$n" + (msg?.let { "?text=${pe.saniape.app.ui.urlEncode(it)}" } ?: ""))
+                        acciones.abrirUrl(pe.saniape.app.ui.urlWhatsApp(n, msg))
                     }
                 }
             }

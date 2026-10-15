@@ -91,9 +91,7 @@ fun enlaceWhatsApp(contacto: String?, texto: String? = null): String? {
     var digitos = contacto.orEmpty().filter { it.isDigit() }
     if (digitos.length < 9) return null
     if (digitos.length == 9 && digitos.startsWith("9")) digitos = "51$digitos"
-    val base = "https://wa.me/$digitos"
-    val t = texto?.trim().orEmpty()
-    return if (t.isNotEmpty()) "$base?text=${codificarUrl(t)}" else base
+    return pe.saniape.app.ui.urlWhatsApp(digitos, texto)
 }
 
 /** El mensaje que se le manda al paciente (mismo texto que la ficha web). */

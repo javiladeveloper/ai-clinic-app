@@ -117,7 +117,7 @@ fun DialogoQrAdmision(clinicaNombre: String?, onCerrar: () -> Unit) {
                         }
                         BotonQr("📱 WhatsApp") {
                             val texto = textoWhatsAppAdmision(q.url, q.ttlMin, clinicaNombre)
-                            acciones.abrirUrl("https://wa.me/?text=" + pe.saniape.app.ui.urlEncode(texto))
+                            acciones.abrirUrl(pe.saniape.app.ui.urlWhatsApp("", texto))
                         }
                     }
                 }

@@ -173,9 +173,7 @@ fun enlaceWhatsAppPais(contacto: String?, pais: String?, texto: String? = null):
     if (p == PAIS_POR_DEFECTO) return enlaceWhatsApp(contacto, texto)
     val d = contacto.orEmpty().filter { it.isDigit() }
     if (d.length < 7) return null
-    val base = "https://wa.me/${numeroWhatsApp(d, p)}"
-    val t = texto?.trim().orEmpty()
-    return if (t.isNotEmpty()) "$base?text=${codificarUrl(t)}" else base
+    return pe.saniape.app.ui.urlWhatsApp(numeroWhatsApp(d, p), texto)
 }
 
 // ── Documento de identidad por país ────────────────────────────────────────

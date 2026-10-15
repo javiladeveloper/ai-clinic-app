@@ -81,6 +81,18 @@ class MensajeCitaTest {
     }
 
     @Test
+    fun whatsapp_con_texto_va_directo_a_api_whatsapp() {
+        // wa.me cambia los emojis por "�" al redirigir (Centro OMER, "Hola Sara � …").
+        assertEquals(
+            "https://api.whatsapp.com/send?phone=51954218739&text=Hola%20Sara%20%F0%9F%91%8B%0A%F0%9F%93%85%20Ma%C3%B1ana",
+            urlWhatsApp("51954218739", "Hola Sara 👋\n📅 Mañana"),
+        )
+        assertEquals("https://api.whatsapp.com/send?text=Hola", urlWhatsApp("", "Hola"))
+        assertEquals("https://wa.me/51954218739", urlWhatsApp("+51 954 218 739", null))
+        assertEquals("https://wa.me/51954218739", urlWhatsApp("51954218739", "  "))
+    }
+
+    @Test
     fun url_encode_emojis_y_tildes_como_utf8() {
         // Antes: los bytes ≥ 0x80 pasaban como letras ("ﾟﾑﾋ") en vez de %XX.
         assertEquals("Hola%20%F0%9F%91%8B%20%C2%BFS%C3%AD%3F", urlEncode("Hola 👋 ¿Sí?"))

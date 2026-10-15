@@ -540,7 +540,7 @@ fun DialogoEnlace(datos: EquipoDatos, onCerrar: () -> Unit, onRegistrado: () -> 
                 Spacer(Modifier.height(8.dp))
                 BotonChico("📱 Mandar por WhatsApp") {
                     val texto = "Regístrate en nuestro equipo de Sania con este enlace: ${e.url}"
-                    acciones.abrirUrl("https://wa.me/?text=" + codificarUrl(texto))
+                    acciones.abrirUrl(pe.saniape.app.ui.urlWhatsApp("", texto))
                 }
                 Spacer(Modifier.height(Sania.dim.md))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -561,18 +561,4 @@ private fun BotonChico(texto: String, onClick: () -> Unit) {
         Modifier.clip(forma).background(c.superficie).border(1.dp, c.borde, forma)
             .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 9.dp),
     ) { Text(texto, color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
-}
-
-/** encodeURIComponent mínimo (UTF-8) para el texto de wa.me. */
-internal fun codificarUrl(s: String): String = buildString {
-    for (b in s.encodeToByteArray()) {
-        val ch = (b.toInt() and 0xFF)
-        val c = ch.toChar()
-        if (c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c in "-_.!~*'()") append(c)
-        else {
-            append('%')
-            append("0123456789ABCDEF"[ch shr 4])
-            append("0123456789ABCDEF"[ch and 0xF])
-        }
-    }
 }

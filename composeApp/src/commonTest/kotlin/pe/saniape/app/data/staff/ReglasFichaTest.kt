@@ -74,7 +74,7 @@ class ReglasFichaTest {
         assertNull(enlaceWhatsApp(null))
         assertEquals("https://wa.me/51987654321", enlaceWhatsApp("987 654 321"))
         assertEquals("https://wa.me/51987654321", enlaceWhatsApp("+51 987654321"))
-        assertEquals("https://wa.me/51987654321?text=Hola%20Ana", enlaceWhatsApp("987654321", "Hola Ana"))
+        assertEquals("https://api.whatsapp.com/send?phone=51987654321&text=Hola%20Ana", enlaceWhatsApp("987654321", "Hola Ana"))
     }
 
     @Test

@@ -15,3 +15,16 @@ fun urlEncode(s: String): String = buildString {
         else append('%').append(c.toString(16).uppercase().padStart(2, '0'))
     }
 }
+
+/**
+ * URL de WhatsApp con texto prearmado (gemela de urlWhatsApp de la web). Con
+ * texto va DIRECTO a api.whatsapp.com/send: wa.me redirige ahí pero en la
+ * redirección cambia cada emoji por "�" (Centro OMER, 2026-10-14). Sin texto,
+ * wa.me de siempre. [numero] con código de país; vacío = WhatsApp elige el contacto.
+ */
+fun urlWhatsApp(numero: String?, texto: String? = null): String {
+    val n = numero.orEmpty().filter { it.isDigit() }
+    val t = texto?.trim().orEmpty()
+    if (t.isEmpty()) return "https://wa.me/$n"
+    return "https://api.whatsapp.com/send?" + (if (n.isNotEmpty()) "phone=$n&" else "") + "text=${urlEncode(t)}"
+}
