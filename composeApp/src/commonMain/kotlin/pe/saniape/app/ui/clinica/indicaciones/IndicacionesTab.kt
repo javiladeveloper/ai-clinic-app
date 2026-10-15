@@ -44,7 +44,6 @@ import kotlinx.serialization.json.booleanOrNull
 import pe.saniape.app.data.staff.CatalogoIndicaciones
 import pe.saniape.app.data.staff.ContenidoEditorIndicaciones
 import pe.saniape.app.data.staff.ContenidoIndicacionesFuente
-import pe.saniape.app.data.staff.FraseFrecuenteApp
 import pe.saniape.app.data.staff.FrasesCampoPlan
 import pe.saniape.app.data.staff.IndicacionPaciente
 import pe.saniape.app.data.staff.IndicacionesRepo
@@ -70,7 +69,6 @@ import pe.saniape.app.data.staff.textoIndicacionesWhatsApp
 import pe.saniape.app.data.staff.validarIndicacion
 import pe.saniape.app.data.staff.validarPlantillaIndicaciones
 import pe.saniape.app.ui.Toaster
-import pe.saniape.app.ui.clinica.atencion.CampoTextoClinico
 import pe.saniape.app.ui.clinica.pacientes.CajaSelectorForm
 import pe.saniape.app.ui.clinica.pacientes.DialogoFecha
 import pe.saniape.app.ui.clinica.pacientes.DialogoForm
@@ -790,11 +788,11 @@ private fun CampoConChipsInd(
     chipsVisibles: Int,
     limite: Int = LimitesIndicaciones.TEXTO,
 ) {
-    val chips = remember(frases) { frases.chips.map { FraseFrecuenteApp("indicaciones", it.texto, 0) } }
-    CampoTextoClinico(
+    // Una indicación por línea, siempre (aunque la mezcla dijera otra cosa).
+    pe.saniape.app.ui.clinica.CampoConFrases(
         label = label, valor = cont.deCampo(campo), onChange = { onCont(cont.conCampo(campo, it.take(limite))) },
-        frases = chips, soloLectura = false, minLineas = minLineas, placeholder = placeholder, porLinea = true,
-        opciones = frases.opciones, chipsVisibles = chipsVisibles,
+        frases = frases.copy(porLinea = true), placeholder = placeholder, minLineas = minLineas,
+        chipsVisibles = chipsVisibles, campo = "indicaciones",
     )
 }
 

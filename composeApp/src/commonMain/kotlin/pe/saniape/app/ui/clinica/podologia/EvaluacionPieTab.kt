@@ -48,7 +48,6 @@ import pe.saniape.app.data.staff.DEFORMIDADES_PODO
 import pe.saniape.app.data.staff.ESTADOS_PULSO
 import pe.saniape.app.data.staff.EvaluacionPodologica
 import pe.saniape.app.data.staff.EvaluacionPodologicaRepo
-import pe.saniape.app.data.staff.FraseFrecuenteApp
 import pe.saniape.app.data.staff.FrasesCampoPlan
 import pe.saniape.app.data.staff.HIGIENES
 import pe.saniape.app.data.staff.HallazgoMarcado
@@ -93,7 +92,6 @@ import pe.saniape.app.data.staff.textoCambioPodo
 import pe.saniape.app.data.staff.textoZonaMarcada
 import pe.saniape.app.data.staff.validarEvaluacionPodo
 import pe.saniape.app.ui.Toaster
-import pe.saniape.app.ui.clinica.atencion.CampoTextoClinico
 import pe.saniape.app.ui.clinica.mapas.AvisoMapa
 import pe.saniape.app.ui.clinica.mapas.BotonMapa
 import pe.saniape.app.ui.clinica.mapas.CajaErroresMapa
@@ -823,11 +821,9 @@ private fun ChipsMultiples(opciones: List<OpcionPodo>, elegidos: List<String>, o
 private fun CampoFrasesPodo(
     label: String, valor: String, onChange: (String) -> Unit, frases: FrasesCampoPlan, placeholder: String, minLineas: Int,
 ) {
-    val chips = remember(frases) { frases.chips.map { FraseFrecuenteApp("podologia", it.texto, 0) } }
-    CampoTextoClinico(
-        label = label, valor = valor, onChange = onChange, frases = chips, soloLectura = false,
-        minLineas = minLineas, placeholder = placeholder, porLinea = frases.porLinea,
-        opciones = frases.opciones, chipsVisibles = 6,
+    pe.saniape.app.ui.clinica.CampoConFrases(
+        label = label, valor = valor, onChange = onChange, frases = frases, placeholder = placeholder,
+        minLineas = minLineas, chipsVisibles = 6, campo = "podologia",
     )
 }
 

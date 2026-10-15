@@ -48,7 +48,6 @@ import kotlinx.serialization.json.booleanOrNull
 import pe.saniape.app.data.staff.ComidaEditor
 import pe.saniape.app.data.staff.ContenidoEditorPlan
 import pe.saniape.app.data.staff.DatosCalculo
-import pe.saniape.app.data.staff.FraseFrecuenteApp
 import pe.saniape.app.data.staff.FrasesCampoPlan
 import pe.saniape.app.data.staff.SugerenciasPlan
 import pe.saniape.app.data.staff.frasesCampoTextoPlan
@@ -89,7 +88,6 @@ import pe.saniape.app.data.staff.validarDatosCalculo
 import pe.saniape.app.data.staff.validarPlan
 import pe.saniape.app.data.staff.validarPlantilla
 import pe.saniape.app.ui.Toaster
-import pe.saniape.app.ui.clinica.atencion.CampoTextoClinico
 import pe.saniape.app.ui.clinica.pacientes.CajaSelectorForm
 import pe.saniape.app.ui.clinica.pacientes.DialogoFecha
 import pe.saniape.app.ui.clinica.pacientes.DialogoForm
@@ -866,11 +864,9 @@ private fun CampoConChipsPlan(
     chipsVisibles: Int,
     mostrarEtiqueta: Boolean = true,
 ) {
-    val chips = remember(frases) { frases.chips.map { FraseFrecuenteApp("plan", it.texto, 0) } }
-    CampoTextoClinico(
-        label = label, valor = valor, onChange = onChange, frases = chips, soloLectura = false,
-        minLineas = minLineas, placeholder = placeholder, porLinea = frases.porLinea,
-        opciones = frases.opciones, chipsVisibles = chipsVisibles, mostrarEtiqueta = mostrarEtiqueta,
+    pe.saniape.app.ui.clinica.CampoConFrases(
+        label = label, valor = valor, onChange = onChange, frases = frases, placeholder = placeholder,
+        minLineas = minLineas, chipsVisibles = chipsVisibles, mostrarEtiqueta = mostrarEtiqueta, campo = "plan",
     )
 }
 
