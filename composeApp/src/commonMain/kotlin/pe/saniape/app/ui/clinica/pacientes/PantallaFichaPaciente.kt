@@ -91,6 +91,12 @@ fun PantallaFichaPaciente(
      * alimentario, con la cita vinculada y, si se pide, el formulario abierto.
      */
     nutricionAlAbrir: pe.saniape.app.ui.clinica.nutricion.AperturaNutricion? = null,
+    /**
+     * 📝 Indicaciones para casa (desde la agenda, "📝 Dejar indicaciones"): la
+     * ficha arranca en la pestaña 📝 con una hoja nueva, la plantilla que sugirió
+     * el servicio y la cita vinculada.
+     */
+    indicacionesAlAbrir: pe.saniape.app.data.staff.AperturaIndicaciones? = null,
 ) {
     // Multipaís: el dinero de la ficha va en la moneda de la sede del paciente
     // (solo con "pacientes por sede"; si no, la de la sede activa). Una clínica de
@@ -104,7 +110,7 @@ fun PantallaFichaPaciente(
     androidx.compose.runtime.CompositionLocalProvider(
         pe.saniape.app.ui.LocalMoneda provides pe.saniape.app.data.staff.monedaDeFila(sedePaciente),
     ) {
-        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir)
+        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir)
     }
 }
 
@@ -113,6 +119,7 @@ private fun PantallaFichaPacienteContenido(
     ctx: ContextoStaff, pacienteInicial: PacienteStaff, onCerrar: () -> Unit,
     ejerciciosAlAbrir: pe.saniape.app.ui.clinica.fisio.IndicarEjercicios?,
     nutricionAlAbrir: pe.saniape.app.ui.clinica.nutricion.AperturaNutricion?,
+    indicacionesAlAbrir: pe.saniape.app.data.staff.AperturaIndicaciones?,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val tpl = LocalTerminologiaPaciente.current
@@ -148,7 +155,16 @@ private fun PantallaFichaPacienteContenido(
     var registrarAtencion by remember { mutableStateOf<TratamientoPaciente?>(null) }
     var recargarToken by remember { mutableStateOf(0) }   // fuerza recarga de las tarjetas
     var tab by remember {
-        mutableStateOf(if (ejerciciosAlAbrir != null) "ejercicios" else nutricionAlAbrir?.tab ?: "atenciones")
+        mutableStateOf(
+            if (ejerciciosAlAbrir != null) "ejercicios"
+            else if (indicacionesAlAbrir != null) "indicaciones"
+            else nutricionAlAbrir?.tab ?: "atenciones",
+        )
+    }
+    // 📝 Indicaciones: la cita de la agenda y "abrir de una" (vale una vez; la cita
+    // se olvida al guardar la primera hoja).
+    var flujoInd by remember {
+        mutableStateOf(pe.saniape.app.data.staff.FlujoIndicacionesFicha.desde(indicacionesAlAbrir))
     }
     // Nutrición: el flujo medidas → plan con la cita de la que se viene (los
     // "abrir de una" valen una vez: al pasar a otra pestaña se apagan).
@@ -765,6 +781,10 @@ private fun PantallaFichaPacienteContenido(
                     if (esPacienteReceta || esPacienteDocs) {
                         add("recetas" to pe.saniape.app.data.staff.etiquetaPestanaRecetas(esPacienteReceta, esPacienteDocs))
                     }
+                    // 📝 Indicaciones para casa: TODO paciente (todas las especialidades),
+                    // después de las de la especialidad y antes de Pagos/Resumen (como la web).
+                    // 📝 y no 📋: 📋 ya es Resumen en esta misma barra.
+                    add("indicaciones" to "📝 Indicaciones")
                     if (ctx.puede("pagos")) add("pagos" to "💰 Pagos")
                     add("resumen" to "📋 Resumen")
                 }
@@ -786,6 +806,7 @@ private fun PantallaFichaPacienteContenido(
                                     tab = key
                                     if (key != "ejercicios") indicarEjercicios = null
                                     flujoNutri = flujoNutri.alCambiarTab(key)
+                                    flujoInd = flujoInd.alCambiarTab(key)
                                 }
                                 .padding(horizontal = 14.dp, vertical = 8.dp),
                         ) { Text(label, color = if (activo) c.sobreNavy else c.texto, fontSize = 12.sp,
@@ -977,6 +998,37 @@ private fun PantallaFichaPacienteContenido(
                                     (ctx.puede("agendar") || ctx.puede("sesiones")) &&
                                     !pe.saniape.app.data.staff.fichaInactiva(paciente.estado)
                             },
+                        )
+                    }
+                    // 📝 Indicaciones para casa (todas las especialidades): consulta SOLO al
+                    // abrirse. Mismo permiso que el API; el resto la ve (e imprime) en solo lectura.
+                    "indicaciones" -> {
+                        // La especialidad de la hoja: la de la cita de la agenda o, si el
+                        // paciente tiene UNA sola entre sus tratamientos, esa.
+                        val espsPac = paciente.tratamientos.mapNotNull { t ->
+                            t.especialidadId ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id
+                        }.distinct()
+                        pe.saniape.app.ui.clinica.indicaciones.IndicacionesTab(
+                            pacienteId = paciente.id,
+                            pacienteNombre = paciente.nombre,
+                            pacienteDocumento = paciente.dni,
+                            puedeEditar = (ctx.puede("pacientes") || ctx.puede("sesiones")) &&
+                                !pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
+                            telefono = pe.saniape.app.data.staff.telefonoParaAvisos(
+                                paciente.telefono, paciente.apoderadoTelefono, paciente.apoderadoRecibeAvisos,
+                            ),
+                            clinicaNombre = ctx.clinicaNombre,
+                            clinicaDireccion = ctx.clinicaDireccion,
+                            logoUrl = ctx.logoUrl,
+                            colorPrincipal = ctx.colorPrincipal,
+                            clinicaId = ctx.clinicaId,
+                            especialidadId = flujoInd.especialidadId ?: espsPac.singleOrNull(),
+                            citaId = flujoInd.citaId,
+                            servicio = flujoInd.servicio,
+                            plantillaClave = flujoInd.plantillaClave,
+                            abrirNuevo = flujoInd.abrirNuevo,
+                            onAbiertoNuevo = { flujoInd = flujoInd.consumido() },
+                            onGuardadaNueva = { flujoInd = flujoInd.trasGuardar() },
                         )
                     }
                     // 🏠 Ejercicios de apoyo (fisio): consulta SOLO al abrirse, como la 📏.
