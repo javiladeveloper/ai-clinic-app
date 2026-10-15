@@ -17,6 +17,8 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -165,6 +167,33 @@ object OrtodonciaRepo {
 
     /** Tras guardar: lo aprendido se vuelve a pedir (la observación de hoy ya cuenta). */
     fun olvidarSugerencias() { cacheSugerencias.clear() }
+
+    /**
+     * 💰 Las cuotas del tratamiento del plan, SOLO LECTURA (gemelo de
+     * ResumenCuotasOrto.tsx): el cronograma (`cuotas_tratamiento`) y lo pagado
+     * (`pagos_tratamiento`), las MISMAS tablas y columnas que lee la web, por la
+     * RLS del staff. Las dos lecturas en paralelo. null = no se pudo saber (sin
+     * la tabla en un backend viejo, sin red): la tarjeta no se muestra.
+     */
+    suspend fun cuotasTratamiento(tratamientoId: String): CuotasTratamientoOrto? = try {
+        withTimeoutOrNull(12_000) {
+            coroutineScope {
+                val cuotas = async {
+                    Supabase.client.postgrest["cuotas_tratamiento"]
+                        .select(Columns.list("numero, monto, vence")) {
+                            filter { eq("tratamiento_id", tratamientoId) }
+                            order("numero", Order.ASCENDING)
+                        }.decodeList<JsonObject>()
+                }
+                val pagos = async {
+                    Supabase.client.postgrest["pagos_tratamiento"]
+                        .select(Columns.list("monto")) { filter { eq("tratamiento_id", tratamientoId) } }
+                        .decodeList<JsonObject>()
+                }
+                cuotasOrtoDeFilas(cuotas.await(), pagos.await())
+            }
+        }
+    } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
 
     /**
      * ¿El paciente ya tiene un plan de ortodoncia? (lectura liviana por la RLS).

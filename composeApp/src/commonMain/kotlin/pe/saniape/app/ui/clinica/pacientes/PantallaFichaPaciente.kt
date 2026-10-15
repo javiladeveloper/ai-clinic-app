@@ -1403,6 +1403,9 @@ private fun PantallaFichaPacienteContenido(
                             clinicaId = ctx.clinicaId,
                             apertura = flujoOrto,
                             onAperturaConsumida = { flujoOrto = null },
+                            // 💰 Cuotas del tratamiento (solo lectura), como `verCuotas={puede('pagos')}` de la web.
+                            puedePagos = ctx.puede("pagos"),
+                            onVerPagos = { tab = "pagos" },
                             // Tras la instalación: 📝 con la plantilla base "Cuidados con brackets" (por su clave
                             // del catálogo), vinculada a la cita del control. Se abre UNA vez.
                             onDejarCuidados = { citaId: String?, espId: String? ->

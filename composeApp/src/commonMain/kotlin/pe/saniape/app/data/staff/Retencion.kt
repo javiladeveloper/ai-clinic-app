@@ -495,6 +495,32 @@ fun textoEstadoCuota(c: CuotaConEstado): String {
     }
 }
 
+/** Resumen del cronograma (gemelo de `ResumenCuotas` de lib/cuotas.ts). */
+data class ResumenCuotas(
+    val totalPlan: Double,
+    val pagadas: Int,
+    /** Cuotas mensuales (sin la inicial). */
+    val nCuotas: Int,
+    val atrasadas: Int,
+    val montoAtrasado: Double,
+    /** La próxima cuota por pagar (atrasada, de hoy o futura), si hay. */
+    val proxima: CuotaConEstado?,
+    val alDia: Boolean,
+)
+
+fun resumenCuotas(cuotas: List<CuotaConEstado>): ResumenCuotas {
+    val atrasadas = cuotas.filter { it.estado == EstadoCuota.ATRASADA }
+    return ResumenCuotas(
+        totalPlan = r2(cuotas.sumOf { it.monto }),
+        pagadas = cuotas.count { it.estado == EstadoCuota.PAGADA },
+        nCuotas = cuotas.count { it.numero > 0 },
+        atrasadas = atrasadas.size,
+        montoAtrasado = r2(atrasadas.sumOf { it.saldo }),
+        proxima = cuotas.firstOrNull { it.estado != EstadoCuota.PAGADA },
+        alDia = atrasadas.isEmpty(),
+    )
+}
+
 /** ¿Se avisa esta cuota en Retención? Atrasada, de hoy, o por vencer en ≤ 7 días. */
 fun cuotaParaAvisar(c: CuotaConEstado): Boolean =
     c.estado == EstadoCuota.ATRASADA || c.estado == EstadoCuota.VENCE_HOY ||

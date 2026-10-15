@@ -924,6 +924,47 @@ fun tendenciaHigiene(controles: List<ControlOrtodoncia>): TendenciaHigiene {
     return TendenciaHigiene(serie, if (dif >= 0.5) "mejora" else if (dif <= -0.5) "empeora" else "estable")
 }
 
+// ─── 💰 Cuotas del tratamiento (solo lectura; gemelo de ResumenCuotasOrto.tsx) ─
+
+/**
+ * Lo que se lee para el resumen: el cronograma (`cuotas_tratamiento`: número,
+ * monto, vence) y lo PAGADO del tratamiento (la suma de `pagos_tratamiento`,
+ * como la web). Qué cuota está pagada no se guarda: se calcula aplicando lo
+ * pagado en orden ([estadoCuotas], gemelo de lib/cuotas.ts).
+ */
+data class CuotasTratamientoOrto(val plan: List<CuotaPlan>, val pagado: Double)
+
+/** Filas crudas de la base → [CuotasTratamientoOrto] (montos numeric pueden llegar como texto). */
+fun cuotasOrtoDeFilas(cuotas: List<JsonObject>, pagos: List<JsonObject>): CuotasTratamientoOrto {
+    fun JsonObject.num(k: String): Double? = txtOrto(k)?.toDoubleOrNull()?.takeIf { it.isFinite() }
+    val plan = cuotas.mapNotNull { o ->
+        val numero = o.intOrto("numero") ?: return@mapNotNull null
+        val vence = o.txtOrto("vence")?.take(10)?.takeIf { Regex("""^\d{4}-\d{2}-\d{2}$""").matches(it) } ?: return@mapNotNull null
+        CuotaPlan(numero, o.num("monto") ?: 0.0, vence)
+    }.distinctBy { it.numero }
+    return CuotasTratamientoOrto(plan, pagos.sumOf { it.num("monto") ?: 0.0 })
+}
+
+/** Lo que pinta la tarjeta 💰 Cuotas: cada cuota con su estado y el resumen (null = sin cronograma). */
+data class ResumenCuotasOrto(val cuotas: List<CuotaConEstado>, val resumen: ResumenCuotas?, val pagado: Double)
+
+fun resumenCuotasOrto(datos: CuotasTratamientoOrto, hoy: String): ResumenCuotasOrto {
+    val cuotas = estadoCuotas(datos.plan, datos.pagado, hoy)
+    return ResumenCuotasOrto(cuotas, if (cuotas.isEmpty()) null else resumenCuotas(cuotas), datos.pagado)
+}
+
+/** "⚠ 1 atrasada (S/ 125.00)" o null si está al día. */
+fun textoAtrasoCuotas(r: ResumenCuotas, moneda: String): String? =
+    if (r.atrasadas == 0) null
+    else "⚠ ${r.atrasadas} atrasada${if (r.atrasadas == 1) "" else "s"} (${formatearDinero(r.montoAtrasado, moneda)})"
+
+/** "5 de 16: S/ 125.00 — atrasada 10 días (25/09/2026)" — la próxima por pagar, como la web. */
+fun textoProximaCuota(r: ResumenCuotas, moneda: String): String? {
+    val p = r.proxima ?: return null
+    return "${etiquetaCuota(p.numero, r.nCuotas)}: ${formatearDinero(p.saldo, moneda)} — " +
+        "${textoEstadoCuota(p).lowercase()} (${fechaIndicacion(p.vence)})"
+}
+
 // ─── Textos ──────────────────────────────────────────────────────────────────
 
 /** "Clase II · ambos lados · 3/16" · media · 22 h/día" */

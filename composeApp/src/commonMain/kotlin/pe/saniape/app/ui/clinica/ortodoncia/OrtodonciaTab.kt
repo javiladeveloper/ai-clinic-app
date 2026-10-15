@@ -45,6 +45,8 @@ import pe.saniape.app.data.staff.ARCADAS_ORTO
 import pe.saniape.app.data.staff.CADENETAS_ORTO
 import pe.saniape.app.data.staff.CitaOrto
 import pe.saniape.app.data.staff.ControlOrtodoncia
+import pe.saniape.app.data.staff.CuotasTratamientoOrto
+import pe.saniape.app.data.staff.EstadoCuota
 import pe.saniape.app.data.staff.DOLORES_ORTO
 import pe.saniape.app.data.staff.MapaDental
 import pe.saniape.app.data.staff.MapaOrtodoncia
@@ -61,6 +63,7 @@ import pe.saniape.app.data.staff.estadosFases
 import pe.saniape.app.data.staff.faseEsperada
 import pe.saniape.app.data.staff.faseOrtoPorId
 import pe.saniape.app.data.staff.fechaIndicacion
+import pe.saniape.app.data.staff.formatearDinero
 import pe.saniape.app.data.staff.hoyClinicaIso
 import pe.saniape.app.data.staff.htmlFichaOrtodoncia
 import pe.saniape.app.data.staff.nombreOrto
@@ -71,11 +74,14 @@ import pe.saniape.app.data.staff.ordenarPlanesOrto
 import pe.saniape.app.data.staff.progresionArcos
 import pe.saniape.app.data.staff.progresoTratamiento
 import pe.saniape.app.data.staff.proximaCitaAgendada
+import pe.saniape.app.data.staff.resumenCuotasOrto
 import pe.saniape.app.data.staff.tendenciaHigiene
 import pe.saniape.app.data.staff.textoArcosControl
+import pe.saniape.app.data.staff.textoAtrasoCuotas
 import pe.saniape.app.data.staff.textoClaseInicial
 import pe.saniape.app.data.staff.textoElastico
 import pe.saniape.app.data.staff.textoLigadura
+import pe.saniape.app.data.staff.textoProximaCuota
 import pe.saniape.app.ui.Toaster
 import pe.saniape.app.ui.clinica.mapas.BotonMapa
 import pe.saniape.app.ui.clinica.mapas.ChipMapa
@@ -83,6 +89,7 @@ import pe.saniape.app.ui.clinica.mapas.EtiquetaMapa
 import pe.saniape.app.ui.clinica.mapas.FilaBotonesMapa
 import pe.saniape.app.ui.clinica.mapas.PildoraMapa
 import pe.saniape.app.ui.clinica.mapas.TarjetaMapa
+import pe.saniape.app.ui.monedaUI
 import pe.saniape.app.ui.recordarAcciones
 import pe.saniape.app.ui.theme.Sania
 
@@ -106,6 +113,8 @@ private sealed interface EditorCtl {
  *  · "＋ Registrar control" y "↺ Repetir el anterior" (sin la fase), el
  *    historial con la progresión de arcos y los saltos de más de 8 semanas.
  *  · Tras el control de la INSTALACIÓN: "📝 Dejar los cuidados con brackets".
+ *  · 💰 Cuotas del tratamiento (con permiso de pagos): "5 de 16 pagadas ·
+ *    ⚠ 1 atrasada · próxima…", solo lectura (ResumenCuotasOrto.tsx).
  *
  * Carga SOLO cuando la pestaña se abre (la monta el padre en su `when`). Sin
  * listas perezosas: vive dentro del `verticalScroll` de la ficha.
@@ -134,6 +143,10 @@ fun OrtodonciaTab(
     onAperturaConsumida: () -> Unit = {},
     /** Tras la instalación: la pestaña 📝 con "Cuidados con brackets" vinculada a la cita. */
     onDejarCuidados: ((citaId: String?, especialidadId: String?) -> Unit)? = null,
+    /** `puede('pagos')`: muestra el resumen 💰 de cuotas del tratamiento (como `verCuotas` de la web). */
+    puedePagos: Boolean = false,
+    /** "Ver pagos →": lleva a la pestaña 💰 Pagos de la ficha, donde se cobra. */
+    onVerPagos: (() -> Unit)? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -222,6 +235,7 @@ fun OrtodonciaTab(
                         onEditarPlan = { editorPlan = "editar" },
                         onPlanActualizado = { np -> planes = ps.map { if (it.id == np.id) np else it } },
                         onDejarCuidados = onDejarCuidados,
+                        puedePagos = puedePagos, onVerPagos = onVerPagos,
                     )
                 }
             }
@@ -295,6 +309,8 @@ private fun PlanConControles(
     onEditarPlan: () -> Unit,
     onPlanActualizado: (PlanOrtodoncia) -> Unit,
     onDejarCuidados: ((String?, String?) -> Unit)?,
+    puedePagos: Boolean,
+    onVerPagos: (() -> Unit)?,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -336,7 +352,7 @@ private fun PlanConControles(
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         CabeceraPlan(plan, controles, hoy, tratamiento, citas, plan.terapeutaId?.let { nombrePorId[it] }, puedeEditar,
-            onImprimir = { imprimir() }, onEditar = onEditarPlan)
+            onImprimir = { imprimir() }, onEditar = onEditarPlan, puedePagos = puedePagos, onVerPagos = onVerPagos)
 
         cuidadosDe?.takeIf { editor == null && onDejarCuidados != null }?.let { citaId ->
             AvisoCuidadosBrackets(
@@ -446,6 +462,8 @@ private fun CabeceraPlan(
     puedeEditar: Boolean,
     onImprimir: () -> Unit,
     onEditar: () -> Unit,
+    puedePagos: Boolean,
+    onVerPagos: (() -> Unit)?,
 ) {
     val c = Sania.colors
     val ap = aparatologiaOrtoPorId(plan.aparatologia)
@@ -556,7 +574,74 @@ private fun CabeceraPlan(
                 }
             }
         }
+        // 💰 Cuotas: solo con permiso de pagos y un tratamiento atado (como la web).
+        if (puedePagos) plan.tratamientoId?.let { CuotasPlanOrto(it, hoy, onVerPagos) }
         plan.notas?.let { Text("Notas: $it", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp)) }
+    }
+}
+
+/**
+ * 💰 Las cuotas del tratamiento en un recuadro, junto a la adherencia (gemelo de
+ * ResumenCuotasOrto.tsx): "5 de 16 pagadas", ⚠ atrasadas con su monto o ✓ al
+ * día, la barra de cuotas pagadas y la próxima por pagar. SOLO LECTURA: ni un
+ * sol se mueve acá (se cobra en 💰 Pagos). Lee al abrir la pestaña; si no se
+ * pudo leer (backend viejo, sin red), el recuadro no aparece.
+ */
+@Composable
+private fun CuotasPlanOrto(tratamientoId: String, hoy: String, onVerPagos: (() -> Unit)?) {
+    val c = Sania.colors
+    // La moneda de la ficha (la sede del paciente): nunca se mezcla con otra.
+    val moneda = monedaUI()
+    var datos by remember(tratamientoId) { mutableStateOf<CuotasTratamientoOrto?>(null) }
+    var cargando by remember(tratamientoId) { mutableStateOf(true) }
+    LaunchedEffect(tratamientoId) {
+        datos = OrtodonciaRepo.cuotasTratamiento(tratamientoId)
+        cargando = false
+    }
+    if (!cargando && datos == null) return
+    val r = remember(datos, hoy) { datos?.let { resumenCuotasOrto(it, hoy) } }
+    Column(
+        Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+            .border(1.dp, if (r?.resumen?.alDia == false) c.error else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+            .padding(10.dp),
+    ) {
+        EtiquetaMapa("💰 Cuotas")
+        val res = r?.resumen
+        when {
+            r == null -> Box(Modifier.padding(top = 2.dp).fillMaxWidth(0.55f).height(14.dp).clip(RoundedCornerShape(4.dp)).background(c.chipBg))
+            res == null -> Text("Sin cronograma de cuotas · pagado ${formatearDinero(r.pagado, moneda)}", color = c.textoSuave, fontSize = 13.sp)
+            else -> {
+                val total = r.cuotas.size
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("${res.pagadas} de $total pagadas", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f))
+                    val atraso = textoAtrasoCuotas(res, moneda)
+                    Text(atraso ?: if (res.proxima == null) "✓ Plan completo" else "✓ Al día",
+                        color = if (atraso != null) c.error else c.ok, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+                val pct = if (total > 0) res.pagadas.toFloat() / total else 0f
+                Box(
+                    Modifier.fillMaxWidth().padding(top = 6.dp).height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.chipBg)
+                        .semantics { contentDescription = "${res.pagadas} de $total cuotas pagadas" },
+                ) {
+                    if (pct > 0f) Box(Modifier.fillMaxWidth(pct).height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.ok))
+                }
+                textoProximaCuota(res, moneda)?.let { t ->
+                    val estado = res.proxima?.estado
+                    Text(t, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp),
+                        color = when (estado) {
+                            EstadoCuota.ATRASADA -> c.error
+                            EstadoCuota.VENCE_HOY, EstadoCuota.POR_VENCER -> c.pend
+                            else -> c.textoSuave
+                        },
+                        fontWeight = if (estado == EstadoCuota.ATRASADA || estado == EstadoCuota.VENCE_HOY) FontWeight.Bold else FontWeight.Normal)
+                }
+            }
+        }
+        if (r != null && onVerPagos != null) {
+            Text("Ver pagos →", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 2.dp).heightIn(min = 44.dp).clickable(onClick = onVerPagos).padding(vertical = 12.dp))
+        }
     }
 }
 
