@@ -1,0 +1,8 @@
+# Novedades de la 2.45.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+WhatsApp de la cita con todos los datos y sin caracteres raros.
+---
+Clínicas:
+• El 💬 de cada cita abre WhatsApp con un mensaje completo: paciente, fecha, hora, servicio, profesional y dirección.
+• Si la cita se agendó hoy, el mensaje confirma la reserva ("Hemos confirmado su cita…"); otro día, la recuerda.
+• Arreglado: los emojis, tildes y signos (¿, ñ) ya no llegan como caracteres raros en WhatsApp ni en Maps.
