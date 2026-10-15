@@ -711,6 +711,8 @@ private fun PantallaFichaPacienteContenido(
                     if (esPacienteFisio) add("ejercicios" to "🏠 Ejercicios")
                     // SOLO pacientes de nutrición (`esPacienteNutricion`, arriba).
                     if (esPacienteNutricion) add("medidas" to "⚖️ Medidas")
+                    // 🥗 Plan alimentario: mismo candado que ⚖️ Medidas (solo nutrición).
+                    if (esPacienteNutricion) add("plan" to "🥗 Plan alimentario")
                     // SOLO pacientes de especialidades que recetan (`esPacienteReceta`).
                     // + documentos médicos (informe/descanso/orden) en clínicas médicas.
                     if (esPacienteReceta || esPacienteDocs) {
@@ -885,6 +887,28 @@ private fun PantallaFichaPacienteContenido(
                             edad = pe.saniape.app.data.staff.edadDe(
                                 paciente.fechaNacimiento, paciente.edad, pe.saniape.app.data.staff.hoyClinicaIso(),
                             ),
+                        )
+                    }
+                    // 🥗 Plan alimentario (nutrición): consulta SOLO al abrirse, como ⚖️ Medidas.
+                    // Mismo permiso que el API; el resto lo ve (e imprime) en solo lectura.
+                    "plan" -> if (esPacienteNutricion) {
+                        pe.saniape.app.ui.clinica.nutricion.PlanAlimentarioTab(
+                            pacienteId = paciente.id,
+                            pacienteNombre = paciente.nombre,
+                            pacienteDocumento = paciente.dni,
+                            edad = pe.saniape.app.data.staff.edadDe(
+                                paciente.fechaNacimiento, paciente.edad, pe.saniape.app.data.staff.hoyClinicaIso(),
+                            ),
+                            puedeEditar = (ctx.puede("pacientes") || ctx.puede("sesiones")) &&
+                                !pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
+                            // El del apoderado si recibe los avisos (gemelo de `telefonoParaAvisos`).
+                            telefono = pe.saniape.app.data.staff.telefonoParaAvisos(
+                                paciente.telefono, paciente.apoderadoTelefono, paciente.apoderadoRecibeAvisos,
+                            ),
+                            clinicaNombre = ctx.clinicaNombre,
+                            clinicaDireccion = ctx.clinicaDireccion,
+                            logoUrl = ctx.logoUrl,
+                            colorPrincipal = ctx.colorPrincipal,
                         )
                     }
                     // 🏠 Ejercicios de apoyo (fisio): consulta SOLO al abrirse, como la 📏.
