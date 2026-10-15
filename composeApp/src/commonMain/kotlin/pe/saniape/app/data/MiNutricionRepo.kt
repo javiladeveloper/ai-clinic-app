@@ -86,8 +86,14 @@ fun parsearMiNutricion(texto: String): MiNutricion? {
             pacienteNombre = pac?.txtNut("nombre"),
         )
     }
-    val mediciones = (raiz["mediciones"] as? JsonArray).orEmpty().mapNotNull { el ->
+    // §4 (2026-10-16): las mediciones de un NIÑO de una clínica con pediatría sin plan
+    // alimentario (`enNutricion: false`) van en 👶 Crecimiento, no en ⚖️ Mi evolución; y
+    // `mostrarEvolucion: false` en la raíz = ninguna es de nutrición. Ausentes (servidor
+    // viejo) = mostrar todo, como antes.
+    val mostrarEvolucion = (raiz["mostrarEvolucion"] as? JsonPrimitive)?.content != "false"
+    val mediciones = (raiz["mediciones"] as? JsonArray).orEmpty().filter { mostrarEvolucion }.mapNotNull { el ->
         val o = el as? JsonObject ?: return@mapNotNull null
+        if ((o["enNutricion"] as? JsonPrimitive)?.content == "false") return@mapNotNull null
         val m = runCatching { medicionDeJson(o) }.getOrNull() ?: return@mapNotNull null
         val imc = (o["imc"] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content?.trim()
             ?.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 }
