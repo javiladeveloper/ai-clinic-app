@@ -160,6 +160,8 @@ fun PantallaAgenda(
     var fichaEjercicios by remember { mutableStateOf<pe.saniape.app.ui.clinica.fisio.IndicarEjercicios?>(null) }
     // La ficha se abre en ⚖️ Medidas / 🥗 Plan alimentario (nutrición), con la cita vinculada.
     var fichaNutricion by remember { mutableStateOf<pe.saniape.app.ui.clinica.nutricion.AperturaNutricion?>(null) }
+    // La ficha se abre en 📝 Indicaciones con una hoja nueva (plantilla sugerida + cita vinculada).
+    var fichaIndicaciones by remember { mutableStateOf<pe.saniape.app.data.staff.AperturaIndicaciones?>(null) }
     var cargandoFicha by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val acciones = pe.saniape.app.ui.recordarAcciones()
@@ -209,6 +211,29 @@ fun PantallaAgenda(
                 return@launch
             }
             fichaNutricion = pe.saniape.app.ui.clinica.nutricion.AperturaNutricion(tab, cita.id, abrirFormulario, cita.tratamientoId)
+            fichaPaciente = pac
+        }
+    }
+    /**
+     * 📝 "Dejar indicaciones": a la ficha en la pestaña 📝 con una hoja nueva, la
+     * plantilla que sugirió el servicio precargada y la cita vinculada (gemelo de
+     * `rutaFichaIndicaciones(pacienteId, citaId)` de /citas).
+     */
+    fun abrirFichaIndicaciones(of: AgendaViewModel.OfertaIndicaciones) {
+        val pid = of.cita.pacienteId ?: return
+        if (cargandoFicha) return
+        cargandoFicha = true
+        scope.launch {
+            val pac = runCatching { PacientesRepo.porId(pid) }.getOrNull()
+            cargandoFicha = false
+            if (pac == null) {
+                pe.saniape.app.ui.Toaster.error("No se pudo abrir la ficha. Revisa tu conexión.")
+                return@launch
+            }
+            fichaIndicaciones = pe.saniape.app.data.staff.AperturaIndicaciones(
+                citaId = of.cita.id, plantillaClave = of.plantilla.clave,
+                especialidadId = of.especialidadId, servicio = of.servicio,
+            )
             fichaPaciente = pac
         }
     }
@@ -837,6 +862,7 @@ fun PantallaAgenda(
                     vm.ejecutar(AccionCita.Completar, cita, obs, piezas = piezas, mejorias = mejorias, eva = eva,
                         pago = if (conCobro) cobro.pago() else null,
                         ofrecerSiguienteSesion = !conEjercicios,
+                        otraEntrega = conEjercicios,
                         alTerminar = if (conEjercicios) ({ ok -> if (ok) abrirFichaConEjercicios(cita) }) else null,
                         alCompletarSesion = alCompletarConFotos())
                 },
@@ -1204,13 +1230,42 @@ fun PantallaAgenda(
         }
     }
 
+    // 📝 "Dejar indicaciones" tras completar: el mismo lugar que la barra de medidas o
+    // la de la receta, NUNCA encima de ellas, ni de "¿Agendar la siguiente?" (sale
+    // cuando ese diálogo se cierra), ni del cobro fallido; su tiempo no corre detrás.
+    vm.ofrecerIndicaciones?.let { oi ->
+        val recetaEnPantalla = pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.oferta != null &&
+            ctx.modulosClinicos.recetas && ctx.puede("sesiones")
+        val visible = fichaPaciente == null && tratCita == null && vm.ofrecerTratamiento == null &&
+            !recetaEnPantalla && vm.ofrecerSiguiente == null && vm.cobroFallido == null &&
+            vm.ofrecerMedidas == null && ofertaPrimera == null && completar == null
+        LaunchedEffect(oi, visible) {
+            if (!visible) return@LaunchedEffect
+            kotlinx.coroutines.delay(pe.saniape.app.data.staff.VIDA_OFERTA_INDICACIONES_MS)
+            if (vm.ofrecerIndicaciones === oi) vm.cerrarOfertaIndicaciones()
+        }
+        if (visible) {
+            pe.saniape.app.ui.clinica.agenda.modales.BarraOfertaIndicaciones(
+                pacienteNombre = oi.cita.pacienteNombre,
+                tituloSugerida = oi.plantilla.titulo,
+                cargando = cargandoFicha,
+                onDejar = {
+                    vm.cerrarOfertaIndicaciones()
+                    abrirFichaIndicaciones(oi)
+                },
+                onCerrar = { vm.cerrarOfertaIndicaciones() },
+            )
+        }
+    }
+
     fichaPaciente?.let { pac ->
         Box(Modifier.fillMaxSize().background(c.fondo)) {
             pe.saniape.app.tutoriales.PantallaTutorial("Ficha") { PantallaFichaPaciente(
                 ctx = ctx, pacienteInicial = pac,
-                onCerrar = { fichaPaciente = null; fichaEjercicios = null; fichaNutricion = null },
+                onCerrar = { fichaPaciente = null; fichaEjercicios = null; fichaNutricion = null; fichaIndicaciones = null },
                 ejerciciosAlAbrir = fichaEjercicios,
                 nutricionAlAbrir = fichaNutricion,
+                indicacionesAlAbrir = fichaIndicaciones,
             ) }
         }
     }

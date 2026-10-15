@@ -732,6 +732,41 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     var ofrecerMedidas by mutableStateOf<CitaStaff?>(null); private set
     fun cerrarOfertaMedidas() { ofrecerMedidas = null }
 
+    /**
+     * 📝 "Dejar indicaciones" tras completar (gemelo de `ofrecerIndicaciones` de
+     * /citas): solo si el SERVICIO de la cita sugiere una plantilla base (el
+     * catálogo del servidor decide; la app no adivina por palabras). AVISO que no
+     * bloquea; convive con "📅 Agendar siguiente" (sale después de ese diálogo).
+     */
+    data class OfertaIndicaciones(
+        val cita: CitaStaff,
+        val plantilla: pe.saniape.app.data.staff.PlantillaBaseIndicaciones,
+        val especialidadId: String?,
+        val servicio: String,
+    )
+    var ofrecerIndicaciones by mutableStateOf<OfertaIndicaciones?>(null); private set
+    fun cerrarOfertaIndicaciones() { ofrecerIndicaciones = null }
+
+    /**
+     * Pregunta al catálogo si el servicio de la cita sugiere una plantilla. El
+     * servicio: el del tratamiento o, sin tratamiento visible, el `procedimiento_id`
+     * de la propia cita (como la web). Sin red / sin la ruta: no hay aviso.
+     */
+    private suspend fun ofertaIndicacionesDe(cita: CitaStaff): OfertaIndicaciones? {
+        var servicio = cita.procedimiento?.trim()?.takeIf { it.isNotEmpty() }
+        var espServicio = cita.especialidadServicioId
+        if (servicio == null) {
+            val (nombre, esp) = cita.procedimientoId?.let { pe.saniape.app.data.staff.IndicacionesRepo.servicioDeProcedimiento(it) }
+                ?: return null
+            servicio = nombre
+            espServicio = espServicio ?: esp
+        }
+        val espId = cita.especialidadId ?: espServicio
+        val cat = pe.saniape.app.data.staff.IndicacionesRepo.catalogoParaAtencion(ctx.clinicaId, espId, servicio) ?: return null
+        val sugerida = cat.plantillaSugerida ?: return null
+        return OfertaIndicaciones(cita, sugerida, espId, servicio)
+    }
+
     /** Cobro que no entró tras completar la sesión desde la agenda (para reintentar SOLO el cobro). */
     data class CobroFallidoAgenda(
         val cita: CitaStaff, val tratamientoId: String, val numero: Int,
@@ -847,6 +882,11 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
          * diálogo se abriría encima; como la web, ahí se omite.
          */
         ofrecerSiguienteSesion: Boolean = true,
+        /**
+         * true = en este cierre sale OTRA entrega al paciente (los ejercicios de
+         * apoyo de fisio): el aviso "📝 Dejar indicaciones" se calla, como la web.
+         */
+        otraEntrega: Boolean = false,
         /**
          * Resultado para quien necesita saberlo (la revisión dental: solo se
          * cierra si quedó completada, y si no, avisa que el tratamiento ya se
@@ -972,6 +1012,9 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                     )
                 }
                 val tratSesion = cita.tratamientoId
+                // "📅 Agendar siguiente" se evalúa aparte; el aviso 📝 espera a que termine
+                // para no salir y esconderse en cuanto se abre ese diálogo.
+                var jobSiguiente: kotlinx.coroutines.Job? = null
                 if (accion == AccionCita.Completar && cita.tipo == "Sesión" && tratSesion != null) {
                     // Cobro en el mismo cierre (solo con permiso de pagos; el endpoint
                     // también lo valida). Si falla, se ofrece reintentar SOLO el cobro.
@@ -985,9 +1028,36 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                     // señal (encolada) no se ofrece: no se sabe si ya tiene la siguiente.
                     if (ofrecerSiguienteSesion && !completadaEncolada && ctx.puede("sesiones") && cita.pacienteId != null) {
                         val atendida = cita.copy(terapeutaId = terapeutaId ?: cita.terapeutaId)
-                        viewModelScope.launch {
+                        jobSiguiente = viewModelScope.launch {
                             pe.saniape.app.data.staff.SiguienteSesionRepo.evaluar(tratSesion, hoy, excluirCitaId = cita.id)
                                 ?.let { ofrecerSiguiente = OfertaSiguiente(atendida, it) }
+                        }
+                    }
+                }
+                // 📝 "Dejar indicaciones": la regla menos ruidosa (Indicaciones.kt). Otra
+                // entrega en este cierre la calla: la receta, los ejercicios de apoyo, las
+                // medidas (nutrición) o el plan de tratamiento tras una evaluación.
+                if (accion == AccionCita.Completar) {
+                    val planOfrecido = cita.tipo == "Evaluación" &&
+                        (!ofrecerPlan || (ctx.puede("sesiones") && cita.pacienteId != null))
+                    val candidata = pe.saniape.app.data.staff.candidataIndicacionesTrasCompletar(
+                        pacienteId = cita.pacienteId,
+                        puedePacientes = ctx.puede("pacientes"), puedeSesiones = ctx.puede("sesiones"),
+                        encolada = completadaEncolada,
+                        esNutricion = esNutricion(cita),
+                        ofreceReceta = recetaAplica(cita, terapeutaId),
+                        esMedicaGuiada = esMedicaGuiada(cita),
+                        otraEntrega = otraEntrega || planOfrecido,
+                    )
+                    if (candidata) {
+                        val atendida = cita.copy(terapeutaId = terapeutaId ?: cita.terapeutaId, estado = "Completada")
+                        val esperar = jobSiguiente
+                        viewModelScope.launch {
+                            val oferta = ofertaIndicacionesDe(atendida)
+                            esperar?.join()
+                            if (pe.saniape.app.data.staff.ofrecerIndicacionesTrasCompletar(candidata, oferta?.plantilla)) {
+                                ofrecerIndicaciones = oferta
+                            }
                         }
                     }
                 }

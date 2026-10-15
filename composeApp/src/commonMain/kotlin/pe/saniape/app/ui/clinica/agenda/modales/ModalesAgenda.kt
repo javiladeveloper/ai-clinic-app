@@ -866,3 +866,57 @@ fun BarraOfertaMedidas(
         }
     }
 }
+
+/**
+ * 📝 "Dejar indicaciones" tras completar (gemelo del aviso de /citas web): barra
+ * abajo que NO bloquea, en el mismo lugar que la de medidas o la receta (nunca
+ * encima de ellas). Se va sola (ver la pantalla) o con ✕.
+ */
+@Composable
+fun BarraOfertaIndicaciones(
+    pacienteNombre: String?,
+    tituloSugerida: String,
+    cargando: Boolean,
+    onDejar: () -> Unit,
+    onCerrar: () -> Unit,
+) {
+    val c = Sania.colors
+    val forma = RoundedCornerShape(Sania.shape.md.dp)
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+        Column(
+            Modifier
+                .padding(bottom = 90.dp, start = 16.dp, end = 16.dp)   // sobre la barra de tabs, como el toast
+                .fillMaxWidth()
+                .shadow(6.dp, forma)
+                .clip(forma)
+                .background(c.superficie)
+                .border(1.dp, c.borde, forma)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "¿Le dejas indicaciones para casa?" +
+                            (pacienteNombre?.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()),
+                        color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "Sugerida: $tituloSugerida. Se imprime, va por WhatsApp y la ve en su app.",
+                        color = c.textoSuave, fontSize = 12.sp,
+                    )
+                }
+                Text(
+                    "✕", color = c.textoSuave, fontSize = 15.sp,
+                    modifier = Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).clickable(onClick = onCerrar)
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.navy)
+                    .clickable(enabled = !cargando, onClick = onDejar).padding(vertical = 11.dp),
+                contentAlignment = Alignment.Center,
+            ) { Text(if (cargando) "Abriendo la ficha…" else "📝 Dejar indicaciones", color = c.sobreNavy, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+        }
+    }
+}
