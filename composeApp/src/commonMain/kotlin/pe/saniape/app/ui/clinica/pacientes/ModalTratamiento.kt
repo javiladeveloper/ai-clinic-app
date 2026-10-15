@@ -194,6 +194,9 @@ fun ModalCrearTratamiento(
     var medicacion by remember { mutableStateOf("") }
     // Lo que puso la plantilla en las indicaciones: no se aprende (solo lo que se escriba encima).
     var medicacionPlantilla by remember { mutableStateOf("") }
+    // La tarjeta 💊 queda a la vista una vez que la plantilla trajo indicaciones,
+    // aunque se vacíen (p. ej. al quitar con el chip la única frase): como la web.
+    var verIndicaciones by remember { mutableStateOf(false) }
     var proximoControl by remember { mutableStateOf<String?>(null) }
     var mostrarFechaControl by remember { mutableStateOf(false) }
     // Aviso si los precios de la plantilla no se copiaron (moneda / precio de la sede).
@@ -434,6 +437,7 @@ fun ModalCrearTratamiento(
         diagnostico = pl?.diagnostico?.takeIf { it.isNotBlank() } ?: dxSinPlantilla
         medicacion = pe.saniape.app.data.staff.medicacionDePlantilla(pl?.indicaciones).orEmpty()
         medicacionPlantilla = medicacion
+        verIndicaciones = medicacion.isNotBlank() || proximoControl != null
         proximoControl = pe.saniape.app.data.staff.proximoControlDePlantilla(
             pl?.controlDias, hoySede(), servicioConProtocolo = pr?.controlesDias?.isNotEmpty() == true,
         )
@@ -510,7 +514,7 @@ fun ModalCrearTratamiento(
         listOf(pe.saniape.app.data.staff.ClaveFrase.TRATAMIENTO_INDICACIONES),
         especialidadId = espIndicaciones,
         rubro = pe.saniape.app.data.staff.StaffContextoRepo.actual.rubroFrasesDe(espIndicaciones),
-        activo = proc != null && (medicacion.isNotBlank() || proximoControl != null),
+        activo = proc != null && (verIndicaciones || medicacion.isNotBlank() || proximoControl != null),
     )
     // Crear: la misma acción desde el pie y desde la cabecera (con teclado).
     var enviado by remember { mutableStateOf(false) }
@@ -896,7 +900,7 @@ fun ModalCrearTratamiento(
 
                 // Indicaciones y control que trajo la plantilla (editables; se guardan al crear
                 // como medicación y próximo control, en cualquier tipo de tratamiento).
-                if (proc != null && (medicacion.isNotBlank() || proximoControl != null)) {
+                if (proc != null && (verIndicaciones || medicacion.isNotBlank() || proximoControl != null)) {
                     Spacer(Modifier.height(12.dp))
                     Tarjeta(titulo = "Indicaciones de la plantilla", icono = "💊") {
                         Etq("Medicación / cuidados")
@@ -1064,15 +1068,21 @@ private fun idCreado(r: pe.saniape.app.data.offline.ResultadoEscritura): String?
             ?: pe.saniape.app.data.staff.idDeRespuesta(d)
     }
 
-/** Después de crear (con id): contar la plantilla, aprender el diagnóstico y armar la oferta. */
+/**
+ * Después de crear (con id): contar la plantilla, aprender el diagnóstico y las
+ * indicaciones y armar la oferta. [encolada] = quedó en la cola offline: todavía
+ * no existe (y puede rechazarse), así que no se aprende nada de lo que escribió.
+ */
 private suspend fun trasCrear(
     pacienteId: String, nuevo: TratamientoNuevo, nombrePaciente: String?, id: String?, primeraAgendada: Boolean,
-    respuesta: kotlinx.serialization.json.JsonObject? = null,
+    respuesta: kotlinx.serialization.json.JsonObject? = null, encolada: Boolean = false,
 ): OfertaPrimeraCita? {
     // El contador de la plantilla cuenta SOLO tratamientos guardados.
     nuevo.plantillaId?.let { runCatching { PacientesRepo.contarUsoPlantilla(it) } }
-    aprenderDiagnosticoDe(nuevo, nombrePaciente)
-    aprenderIndicacionesDe(nuevo, pacienteId, nombrePaciente)
+    if (!encolada) {
+        aprenderDiagnosticoDe(nuevo, nombrePaciente)
+        aprenderIndicacionesDe(nuevo, pacienteId, nombrePaciente)
+    }
     if (!pe.saniape.app.data.staff.ofrecerAgendarTrasCrear(id, primeraAgendada) || id == null) return null
     return ofertaPrimeraCitaDe(
         tratamientoId = id, pacienteId = pacienteId, pacienteNombre = nombrePaciente, tipo = nuevo.tipo,
@@ -1128,7 +1138,8 @@ suspend fun guardarTratamientoNuevo(pacienteId: String, nuevo: TratamientoNuevo,
     }
     // En la cola offline aún no hay id: no hay qué agendar todavía.
     val oferta = trasCrear(pacienteId, nuevo, nombrePaciente, if (r.encolada) null else id,
-        primeraAgendada = r.registrada && nuevo.primeraFecha != null, respuesta = r.cuerpo ?: r.rechazo?.datos)
+        primeraAgendada = r.registrada && nuevo.primeraFecha != null, respuesta = r.cuerpo ?: r.rechazo?.datos,
+        encolada = r.encolada)
     return ResultadoCrearTratamiento(
         creado = true, oferta = oferta, tratamientoId = if (r.encolada) null else id, encolada = r.encolada,
     )
@@ -1516,93 +1527,78 @@ fun ModalEditarConsulta(
         ) { Box(Modifier.fillMaxWidth().padding(20.dp), Alignment.Center) { androidx.compose.material3.TimePicker(state = estadoP) } }
     }
 
-    Dialog(onDismissRequest = onCancelar, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(max = 720.dp)
-                .clip(RoundedCornerShape(Sania.shape.lg.dp)).background(c.fondo),
-        ) {
-            Column(Modifier.fillMaxWidth().background(c.navyDark).padding(horizontal = 18.dp, vertical = 16.dp)) {
-                Text("Editar consulta", color = c.sobreNavy, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                Text(t.procedimiento ?: "Consulta", color = c.sobreNavy.copy(alpha = 0.7f),
-                    fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
-            }
-            Column(
-                Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-            ) {
-                // Cita: fecha/hora (solo si la consulta tiene una cita).
-                if (cita != null) {
-                    Tarjeta(titulo = "Cita", icono = "📅") {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Column(Modifier.weight(1f)) {
-                                Etq("Fecha")
-                                SelectorCajita(fecha.ifBlank { "Elegir…" }) { mostrarFechaCita = true }
-                            }
-                            Column(Modifier.weight(1f)) {
-                                Etq("Hora")
-                                SelectorCajita(pe.saniape.app.ui.hora12(hora)) { mostrarHoraCita = true }
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(12.dp))
-                }
+    fun guardar() {
+        // Un solo envío: un doble toque no guarda (ni aprende) dos veces.
+        if (enviadoConsulta) return
+        enviadoConsulta = true
+        onGuardar(EdicionConsulta(
+            fecha = fecha.trim(), hora = hora.trim(),
+            diagnostico = diagnostico.trim(), medicacion = medicacion.trim(),
+            proximoControl = proximoControl.trim(), costo = costo.toDoubleOrNull(),
+        ))
+    }
 
-                Tarjeta(titulo = "Atención", icono = "📝") {
-                    Etq("Diagnóstico")
-                    OutlinedTextField(colors = coloresCampoForm(), value = diagnostico, onValueChange = { diagnostico = it },
-                        placeholder = { Text("Hallazgos / diagnóstico", color = c.textoSuave) },
-                        minLines = 2, modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(10.dp))
-                    Etq("Medicación / receta")
-                    CampoConFrases(
-                        label = "Medicación / receta", valor = medicacion, onChange = { medicacion = it.take(2000) },
-                        frases = frasesIndicaciones[pe.saniape.app.data.staff.ClaveFrase.TRATAMIENTO_INDICACIONES],
-                        placeholder = "Indicaciones, receta…", minLineas = 2, chipsVisibles = 6, mostrarEtiqueta = false,
-                        campo = pe.saniape.app.data.staff.ClaveFrase.TRATAMIENTO_INDICACIONES,
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Etq("Próximo control (opcional)")
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.weight(1f)) { SelectorCajita(proximoControl.ifBlank { "📅 Elegir fecha…" }, vacio = proximoControl.isBlank()) { mostrarProxControl = true } }
-                        if (proximoControl.isNotBlank()) {
-                            Spacer(Modifier.width(8.dp))
-                            Text("✕", color = c.textoSuave, fontSize = 14.sp, modifier = Modifier.clickable { proximoControl = "" })
-                        }
+    // DialogoForm (Android 16): con el teclado abierto el cuerpo se achica y
+    // "Guardar" pasa a la cabecera; el autocompletado de las indicaciones queda
+    // a la vista encima del teclado.
+    DialogoForm(
+        titulo = "Editar consulta",
+        subtitulo = t.procedimiento ?: "Consulta",
+        textoAccion = "Guardar",
+        accionHabilitada = !enviadoConsulta,
+        onCancelar = onCancelar,
+        onAccion = { guardar() },
+    ) {
+        // Cita: fecha/hora (solo si la consulta tiene una cita).
+        if (cita != null) {
+            Tarjeta(titulo = "Cita", icono = "📅") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Etq("Fecha")
+                        SelectorCajita(fecha.ifBlank { "Elegir…" }) { mostrarFechaCita = true }
                     }
-                    Text(
-                        if (esGestor) "Fecha tentativa — luego confirma horario/disponibilidad al agendar."
-                        else "Referencial (ej. “vuelve en ~1 mes”). No agenda la cita.",
-                        color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp),
-                    )
-                    if (puedePagos) {
-                        Spacer(Modifier.height(10.dp))
-                        Etq("Costo de la consulta (${simboloMoneda(moneda)}) — opcional")
-                        CampoNum(costo) { costo = it }
-                        Text("Déjalo vacío si es gratis (p. ej. un control sin cobro).",
-                            color = c.textoSuave, fontSize = 10.sp)
+                    Column(Modifier.weight(1f)) {
+                        Etq("Hora")
+                        SelectorCajita(pe.saniape.app.ui.hora12(hora)) { mostrarHoraCita = true }
                     }
                 }
             }
-            Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
-            Row(
-                Modifier.fillMaxWidth().background(c.superficie).padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave, fontWeight = FontWeight.Bold) }
-                Box(
-                    Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.navy)
-                        .clickable {
-                            // Un solo envío: un doble toque no guarda (ni aprende) dos veces.
-                            if (enviadoConsulta) return@clickable
-                            enviadoConsulta = true
-                            onGuardar(EdicionConsulta(
-                                fecha = fecha.trim(), hora = hora.trim(),
-                                diagnostico = diagnostico.trim(), medicacion = medicacion.trim(),
-                                proximoControl = proximoControl.trim(), costo = costo.toDoubleOrNull(),
-                            ))
-                        }.padding(vertical = 13.dp),
-                    contentAlignment = Alignment.Center,
-                ) { Text("Guardar", color = c.sobreNavy, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+            Spacer(Modifier.height(12.dp))
+        }
+
+        Tarjeta(titulo = "Atención", icono = "📝") {
+            Etq("Diagnóstico")
+            OutlinedTextField(colors = coloresCampoForm(), value = diagnostico, onValueChange = { diagnostico = it },
+                placeholder = { Text("Hallazgos / diagnóstico", color = c.textoSuave) },
+                minLines = 2, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            Etq("Medicación / receta")
+            CampoConFrases(
+                label = "Medicación / receta", valor = medicacion, onChange = { medicacion = it.take(2000) },
+                frases = frasesIndicaciones[pe.saniape.app.data.staff.ClaveFrase.TRATAMIENTO_INDICACIONES],
+                placeholder = "Indicaciones, receta…", minLineas = 2, chipsVisibles = 6, mostrarEtiqueta = false,
+                campo = pe.saniape.app.data.staff.ClaveFrase.TRATAMIENTO_INDICACIONES,
+            )
+            Spacer(Modifier.height(10.dp))
+            Etq("Próximo control (opcional)")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { SelectorCajita(proximoControl.ifBlank { "📅 Elegir fecha…" }, vacio = proximoControl.isBlank()) { mostrarProxControl = true } }
+                if (proximoControl.isNotBlank()) {
+                    Text("✕", color = c.textoSuave, fontSize = 14.sp, modifier = Modifier.heightIn(min = 44.dp)
+                        .clickable { proximoControl = "" }.padding(horizontal = 12.dp, vertical = 12.dp))
+                }
+            }
+            Text(
+                if (esGestor) "Fecha tentativa — luego confirma horario/disponibilidad al agendar."
+                else "Referencial (ej. “vuelve en ~1 mes”). No agenda la cita.",
+                color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp),
+            )
+            if (puedePagos) {
+                Spacer(Modifier.height(10.dp))
+                Etq("Costo de la consulta (${simboloMoneda(moneda)}) — opcional")
+                CampoNum(costo) { costo = it }
+                Text("Déjalo vacío si es gratis (p. ej. un control sin cobro).",
+                    color = c.textoSuave, fontSize = 10.sp)
             }
         }
     }
