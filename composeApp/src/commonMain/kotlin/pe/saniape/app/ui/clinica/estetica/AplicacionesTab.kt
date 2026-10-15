@@ -52,6 +52,9 @@ import pe.saniape.app.data.staff.Aplicacion
 import pe.saniape.app.data.staff.AplicacionEstetica
 import pe.saniape.app.data.staff.AplicacionesEsteticasRepo
 import pe.saniape.app.data.staff.BorradorAplicacion
+import pe.saniape.app.data.staff.CAMPOS_APLICACION_ESTETICA
+import pe.saniape.app.data.staff.ClaveFrase
+import pe.saniape.app.data.staff.FrasesCampoPlan
 import pe.saniape.app.data.staff.CitaParaMapa
 import pe.saniape.app.data.staff.CrudoAplicacion
 import pe.saniape.app.data.staff.LimitesAplicacion
@@ -98,6 +101,8 @@ import pe.saniape.app.data.staff.vistaDeZona
 import pe.saniape.app.data.staff.zonaFacial
 import pe.saniape.app.data.staff.zonasDeVista
 import pe.saniape.app.ui.Toaster
+import pe.saniape.app.ui.clinica.CampoConFrases
+import pe.saniape.app.ui.clinica.recordarFrasesCampos
 import pe.saniape.app.ui.clinica.mapas.AvisoMapa
 import pe.saniape.app.ui.clinica.mapas.BotonMapa
 import pe.saniape.app.ui.clinica.mapas.CajaErroresMapa
@@ -549,6 +554,9 @@ private fun EditorMapa(
     var elegirFecha by remember { mutableStateOf(false) }
     var recientes by remember { mutableStateOf<List<ProductoReciente>>(emptyList()) }
     LaunchedEffect(Unit) { recientes = AplicacionesEsteticasRepo.recientes(clinicaId) }
+    // Observaciones y notas de la zona que aprenden (UNA consulta al abrir el
+    // editor). Las aprende el SERVIDOR al guardar el mapa: la app no hace nada más.
+    val frases = recordarFrasesCampos(CAMPOS_APLICACION_ESTETICA)
 
     val porZona = remember(lista) { totalesPorZona(lista) }
     val totales = remember(lista) { calcularTotales(lista) }
@@ -754,7 +762,7 @@ private fun EditorMapa(
                 form?.takeIf { it.zona == zona.id }?.let { f ->
                     FormularioAplicacion(
                         form = f, setForm = { form = it }, recientes = recientes, fecha = fecha, errores = errores,
-                        loteDe = ::loteDe,
+                        loteDe = ::loteDe, frasesNotas = frases[ClaveFrase.ESTETICA_NOTAS_ZONA],
                         onGuardar = { guardarForm() }, onCancelar = { form = null; errores = emptyList() },
                         onQuitar = f.idx?.let { idx -> { quitar(idx) } },
                     )
@@ -787,11 +795,12 @@ private fun EditorMapa(
         }
 
         Spacer(Modifier.height(10.dp))
-        EtqForm("Observaciones de la sesión")
-        OutlinedTextField(
-            value = observaciones, onValueChange = { observaciones = it.take(LimitesAplicacion.OBSERVACIONES) },
-            placeholder = { Text("Ej. Sin eventos. Control en 15 días para retoque.", color = c.textoSuave, fontSize = 13.sp) },
-            minLines = 2, modifier = Modifier.fillMaxWidth(), colors = coloresCampoForm(),
+        CampoConFrases(
+            label = "Observaciones de la sesión", valor = observaciones,
+            onChange = { observaciones = it.take(LimitesAplicacion.OBSERVACIONES) },
+            frases = frases[ClaveFrase.ESTETICA_OBSERVACIONES],
+            placeholder = "Ej. Sin eventos. Control en 15 días para retoque.",
+            minLineas = 2, chipsVisibles = 6, campo = ClaveFrase.ESTETICA_OBSERVACIONES,
         )
         if (form == null) CajaErroresMapa(errores)
     }
@@ -830,6 +839,8 @@ private fun FormularioAplicacion(
     fecha: String,
     errores: List<String>,
     loteDe: (String) -> Pair<String, String>?,
+    /** Chips + autocompletado de las notas de la zona (null = el campo de siempre). */
+    frasesNotas: FrasesCampoPlan?,
     onGuardar: () -> Unit,
     onCancelar: () -> Unit,
     onQuitar: (() -> Unit)?,
@@ -978,10 +989,11 @@ private fun FormularioAplicacion(
         }
 
         EtiquetaMapa("Notas de la zona")
-        OutlinedTextField(
-            value = form.notas, onValueChange = { set(form.copy(notas = it.take(LimitesAplicacion.NOTAS))) },
-            placeholder = { Text("Ej. 5 puntos en V, bolo profundo", color = c.textoSuave, fontSize = 13.sp) },
-            singleLine = true, modifier = Modifier.fillMaxWidth(), colors = coloresCampoForm(),
+        CampoConFrases(
+            label = "Notas de la zona", valor = form.notas,
+            onChange = { set(form.copy(notas = it.take(LimitesAplicacion.NOTAS))) },
+            frases = frasesNotas, placeholder = "Ej. 5 puntos en V, bolo profundo",
+            minLineas = 1, chipsVisibles = 6, mostrarEtiqueta = false, campo = ClaveFrase.ESTETICA_NOTAS_ZONA,
         )
         CajaErroresMapa(errores)
         Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

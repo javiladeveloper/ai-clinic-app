@@ -42,6 +42,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
+import pe.saniape.app.data.staff.ClaveFrase
+import pe.saniape.app.ui.clinica.CampoConFrases
+import pe.saniape.app.ui.clinica.recordarFrasesCampos
 import pe.saniape.app.data.staff.AREAS_RECEPTORAS_RAPIDAS
 import pe.saniape.app.data.staff.BorradorTricoscopia
 import pe.saniape.app.data.staff.COLOR_ZONA_TRICO
@@ -318,6 +321,9 @@ private fun FormTricoscopia(
     var receptorArea by remember { mutableStateOf(textoCampoTrico(ev?.receptor?.areaCm2)) }
     var densidadObjetivo by remember { mutableStateOf(textoCampoTrico(ev?.receptor?.densidadObjetivo)) }
     var observaciones by remember { mutableStateOf(ev?.observaciones.orEmpty()) }
+    // Observaciones que aprenden (base + lo de la clínica). Las aprende el SERVIDOR
+    // al guardar la evaluación: la app solo las muestra.
+    val frases = recordarFrasesCampos(listOf(ClaveFrase.CAPILAR_OBSERVACIONES))
     var visible by remember { mutableStateOf(ev?.visiblePaciente ?: true) }
     var tratamientoId by remember { mutableStateOf(if (ev != null) ev.tratamientoId.orEmpty() else tratamientos.firstOrNull()?.id.orEmpty()) }
     var copiado by remember { mutableStateOf(false) }
@@ -581,13 +587,12 @@ private fun FormTricoscopia(
         }
 
         Spacer(Modifier.height(14.dp))
-        EtqForm("Observaciones (solo para la clínica)")
-        OutlinedTextField(
-            value = observaciones, onValueChange = { observaciones = it.take(LimitesTricoscopia.OBSERVACIONES) },
-            placeholder = { Text("Impresión diagnóstica, plan, lo que no entra en la grilla…", color = c.textoSuave, fontSize = 13.sp) },
-            modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp),
-            colors = coloresCampoForm(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+        CampoConFrases(
+            label = "Observaciones (solo para la clínica)", valor = observaciones,
+            onChange = { observaciones = it.take(LimitesTricoscopia.OBSERVACIONES) },
+            frases = frases[ClaveFrase.CAPILAR_OBSERVACIONES],
+            placeholder = "Impresión diagnóstica, plan, lo que no entra en la grilla…",
+            minLineas = 2, chipsVisibles = 6, campo = ClaveFrase.CAPILAR_OBSERVACIONES,
         )
         Row(
             Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(Sania.shape.md.dp))
