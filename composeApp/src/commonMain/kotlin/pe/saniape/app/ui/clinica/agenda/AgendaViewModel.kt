@@ -769,6 +769,44 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         return OfertaIndicaciones(cita, sugerida, espId, servicio)
     }
 
+    /**
+     * 😁 "Registrar control" tras cerrar un control o la instalación de ortodoncia
+     * (gemelo de `ofrecerControlOrtodoncia` de /citas). Va por el MISMO carril que
+     * "📝 Dejar indicaciones" y, cuando sale, ocupa su lugar (un aviso de entrega a
+     * la vez). No bloquea; convive con "📅 Agendar siguiente".
+     */
+    data class OfertaControlOrto(val cita: CitaStaff, val tipo: String)
+    var ofrecerControlOrto by mutableStateOf<OfertaControlOrto?>(null); private set
+    fun cerrarOfertaControlOrto() { ofrecerControlOrto = null }
+
+    /**
+     * La regla de la web: cita DENTAL cuyo servicio (o especialidad, por nombre) es
+     * de ortodoncia y es un control o la instalación; y hace falta dónde guardarlo:
+     * la cita tiene tratamiento o el paciente ya tiene plan (una lectura chica).
+     */
+    private suspend fun ofertaControlOrtoDe(cita: CitaStaff): OfertaControlOrto? {
+        val pid = cita.pacienteId ?: return null
+        val puede = ctx.puede("pacientes") || ctx.puede("sesiones")
+        if (!puede || !esDental(cita)) return null
+        var servicio = cita.procedimiento?.trim()?.takeIf { it.isNotEmpty() }
+        var espServicio = cita.especialidadServicioId
+        if (servicio == null) {
+            cita.procedimientoId?.let { pe.saniape.app.data.staff.IndicacionesRepo.servicioDeProcedimiento(it) }?.let { (nombre, esp) ->
+                servicio = nombre
+                espServicio = espServicio ?: esp
+            }
+        }
+        val espId = cita.especialidadId ?: espServicio
+        val espOrto = espId != null && (espId in ctx.mapaOrtodoncia.ids ||
+            pe.saniape.app.data.staff.esEspecialidadOrtodoncia(especialidades.find { it.id == espId }?.nombre))
+        val tipo = pe.saniape.app.data.staff.tipoOrtoDeCita(servicio, cita.tipo, espOrto) ?: return null
+        if (!pe.saniape.app.data.staff.ofreceRegistrarControl(tipo)) return null
+        val tienePlan = if (cita.tratamientoId == null) pe.saniape.app.data.staff.OrtodonciaRepo.tienePlan(pid) else null
+        return if (pe.saniape.app.data.staff.ofrecerControlOrtoTrasCompletar(pid, puede, true, tipo, cita.tratamientoId != null, tienePlan)) {
+            OfertaControlOrto(cita, tipo)
+        } else null
+    }
+
     /** Cobro que no entró tras completar la sesión desde la agenda (para reintentar SOLO el cobro). */
     data class CobroFallidoAgenda(
         val cita: CitaStaff, val tratamientoId: String, val numero: Int,
@@ -1056,9 +1094,16 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                         val atendida = cita.copy(terapeutaId = terapeutaId ?: cita.terapeutaId, estado = "Completada")
                         val esperar = jobSiguiente
                         viewModelScope.launch {
-                            val oferta = ofertaIndicacionesDe(atendida)
+                            // 😁 Un control / la instalación de ortodoncia: "Registrar control"
+                            // EN LUGAR de las indicaciones (como la web: un aviso de entrega a la vez).
+                            val orto = ofertaControlOrtoDe(atendida)
+                            val oferta = if (orto == null) ofertaIndicacionesDe(atendida) else null
                             esperar?.join()
-                            if (pe.saniape.app.data.staff.ofrecerIndicacionesTrasCompletar(candidata, oferta?.plantilla)) {
+                            if (orto != null) {
+                                ofrecerIndicaciones = null
+                                ofrecerControlOrto = orto
+                            } else if (pe.saniape.app.data.staff.ofrecerIndicacionesTrasCompletar(candidata, oferta?.plantilla)) {
+                                ofrecerControlOrto = null
                                 ofrecerIndicaciones = oferta
                             }
                         }

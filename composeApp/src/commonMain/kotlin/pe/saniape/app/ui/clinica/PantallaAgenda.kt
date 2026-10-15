@@ -162,6 +162,8 @@ fun PantallaAgenda(
     var fichaNutricion by remember { mutableStateOf<pe.saniape.app.ui.clinica.nutricion.AperturaNutricion?>(null) }
     // La ficha se abre en 📝 Indicaciones con una hoja nueva (plantilla sugerida + cita vinculada).
     var fichaIndicaciones by remember { mutableStateOf<pe.saniape.app.data.staff.AperturaIndicaciones?>(null) }
+    // La ficha se abre en 😁 Ortodoncia con el control vinculado a la cita.
+    var fichaOrtodoncia by remember { mutableStateOf<pe.saniape.app.ui.clinica.ortodoncia.AperturaOrtodoncia?>(null) }
     var cargandoFicha by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val acciones = pe.saniape.app.ui.recordarAcciones()
@@ -234,6 +236,26 @@ fun PantallaAgenda(
                 citaId = of.cita.id, plantillaClave = of.plantilla.clave,
                 especialidadId = of.especialidadId, servicio = of.servicio,
             )
+            fichaPaciente = pac
+        }
+    }
+    /**
+     * 😁 "Registrar control": a la ficha en la pestaña 😁 con el control vinculado a
+     * esta cita (el suyo si ya lo tiene; sin plan, primero el plan). Gemelo de
+     * `rutaFichaOrtodoncia(pacienteId, citaId)` de /citas.
+     */
+    fun abrirFichaOrtodoncia(of: AgendaViewModel.OfertaControlOrto) {
+        val pid = of.cita.pacienteId ?: return
+        if (cargandoFicha) return
+        cargandoFicha = true
+        scope.launch {
+            val pac = runCatching { PacientesRepo.porId(pid) }.getOrNull()
+            cargandoFicha = false
+            if (pac == null) {
+                pe.saniape.app.ui.Toaster.error("No se pudo abrir la ficha. Revisa tu conexión.")
+                return@launch
+            }
+            fichaOrtodoncia = pe.saniape.app.ui.clinica.ortodoncia.AperturaOrtodoncia(of.cita.id)
             fichaPaciente = pac
         }
     }
@@ -1258,14 +1280,42 @@ fun PantallaAgenda(
         }
     }
 
+    // 😁 "Registrar control" (ortodoncia): el MISMO lugar y las mismas reglas que la
+    // barra 📝 (a la que reemplaza para esa cita); su tiempo no corre detrás de diálogos.
+    vm.ofrecerControlOrto?.let { oo ->
+        val recetaEnPantalla = pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.oferta != null &&
+            ctx.modulosClinicos.recetas && ctx.puede("sesiones")
+        val visible = fichaPaciente == null && tratCita == null && vm.ofrecerTratamiento == null &&
+            !recetaEnPantalla && vm.ofrecerSiguiente == null && vm.cobroFallido == null &&
+            vm.ofrecerMedidas == null && ofertaPrimera == null && completar == null
+        LaunchedEffect(oo, visible) {
+            if (!visible) return@LaunchedEffect
+            kotlinx.coroutines.delay(pe.saniape.app.data.staff.VIDA_OFERTA_INDICACIONES_MS)
+            if (vm.ofrecerControlOrto === oo) vm.cerrarOfertaControlOrto()
+        }
+        if (visible) {
+            pe.saniape.app.ui.clinica.agenda.modales.BarraOfertaControlOrto(
+                pacienteNombre = oo.cita.pacienteNombre,
+                instalacion = oo.tipo == "instalacion",
+                cargando = cargandoFicha,
+                onRegistrar = {
+                    vm.cerrarOfertaControlOrto()
+                    abrirFichaOrtodoncia(oo)
+                },
+                onCerrar = { vm.cerrarOfertaControlOrto() },
+            )
+        }
+    }
+
     fichaPaciente?.let { pac ->
         Box(Modifier.fillMaxSize().background(c.fondo)) {
             pe.saniape.app.tutoriales.PantallaTutorial("Ficha") { PantallaFichaPaciente(
                 ctx = ctx, pacienteInicial = pac,
-                onCerrar = { fichaPaciente = null; fichaEjercicios = null; fichaNutricion = null; fichaIndicaciones = null },
+                onCerrar = { fichaPaciente = null; fichaEjercicios = null; fichaNutricion = null; fichaIndicaciones = null; fichaOrtodoncia = null },
                 ejerciciosAlAbrir = fichaEjercicios,
                 nutricionAlAbrir = fichaNutricion,
                 indicacionesAlAbrir = fichaIndicaciones,
+                ortodonciaAlAbrir = fichaOrtodoncia,
             ) }
         }
     }

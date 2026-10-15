@@ -920,3 +920,58 @@ fun BarraOfertaIndicaciones(
         }
     }
 }
+
+/**
+ * 😁 "Registrar control" tras cerrar un control o la instalación de ortodoncia
+ * (gemelo del aviso de /citas web): barra abajo que NO bloquea, en el lugar de
+ * la de 📝 indicaciones (nunca las dos). Se va sola (ver la pantalla) o con ✕.
+ */
+@Composable
+fun BarraOfertaControlOrto(
+    pacienteNombre: String?,
+    instalacion: Boolean,
+    cargando: Boolean,
+    onRegistrar: () -> Unit,
+    onCerrar: () -> Unit,
+) {
+    val c = Sania.colors
+    val forma = RoundedCornerShape(Sania.shape.md.dp)
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+        Column(
+            Modifier
+                .padding(bottom = 90.dp, start = 16.dp, end = 16.dp)   // sobre la barra de tabs, como el toast
+                .fillMaxWidth()
+                .shadow(6.dp, forma)
+                .clip(forma)
+                .background(c.superficie)
+                .border(1.dp, c.borde, forma)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "¿Registramos el control de ortodoncia?" +
+                            (pacienteNombre?.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()),
+                        color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        if (instalacion) "Arcos, ligaduras y elásticos de la instalación; luego, los cuidados con brackets."
+                        else "Arcos, ligaduras, elásticos y brackets despegados — con «Copiar el anterior».",
+                        color = c.textoSuave, fontSize = 12.sp,
+                    )
+                }
+                Text(
+                    "✕", color = c.textoSuave, fontSize = 15.sp,
+                    modifier = Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).clickable(onClick = onCerrar)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.navy)
+                    .clickable(enabled = !cargando, onClick = onRegistrar).padding(vertical = 13.dp),
+                contentAlignment = Alignment.Center,
+            ) { Text(if (cargando) "Abriendo la ficha…" else "😁 Registrar control", color = c.sobreNavy, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+        }
+    }
+}
