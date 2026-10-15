@@ -55,6 +55,7 @@ import pe.saniape.app.data.staff.BorradorAplicacion
 import pe.saniape.app.data.staff.CAMPOS_APLICACION_ESTETICA
 import pe.saniape.app.data.staff.ClaveFrase
 import pe.saniape.app.data.staff.FrasesCampoPlan
+import pe.saniape.app.data.staff.FrasesCampoRepo
 import pe.saniape.app.data.staff.CitaParaMapa
 import pe.saniape.app.data.staff.CrudoAplicacion
 import pe.saniape.app.data.staff.LimitesAplicacion
@@ -638,6 +639,8 @@ private fun EditorMapa(
                 }
             }
             val fila = (r.cuerpo?.get("aplicacion") as? JsonObject)?.let(::aplicacionEsteticaDeJson)
+            // El servidor aprendió observaciones y notas: la próxima apertura las trae.
+            if (r.registrada) FrasesCampoRepo.invalidar(CAMPOS_APLICACION_ESTETICA)
             if (r.registrada && fila != null) {
                 AplicacionesEsteticasRepo.olvidarRecientes()
                 Toaster.exito(if (nuevo) "Mapa de aplicación guardado" else "Mapa actualizado")

@@ -28,7 +28,7 @@ import pe.saniape.app.data.staff.CAMPOS_PSICO_EVAL
 import pe.saniape.app.data.staff.FotoPsico
 import pe.saniape.app.data.staff.FrasesCampoPlan
 import pe.saniape.app.data.staff.FrasesCampoRepo
-import pe.saniape.app.data.staff.cambiosParaAprender
+import pe.saniape.app.data.staff.AprendizajePantalla
 import pe.saniape.app.data.staff.frasesDeCampoAbierto
 import pe.saniape.app.data.staff.textosPsicoAprendibles
 import pe.saniape.app.data.staff.FuentePsico
@@ -146,9 +146,8 @@ class EvaluacionPsicoViewModel(
     /** Chips + autocompletado por clave (vacío hasta que llegan, o si el servidor no los tiene). */
     var frases by mutableStateOf<Map<String, FrasesCampoPlan>>(emptyMap()); private set
     private var frasesPedidas = false
-    /** Lo ya aprendido (o lo que tenía al abrir): solo se manda lo nuevo. null = aún no cargó. */
-    private var aprendido: Map<String, String>? = null
-    private var puedeAprender = false
+    /** Lo ya aprendido (o lo que tenía al abrir): solo se manda lo nuevo, una vez. */
+    private val aprendizaje = AprendizajePantalla()
 
     /** Las frases de un campo; null en solo lectura (cerrada: el texto tal cual, sin chips). */
     fun frasesDe(campo: String): FrasesCampoPlan? = if (soloLectura) null else frases[campo]
@@ -169,13 +168,9 @@ class EvaluacionPsicoViewModel(
      */
     private fun aprender() {
         val e = ev ?: return
-        val previo = aprendido ?: return
-        if (!puedeAprender) return
-        val ahora = textosPsicoAprendibles(e)
-        aprendido = ahora
         val pacienteId = e.pacienteId.ifBlank { espacio?.paciente?.id.orEmpty() }
         val nombre = espacio?.paciente?.nombre
-        cambiosParaAprender(previo, ahora).forEach { c ->
+        aprendizaje.tomarCambios(textosPsicoAprendibles(e)).forEach { c ->
             FrasesCampoRepo.registrar(c.campo, c.texto, antes = c.antes, pacienteId = pacienteId, nombrePaciente = nombre)
         }
     }
@@ -219,8 +214,7 @@ class EvaluacionPsicoViewModel(
         espacio = e
         ev = e.evaluacion
         // Lo que ya tenía al abrir no se vuelve a aprender (solo lo nuevo).
-        if (aprendido == null) e.evaluacion?.let { aprendido = textosPsicoAprendibles(it) }
-        puedeAprender = !e.soloLectura
+        aprendizaje.iniciar(e.evaluacion?.let { textosPsicoAprendibles(it) }, puedeAprender = !e.soloLectura)
         if (!e.soloLectura) cargarFrases()
         estados = e.estados
         sugerencia = e.sugerenciaSesiones

@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import pe.saniape.app.data.staff.ClaveFrase
+import pe.saniape.app.data.staff.FrasesCampoRepo
 import pe.saniape.app.ui.clinica.CampoConFrases
 import pe.saniape.app.ui.clinica.recordarFrasesCampos
 import pe.saniape.app.data.staff.AREAS_RECEPTORAS_RAPIDAS
@@ -392,6 +393,8 @@ private fun FormTricoscopia(
             val r = TricoscopiaRepo.guardar(b, ev?.id)
             guardando = false
             if (r.registrada) {
+                // El servidor aprendió las observaciones: la próxima apertura las trae.
+                FrasesCampoRepo.invalidar(listOf(ClaveFrase.CAPILAR_OBSERVACIONES))
                 Toaster.exito(if (nueva) "Tricoscopía guardada" else "Cambios guardados")
                 onGuardada((r.cuerpo?.get("evaluacion") as? JsonObject)?.let(::evaluacionDeJson))
             } else {

@@ -249,8 +249,26 @@ internal fun pareceDatoPersonal(frase: String, nombrePaciente: String? = null): 
     }
 }
 
-/** ¿Lleva emoji o pictograma? (sustitutos UTF-16 o el bloque de símbolos varios). */
-internal fun tieneEmoji(s: String): Boolean = s.any { it.isSurrogate() || it.code in 0x2600..0x27BF }
+/**
+ * Los pictogramas del plano básico que `\p{Extended_Pictographic}` (la web)
+ * reconoce fuera de 2600–27BF: ©, ®, ‼, ™, ℹ, flechas ↔↩, ⌚⌛⌨, ⏩–⏺, Ⓜ,
+ * ▪▶◀◻, ⤴⤵, ⬅⬛⭐⭕, 〰〽㊗㊙. Ni las letras con tilde ni "→" (2192) cuentan.
+ */
+private val PICTOGRAMAS_BMP: List<IntRange> = listOf(
+    0x00A9..0x00A9, 0x00AE..0x00AE, 0x203C..0x203C, 0x2049..0x2049, 0x2122..0x2122, 0x2139..0x2139,
+    0x2194..0x2199, 0x21A9..0x21AA, 0x231A..0x231B, 0x2328..0x2328, 0x2388..0x2388, 0x23CF..0x23CF,
+    0x23E9..0x23F3, 0x23F8..0x23FA, 0x24C2..0x24C2, 0x25AA..0x25AB, 0x25B6..0x25B6, 0x25C0..0x25C0,
+    0x25FB..0x25FE, 0x2600..0x27BF, 0x2934..0x2935, 0x2B05..0x2B07, 0x2B1B..0x2B1C, 0x2B50..0x2B50,
+    0x2B55..0x2B55, 0x3030..0x3030, 0x303D..0x303D, 0x3297..0x3297, 0x3299..0x3299,
+)
+
+/**
+ * ¿Lleva emoji o pictograma? Cerca de `\p{Extended_Pictographic}`: todo lo que
+ * va en sustitutos UTF-16 (los emojis de verdad) y [PICTOGRAMAS_BMP].
+ */
+internal fun tieneEmoji(s: String): Boolean = s.any { ch ->
+    ch.isSurrogate() || PICTOGRAMAS_BMP.any { ch.code in it }
+}
 
 /**
  * ¿Se guarda como sugerencia PROPIA? Nunca con datos del paciente ni marcas del

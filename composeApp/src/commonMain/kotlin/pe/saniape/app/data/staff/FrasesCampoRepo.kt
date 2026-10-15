@@ -14,6 +14,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import pe.saniape.app.data.Supabase
@@ -25,8 +27,9 @@ import pe.saniape.app.data.crearHttpClient
  * filtros, mezcla) vive en FrasesCampo.kt.
  *
  * LECTURA: los campos de UNA pantalla en UN viaje (`?campos=a,b`), al abrirla.
- * Caché en memoria por clínica (abrir y cerrar el formulario no vuelve a
- * pedir); [limpiar] la vacía al salir o al cambiar de clínica. Un backend sin
+ * Caché en memoria por clínica que vence a los 10 min ([CacheFrases]: lo que
+ * aprende el servidor o escribe otro profesional también llega) y que se
+ * [invalidar]a tras guardar; [limpiar] la vacía al salir o al cambiar de clínica. Un backend sin
  * la ruta (404), un campo que no conoce (400) o sin red → sin chips, sin aviso:
  * el campo de texto de siempre.
  *
@@ -44,23 +47,21 @@ object FrasesCampoRepo {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /**
-     * Copia inmutable que se reemplaza entera (lectura sin candado). La clave
-     * lleva la CLÍNICA: lo de una nunca se sirve en otra.
+     * La caché (la clave lleva la CLÍNICA: lo de una nunca se sirve en otra) y
+     * los envíos ya hechos ([EnviadosFrases]: el mismo POST viaja una vez por
+     * sesión). Se tocan desde Dispatchers.Default y desde la UI: toda ESCRITURA
+     * pasa por [candado]; las lecturas ven siempre una copia inmutable entera.
      */
-    @kotlin.concurrent.Volatile
-    private var cache: Map<String, Map<String, RespuestaFrasesCampo>> = emptyMap()
-
-    /** Pedidos ya enviados en esta sesión (doble toque, salir dos veces): no se repiten. */
-    @kotlin.concurrent.Volatile
-    private var enviados: Set<String> = emptySet()
-    private const val MAX_ENVIADOS = 200
+    private val cache = CacheFrases { kotlinx.datetime.Clock.System.now().toEpochMilliseconds() }
+    private val enviados = EnviadosFrases()
+    private val candado = Mutex()
 
     private fun clinicaActual(): String = StaffContextoRepo.actual?.clinicaId.orEmpty()
 
     private fun token(): String? = runCatching { Supabase.client.auth.currentSessionOrNull()?.accessToken }.getOrNull()
 
     private fun clave(campos: List<String>, especialidadId: String?, rubro: String?) =
-        "${clinicaActual()}|${campos.sorted().joinToString(",")}|${especialidadId.orEmpty()}|${rubro.orEmpty()}"
+        ClaveCacheFrases(clinicaActual(), campos.sorted(), especialidadId?.ifBlank { null }, rubro?.ifBlank { null })
 
     /** Los campos que se pueden pedir: del registro, sin repetir, hasta 20. */
     private fun validos(campos: List<String>): List<String> =
@@ -68,13 +69,16 @@ object FrasesCampoRepo {
 
     /** Al cerrar sesión o cambiar de clínica (StaffContextoRepo.limpiar, onCambioClinica). */
     fun limpiar() {
-        cache = emptyMap()
-        enviados = emptySet()
+        // Cerrar sesión no puede esperar al candado: cada limpiar() reemplaza la
+        // copia entera de una vez (lo peor es perder una escritura en vuelo, que
+        // era de la sesión que se cierra).
+        cache.limpiar()
+        enviados.limpiar()
     }
 
     /** Lo ya cargado para esa pantalla, sin viaje (null = aún no): pinta los chips sin parpadeo al reabrir. */
     fun enCache(campos: List<String>, especialidadId: String? = null, rubro: String? = null): Map<String, RespuestaFrasesCampo>? =
-        cache[clave(validos(campos), especialidadId, rubro)]
+        cache.leer(clave(validos(campos), especialidadId, rubro))
 
     /**
      * Base + aprendido de los [campos] de una pantalla, en UN viaje. Nunca
@@ -87,7 +91,7 @@ object FrasesCampoRepo {
         val pedidos = validos(campos)
         if (pedidos.isEmpty()) return emptyMap()
         val k = clave(pedidos, especialidadId, rubro)
-        cache[k]?.let { return it }
+        cache.leer(k)?.let { return it }
         val tk = token() ?: return emptyMap()
         return try {
             val resp = http.get("${Supabase.SITE_URL}$RUTA") {
@@ -101,7 +105,7 @@ object FrasesCampoRepo {
             val o = runCatching { json.parseToJsonElement(resp.bodyAsText()).jsonObject }.getOrNull() ?: return emptyMap()
             val r = parsearFrasesCampos(o, pedidos)
             // Sin clínica conocida no se guarda (no se puede saber de quién es).
-            if (r.isNotEmpty() && clinicaActual().isNotEmpty()) cache = cache + (k to r)
+            if (r.isNotEmpty() && k.clinica.isNotEmpty()) candado.withLock { cache.guardar(k, r) }
             r
         } catch (e: CancellationException) {
             throw e
@@ -110,9 +114,13 @@ object FrasesCampoRepo {
         }
     }
 
-    /** Lo registrado hace un momento: la próxima apertura de esa pantalla lo trae. */
-    private fun invalidar(campo: String) {
-        cache = cache.filterKeys { k -> k.split('|').getOrNull(1)?.split(',')?.contains(campo) != true }
+    /**
+     * Lo guardado hace un momento: la próxima apertura de esas pantallas vuelve
+     * a pedir. Lo llama este repo tras su POST y quien guarda un registro que
+     * aprende EN EL SERVIDOR (tricoscopía, aplicación estética).
+     */
+    suspend fun invalidar(campos: List<String>) {
+        candado.withLock { cache.invalidar(campos) }
     }
 
     /**
@@ -142,8 +150,7 @@ object FrasesCampoRepo {
                 if (!debeRegistrarFrases(campo, texto, antes, pacienteId, nombrePaciente)) return@runCatching
                 val cuerpo = cuerpoRegistrarFrases(campo, texto, antes, especialidadId, pacienteId, nombrePaciente)
                 val marca = "${clinicaActual()}|$cuerpo"
-                if (marca in enviados) return@runCatching
-                enviados = (if (enviados.size >= MAX_ENVIADOS) emptySet() else enviados) + marca
+                if (!candado.withLock { enviados.marcar(marca) }) return@runCatching
                 val tk = token()
                 val ok = tk != null && try {
                     http.post("${Supabase.SITE_URL}$RUTA") {
@@ -156,10 +163,10 @@ object FrasesCampoRepo {
                 } catch (_: Exception) {
                     false
                 }
-                if (ok) invalidar(campo)
+                if (ok) invalidar(listOf(campo))
                 // Sin señal o rechazo (403 SOLO_LECTURA, 400…): se descarta en silencio,
                 // y el mismo pedido puede volver a intentarse en otro guardado.
-                else enviados = enviados - marca
+                else candado.withLock { enviados.liberar(marca) }
             }.onFailure { if (it is CancellationException) throw it }
         }
     }
