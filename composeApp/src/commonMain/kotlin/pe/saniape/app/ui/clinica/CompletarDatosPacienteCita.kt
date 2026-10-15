@@ -3,6 +3,8 @@ package pe.saniape.app.ui.clinica
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -272,7 +274,9 @@ private fun DialogoAgregarDni(
         padron?.let { p ->
             Row(
                 Modifier.fillMaxWidth().padding(top = 10.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
-                    .background(c.chipBg).clickable { usarPadron = !usarPadron }.padding(10.dp),
+                    .background(c.chipBg)
+                    .toggleable(value = usarPadron, role = Role.Checkbox, onValueChange = { usarPadron = it })
+                    .padding(10.dp),
                 verticalAlignment = Alignment.Top,
             ) {
                 Text(if (usarPadron) "☑" else "☐", color = c.navy, fontSize = 16.sp)
@@ -320,7 +324,7 @@ private fun Chip(texto: String, activo: Boolean, onClick: () -> Unit) {
         texto, color = if (activo) c.sobreNavy else c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold,
         modifier = Modifier.clip(forma).background(if (activo) c.navy else c.superficie)
             .border(1.dp, if (activo) c.navy else c.borde, forma)
-            .clickable { onClick() }.padding(horizontal = 10.dp, vertical = 6.dp),
+            .clickable(role = Role.Button) { onClick() }.padding(horizontal = 10.dp, vertical = 6.dp),
     )
 }
 
@@ -331,6 +335,6 @@ private fun BotonContorno(texto: String, habilitado: Boolean, onClick: () -> Uni
     Text(
         texto, color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
         modifier = Modifier.clip(forma).border(1.dp, c.navy, forma)
-            .clickable(enabled = habilitado) { onClick() }.padding(horizontal = 12.dp, vertical = 8.dp),
+            .clickable(enabled = habilitado, role = Role.Button) { onClick() }.padding(horizontal = 12.dp, vertical = 8.dp),
     )
 }

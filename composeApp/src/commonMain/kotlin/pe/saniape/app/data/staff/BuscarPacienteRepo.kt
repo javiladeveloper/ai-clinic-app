@@ -8,7 +8,9 @@ import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import io.github.jan.supabase.exceptions.RestException
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.coroutines.CancellationException
@@ -42,6 +44,10 @@ sealed interface ResultadoAgregarDni {
  */
 object BuscarPacienteRepo {
     private val http = crearHttpClient()
+
+    /** El cuerpo como texto, o null si no se pudo leer (la cancelación se propaga). */
+    private suspend fun HttpResponse.textoONull(): String? =
+        try { bodyAsText() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
     private suspend fun token(): String? = Supabase.client.auth.currentSessionOrNull()?.accessToken
 
     /**
@@ -57,7 +63,7 @@ object BuscarPacienteRepo {
             parameter("limite", limite.coerceIn(1, 20))
             if (parecidos) parameter("modo", "parecidos")
         }
-        interpretarBusqueda(resp.status.value, runCatching { resp.bodyAsText() }.getOrNull())
+        interpretarBusqueda(resp.status.value, resp.textoONull())
     } catch (e: CancellationException) { throw e } catch (_: Exception) {
         RespuestaBusqueda.Error("Sin conexión", "SIN_RED")
     }
@@ -111,7 +117,7 @@ object BuscarPacienteRepo {
                     contentType(ContentType.Application.Json)
                     setBody(cuerpo.toString())
                 }
-                AtencionRepo.resultadoDeRespuesta(resp.status.value, runCatching { resp.bodyAsText() }.getOrNull())
+                AtencionRepo.resultadoDeRespuesta(resp.status.value, resp.textoONull())
             }
         } catch (e: CancellationException) { throw e } catch (_: Exception) {
             ResultadoEscritura(false, rechazo = RechazoServidor("Sin conexión. Revisa tu internet.", "SIN_RED"))
@@ -143,23 +149,30 @@ object BuscarPacienteRepo {
                 filter { eq("id", pacienteId) }
             }.decodeList<JsonObject>()
             if (escritas.isEmpty()) ResultadoAgregarDni.Error(MSG_SIN_PERMISO_DNI) else ResultadoAgregarDni.Ok
-        } catch (e: CancellationException) { throw e } catch (e: Exception) {
-            // supabase-kt no expone el código de Postgres: va en el mensaje
-            // ("duplicate key value…" = 23505; "row-level security" = 42501).
+        } catch (e: CancellationException) { throw e } catch (e: RestException) {
+            // supabase-kt 3.0.3 no tiene PostgrestRestException: su RestException
+            // descarta el `code` de Postgres y deja el HTTP de PostgREST (23505 →
+            // 409; 42501 → 401/403) y el texto ("duplicate key value…").
+            ResultadoAgregarDni.Error(mensajeErrorDni(e.statusCode, e.error))
+        } catch (e: Exception) {
             ResultadoAgregarDni.Error(mensajeErrorDni(null, e.message))
         }
     }
 }
 
-const val MSG_SIN_PERMISO_DNI = "No tienes permiso para editar los datos de este paciente. Pídeselo a recepción o a un Admin."
+const val MSG_SIN_PERMISO_DNI = "No tienes permiso para editar los datos de este paciente. Pídeselo a un Admin."
 
-/** Error de Postgres al escribir el DNI → texto (como `CompletarDni` web). Puro. */
-fun mensajeErrorDni(codigo: String?, mensaje: String?): String {
+/**
+ * Error de PostgREST al escribir el DNI → texto (como `CompletarDni` web). Puro.
+ * [status] = HTTP de PostgREST: 409 es el índice único (23505); 401/403, la
+ * RLS o el candado de solo lectura (42501).
+ */
+fun mensajeErrorDni(status: Int?, mensaje: String?): String {
     val m = mensaje.orEmpty()
     return when {
-        codigo == "23505" || m.contains("23505") || m.contains("duplicate key", ignoreCase = true) ->
+        status == 409 || m.contains("23505") || m.contains("duplicate key", ignoreCase = true) ->
             "Ese documento ya está en otra ficha; avisa a un Admin."
-        codigo == "42501" || m.contains("42501") || m.contains("row-level security", ignoreCase = true) ->
+        status == 401 || status == 403 || m.contains("42501") || m.contains("row-level security", ignoreCase = true) ->
             "Modo solo lectura: no puedes modificar datos."
         else -> "No se pudo guardar. Intenta de nuevo."
     }

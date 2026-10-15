@@ -371,3 +371,10 @@ data class SedeRef(
     val zona: String? = null,
     val pais: String? = null,
 )
+
+/**
+ * ¿La ficha del paciente muestra datos personales (teléfono, DNI, correo,
+ * WhatsApp/portal) y deja editarlo, darlo de baja o reactivarlo? Es el
+ * `!accesoClinico` de la web: solo con el permiso 'datos_personales'.
+ */
+fun verDatosPersonalesFicha(ctx: ContextoStaff): Boolean = ctx.puede("datos_personales")

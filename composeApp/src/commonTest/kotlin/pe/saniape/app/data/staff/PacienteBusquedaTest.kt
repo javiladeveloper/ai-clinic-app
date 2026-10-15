@@ -324,10 +324,32 @@ class PacienteBusquedaTest {
 
     @Test
     fun erroresAlAgregarElDni() {
-        assertEquals("Ese documento ya está en otra ficha; avisa a un Admin.", mensajeErrorDni("23505", null))
-        assertEquals("Ese documento ya está en otra ficha; avisa a un Admin.",
-            mensajeErrorDni(null, "duplicate key value violates unique constraint \"uq_paciente_dni_clinica\""))
-        assertEquals("Modo solo lectura: no puedes modificar datos.", mensajeErrorDni("42501", null))
-        assertEquals("No se pudo guardar. Intenta de nuevo.", mensajeErrorDni(null, "timeout"))
+        val dup = "Ese documento ya está en otra ficha; avisa a un Admin."
+        assertEquals(dup, mensajeErrorDni(409, null))
+        assertEquals(dup, mensajeErrorDni(null, "duplicate key value violates unique constraint \"uq_paciente_dni_clinica\""))
+        assertEquals("Modo solo lectura: no puedes modificar datos.", mensajeErrorDni(403, null))
+        assertEquals("Modo solo lectura: no puedes modificar datos.", mensajeErrorDni(null, "new row violates row-level security policy"))
+        assertEquals("No se pudo guardar. Intenta de nuevo.", mensajeErrorDni(500, "timeout"))
+        assertTrue(MSG_SIN_PERMISO_DNI.endsWith("Pídeselo a un Admin."))
+    }
+
+    // ── La revisión de parecidos solo vale si nada cambió mientras se consultaba ──
+    @Test
+    fun revisionDeParecidosVigenteSoloSinCambios() {
+        assertTrue(revisionParecidosVigente("Ana Quispe", " Ana Quispe ", true, null, null))
+        // Cambió el texto, se cerró el buscador o ya se eligió a otro: se descarta.
+        assertFalse(revisionParecidosVigente("Ana Quispe", "Ana Quispe M", true, null, null))
+        assertFalse(revisionParecidosVigente("Ana Quispe", "Ana Quispe", false, null, null))
+        assertFalse(revisionParecidosVigente("Ana Quispe", "Ana Quispe", true, null, "p9"))
+        assertFalse(revisionParecidosVigente("Ana Quispe", "Ana Quispe", true, "p1", "p9"))
+    }
+
+    @Test
+    fun endpointDeBuscarSeReintentaTrasUnTiempo() {
+        assertTrue(endpointBuscarDisponible(0L, 1_000L))
+        val apagado = 1_000L + REINTENTO_ENDPOINT_BUSCAR_MS
+        assertFalse(endpointBuscarDisponible(apagado, 1_000L))
+        assertFalse(endpointBuscarDisponible(apagado, apagado - 1))
+        assertTrue(endpointBuscarDisponible(apagado, apagado))
     }
 }

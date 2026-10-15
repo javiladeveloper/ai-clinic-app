@@ -355,3 +355,20 @@ fun datosHomonimo(
     fechaDmyBusqueda(info?.ultimaCita)?.let { partes += "última cita $it" }
     return partes.joinToString(" · ")
 }
+
+/**
+ * ¿Sigue valiendo lo que contestó la revisión de parecidos? Mientras se
+ * consulta al servidor la persona pudo cerrar el buscador, cambiar el texto o
+ * elegir a otro paciente: entonces se DESCARTA (ni panel ni alta). Sin esto
+ * nacía una ficha fantasma o se reemplazaba al paciente ya elegido.
+ */
+fun revisionParecidosVigente(
+    consultaAlIniciar: String, consultaActual: String, abierto: Boolean,
+    elegidoAlIniciar: String?, elegidoActual: String?,
+): Boolean = abierto && consultaAlIniciar.trim() == consultaActual.trim() && elegidoAlIniciar == elegidoActual
+
+/** Tras un 404 (servidor sin el endpoint) se vuelve a probar pasados estos minutos. */
+const val REINTENTO_ENDPOINT_BUSCAR_MS = 10 * 60 * 1000L
+
+/** ¿Se usa GET /api/staff/paciente/buscar? Apagado por un 404 solo hasta [apagadoHastaMs]. */
+fun endpointBuscarDisponible(apagadoHastaMs: Long, ahoraMs: Long): Boolean = ahoraMs >= apagadoHastaMs

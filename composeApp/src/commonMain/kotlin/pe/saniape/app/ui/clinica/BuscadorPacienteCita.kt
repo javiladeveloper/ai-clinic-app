@@ -22,6 +22,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.layout.Box
+import kotlinx.coroutines.CancellationException
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import pe.saniape.app.data.offline.ahoraMs
 import pe.saniape.app.data.offline.nuevaIdemKey
 import pe.saniape.app.data.staff.AgendaRepo
 import pe.saniape.app.data.staff.BuscarPacienteRepo
@@ -48,6 +53,9 @@ import pe.saniape.app.data.staff.datosHomonimo
 import pe.saniape.app.data.staff.nombreParaAlta
 import pe.saniape.app.data.staff.parecidosA
 import pe.saniape.app.data.staff.rankearPorNombre
+import pe.saniape.app.data.staff.REINTENTO_ENDPOINT_BUSCAR_MS
+import pe.saniape.app.data.staff.endpointBuscarDisponible
+import pe.saniape.app.data.staff.revisionParecidosVigente
 import pe.saniape.app.ui.Toaster
 import pe.saniape.app.ui.theme.Sania
 
@@ -56,10 +64,15 @@ enum class AltaEnCita { POR_DOCUMENTO, SIN_DNI, REACTIVADO }
 
 /**
  * ¿El servidor tiene GET /api/staff/paciente/buscar? Un 404 sin `codigo`
- * (backend viejo) lo apaga para el resto de la sesión: se busca a la antigua
- * (lista precargada + consulta directa con la RLS) y los parecidos son locales.
+ * (backend viejo) lo apaga por [REINTENTO_ENDPOINT_BUSCAR_MS]: mientras, se
+ * busca a la antigua (lista precargada + consulta directa con la RLS) y los
+ * parecidos son locales. Pasado ese tiempo se vuelve a probar (el deploy llega).
  */
-private object EndpointBuscar { var disponible = true }
+private object EndpointBuscar {
+    private var apagadoHastaMs = 0L
+    val disponible: Boolean get() = endpointBuscarDisponible(apagadoHastaMs, ahoraMs())
+    fun apagar() { apagadoHastaMs = ahoraMs() + REINTENTO_ENDPOINT_BUSCAR_MS }
+}
 
 /** Una ficha del "¿Es alguno de estos?": activa (se elige) o de baja (se reactiva). */
 private data class FilaParecida(val ref: RefNombre, val info: CoincidenciaPaciente?, val baja: Boolean)
@@ -90,6 +103,8 @@ internal fun SelectorPacienteBuscable(
     val c = Sania.colors
     val tpl = LocalTerminologiaPaciente.current
     val scope = rememberCoroutineScope()
+    // El elegido VIGENTE (no el del momento en que arrancó una corrutina).
+    val elegidoActual by rememberUpdatedState(elegido)
     var abierto by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     // Lo que el servidor sabe de cada coincidencia por nombre (máscaras, edad, última cita).
@@ -146,6 +161,8 @@ internal fun SelectorPacienteBuscable(
 
     Column {
         SelectorBoton(elegido?.nombre ?: "Buscar $termino por nombre o DNI…") {
+            // Registrando: no se cierra ni se reinicia bajo el alta en curso.
+            if (revisando || creando) return@SelectorBoton
             abierto = !abierto
             if (abierto) { query = ""; porNombre = null; errorAlta = null }
         }
@@ -162,6 +179,8 @@ internal fun SelectorPacienteBuscable(
                     porNombre = null; errorAlta = null
                 },
                 placeholder = { Text("Nombre o DNI…", color = c.textoSuave) },
+                // Revisando parecidos o registrando: el texto no cambia bajo esa decisión.
+                enabled = !revisando && !creando,
                 singleLine = true, modifier = Modifier.fillMaxWidth(),
                 colors = pe.saniape.app.ui.clinica.pacientes.coloresCampoForm(),
             )
@@ -191,13 +210,14 @@ internal fun SelectorPacienteBuscable(
                             info = info + r.resultados.associateBy { it.id }
                             lista = r.resultados.map { RefNombre(it.id, it.nombre, null, sedeId = it.sedeId) }
                         }
-                        RespuestaBusqueda.NoDisponible -> EndpointBuscar.disponible = false
+                        RespuestaBusqueda.NoDisponible -> EndpointBuscar.apagar()
                         is RespuestaBusqueda.Error -> Unit
                     }
                 }
                 // Documento (el flujo de siempre) o servidor sin el endpoint: consulta
                 // directa con la RLS del staff. Sin señal, se queda con lo local.
-                if (lista == null) lista = runCatching { AgendaRepo.buscarPacientes(q) }.getOrNull()
+                if (lista == null) lista = try { AgendaRepo.buscarPacientes(q) }
+                    catch (ex: CancellationException) { throw ex } catch (_: Exception) { null }
                 buscandoRemoto = false
                 if (lista != null) remotos = q to lista
                 consultado = q
@@ -232,13 +252,16 @@ internal fun SelectorPacienteBuscable(
                 revisando = true
                 errorAlta = null
                 val conocidos = (items + remotos?.second.orEmpty()).distinctBy { it.id }
+                // Lo que había al tocar "registrar": si cambia mientras se consulta, se descarta.
+                val consultaAlIniciar = query
+                val elegidoAlIniciar = elegido?.id
                 scope.launch {
                     val locales = parecidosA(conocidos, nombre) { it.nombre }
                         .map { FilaParecida(it.paciente, info[it.paciente.id], baja = false) }
                     // El servidor ve TODA la clínica (la lista precargada no) y las fichas
                     // de baja. Si no responde (o es viejo), solo lo local.
                     val r = if (EndpointBuscar.disponible) BuscarPacienteRepo.parecidos(nombre) else null
-                    if (r == RespuestaBusqueda.NoDisponible) EndpointBuscar.disponible = false
+                    if (r == RespuestaBusqueda.NoDisponible) EndpointBuscar.apagar()
                     val delServidor = (r as? RespuestaBusqueda.Ok)?.resultados.orEmpty().map {
                         FilaParecida(RefNombre(it.id, it.nombre, null, sedeId = it.sedeId), it, baja = it.deBaja)
                     }
@@ -246,6 +269,7 @@ internal fun SelectorPacienteBuscable(
                     val vistos = delServidor.map { it.ref.id }.toSet()
                     val lista = (delServidor + locales.filter { it.ref.id !in vistos }).take(6)
                     revisando = false
+                    if (!revisionParecidosVigente(consultaAlIniciar, query, abierto, elegidoAlIniciar, elegidoActual?.id)) return@launch
                     if (lista.isNotEmpty()) porNombre = nombre to lista else registrarNombre(nombre)
                 }
             }
@@ -283,14 +307,15 @@ internal fun SelectorPacienteBuscable(
                             )
                         }
                         filtrados.forEach { item ->
-                            FilaPaciente(item.nombre, datosHomonimo(verDatosPersonales, porDocumento, item.dni, info[item.id])) {
-                                elegir(item)
-                            }
+                            FilaPaciente(
+                                item.nombre, datosHomonimo(verDatosPersonales, porDocumento, item.dni, info[item.id]),
+                                onClick = if (revisando || creando) null else ({ elegir(item) }),
+                            )
                         }
                         if (nombreAlta != null) {
                             Column(
                                 Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                                    .clickable(enabled = !creando && !revisando) { iniciarAltaPorNombre(nombreAlta) }
+                                    .clickable(enabled = !creando && !revisando, role = Role.Button) { iniciarAltaPorNombre(nombreAlta) }
                                     .padding(horizontal = 10.dp, vertical = 10.dp),
                             ) {
                                 if (creando || revisando) {
@@ -328,7 +353,7 @@ private fun FilaPaciente(nombre: String, datos: String, extra: (@Composable () -
     val c = Sania.colors
     Column(
         Modifier.fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+            .then(if (onClick != null) Modifier.clickable(role = Role.Button) { onClick() } else Modifier)
             .padding(horizontal = 10.dp, vertical = 9.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -381,15 +406,18 @@ private fun PanelParecidos(
             Text(
                 if (creando) "Registrando…" else "＋ No, es otra persona: registrar «$nombre»",
                 color = if (creando) c.textoSuave else c.ok, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.fillMaxWidth().clickable(enabled = !creando && reactivandoId == null) { onRegistrar() }
+                modifier = Modifier.fillMaxWidth().clickable(enabled = !creando && reactivandoId == null, role = Role.Button) { onRegistrar() }
                     .padding(horizontal = 10.dp, vertical = 11.dp),
             )
         }
-        Text(
-            "← Volver a la búsqueda", color = c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
-                .clickable { onVolver() }.padding(vertical = 8.dp, horizontal = 10.dp),
-        )
+        // Objetivo táctil de 48 dp.
+        Box(
+            Modifier.fillMaxWidth().padding(top = 4.dp).heightIn(min = 48.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                .clickable(role = Role.Button) { onVolver() }.padding(horizontal = 10.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Text("← Volver a la búsqueda", color = c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
         error?.let { Text(it, color = c.error, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp)) }
     }
 }

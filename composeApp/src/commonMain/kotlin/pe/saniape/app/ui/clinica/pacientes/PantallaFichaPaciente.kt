@@ -673,7 +673,10 @@ private fun PantallaFichaPacienteContenido(
     }
     LaunchedEffect(subirDoc) { if (subirDoc != null) abrirSelector() }
 
-    val verContacto = ctx.esGestor && !ctx.modoClinico
+    // = !accesoClinico de la web (app/(app)/pacientes/[id]/page.tsx): sin el permiso
+    // 'datos_personales' (Fisios, Médico, Enfermera por defecto) la ficha es CLÍNICA:
+    // sin teléfono/DNI/correo, sin WhatsApp ni portal, sin Editar ni dar de baja/reactivar.
+    val verContacto = pe.saniape.app.data.staff.verDatosPersonalesFicha(ctx)
     val flagColor = when (paciente.flag) {
         "rojo" -> c.error; "amarillo" -> c.pend; else -> c.ok
     }
@@ -691,8 +694,9 @@ private fun PantallaFichaPacienteContenido(
                 // (ManejarAtras arriba). Dibujarla era redundante y comía espacio del header.
                 Text("Ficha del ${ctx.terminologiaPaciente.paciente}", color = c.sobreNavy, fontSize = Sania.txt.subtitulo,
                     fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                // Editar paciente + menú (dar de baja/reactivar): solo gestor.
-                if (ctx.puede("pacientes")) {
+                // Editar paciente + menú (portal, dar de baja/reactivar): como la web, con
+                // 'datos_personales' (no con 'pacientes').
+                if (verContacto) {
                     Box(
                         Modifier.size(38.dp).clip(CircleShape).background(c.sobreNavy.copy(alpha = 0.15f))
                             .clickable { editandoPaciente = true },
@@ -794,7 +798,7 @@ private fun PantallaFichaPacienteContenido(
                 // Ficha dada de baja: aviso rojo arriba (como la web). Se consulta, no se registra.
                 if (pe.saniape.app.data.staff.fichaInactiva(paciente.estado)) {
                     Spacer(Modifier.height(Sania.dim.sm))
-                    AvisoFichaInactiva(puedeReactivar = ctx.puede("pacientes"))
+                    AvisoFichaInactiva(puedeReactivar = verContacto)
                 }
 
                 // Fisio (M10): faltas SIN aviso ("No asistió"). Solo visibilidad; los datos
@@ -821,7 +825,7 @@ private fun PantallaFichaPacienteContenido(
                     TarjetaApoderadoFicha(paciente, verContacto)
                 }
 
-                // Contacto (gestor): teléfono con 📞/💬
+                // Contacto (con 'datos_personales'): teléfono con 📞/💬
                 if (verContacto) {
                     paciente.telefono?.takeIf { it.isNotBlank() }?.let { tel ->
                         Spacer(Modifier.height(Sania.dim.sm))
