@@ -1180,7 +1180,12 @@ fun PantallaAgenda(
     // Tras una Evaluación se abre primero el tratamiento: el aviso espera a que se cierre
     // (como la web, que lo ofrece al cerrar ese popup) y recién entonces corre su tiempo.
     vm.ofrecerMedidas?.let { cm ->
-        val visible = fichaPaciente == null && tratCita == null && vm.ofrecerTratamiento == null
+        // La barra de la receta va en el mismo lugar: la de medidas sale cuando esa se fue.
+        // Y su tiempo no corre detrás de "¿Agendar la siguiente?" ni del cobro fallido.
+        val recetaEnPantalla = pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.oferta != null &&
+            ctx.modulosClinicos.recetas && ctx.puede("sesiones")
+        val visible = fichaPaciente == null && tratCita == null && vm.ofrecerTratamiento == null &&
+            !recetaEnPantalla && vm.ofrecerSiguiente == null && vm.cobroFallido == null
         LaunchedEffect(cm, visible) {
             if (!visible) return@LaunchedEffect
             kotlinx.coroutines.delay(pe.saniape.app.ui.clinica.nutricion.VIDA_OFERTA_MEDIDAS_MS)

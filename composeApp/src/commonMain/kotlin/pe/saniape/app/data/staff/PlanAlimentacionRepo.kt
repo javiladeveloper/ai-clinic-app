@@ -113,7 +113,7 @@ object PlanAlimentacionRepo {
     // ── Autocompletado que aprende ──
 
     private const val RUTA_SUGERENCIAS = "/api/staff/plan-alimentacion/sugerencias"
-    /** Caché de la sesión (por usuario): UN viaje al abrir el editor; al escribir se filtra en memoria. */
+    /** Caché de la sesión (por CLÍNICA: quien cambia de clínica no ve lo de la otra): UN viaje al abrir el editor; al escribir se filtra en memoria. */
     private var cacheSugerencias: Pair<String?, SugerenciasPlan>? = null
 
     /**
@@ -121,15 +121,16 @@ object PlanAlimentacionRepo {
      * o el servidor aún no tiene la ruta, vacío: el editor sigue con los chips
      * base (nunca bloquea). Solo se guarda en caché una respuesta buena.
      */
-    suspend fun sugerencias(): SugerenciasPlan {
-        val clinica = Supabase.client.auth.currentSessionOrNull()?.user?.id
+    suspend fun sugerencias(clinicaId: String?): SugerenciasPlan {
+        // Sin clínica conocida no se guarda en caché (no se puede saber de quién es).
+        val clinica = clinicaId?.takeIf { it.isNotBlank() }
         cacheSugerencias?.takeIf { it.first == clinica }?.let { return it.second }
         val tk = token() ?: return SugerenciasPlan()
         return try {
             val resp = http.get("${Supabase.SITE_URL}$RUTA_SUGERENCIAS") { header("Authorization", "Bearer $tk") }
             if (resp.status != HttpStatusCode.OK) return SugerenciasPlan()
             val o = runCatching { json.parseToJsonElement(resp.bodyAsText()).jsonObject }.getOrNull() ?: return SugerenciasPlan()
-            sugerenciasPlanDeJson(o).also { cacheSugerencias = clinica to it }
+            sugerenciasPlanDeJson(o).also { if (clinica != null) cacheSugerencias = clinica to it }
         } catch (e: CancellationException) { throw e } catch (_: Exception) { SugerenciasPlan() }
     }
 

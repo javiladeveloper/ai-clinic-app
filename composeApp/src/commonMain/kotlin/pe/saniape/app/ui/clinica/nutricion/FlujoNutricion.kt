@@ -39,6 +39,13 @@ data class FlujoNutricionFicha(
     fun alCambiarTab(tab: String): FlujoNutricionFicha =
         copy(abrirMedidas = abrirMedidas && tab == "medidas", abrirPlan = abrirPlan && tab == "plan")
 
+    /**
+     * El formulario / editor ya se abrió (o se salió a agendar): no se vuelve a
+     * abrir solo al remontar la pestaña (volver de crear cita, de la HC…). La
+     * cita y el tratamiento se conservan.
+     */
+    fun consumido(): FlujoNutricionFicha = copy(abrirMedidas = false, abrirPlan = false)
+
     /** "Continuar con el plan alimentario →": el editor del plan abre de una (misma cita). */
     fun continuarConPlan(): FlujoNutricionFicha = copy(abrirMedidas = false, abrirPlan = true)
 

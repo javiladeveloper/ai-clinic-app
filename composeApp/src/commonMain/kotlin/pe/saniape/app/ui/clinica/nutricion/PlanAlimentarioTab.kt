@@ -138,6 +138,10 @@ fun PlanAlimentarioTab(
     citaId: String? = null,
     /** Abrir un plan nuevo de una ("Continuar con el plan alimentario →"); parte del último. */
     abrirNuevo: Boolean = false,
+    /** Se abrió de una: el padre apaga la bandera (al remontar no se reabre otro plan nuevo). */
+    onAbiertoNuevo: () -> Unit = {},
+    /** La clínica activa: el autocompletado aprendido es de ELLA (caché por clínica). */
+    clinicaId: String? = null,
     /** "📅 Agendar siguiente control" tras guardar (la ficha lo pasa solo si no tiene cita por delante). */
     onAgendarControl: (() -> Unit)? = null,
 ) {
@@ -160,6 +164,7 @@ fun PlanAlimentarioTab(
     }
     // null = cerrado · "nuevo" · id del plan que se edita
     var editor by remember { mutableStateOf(if (abrirNuevo && puedeEditar) "nuevo" else null) }
+    LaunchedEffect(Unit) { if (abrirNuevo) onAbiertoNuevo() }
     // El plan recién guardado: imprimir y mandarlo por WhatsApp quedan ahí mismo.
     var recien by remember { mutableStateOf<String?>(null) }
     var confirmarBorrar by remember { mutableStateOf<PlanAlimentacion?>(null) }
@@ -261,6 +266,7 @@ fun PlanAlimentarioTab(
             EditorPlan(
                 pacienteId = pacienteId, edad = edad, plan = enEdicion, ultimo = planes.firstOrNull(),
                 citaId = citaId,
+                clinicaId = clinicaId,
                 onCerrar = { editor = null },
                 onGuardado = { p, nuevo ->
                     editor = null
@@ -449,6 +455,7 @@ private fun EditorPlan(
     ultimo: PlanAlimentacion?,
     /** Solo para un plan NUEVO: la cita de la que viene. */
     citaId: String?,
+    clinicaId: String?,
     onCerrar: () -> Unit,
     onGuardado: (PlanAlimentacion, Boolean) -> Unit,
 ) {
@@ -475,7 +482,7 @@ private fun EditorPlan(
     // Autocompletado que aprende: UN viaje al abrir el editor (caché de la sesión);
     // al escribir se filtra en memoria. Si falla, quedan los chips base.
     var sugerencias by remember { mutableStateOf<SugerenciasPlan?>(null) }
-    LaunchedEffect(Unit) { sugerencias = PlanAlimentacionRepo.sugerencias() }
+    LaunchedEffect(Unit) { sugerencias = PlanAlimentacionRepo.sugerencias(clinicaId) }
 
     fun partirDe(valor: String) {
         origen = valor

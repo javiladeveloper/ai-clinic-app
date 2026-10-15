@@ -92,6 +92,8 @@ fun MedidasNutricionTab(
     citaId: String? = null,
     /** Abrir el formulario de una (al llegar desde la agenda). */
     abrirAlInicio: Boolean = false,
+    /** Se abrió de una: el padre apaga la bandera (al remontar no se reabre). */
+    onAbiertoAlInicio: () -> Unit = {},
     /** "🥗 Continuar con el plan alimentario →" tras guardar (la ficha cambia de pestaña). */
     onContinuarPlan: (() -> Unit)? = null,
 ) {
@@ -107,6 +109,7 @@ fun MedidasNutricionTab(
         cargando = false
     }
     var registrar by remember { mutableStateOf(abrirAlInicio && puedeEditar) }
+    LaunchedEffect(Unit) { if (abrirAlInicio) onAbiertoAlInicio() }
     // Recién guardada: el paso que sigue (el plan alimentario) a un toque, sin buscar la pestaña.
     var recienGuardada by remember { mutableStateOf(false) }
     var confirmarBorrar by remember { mutableStateOf<MedicionCorporal?>(null) }

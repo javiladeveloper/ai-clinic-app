@@ -50,6 +50,16 @@ class FlujoNutricionTest {
         assertEquals("c1", fuera.citaId)
     }
 
+    @Test fun abiertoUnaVezNoSeReabreAlRemontar() {
+        // Se abrió el editor (o se salió a agendar): al volver a montar la pestaña no se reabre.
+        val f = FlujoNutricionFicha.desde(AperturaNutricion("medidas", "c1", abrirFormulario = true, tratamientoId = "t1"))
+            .continuarConPlan().consumido()
+        assertFalse(f.abrirPlan)
+        assertFalse(f.abrirMedidas)
+        assertEquals("c1", f.citaId)
+        assertEquals("t1", f.tratamientoId)
+    }
+
     @Test fun planNuevoLlevaCitaYVisibilidad() {
         val b = BorradorPlan(pacienteId = "p1", objetivo = "Bajar de peso", citaId = "c1", visiblePaciente = false)
         val nuevo = cuerpoPlan(b)

@@ -386,6 +386,8 @@ private fun PantallaFichaPacienteContenido(
      * tratamiento de nutrición, una Consulta de siempre.
      */
     val agendarControlNutri: () -> Unit = {
+        // Se sale a crear la cita (la pestaña se desmonta): al volver no se reabre nada.
+        flujoNutri = flujoNutri.consumido()
         val hoyCtl = pe.saniape.app.data.staff.hoyClinicaIso()
         val activos = paciente.tratamientos.filter { tr ->
             tr.estado == "Activo" && pe.saniape.app.data.staff.citaEsNutricion(
@@ -938,6 +940,7 @@ private fun PantallaFichaPacienteContenido(
                             ),
                             citaId = flujoNutri.citaId,
                             abrirAlInicio = flujoNutri.abrirMedidas,
+                            onAbiertoAlInicio = { flujoNutri = flujoNutri.consumido() },
                             onContinuarPlan = {
                                 flujoNutri = flujoNutri.continuarConPlan()
                                 tab = "plan"
@@ -966,6 +969,8 @@ private fun PantallaFichaPacienteContenido(
                             colorPrincipal = ctx.colorPrincipal,
                             citaId = flujoNutri.citaId,
                             abrirNuevo = flujoNutri.abrirPlan,
+                            onAbiertoNuevo = { flujoNutri = flujoNutri.consumido() },
+                            clinicaId = ctx.clinicaId,
                             // Sin una próxima cita: "📅 Agendar siguiente control" (el agendar de siempre).
                             onAgendarControl = agendarControlNutri.takeIf {
                                 hitos != null && hitos?.proximaCitaFecha == null &&
