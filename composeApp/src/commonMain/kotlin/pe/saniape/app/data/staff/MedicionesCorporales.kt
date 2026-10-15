@@ -214,7 +214,7 @@ fun imcPorMedicion(items: List<MedicionCorporal>): Map<String, Double?> =
 fun fechaMedicionFutura(fecha: String?, hoy: String): Boolean =
     !fecha.isNullOrBlank() && fecha.take(10) > hoy.take(10)
 
-const val ERROR_FECHA_FUTURA = "La fecha no puede ser posterior a hoy."
+const val ERROR_FECHA_FUTURA = "La fecha no puede ser futura."
 
 // ─── Evolución ───────────────────────────────────────────────────────────────
 

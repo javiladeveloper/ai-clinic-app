@@ -92,9 +92,9 @@ fun MedidasNutricionTab(
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     var token by remember { mutableStateOf(0) }
-    var cargando by remember { mutableStateOf(true) }
+    var cargando by remember(pacienteId) { mutableStateOf(true) }
     var items by remember(pacienteId) { mutableStateOf<List<MedicionCorporal>?>(null) }
-    var fallo by remember { mutableStateOf(false) }
+    var fallo by remember(pacienteId) { mutableStateOf(false) }
     LaunchedEffect(pacienteId, token) {
         val r = MedicionesRepo.listar(pacienteId)
         if (r != null) { items = r; fallo = false } else fallo = items == null
@@ -209,6 +209,8 @@ fun MedidasNutricionTab(
             text = { Text("${fechaHc(m.fecha)} · ${lineaMedidas(m)}", color = c.textoSuave) },
             confirmButton = {
                 TextButton(enabled = !borrando, onClick = {
+                    // Dos toques en el mismo frame: `enabled` recién aplica en la siguiente recomposición.
+                    if (borrando) return@TextButton
                     borrando = true
                     scope.launch {
                         val r = MedicionesRepo.borrar(m.id)
