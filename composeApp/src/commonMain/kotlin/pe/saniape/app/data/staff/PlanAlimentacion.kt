@@ -46,7 +46,24 @@ data class ComidaPlan(
     /** "07:30" o null */
     val hora: String? = null,
     val detalle: String = "",
+    /**
+     * Alimentos con su cantidad y la foto de sus nutrientes por 100 g
+     * (Alimentos.kt). Los planes de antes no los traen (= vacío).
+     */
+    val items: List<ItemComida> = emptyList(),
+    /**
+     * true = `detalle` NO lo escribió nadie: es la versión en texto de [items]
+     * que pone el servidor para las apps viejas. Quien muestra los ítems NO
+     * muestra este detalle ([detalleVisible]).
+     */
+    val detalleAuto: Boolean = false,
 )
+
+/** El detalle que pone el servidor: los alimentos en texto, uno por línea. */
+fun detalleDeItems(items: List<ItemComida>): String = items.joinToString("\n") { lineaItem(it) }.take(LimitesPlan.DETALLE)
+
+/** El texto libre de una comida para mostrar junto a sus alimentos ("" si el detalle es el automático). */
+fun detalleVisible(c: ComidaPlan): String = if (c.detalleAuto) "" else c.detalle
 
 /** Lo común del plan y la plantilla (para "partir de" uno u otro). */
 interface ContenidoPlanFuente {
@@ -105,17 +122,44 @@ private val RE_FECHA = Regex("""^\d{4}-\d{2}-\d{2}$""")
 private val RE_HORA = Regex("""^([01]\d|2[0-3]):[0-5]\d$""")
 
 /**
- * Comidas → lista limpia. Las que no tienen detalle se descartan: el editor
- * arranca con los 5 tiempos y no todos se usan.
+ * Comidas → lista limpia (gemelo de `normalizarComidas`). Las que no tienen
+ * detalle NI alimentos se descartan: el editor arranca con los 5 tiempos y no
+ * todos se usan. Los ítems inválidos (o sin foto de nutrientes) se descartan.
+ * Una comida con alimentos y sin texto libre (o con el automático de antes)
+ * queda con `detalle` = los alimentos en texto y `detalleAuto`.
  */
 fun normalizarComidas(v: List<ComidaPlan>?): List<ComidaPlan> = v.orEmpty().mapNotNull { c ->
-    val detalle = c.detalle.trim()
-    if (detalle.isEmpty()) return@mapNotNull null
+    val items = if (c.items.isEmpty()) emptyList() else normalizarItems(c.items)
+    val texto = c.detalle.trim()
+    val auto = items.isNotEmpty() && (texto.isEmpty() || c.detalleAuto)
+    val detalle = if (auto) detalleDeItems(items) else texto
+    if (detalle.isEmpty() && items.isEmpty()) return@mapNotNull null
     val hora = c.hora.orEmpty().trim()
     ComidaPlan(
         tiempo = c.tiempo.trim().ifEmpty { "Comida" }.take(LimitesPlan.TIEMPO),
         hora = if (RE_HORA.matches(hora)) hora else null,
         detalle = detalle.take(LimitesPlan.DETALLE),
+        items = items,
+        detalleAuto = auto,
+    )
+}
+
+/**
+ * Comidas para MOSTRAR (portal del paciente, hoja impresa): tolera ítems sin la
+ * foto de nutrientes (el portal no la manda) y deja en `detalle` SOLO el texto
+ * libre (el automático no se repite debajo de los alimentos). Gemelo de `comidasParaMostrar`.
+ */
+fun comidasParaMostrar(v: List<ComidaPlan>?): List<ComidaPlan> = v.orEmpty().mapNotNull { c ->
+    val items = c.items.take(LimitesAlimento.ITEMS_POR_COMIDA)
+    val detalle = if (c.detalleAuto && items.isNotEmpty()) "" else c.detalle.trim()
+    if (detalle.isEmpty() && items.isEmpty()) return@mapNotNull null
+    val hora = c.hora.orEmpty().trim()
+    ComidaPlan(
+        tiempo = c.tiempo.trim().ifEmpty { "Comida" }.take(LimitesPlan.TIEMPO),
+        hora = if (RE_HORA.matches(hora)) hora else null,
+        detalle = detalle.take(LimitesPlan.DETALLE),
+        items = items,
+        detalleAuto = false,
     )
 }
 
@@ -176,6 +220,7 @@ private fun validarTextos(
         if (comidas.any { it.detalle.trim().length > LimitesPlan.DETALLE }) {
             e.add("El detalle de una comida es muy largo (máx. ${LimitesPlan.DETALLE} caracteres).")
         }
+        for (c in comidas) e.addAll(erroresItems(c.items, c.tiempo.trim().ifEmpty { "una comida" }))
     }
 }
 
@@ -212,9 +257,18 @@ fun validarPlantilla(nombre: String, contenido: ContenidoPlanFuente): List<Strin
 
 // ─── Editor: "partir de" y el cuerpo del pedido ─────────────────────────────
 
-/** Una comida en el editor ([k] = clave estable para la lista). */
-data class ComidaEditor(val k: Int, val tiempo: String, val hora: String?, val detalle: String) {
-    fun aComida() = ComidaPlan(tiempo, hora, detalle)
+/**
+ * Una comida en el editor ([k] = clave estable para la lista). [detalle] es
+ * solo el texto libre: el automático lo vuelve a generar el servidor.
+ */
+data class ComidaEditor(
+    val k: Int,
+    val tiempo: String,
+    val hora: String?,
+    val detalle: String,
+    val items: List<ItemComida> = emptyList(),
+) {
+    fun aComida() = ComidaPlan(tiempo, hora, detalle, items)
 }
 
 /** El contenido del editor, todo como texto (gemelo de `Contenido` en la web). */
@@ -231,7 +285,9 @@ data class ContenidoEditorPlan(
 )
 
 private var siguienteK = 1
-fun conClave(c: List<ComidaPlan>): List<ComidaEditor> = c.map { ComidaEditor(siguienteK++, it.tiempo, it.hora, it.detalle) }
+/** En el editor el detalle automático (los alimentos en texto, para las apps viejas) no se muestra. */
+fun conClave(c: List<ComidaPlan>): List<ComidaEditor> =
+    c.map { ComidaEditor(siguienteK++, it.tiempo, it.hora, detalleVisible(it), it.items) }
 
 /**
  * Contenido inicial del editor: en blanco (los 5 tiempos), o partiendo de un plan
@@ -295,8 +351,11 @@ private fun numeroONull(v: String?): Double? = aNumero(v)?.takeIf { !it.isNaN() 
  * Cuerpo del POST (con [pacienteId]) o del PATCH (con [id]) — YA validado.
  * La fecha va SIEMPRE (el "hoy" de la sede): el respaldo del servidor es Lima.
  * Las comidas van como se escribieron; el servidor descarta las vacías.
+ * `itemsV` + `items` explícito en cada comida (también []): lo que manda esta
+ * app es la verdad completa (el servidor no conserva alimentos que se quitaron).
  */
 fun cuerpoPlan(b: BorradorPlan, id: String? = null): JsonObject = buildJsonObject {
+    put("itemsV", VERSION_ITEMS)
     if (id != null) put("id", id) else {
         put("pacienteId", b.pacienteId)
         // La cita solo al crear (un plan ya guardado no cambia de atención).
@@ -325,19 +384,25 @@ private fun comidasJson(comidas: List<ComidaPlan>): JsonArray = buildJsonArray {
             put("tiempo", c.tiempo)
             put("hora", c.hora?.let { JsonPrimitive(it) } ?: JsonNull)
             put("detalle", c.detalle)
+            put("items", itemsAJson(c.items))
+            if (c.detalleAuto) put("detalleAuto", true)
         })
     }
 }
 
-/** Cuerpo de "Guardar como plantilla" (los datos del plan, sin los del paciente). */
+/**
+ * Cuerpo de "Guardar como plantilla" (los datos del plan, sin los del paciente).
+ * Con `itemsV` y las comidas limpias con sus `items` (aunque sea []), como la web.
+ */
 fun cuerpoPlantilla(nombre: String, p: ContenidoPlanFuente): JsonObject = buildJsonObject {
+    put("itemsV", VERSION_ITEMS)
     put("nombre", nombre.trim())
     put("objetivo", p.objetivo?.let { JsonPrimitive(it) } ?: JsonNull)
     put("kcal", p.kcal?.let { JsonPrimitive(it) } ?: JsonNull)
     put("proteinasPct", p.proteinasPct?.let { JsonPrimitive(it) } ?: JsonNull)
     put("carbohidratosPct", p.carbohidratosPct?.let { JsonPrimitive(it) } ?: JsonNull)
     put("grasasPct", p.grasasPct?.let { JsonPrimitive(it) } ?: JsonNull)
-    put("comidas", comidasJson(p.comidas))
+    put("comidas", comidasJson(normalizarComidas(p.comidas)))
     put("recomendaciones", p.recomendaciones?.let { JsonPrimitive(it) } ?: JsonNull)
     put("evitar", p.evitar?.let { JsonPrimitive(it) } ?: JsonNull)
     put("hidratacion", p.hidratacion?.let { JsonPrimitive(it) } ?: JsonNull)
@@ -350,9 +415,19 @@ private fun JsonObject.txtPlan(k: String): String? =
 private fun JsonObject.numPlan(k: String): Double? =
     (this[k] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content?.trim()?.toDoubleOrNull()?.takeIf { it.isFinite() }
 
+/**
+ * Las comidas del JSON. Los ítems, tolerantes (sin la foto de nutrientes también
+ * entran: así llegan al paciente); el staff los valida en [normalizarComidas].
+ * Una caché vieja sin `items` = comidas sin alimentos.
+ */
 private fun comidasDeJson(v: kotlinx.serialization.json.JsonElement?): List<ComidaPlan> = (v as? JsonArray).orEmpty().mapNotNull { x ->
     val o = x as? JsonObject ?: return@mapNotNull null
-    ComidaPlan(o.txtPlan("tiempo").orEmpty(), o.txtPlan("hora"), (o["detalle"] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content.orEmpty())
+    ComidaPlan(
+        o.txtPlan("tiempo").orEmpty(), o.txtPlan("hora"),
+        (o["detalle"] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content.orEmpty(),
+        items = normalizarItemsParaMostrar(o["items"]),
+        detalleAuto = (o["detalleAuto"] as? JsonPrimitive)?.content == "true",
+    )
 }
 
 /** Fila del API → modelo. Sin id se descarta. (numeric de Postgres puede llegar como texto.) */
@@ -470,7 +545,9 @@ fun textoPlanWhatsApp(
         lineas += listOf("", "🍽️ *Comidas del día*")
         for (c in comidas) {
             val h = horaPlan(c.hora)
-            lineas += listOf("", "*${c.tiempo}*${h?.let { " ($it)" }.orEmpty()}", c.detalle)
+            lineas += listOf("", "*${c.tiempo}*${h?.let { " ($it)" }.orEmpty()}")
+            c.items.forEach { lineas += "• ${lineaItem(it)}" }
+            detalleVisible(c).takeIf { it.isNotEmpty() }?.let { lineas += it }
         }
     }
     plan.recomendaciones?.trim()?.takeIf { it.isNotEmpty() }?.let { lineas += listOf("", "✅ *Recomendaciones*", it) }
@@ -484,6 +561,15 @@ fun textoPlanWhatsApp(
 
 private fun escPlan(s: String?): String = s.orEmpty()
     .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;")
+
+/** "Qué comer": los alimentos con su cantidad (sin nutrientes) y debajo el texto libre. */
+private fun celdaComida(c: ComidaPlan): String {
+    val lista = if (c.items.isEmpty()) "" else
+        "<ul class=\"it${if (c.detalle.isNotEmpty()) " mb" else ""}\">" +
+            c.items.joinToString("") { "<li>• <b>${escPlan(it.nombre)}</b> — ${escPlan(textoCantidad(it))}</li>" } + "</ul>"
+    val texto = if (c.detalle.isNotEmpty()) "<div class=\"pre\">${escPlan(c.detalle)}</div>" else ""
+    return lista + texto
+}
 
 /**
  * La hoja A4 que el nutricionista le entrega al paciente, armada en la app (la
@@ -501,7 +587,8 @@ fun htmlPlanAlimentario(
     profesional: String?,
 ): String {
     val color = colorPrincipal?.takeIf { Regex("^#[0-9a-fA-F]{6}$").matches(it) } ?: "#2c3e7a"
-    val comidas = normalizarComidas(plan.comidas)
+    // Como la hoja web: los alimentos con su cantidad y debajo el texto libre (sin nutrientes).
+    val comidas = comidasParaMostrar(plan.comidas)
     val macros = macrosDePlan(plan)
     val logo = logoUrl?.takeIf { it.startsWith("https://") }
         ?.let { "<img src=\"${escPlan(it)}\" alt=\"\" class=\"logo\">" }.orEmpty()
@@ -515,7 +602,7 @@ fun htmlPlanAlimentario(
         "<table><thead><tr><th style=\"width:28%\">Comida</th><th>Qué comer</th></tr></thead><tbody>" +
             comidas.joinToString("") { c ->
                 "<tr><td><b>${escPlan(c.tiempo)}</b>${horaPlan(c.hora)?.let { "<div class=\"s\">${escPlan(it)}</div>" }.orEmpty()}</td>" +
-                    "<td class=\"pre\">${escPlan(c.detalle)}</td></tr>"
+                    "<td>${celdaComida(c)}</td></tr>"
             } + "</tbody></table>"
     val bloques = listOf("Recomendaciones" to plan.recomendaciones, "Alimentos a evitar" to plan.evitar, "Hidratación" to plan.hidratacion)
         .filter { !it.second.isNullOrBlank() }
@@ -535,6 +622,7 @@ body { font-family: Lato, 'Segoe UI', Arial, sans-serif; color: #111827; margin:
 .pac span { margin-right: 24px; }
 .t { font-weight: bold; font-size: 9pt; text-transform: uppercase; letter-spacing: .03em; color: $color; }
 .pre { white-space: pre-wrap; word-break: break-word; }
+.it { list-style: none; margin: 0; padding: 0; } .it.mb { margin-bottom: 4px; } .it b { font-weight: 600; }
 .chips { margin-top: 12px; } .chip { display: inline-block; border: 1px solid #d1d5db; border-radius: 8px; padding: 5px 10px; margin: 0 6px 6px 0; font-size: 9.5pt; }
 .g { font-size: 11pt; }
 table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 9.5pt; }

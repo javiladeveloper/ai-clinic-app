@@ -20,7 +20,7 @@ import pe.saniape.app.data.staff.PuntoSerieHc
 import pe.saniape.app.data.staff.htmlPlanAlimentario
 import pe.saniape.app.data.staff.imcDeMedicion
 import pe.saniape.app.data.staff.medicionDeJson
-import pe.saniape.app.data.staff.normalizarComidas
+import pe.saniape.app.data.staff.comidasParaMostrar
 import pe.saniape.app.data.staff.numeroHc
 import pe.saniape.app.data.staff.ordenarMediciones
 import pe.saniape.app.data.staff.ordenarPlanes
@@ -78,7 +78,8 @@ fun parsearMiNutricion(texto: String): MiNutricion? {
         val cli = o["clinica"] as? JsonObject
         val pac = o["paciente"] as? JsonObject
         PlanNutricionPortal(
-            plan = plan.copy(comidas = normalizarComidas(plan.comidas), calculo = null),
+            // Para MOSTRAR: los alimentos sin nutrientes (§13) y solo el texto libre (el automático no se repite).
+            plan = plan.copy(comidas = comidasParaMostrar(plan.comidas), calculo = null),
             clinica = cli?.let {
                 ClinicaPlanPortal(it.txtNut("nombre"), it.txtNut("logo_url"), it.txtNut("color_principal"))
             },

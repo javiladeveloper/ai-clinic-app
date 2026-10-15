@@ -94,6 +94,11 @@ data class SugerenciasPlan(
     val hidratacion: List<AprendidoPlan> = emptyList(),
     /** Por tiempo de comida ("Desayuno", "Media mañana"… o el nombre que la clínica usa). */
     val comidas: Map<String, List<AprendidoPlan>> = emptyMap(),
+    /**
+     * Los alimentos que más pone la clínica, con la cantidad que más usa: el
+     * buscador vacío los muestra y al elegirlos entran con esa cantidad.
+     */
+    val alimentos: List<AlimentoFrecuente> = emptyList(),
 ) {
     fun deCampo(campo: String): List<AprendidoPlan> = when (campo) {
         "objetivo" -> objetivo
@@ -225,5 +230,6 @@ fun sugerenciasPlanDeJson(o: JsonObject?): SugerenciasPlan {
         recomendaciones = textos(o["recomendaciones"]),
         hidratacion = textos(o["hidratacion"]),
         comidas = comidas,
+        alimentos = alimentosFrecuentesDeJson(o["alimentos"]),
     )
 }
