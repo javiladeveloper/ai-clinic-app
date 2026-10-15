@@ -1,0 +1,9 @@
+# Novedades de la 2.55.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Plan alimentario con base de alimentos: cantidades y calorías calculadas solas.
+---
+Clínicas:
+• 🥗 Plan alimentario: busca alimentos de la Tabla Peruana de Composición de Alimentos (INS/CENAN), ponles la cantidad en gramos o en medidas caseras y Sania calcula calorías y macros por comida y del día, comparados con el requerimiento.
+• Alimentos propios de tu clínica para productos que no estén en la tabla.
+Pacientes:
+• En Mi nutrición se ven los alimentos con sus cantidades.
