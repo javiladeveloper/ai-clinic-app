@@ -77,6 +77,12 @@ import pe.saniape.app.data.staff.htmlPlanAlimentario
 import pe.saniape.app.data.staff.kcalParaUsar
 import pe.saniape.app.data.staff.macrosDePlan
 import pe.saniape.app.data.staff.normalizarComidas
+import pe.saniape.app.data.staff.LimitesAlimento
+import pe.saniape.app.data.staff.detalleVisible
+import pe.saniape.app.data.staff.itemConHabitual
+import pe.saniape.app.data.staff.redondearJs
+import pe.saniape.app.data.staff.refAlimento
+import pe.saniape.app.data.staff.sumarAporte
 import pe.saniape.app.data.staff.numJs
 import pe.saniape.app.data.staff.planDeJson
 import pe.saniape.app.data.staff.tallaEnCm
@@ -368,12 +374,25 @@ private fun TarjetaPlan(
                         if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
                         Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) {
                             Text(
-                                cm.tiempo.uppercase() + (horaPlan(cm.hora)?.let { " · $it" }.orEmpty()),
+                                cm.tiempo.uppercase() + (horaPlan(cm.hora)?.let { " · $it" }.orEmpty()) +
+                                    (if (cm.items.isNotEmpty()) " · ≈ ${redondearJs(sumarAporte(cm.items).kcal).toInt()} kcal" else ""),
                                 color = c.navy, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp,
                             )
-                            Text(cm.detalle, color = c.texto, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
+                            if (cm.items.isNotEmpty()) ItemsLectura(cm.items)
+                            detalleVisible(cm).takeIf { it.isNotEmpty() }?.let {
+                                Text(it, color = c.texto, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
+                            }
                         }
                     }
+                }
+            }
+            if (comidas.any { it.items.isNotEmpty() }) {
+                Box(Modifier.padding(bottom = 10.dp)) {
+                    ResumenAporteUi(
+                        itemsPorComida = comidas.map { it.items }, kcal = plan.kcal?.toDouble(),
+                        proteinasPct = plan.proteinasPct, carbohidratosPct = plan.carbohidratosPct, grasasPct = plan.grasasPct,
+                        compacto = true,
+                    )
                 }
             }
             listOf("✅ Recomendaciones" to plan.recomendaciones, "🚫 Evitar" to plan.evitar, "💧 Hidratación" to plan.hidratacion)
@@ -481,6 +500,9 @@ private fun EditorPlan(
     // al escribir se filtra en memoria. Si falla, quedan los chips base.
     var sugerencias by remember { mutableStateOf<SugerenciasPlan?>(null) }
     LaunchedEffect(Unit) { sugerencias = PlanAlimentacionRepo.sugerencias(clinicaId) }
+    // Base de alimentos: el catálogo UNA vez por sesión + los propios; los frecuentes vienen en /sugerencias.
+    val alimentos = recordarDatosAlimentos(sugerencias?.alimentos.orEmpty())
+    var modalAlimentos by remember { mutableStateOf<ModoAlimentosClinica?>(null) }
 
     fun partirDe(valor: String) {
         origen = valor
@@ -659,7 +681,16 @@ private fun EditorPlan(
 
         // ── Comidas ──
         Spacer(Modifier.height(14.dp))
-        Text("🍽️ COMIDAS DEL DÍA", color = c.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("🍽️ COMIDAS DEL DÍA", color = c.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp,
+                modifier = Modifier.weight(1f))
+            if (alimentos.disponible) {
+                Text("🥫 Alimentos de la clínica${if (alimentos.propios.isNotEmpty()) " (${alimentos.propios.size})" else ""}",
+                    color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable { modalAlimentos = ModoAlimentosClinica.Lista }
+                        .padding(horizontal = 6.dp, vertical = 10.dp))
+            }
+        }
         Spacer(Modifier.height(6.dp))
         cont.comidas.forEachIndexed { i, m ->
             androidx.compose.runtime.key(m.k) {
@@ -676,6 +707,22 @@ private fun EditorPlan(
                                 modifier = Modifier.clickable { setComida(m.k) { it.copy(hora = null) } }.padding(4.dp))
                         }
                     }
+                    Spacer(Modifier.height(6.dp))
+                    // Alimento + cantidad: suman kcal y macros (tabla peruana + los de la clínica).
+                    AlimentosComidaEditor(
+                        comida = m.tiempo.ifBlank { "esta comida" },
+                        items = m.items,
+                        onChange = { nuevos -> setComida(m.k) { it.copy(items = nuevos) } },
+                        datos = alimentos,
+                        onCrear = { nombre ->
+                            modalAlimentos = ModoAlimentosClinica.Crear(nombre) { a ->
+                                setComida(m.k) { cm ->
+                                    if (cm.items.size >= LimitesAlimento.ITEMS_POR_COMIDA) cm
+                                    else cm.copy(items = cm.items + itemConHabitual(a, alimentos.habitual[refAlimento(a)]))
+                                }
+                            }
+                        },
+                    )
                     Spacer(Modifier.height(6.dp))
                     // Uno por línea (así sale en la hoja): chips del tiempo de comida + lo que la clínica ya usa.
                     CampoConChipsPlan(
@@ -699,7 +746,16 @@ private fun EditorPlan(
                 }
             }
         }
-        Text("Las comidas sin detalle no se guardan.", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+        Text("Las comidas sin alimentos ni detalle no se guardan.", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+        Spacer(Modifier.height(8.dp))
+        ResumenAporteUi(
+            itemsPorComida = cont.comidas.map { it.items },
+            kcal = kcalNum, proteinasPct = pP, carbohidratosPct = pC, grasasPct = pG,
+            onUsar = { e ->
+                cont = cont.copy(kcal = e.kcal.toString(), prot = numJs(e.proteinasPct), carb = numJs(e.carbohidratosPct), grasa = numJs(e.grasasPct))
+                Toaster.exito("Plan: ${e.kcal} kcal · P ${numJs(e.proteinasPct)} % · C ${numJs(e.carbohidratosPct)} % · G ${numJs(e.grasasPct)} %")
+            },
+        )
 
         // ── Indicaciones ──
         listOf(
@@ -744,6 +800,9 @@ private fun EditorPlan(
     }
 
     if (elegirFecha) DialogoFecha(onElegir = { fecha = it }, onCerrar = { elegirFecha = false }, inicial = fecha)
+    modalAlimentos?.let { modo ->
+        DialogoAlimentosClinica(inicial = modo, datos = alimentos, puedeEditar = true, onCerrar = { modalAlimentos = null })
+    }
     horaDe?.let { k ->
         val actual = cont.comidas.firstOrNull { it.k == k }
         DialogoHora(
