@@ -88,6 +88,8 @@ fun ModalNuevoPaciente(
     var nombre by remember { mutableStateOf("") }
     var telefono by remember { mutableStateOf("") }
     var edad by remember { mutableStateOf("") }
+    // Sexo (opcional; curvas OMS de pediatría). null = sin dato: no se manda.
+    var sexo by remember { mutableStateOf<String?>(null) }
     var email by remember { mutableStateOf("") }
     var ocupacion by remember { mutableStateOf("") }
     // Fecha de ingreso (DALU 2026-10-07): hoy por defecto, corregible.
@@ -161,7 +163,7 @@ fun ModalNuevoPaciente(
 
     fun descartarReactivacion() {
         fichaBaja = null; reactivando = false
-        dni = ""; nombre = ""; telefono = ""; edad = ""; email = ""; ocupacion = ""
+        dni = ""; nombre = ""; telefono = ""; edad = ""; email = ""; ocupacion = ""; sexo = null
         fechaIngreso = pe.saniape.app.data.staff.hoyClinicaIso()
         talla = ""; peso = ""; motivo = ""; observaciones = ""; flag = "verde"
         tipoPatologia = ""; antecedentes = ""; sintomas = ""; alergias = ""; medicacion = ""
@@ -235,6 +237,7 @@ fun ModalNuevoPaciente(
                         if (fb.dni == null && !sinDocumento) t("dni", dni)
                         if (!sinDocumento) pe.saniape.app.data.staff.tipoDocumentoAGuardar(paisDoc, fb.dni ?: dni, tipoTocado)?.let { put("tipo_documento", it) }
                         edad.toIntOrNull()?.let { put("edad", it) }
+                        sexo?.let { put("sexo", it) }
                         talla.toIntOrNull()?.takeIf { it > 0 }?.let { put("talla", it) }
                         peso.toDoubleOrNull()?.takeIf { it > 0 }?.let { put("peso", it) }
                         val pats = sintomas.split(",").map { it.trim() }.filter { it.isNotBlank() }
@@ -276,6 +279,7 @@ fun ModalNuevoPaciente(
                     tipoPatologia = tipoPatologia.trim().ifBlank { null },
                     apoderado = apoderado,
                     tipoDocumento = pe.saniape.app.data.staff.tipoDocumentoAGuardar(paisDoc, d, tipoTocado),
+                    sexo = sexo,
                 )
                 guardando = false
                 if (creado != null) {
@@ -433,6 +437,9 @@ fun ModalNuevoPaciente(
                         modifier = Modifier.fillMaxWidth())
                 }
             }
+            Spacer(Modifier.height(10.dp))
+            EtqForm("Sexo — opcional")
+            SelectorSexo(sexo) { sexo = it }
 
             Spacer(Modifier.height(10.dp))
             EtqForm("Email — opcional")

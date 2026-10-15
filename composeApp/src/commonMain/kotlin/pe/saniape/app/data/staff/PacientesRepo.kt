@@ -673,6 +673,8 @@ object PacientesRepo {
         fechaIngreso: String? = null,
         /** pacientes.tipo_documento ELEGIDO a mano (ver tipoDocumentoAGuardar); null = no se manda. */
         tipoDocumento: String? = null,
+        /** "F" / "M" (curvas OMS de pediatría); null = no se manda (un servidor viejo lo ignora). */
+        sexo: String? = null,
     ): PacienteStaff? {
         // Se ENCOLA contra /api/staff/paciente/crear (que hace dedup por DNI e
         // idempotencia) en vez de insertar directo: así no se pierde sin señal ni
@@ -699,6 +701,7 @@ object PacientesRepo {
             textoOpc("medicacion_actual", medicacionActual)
             textoOpc("tipo_patologia", tipoPatologia)
             textoOpc("fecha_ingreso", fechaIngreso)
+            sexoValido(sexo)?.let { put("sexo", it) }
             // Pacientes por sede: el paciente nace en la sede activa (la web hace lo mismo).
             val sedeNueva = SedeActiva.estado.value.let { sedeParaPacienteNuevo(it.pacientesPorSede, it.filtro?.sedeId) }
             if (sedeNueva != null) put("sede_id", sedeNueva)
