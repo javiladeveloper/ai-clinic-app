@@ -24,7 +24,13 @@ import pe.saniape.app.data.staff.EspacioEvalPsico
 import pe.saniape.app.data.staff.EstadosPsico
 import pe.saniape.app.data.staff.EvaluacionPsico
 import pe.saniape.app.data.staff.EvaluacionPsicoRepo
+import pe.saniape.app.data.staff.CAMPOS_PSICO_EVAL
 import pe.saniape.app.data.staff.FotoPsico
+import pe.saniape.app.data.staff.FrasesCampoPlan
+import pe.saniape.app.data.staff.FrasesCampoRepo
+import pe.saniape.app.data.staff.cambiosParaAprender
+import pe.saniape.app.data.staff.frasesDeCampoAbierto
+import pe.saniape.app.data.staff.textosPsicoAprendibles
 import pe.saniape.app.data.staff.FuentePsico
 import pe.saniape.app.data.staff.InformePsico
 import pe.saniape.app.data.staff.InstrumentoPsico
@@ -131,6 +137,49 @@ class EvaluacionPsicoViewModel(
 
     val soloLectura: Boolean get() = espacio?.soloLectura == true || ev?.estado == "cerrada"
 
+    // ── Autocompletado que aprende (FrasesCampo.kt: motivo, observación, áreas,
+    // conclusiones, recomendaciones; nunca las secciones narrativas) ──
+    // Se autoguarda cada 1,2 s: aprender ahí registraría frases a medio escribir.
+    // Se aprende al CERRAR un componente (cambiar de pestaña, salir, crear el
+    // tratamiento), solo lo nuevo respecto de lo ya aprendido en esta pantalla.
+
+    /** Chips + autocompletado por clave (vacío hasta que llegan, o si el servidor no los tiene). */
+    var frases by mutableStateOf<Map<String, FrasesCampoPlan>>(emptyMap()); private set
+    private var frasesPedidas = false
+    /** Lo ya aprendido (o lo que tenía al abrir): solo se manda lo nuevo. null = aún no cargó. */
+    private var aprendido: Map<String, String>? = null
+    private var puedeAprender = false
+
+    /** Las frases de un campo; null en solo lectura (cerrada: el texto tal cual, sin chips). */
+    fun frasesDe(campo: String): FrasesCampoPlan? = if (soloLectura) null else frases[campo]
+
+    /** UNA consulta para todos los campos de la pantalla, al abrirla (y solo si se puede editar). */
+    private fun cargarFrases() {
+        if (frasesPedidas) return
+        frasesPedidas = true
+        viewModelScope.launch {
+            frases = FrasesCampoRepo.cargar(CAMPOS_PSICO_EVAL).mapValues { frasesDeCampoAbierto(it.value) }
+        }
+    }
+
+    /**
+     * Manda a aprender lo que cambió desde la última vez (dispara y olvida:
+     * nunca frena la pantalla ni avisa). Con el paciente: en psicología una frase
+     * solo se ofrece cuando apareció en 2+ pacientes distintos.
+     */
+    private fun aprender() {
+        val e = ev ?: return
+        val previo = aprendido ?: return
+        if (!puedeAprender) return
+        val ahora = textosPsicoAprendibles(e)
+        aprendido = ahora
+        val pacienteId = e.pacienteId.ifBlank { espacio?.paciente?.id.orEmpty() }
+        val nombre = espacio?.paciente?.nombre
+        cambiosParaAprender(previo, ahora).forEach { c ->
+            FrasesCampoRepo.registrar(c.campo, c.texto, antes = c.antes, pacienteId = pacienteId, nombrePaciente = nombre)
+        }
+    }
+
     // ── Carga ────────────────────────────────────────────────────────────────
 
     init { cargar() }
@@ -169,6 +218,10 @@ class EvaluacionPsicoViewModel(
     private fun aplicar(e: EspacioEvalPsico) {
         espacio = e
         ev = e.evaluacion
+        // Lo que ya tenía al abrir no se vuelve a aprender (solo lo nuevo).
+        if (aprendido == null) e.evaluacion?.let { aprendido = textosPsicoAprendibles(it) }
+        puedeAprender = !e.soloLectura
+        if (!e.soloLectura) cargarFrases()
         estados = e.estados
         sugerencia = e.sugerenciaSesiones
         tests = e.tests
@@ -215,6 +268,7 @@ class EvaluacionPsicoViewModel(
         if (clave == pestania) return
         // Lo pendiente del componente que se deja se manda ya (como la web al salir).
         guardarAhora()
+        aprender()
         pestania = clave
     }
 
@@ -275,6 +329,8 @@ class EvaluacionPsicoViewModel(
     /** Al salir de la pantalla: lo pendiente se manda igual, aunque la pantalla ya no esté. */
     fun guardarAlSalir() {
         temporizador?.cancel()
+        // Salir o crear el tratamiento cierra el componente: se aprende lo nuevo.
+        aprender()
         flushTests()
         flushInforme()
         if (pendientes.isEmpty()) return

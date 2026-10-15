@@ -36,6 +36,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.datetime.Clock
 import pe.saniape.app.data.staff.AREAS_ANALISIS
+import pe.saniape.app.data.staff.CAMPO_AREA_PSICO
+import pe.saniape.app.data.staff.ClaveFrase
 import pe.saniape.app.data.staff.ENFOQUES_PSICO
 import pe.saniape.app.data.staff.FRECUENCIAS_PSICO
 import pe.saniape.app.data.staff.FuentePsico
@@ -70,7 +72,9 @@ internal fun SeccionEntrevista(vm: EvaluacionPsicoViewModel, acciones: AccionesN
             CampoCortoPsico(s.titulo, e.texto(s.clave), { vm.entrevista(e.con(s.clave, it)) }, ro, placeholder = s.ayuda)
         }
         SECCIONES_ENTREVISTA.filter { !it.corta }.forEach { s ->
-            TextoLargoPsico(s.titulo, e.texto(s.clave), { vm.entrevista(vm.ev!!.entrevista.con(s.clave, it)) }, ro, placeholder = s.ayuda)
+            // Chips que aprenden SOLO en el motivo: lo demás de la entrevista es relato y no se aprende.
+            TextoLargoPsico(s.titulo, e.texto(s.clave), { vm.entrevista(vm.ev!!.entrevista.con(s.clave, it)) }, ro, placeholder = s.ayuda,
+                frases = if (s.clave == "motivo") vm.frasesDe(ClaveFrase.PSICO_MOTIVO) else null)
         }
         Column {
             EtqForm("Genograma (foto, opcional)")
@@ -206,7 +210,7 @@ internal fun SeccionObservacion(vm: EvaluacionPsicoViewModel) {
             }
         }
         TextoLargoPsico("Notas de observación", o.notas, { vm.observacion(vm.ev!!.observacion.copy(notas = it)) }, ro,
-            placeholder = "Lo que observaste durante las sesiones", minLineas = 4)
+            placeholder = "Lo que observaste durante las sesiones", minLineas = 4, frases = vm.frasesDe(ClaveFrase.PSICO_OBSERVACION))
     }
 }
 
@@ -224,7 +228,7 @@ internal fun SeccionAnalisis(vm: EvaluacionPsicoViewModel) {
             TextoLargoPsico(area.nombre, a.areas[area.valor].orEmpty(), { v ->
                 val actual = vm.ev!!.analisis
                 vm.analisis(actual.copy(areas = actual.areas + (area.valor to v)))
-            }, ro, minLineas = 2)
+            }, ro, minLineas = 2, frases = CAMPO_AREA_PSICO[area.valor]?.let { vm.frasesDe(it) })
         }
         Column {
             EtqForm("Impresión diagnóstica (CIE-10)")
@@ -235,7 +239,8 @@ internal fun SeccionAnalisis(vm: EvaluacionPsicoViewModel) {
                 nota = "Busca por código (F90.0) o por palabras. Tipo: Presuntivo, Definitivo o Repetido.",
             )
         }
-        TextoLargoPsico("Conclusiones", a.conclusiones, { vm.analisis(vm.ev!!.analisis.copy(conclusiones = it)) }, ro, minLineas = 4)
+        TextoLargoPsico("Conclusiones", a.conclusiones, { vm.analisis(vm.ev!!.analisis.copy(conclusiones = it)) }, ro, minLineas = 4,
+            frases = vm.frasesDe(ClaveFrase.PSICO_CONCLUSIONES))
     }
 }
 
@@ -327,7 +332,8 @@ internal fun SeccionPlan(vm: EvaluacionPsicoViewModel, servicios: List<ServicioP
             plan { it.copy(precio = limpio.replace(',', '.').toDoubleOrNull()) }
         }, ro, numerico = true)
 
-        TextoLargoPsico("Recomendaciones", p.recomendaciones, { v -> plan { it.copy(recomendaciones = v) } }, ro)
+        TextoLargoPsico("Recomendaciones", p.recomendaciones, { v -> plan { it.copy(recomendaciones = v) } }, ro,
+            frases = vm.frasesDe(ClaveFrase.PSICO_RECOMENDACIONES))
 
         Column {
             CasillaPsico("Incluir el plan en el informe", p.incluirEnInforme, ro) { v -> plan { it.copy(incluirEnInforme = v) } }

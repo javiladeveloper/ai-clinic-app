@@ -50,13 +50,14 @@ import kotlinx.datetime.Clock
 import pe.saniape.app.data.ClaseArchivo
 import pe.saniape.app.data.claseArchivo
 import pe.saniape.app.data.staff.FotoPsico
+import pe.saniape.app.data.staff.FrasesCampoPlan
 import pe.saniape.app.data.staff.OpcionPsico
 import pe.saniape.app.data.staff.EvaluacionPsicoRepo
 import pe.saniape.app.ui.AccionesNativas
 import pe.saniape.app.ui.ArchivoSeleccionado
 import pe.saniape.app.ui.Toaster
 import pe.saniape.app.ui.VisorImagen
-import pe.saniape.app.ui.clinica.atencion.CampoTextoClinico
+import pe.saniape.app.ui.clinica.CampoConFrases
 import pe.saniape.app.ui.clinica.pacientes.EtqForm
 import pe.saniape.app.ui.clinica.pacientes.coloresCampoForm
 import pe.saniape.app.ui.recordarCamaraFoto
@@ -65,12 +66,22 @@ import pe.saniape.app.ui.theme.Sania
 
 // Piezas chicas de la evaluación psicológica, con el look de la consulta guiada.
 
-/** Texto largo con dictado (el mismo campo de la consulta guiada, sin frases aprendidas). */
+/**
+ * Texto largo con dictado (el mismo campo de la consulta guiada). Con [frases]
+ * (gemelo de `TextoAprendible`): chips + autocompletado que aprende, SOLO en las
+ * secciones técnicas (motivo, observación, áreas, conclusiones,
+ * recomendaciones); las narrativas lo llaman sin frases y quedan como siempre.
+ */
 @Composable
-internal fun TextoLargoPsico(label: String, valor: String, onChange: (String) -> Unit, soloLectura: Boolean, placeholder: String? = null, minLineas: Int = 3) {
-    CampoTextoClinico(
-        label = label, valor = valor, onChange = onChange, frases = emptyList(),
-        soloLectura = soloLectura, minLineas = minLineas, placeholder = placeholder,
+internal fun TextoLargoPsico(
+    label: String, valor: String, onChange: (String) -> Unit, soloLectura: Boolean, placeholder: String? = null,
+    minLineas: Int = 3, frases: FrasesCampoPlan? = null,
+) {
+    // Siempre el mismo campo (con o sin frases): cuando llegan los chips no se
+    // recrea el texto ni se pierde el foco o el dictado en curso.
+    CampoConFrases(
+        label = label, valor = valor, onChange = onChange, frases = frases, placeholder = placeholder,
+        minLineas = minLineas, chipsVisibles = 8, soloLectura = soloLectura, campo = "psico",
     )
 }
 
