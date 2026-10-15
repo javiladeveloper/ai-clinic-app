@@ -16,6 +16,7 @@ import pe.saniape.app.data.staff.MedicionCorporal
 import pe.saniape.app.data.staff.MetricaMedicion
 import pe.saniape.app.data.staff.StaffContextoRepo
 import pe.saniape.app.data.staff.citaEsNutricion
+import pe.saniape.app.data.staff.fechaMedicionFutura
 import pe.saniape.app.data.staff.cuerpoMedicion
 import pe.saniape.app.data.staff.historialMediciones
 import pe.saniape.app.data.staff.imcEnVivo
@@ -139,10 +140,11 @@ class MedicionesCorporalesTest {
     private val c = MedicionCorporal("c", "p", "2026-10-01", cintura = 91.5, grasaPct = 30.0, createdAt = "2026-10-01T10:00")
     private val d = MedicionCorporal("d", "p", "2026-10-14", peso = 77.0, talla = 171.0, createdAt = "2026-10-14T10:00")
 
-    @Test fun imcUsaLaUltimaTallaConocida() {
+    @Test fun imcSoloConLaTallaDeEsaMedicion() {
+        // Como imcDeMedicion de la web y la historia clínica: sin arrastrar tallas.
         val imcs = imcPorMedicion(listOf(d, b, a, c))
         assertEquals(27.68, imcs["a"])
-        assertEquals(27.13, imcs["b"]) // sin talla propia: la de a
+        assertNull(imcs["b"]) // sin talla propia: sin IMC
         assertNull(imcs["c"]) // sin peso
         assertEquals(26.33, imcs["d"])
         assertEquals(171.0, ultimaTalla(listOf(a, b, d)))
@@ -187,6 +189,20 @@ class MedicionesCorporalesTest {
         val y = MedicionCorporal("y", "p", "2026-10-14", peso = 71.0, createdAt = "2026-10-14T18:00")
         assertEquals(listOf("y", "x"), historialMediciones(listOf(y, x)).map { it.medicion.id })
         assertEquals(1.0, historialMediciones(listOf(y, x))[0].deltaPeso)
+    }
+
+    @Test fun fechaFuturaSeRechaza() {
+        assertTrue(fechaMedicionFutura("2026-10-15", "2026-10-14"))
+        assertFalse(fechaMedicionFutura("2026-10-14", "2026-10-14"))
+        assertFalse(fechaMedicionFutura("2026-09-30", "2026-10-14"))
+        assertFalse(fechaMedicionFutura(null, "2026-10-14"))
+    }
+
+    @Test fun historialSinTallaNoTieneImc() {
+        val h = historialMediciones(listOf(a, b))
+        assertNull(h[0].imc) // b
+        assertEquals(27.68, h[1].imc)
+        assertEquals(listOf(27.68, 26.33), serieMetrica(listOf(a, b, c, d), MetricaMedicion.IMC).map { it.valor })
     }
 
     @Test fun textosNeutros() {

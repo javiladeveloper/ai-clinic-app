@@ -9,7 +9,7 @@ import kotlin.math.abs
 
 /**
  * MEDICIONES CORPORALES (Nutrición): peso, talla y medidas por visita, en la
- * pestaña 📏 Medidas de la ficha. Tabla `mediciones_corporales`, vía
+ * pestaña ⚖️ Medidas de la ficha. Tabla `mediciones_corporales`, vía
  * /api/staff/medicion-corporal (ver [MedicionesRepo]).
  *
  * Gemelo PURO de `lib/mediciones-corporales.ts` de la web (rangos, validación)
@@ -46,7 +46,7 @@ fun citaEsNutricion(
 }
 
 /**
- * ¿La ficha muestra la pestaña 📏 Medidas? (gemelo de `pacienteEsFisio`). Clínica
+ * ¿La ficha muestra la pestaña ⚖️ Medidas? (gemelo de `pacienteEsFisio`). Clínica
  * solo de nutrición → sí; sin nutrición → no; mixta → si ya tiene mediciones,
  * si alguna atención es de nutrición o si quien mira es nutricionista.
  * [atenciones] usa la misma forma que fisio (cita / servicio / profesional).
@@ -201,17 +201,20 @@ fun imcEnVivo(pesoTexto: String?, tallaTexto: String?, edad: Int? = null): ImcLe
 fun ultimaTalla(items: List<MedicionCorporal>): Double? = ordenarMediciones(items).lastOrNull { it.talla != null }?.talla
 
 /**
- * IMC de cada medición, en orden cronológico. Si una visita no anotó la talla
- * se usa la última conocida hasta ese día (la talla de un adulto no cambia de
- * una consulta a otra; sin esto el IMC "desaparecía" al no repetirla).
+ * IMC de cada medición con SU peso y SU talla (gemelo de `imcDeMedicion`, igual
+ * que la historia clínica): sin talla en esa visita, no hay IMC. El formulario
+ * prellena la talla con la última, así las nuevas la traen.
  */
-fun imcPorMedicion(items: List<MedicionCorporal>): Map<String, Double?> {
-    var talla: Double? = null
-    return ordenarMediciones(items).associate { m ->
-        if (m.talla != null) talla = m.talla
-        m.id to calcularImc(m.peso, talla)
-    }
-}
+fun imcDeMedicion(m: MedicionCorporal): Double? = calcularImc(m.peso, m.talla)
+
+fun imcPorMedicion(items: List<MedicionCorporal>): Map<String, Double?> =
+    items.associate { it.id to imcDeMedicion(it) }
+
+/** ¿Fecha posterior a hoy? (AAAA-MM-DD; como el `max` de la fecha en la web). */
+fun fechaMedicionFutura(fecha: String?, hoy: String): Boolean =
+    !fecha.isNullOrBlank() && fecha.take(10) > hoy.take(10)
+
+const val ERROR_FECHA_FUTURA = "La fecha no puede ser posterior a hoy."
 
 // ─── Evolución ───────────────────────────────────────────────────────────────
 

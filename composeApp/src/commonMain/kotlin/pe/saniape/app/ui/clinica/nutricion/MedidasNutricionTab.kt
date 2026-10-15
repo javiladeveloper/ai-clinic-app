@@ -39,7 +39,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import pe.saniape.app.data.staff.BorradorMedicion
+import pe.saniape.app.data.staff.ERROR_FECHA_FUTURA
 import pe.saniape.app.data.staff.FilaHistorialMedicion
+import pe.saniape.app.data.staff.fechaMedicionFutura
 import pe.saniape.app.data.staff.MedicionCorporal
 import pe.saniape.app.data.staff.MedicionesRepo
 import pe.saniape.app.data.staff.MetricaMedicion
@@ -71,7 +73,7 @@ import pe.saniape.app.ui.clinica.pacientes.coloresCampoForm
 import pe.saniape.app.ui.theme.Sania
 
 /**
- * Pestaña 📏 Medidas de la ficha (solo NUTRICIÓN, ver `pacienteEsNutricion`).
+ * Pestaña ⚖️ Medidas de la ficha (solo NUTRICIÓN, ver `pacienteEsNutricion`).
  * Gemelo de la pestaña de la web: registrar peso, talla y medidas por visita,
  * la evolución (primera → última y un gráfico por métrica) y el historial.
  *
@@ -127,13 +129,13 @@ fun MedidasNutricionTab(
     val metricaVista = if (metrica in metricas) metrica else metricas.firstOrNull()
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("📏 Peso, talla y medidas", color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        Text("⚖️ Peso, talla y medidas", color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         if (puedeEditar) BotonMedidas("＋ Registrar medidas") { registrar = true }
 
         if (lista.isEmpty()) {
             Tarjeta {
                 Column(Modifier.fillMaxWidth().padding(vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("📏", fontSize = 30.sp)
+                    Text("⚖️", fontSize = 30.sp)
                     Text("Sin medidas registradas todavía", color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(top = 4.dp))
                     Text("Anota el peso, la talla y las medidas en cada visita: aquí verás cómo cambian el peso, la cintura y el IMC, " +
@@ -256,7 +258,9 @@ private fun FormularioMedidas(
     fun guardar() {
         if (guardando) return
         val b = BorradorMedicion(pacienteId = pacienteId, fecha = fecha, valores = valores, notas = notas)
-        val e = validarMedicion(b)
+        // Sin fechas futuras (en la web, el `max` del campo de fecha).
+        val e = validarMedicion(b) +
+            (if (fechaMedicionFutura(fecha, hoyClinicaIso())) listOf(ERROR_FECHA_FUTURA) else emptyList())
         errores = e
         if (e.isNotEmpty()) return
         guardando = true
@@ -333,7 +337,9 @@ private fun FormularioMedidas(
             ) { errores.forEach { Text(it, color = c.error, fontSize = 12.sp) } }
         }
     }
-    if (elegirFecha) DialogoFecha(onElegir = { fecha = it }, onCerrar = { elegirFecha = false }, inicial = fecha)
+    if (elegirFecha) DialogoFecha(onElegir = { elegida ->
+        if (fechaMedicionFutura(elegida, hoyClinicaIso())) Toaster.error(ERROR_FECHA_FUTURA) else fecha = elegida
+    }, onCerrar = { elegirFecha = false }, inicial = fecha)
 }
 
 // ─── Piezas ──────────────────────────────────────────────────────────────────

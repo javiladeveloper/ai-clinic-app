@@ -217,7 +217,7 @@ private fun PantallaFichaPacienteContenido(
         },
         especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
     )
-    // ¿Pestaña 📏 Medidas? (nutrición, gemelo de `pacienteEsNutricion`). Misma receta
+    // ¿Pestaña ⚖️ Medidas? (nutrición, gemelo de `pacienteEsNutricion`). Misma receta
     // que la de fisio: con lo que la ficha ya tiene, sin consultas extra. Un backend sin
     // `especialidadesNutricion`/`soloNutricion` deja el mapa vacío y no aparece.
     val esPacienteNutricion = pe.saniape.app.data.staff.pacienteEsNutricion(
@@ -710,7 +710,7 @@ private fun PantallaFichaPacienteContenido(
                     // 🏠 Ejercicios de apoyo: mismo candado que la 📏 (solo fisioterapia).
                     if (esPacienteFisio) add("ejercicios" to "🏠 Ejercicios")
                     // SOLO pacientes de nutrición (`esPacienteNutricion`, arriba).
-                    if (esPacienteNutricion) add("medidas" to "📏 Medidas")
+                    if (esPacienteNutricion) add("medidas" to "⚖️ Medidas")
                     // SOLO pacientes de especialidades que recetan (`esPacienteReceta`).
                     // + documentos médicos (informe/descanso/orden) en clínicas médicas.
                     if (esPacienteReceta || esPacienteDocs) {
@@ -875,7 +875,7 @@ private fun PantallaFichaPacienteContenido(
                             miTerapeutaId = ctx.miTerapeutaId,
                         )
                     }
-                    // 📏 Medidas (nutrición): consulta SOLO al abrirse. Escribe quien puede
+                    // ⚖️ Medidas (nutrición): consulta SOLO al abrirse. Escribe quien puede
                     // 'pacientes' o 'sesiones' (como el API); el resto la ve en solo lectura.
                     "medidas" -> if (esPacienteNutricion) {
                         pe.saniape.app.ui.clinica.nutricion.MedidasNutricionTab(
