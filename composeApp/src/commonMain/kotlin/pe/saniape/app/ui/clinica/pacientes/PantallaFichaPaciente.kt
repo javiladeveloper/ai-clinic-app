@@ -1054,6 +1054,11 @@ private fun PantallaFichaPacienteContenido(
                             },
                             recargaToken = recargarToken,
                             indicarAlAbrir = indicarEjercicios,
+                            // Cabecera de la hoja "🖨 Imprimir / PDF" (como la web).
+                            clinicaDireccion = ctx.clinicaDireccion,
+                            logoUrl = ctx.logoUrl,
+                            colorPrincipal = ctx.colorPrincipal,
+                            pacienteDocumento = paciente.dni,
                         )
                     }
                     "odontograma" -> if (esOdontologia) {

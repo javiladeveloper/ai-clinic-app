@@ -90,6 +90,8 @@ internal fun BibliotecaEjerciciosModal(
     guardando: Boolean,
     onCerrar: () -> Unit,
     onAgregar: (List<String>) -> Unit,
+    /** "📋 Usar una rutina" (mismo destino); null = la función no está. */
+    onUsarRutina: (() -> Unit)? = null,
 ) {
     val c = Sania.colors
     var biblioteca by remember { mutableStateOf<List<EjercicioBiblioteca>?>(null) }
@@ -127,6 +129,14 @@ internal fun BibliotecaEjerciciosModal(
                 .fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.chipBg)
                 .border(1.dp, c.lav, RoundedCornerShape(Sania.shape.sm.dp))
                 .clickable(enabled = !guardando) { repetir.onRepetir() }.padding(horizontal = 12.dp, vertical = 10.dp))
+            Spacer(Modifier.height(12.dp))
+        }
+
+        if (onUsarRutina != null) {
+            Text("📋 Usar una rutina (lumbalgia, hombro, rodilla…)", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier
+                .fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.chipBg)
+                .border(1.dp, c.lav, RoundedCornerShape(Sania.shape.sm.dp))
+                .clickable(enabled = !guardando) { onUsarRutina() }.padding(horizontal = 12.dp, vertical = 10.dp))
             Spacer(Modifier.height(12.dp))
         }
 

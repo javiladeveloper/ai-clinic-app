@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import pe.saniape.app.data.offline.ResultadoEscritura
 import pe.saniape.app.data.staff.Adherencia
+import pe.saniape.app.data.staff.ClinicaHoja
 import pe.saniape.app.data.staff.DIAS_SEMANA
 import pe.saniape.app.data.staff.DestinoEjercicios
 import pe.saniape.app.data.staff.DosisEdicion
@@ -55,20 +56,26 @@ import pe.saniape.app.data.staff.ItemPlanEjercicios
 import pe.saniape.app.data.staff.PedidoEjercicios
 import pe.saniape.app.data.staff.PlanEjercicios
 import pe.saniape.app.data.staff.RegistroEjercicio
+import pe.saniape.app.data.staff.RutinaEjercicios
+import pe.saniape.app.data.staff.RutinasEjerciciosRepo
 import pe.saniape.app.data.staff.SesionDePlan
 import pe.saniape.app.data.staff.TratamientoDestino
 import pe.saniape.app.data.staff.adherenciaDeItem
 import pe.saniape.app.data.staff.adherenciaDePlan
+import pe.saniape.app.data.staff.avisoRutinaAplicada
 import pe.saniape.app.data.staff.claveDestino
 import pe.saniape.app.data.staff.destinoPorDefecto
 import pe.saniape.app.data.staff.destinosEjercicios
 import pe.saniape.app.data.staff.enlaceWhatsAppSede
 import pe.saniape.app.data.staff.etiquetaPlan
 import pe.saniape.app.data.staff.hastaDePlan
+import pe.saniape.app.data.staff.hojaDesdePlan
+import pe.saniape.app.data.staff.htmlHojaEjercicios
 import pe.saniape.app.data.staff.hoyClinicaIso
 import pe.saniape.app.data.staff.mensajeCompartirPlan
 import pe.saniape.app.data.staff.nombreMaterial
 import pe.saniape.app.data.staff.planDeDestino
+import pe.saniape.app.data.staff.rutinaAplicadaDe
 import pe.saniape.app.data.staff.separarPlanes
 import pe.saniape.app.data.staff.textoDias
 import pe.saniape.app.data.staff.textoDosis
@@ -166,6 +173,10 @@ private class AccionesPlan(
     val verComoPaciente: () -> Unit,
     val estado: (String) -> Unit,
     val revocar: () -> Unit,
+    /** "🖨 Imprimir / PDF": la hoja "Ejercicios para casa" en el visor con impresión. */
+    val imprimir: () -> Unit,
+    /** "💾 Guardar como rutina"; null = la función no está (web vieja / sin fisio). */
+    val guardarRutina: (() -> Unit)?,
 )
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -183,6 +194,11 @@ fun EjerciciosApoyoTab(
     /** La ficha se recargó (Realtime, una gestión): se releen las sesiones y los planes. */
     recargaToken: Int = 0,
     indicarAlAbrir: IndicarEjercicios? = null,
+    /** Para la cabecera de la hoja imprimible (como la web): dirección, logo (https) y color (#rrggbb). */
+    clinicaDireccion: String? = null,
+    logoUrl: String? = null,
+    colorPrincipal: String? = null,
+    pacienteDocumento: String? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -210,6 +226,13 @@ fun EjerciciosApoyoTab(
     var verAnteriores by remember { mutableStateOf(false) }
     var confirmarQuitar by remember { mutableStateOf<ItemPlanEjercicios?>(null) }
     var confirmarFinalizar by remember { mutableStateOf<PlanEjercicios?>(null) }
+    // "📋 Usar rutina": para qué destino se abrió el buscador de rutinas.
+    var rutinasPara by remember { mutableStateOf<DestinoEjercicios?>(null) }
+    var guardarRutina by remember { mutableStateOf<PlanEjercicios?>(null) }
+    /** Tras usar una rutina con ejercicios que ya no están: se dice cuáles, a la vista. */
+    var avisoRutina by remember { mutableStateOf<Pair<String, String>?>(null) }
+    // La web vieja sin la ruta o una clínica sin fisio: los botones de rutina no se muestran.
+    var rutinasVisibles by remember { mutableStateOf(RutinasEjerciciosRepo.disponible) }
 
     if (cargando && datos == null) {
         // Andamio en vez de un aro: la forma de lo que viene.
@@ -300,6 +323,47 @@ fun EjerciciosApoyoTab(
         }
     }
 
+    /** "📋 Usar rutina": suma los ejercicios de la rutina con SU dosis al plan del destino. */
+    suspend fun usarRutina(d: DestinoEjercicios, r: RutinaEjercicios): Boolean {
+        val res = RutinasEjerciciosRepo.usar(pacienteId, r, d)
+        if (!res.registrada) {
+            Toaster.error(
+                if (res.codigo == "ACCION_INVALIDA") "Las rutinas aún no están disponibles. Elige los ejercicios de la biblioteca."
+                else res.rechazo?.error ?: "No se pudo aplicar la rutina",
+            )
+            return false
+        }
+        rutinasPara = null
+        elegido = d
+        // Encolada: enviarOEncolar ya avisó "se registrará al volver la señal".
+        if (res.encolada) return true
+        recargar()
+        val aplicada = rutinaAplicadaDe(res.cuerpo)
+        val (titulo, detalle) = avisoRutinaAplicada(r.nombre, aplicada)
+        if (aplicada.omitidos.isEmpty()) Toaster.exito("$titulo. $detalle") else avisoRutina = titulo to detalle
+        return true
+    }
+
+    /** De la biblioteca al buscador de rutinas, para el MISMO destino. */
+    fun abrirRutinasDesdeBiblioteca() {
+        val d = bibliotecaPara ?: destino
+        bibliotecaPara = null
+        rutinasPara = d
+    }
+
+    /** "🖨 Imprimir / PDF": la hoja nativa (gemela de HojaEjercicios.tsx) en el visor con impresión. */
+    fun imprimir(plan: PlanEjercicios) {
+        if (plan.activos.isEmpty()) return
+        acciones.abrirHtml(
+            htmlHojaEjercicios(
+                hojaDesdePlan(plan),
+                ClinicaHoja(clinicaNombre, logoUrl, colorPrincipal, clinicaDireccion),
+                pacienteNombre, pacienteDocumento,
+            ),
+            "Ejercicios para casa",
+        )
+    }
+
     /** El enlace del plan (el servidor lo crea la primera vez). */
     suspend fun enlace(plan: PlanEjercicios): String? {
         plan.token?.let { return urlPlanEjercicios(it) }
@@ -347,6 +411,8 @@ fun EjerciciosApoyoTab(
         verComoPaciente = { plan.token?.let { acciones.abrirUrl(urlPlanEjercicios(it)) } },
         estado = { cambiarEstado(plan, it) },
         revocar = { scope.launch { accion("Enlace desactivado") { EjerciciosRepo.revocar(plan.id) } } },
+        imprimir = { imprimir(plan) },
+        guardarRutina = if (rutinasVisibles) ({ guardarRutina = plan }) else null,
     )
 
     val repetible = repetibleEn(destino)
@@ -361,6 +427,7 @@ fun EjerciciosApoyoTab(
                 opciones.firstOrNull { it.clave == claveDestino(destino) }?.etiqueta ?: etiquetaDe(destino),
             ) { elegido = it }
             BotonEjercicios("＋ Elegir ejercicios", lleno = true, modifier = Modifier.fillMaxWidth()) { bibliotecaPara = destino }
+            if (rutinasVisibles) BotonEjercicios("📋 Usar rutina", modifier = Modifier.fillMaxWidth()) { rutinasPara = destino }
         }
 
         if (planDestino == null && puedeEditar) {
@@ -384,6 +451,7 @@ fun EjerciciosApoyoTab(
                     horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     BotonEjercicios("＋ Elegir de la biblioteca", lleno = true) { bibliotecaPara = destino }
+                    if (rutinasVisibles) BotonEjercicios("📋 Usar una rutina") { rutinasPara = destino }
                     repetible?.let { p -> BotonEjercicios(textoRepetir(p), habilitado = !agregando) { repetir(destino, p) } }
                 }
             }
@@ -465,6 +533,29 @@ fun EjerciciosApoyoTab(
             guardando = agregando,
             onCerrar = { bibliotecaPara = null },
             onAgregar = { agregar(it) },
+            onUsarRutina = if (rutinasVisibles) ({ abrirRutinasDesdeBiblioteca() }) else null,
+        )
+    }
+    rutinasPara?.let { d ->
+        RutinasEjerciciosModal(
+            para = etiquetaDe(d) + (nombreTrat(d.tratamientoId)?.let { " · $it" } ?: ""),
+            puedeEditar = puedeEditar,
+            onCerrar = { rutinasPara = null },
+            onUsar = { r -> usarRutina(d, r) },
+            onVolverBiblioteca = { rutinasPara = null; bibliotecaPara = d },
+            onNoDisponible = { rutinasVisibles = false },
+        )
+    }
+    guardarRutina?.let { plan ->
+        GuardarRutinaModal(plan = plan, onCerrar = { guardarRutina = null }, onNoDisponible = { rutinasVisibles = false })
+    }
+    avisoRutina?.let { (titulo, detalle) ->
+        AlertDialog(
+            onDismissRequest = { avisoRutina = null },
+            title = { Text(titulo, fontWeight = FontWeight.Bold) },
+            text = { Text(detalle, color = c.texto) },
+            confirmButton = { TextButton(onClick = { avisoRutina = null }) { Text("Entendido", color = c.navy, fontWeight = FontWeight.Bold) } },
+            containerColor = c.superficie,
         )
     }
     ajustar?.let { item ->
@@ -655,22 +746,26 @@ private fun TarjetaPlan(
             }
         }
 
-        if (puedeEditar) {
+        // Como la web: la fila se ve si puede editar O si hay ejercicios (la hoja la imprime cualquiera).
+        if (puedeEditar || items.isNotEmpty()) {
             Box(Modifier.padding(top = 12.dp).fillMaxWidth().height(1.dp).background(c.borde))
             FlowRow(
                 Modifier.padding(top = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                BotonEjercicios("＋ Agregar", lleno = true, onClick = acciones.agregar)
-                if (vigente) BotonEjercicios("📲 Enviar por WhatsApp", lleno = true, habilitado = items.isNotEmpty(), color = c.ok, onClick = acciones.whatsapp)
-                if (vigente) BotonEjercicios("🔗 Copiar enlace", habilitado = items.isNotEmpty(), onClick = acciones.copiarEnlace)
-                if (vigente && plan.token != null) BotonEjercicios("👁 Ver como paciente", onClick = acciones.verComoPaciente)
-                BotonEjercicios("✏️ Indicaciones", onClick = acciones.editar)
-                if (vigente) BotonEjercicios("⏸ Pausar") { acciones.estado("pausado") }
-                if (vigente) BotonEjercicios("✓ Finalizar") { acciones.estado("finalizado") }
-                if (plan.estado == "pausado") BotonEjercicios("▶ Reanudar") { acciones.estado("activo") }
+                if (puedeEditar) BotonEjercicios("＋ Agregar", lleno = true, onClick = acciones.agregar)
+                if (puedeEditar && vigente) BotonEjercicios("📲 Enviar por WhatsApp", lleno = true, habilitado = items.isNotEmpty(), color = c.ok, onClick = acciones.whatsapp)
+                // La hoja para la refrigeradora: imágenes, dosis y la tabla de la semana para marcar en papel.
+                if (items.isNotEmpty()) BotonEjercicios("🖨 Imprimir / PDF", onClick = acciones.imprimir)
+                if (puedeEditar && vigente) BotonEjercicios("🔗 Copiar enlace", habilitado = items.isNotEmpty(), onClick = acciones.copiarEnlace)
+                if (puedeEditar && vigente && plan.token != null) BotonEjercicios("👁 Ver como paciente", onClick = acciones.verComoPaciente)
+                if (puedeEditar) BotonEjercicios("✏️ Indicaciones", onClick = acciones.editar)
+                if (puedeEditar && items.isNotEmpty()) acciones.guardarRutina?.let { BotonEjercicios("💾 Guardar como rutina", onClick = it) }
+                if (puedeEditar && vigente) BotonEjercicios("⏸ Pausar") { acciones.estado("pausado") }
+                if (puedeEditar && vigente) BotonEjercicios("✓ Finalizar") { acciones.estado("finalizado") }
+                if (puedeEditar && plan.estado == "pausado") BotonEjercicios("▶ Reanudar") { acciones.estado("activo") }
             }
-            if (vigente && plan.token != null) {
+            if (puedeEditar && vigente && plan.token != null) {
                 Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("El enlace del paciente está activo y siempre muestra lo vigente.", color = c.textoSuave, fontSize = 11.sp,
                         modifier = Modifier.weight(1f))
