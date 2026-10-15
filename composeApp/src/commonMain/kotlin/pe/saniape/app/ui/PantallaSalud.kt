@@ -55,6 +55,8 @@ import pe.saniape.app.data.Documento
 import pe.saniape.app.data.FotoPortal
 import pe.saniape.app.data.MisEjercicios
 import pe.saniape.app.data.MisEjerciciosRepo
+import pe.saniape.app.data.ResultadoHojaEjercicios
+import pe.saniape.app.data.staff.htmlHojaEjercicios
 import pe.saniape.app.data.MiNutricion
 import pe.saniape.app.data.MiNutricionRepo
 import pe.saniape.app.data.IndicacionPortal
@@ -119,6 +121,10 @@ fun PantallaSalud() {
     var docsMedicos by remember { mutableStateOf<DocumentosClinicos?>(null) }
     // La hoja que se está pidiendo (un doble toque no abre dos visores).
     var abriendoDocMed by remember { mutableStateOf<String?>(null) }
+    // 🖨 Hoja de ejercicios que se está pidiendo (un doble toque no abre dos visores) y si
+    // el servidor la tiene (una web vieja sin la ruta → el botón no se muestra).
+    var abriendoHojaEjercicios by remember { mutableStateOf<String?>(null) }
+    var hojaEjerciciosDisponible by remember { mutableStateOf(true) }
 
     // En vivo: cuando la clinica confirma el vinculo desde la web, el historial
     // aparece solo. Esta pantalla cargaba una sola vez, asi que el paciente veia
@@ -198,6 +204,31 @@ fun PantallaSalud() {
                 else acciones.abrirHtml(html, d.numeroTexto.ifBlank { d.titulo })
             } finally {
                 abriendoDocMed = null
+            }
+        }
+    }
+
+    /**
+     * "🖨 Descargar PDF" de un plan de ejercicios: pide la hoja ya armada (Bearer del
+     * paciente) y la pinta nativa (gemela de HojaEjercicios.tsx) en el visor con impresión.
+     */
+    fun descargarHojaEjercicios(planId: String) {
+        if (abriendoHojaEjercicios != null) return
+        abriendoHojaEjercicios = planId
+        scope.launch {
+            try {
+                when (val r = MisEjerciciosRepo.hoja(planId)) {
+                    is ResultadoHojaEjercicios.Ok -> acciones.abrirHtml(
+                        htmlHojaEjercicios(r.hoja.hoja, r.hoja.clinica, r.hoja.pacienteNombre), "Ejercicios para casa",
+                    )
+                    is ResultadoHojaEjercicios.NoDisponible -> {
+                        hojaEjerciciosDisponible = false
+                        Toaster.info("La descarga en PDF todavía no está disponible. Inténtalo más tarde.")
+                    }
+                    is ResultadoHojaEjercicios.Error -> Toaster.error(r.mensaje)
+                }
+            } finally {
+                abriendoHojaEjercicios = null
             }
         }
     }
@@ -355,7 +386,11 @@ fun PantallaSalud() {
                             Etiqueta("🏠 MIS EJERCICIOS DE APOYO")
                         }
                         items(planesEjercicios, key = { "ejercicios-" + it.id }) { p ->
-                            PlanEjerciciosPacienteVista(p, ejercicios?.diaSemana ?: 0) { itemId, hecho, dolor ->
+                            PlanEjerciciosPacienteVista(
+                                p, ejercicios?.diaSemana ?: 0,
+                                onDescargarPdf = if (hojaEjerciciosDisponible) ({ descargarHojaEjercicios(p.id) }) else null,
+                                descargandoPdf = abriendoHojaEjercicios == p.id,
+                            ) { itemId, hecho, dolor ->
                                 marcarEjercicio(itemId, hecho, dolor)
                             }
                         }

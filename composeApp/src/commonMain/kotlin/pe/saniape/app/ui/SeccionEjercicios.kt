@@ -58,7 +58,14 @@ private val CARAS = listOf("😀", "🙂", "🙂", "😐", "😐", "😕", "😕
 
 /** Un plan del paciente: de cuándo es, sus indicaciones, el progreso de hoy y sus ejercicios. */
 @Composable
-fun PlanEjerciciosPacienteVista(plan: PlanEjerciciosPaciente, diaSemana: Int, onMarcar: MarcarEjercicio) {
+fun PlanEjerciciosPacienteVista(
+    plan: PlanEjerciciosPaciente,
+    diaSemana: Int,
+    /** "🖨 Descargar PDF" (la hoja para imprimir); null = el servidor no la tiene: no se muestra. */
+    onDescargarPdf: (() -> Unit)? = null,
+    descargandoPdf: Boolean = false,
+    onMarcar: MarcarEjercicio,
+) {
     val c = Sania.colors
     val tocan = plan.ejercicios.filter { it.tocaHoy }
     val hechos = tocan.count { it.hechoHoy }
@@ -67,6 +74,17 @@ fun PlanEjerciciosPacienteVista(plan: PlanEjerciciosPaciente, diaSemana: Int, on
             Text(plan.etiqueta, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             val detalle = listOfNotNull(plan.vigencia.ifBlank { null }, plan.indicadoPor, plan.clinica?.let { "🏥 $it" }).joinToString(" · ")
             if (detalle.isNotEmpty()) Text(detalle, color = c.textoSuave, fontSize = 12.sp)
+            if (onDescargarPdf != null) {
+                // La hoja para la refrigeradora: imágenes, dosis y la tabla de la semana para marcar.
+                Text(
+                    if (descargandoPdf) "Preparando…" else "🖨 Descargar PDF",
+                    color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .border(1.dp, c.lav, RoundedCornerShape(Sania.shape.sm.dp))
+                        .clickable(enabled = !descargandoPdf, onClick = onDescargarPdf)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+            }
         }
 
         if (plan.motivo != null || plan.indicaciones != null || plan.precauciones != null) {
