@@ -55,6 +55,11 @@ fun TarjetaCita(
     puedeVerCosto: Boolean,
     accionando: Boolean,
     onAccion: (AccionTarjeta) -> Unit,
+    /**
+     * "✓ Completar" está decidiendo si abre la evaluación (control de nutrición):
+     * dice "Abriendo…" y la tarjeta no acepta otro toque mientras tanto.
+     */
+    decidiendo: Boolean = false,
     onVerResumen: (String) -> Unit = {},
     conteoFranja: Int = 1,
     /** La clínica hace odontología: ofrece abrir el odontograma desde la cita. */
@@ -290,7 +295,10 @@ fun TarjetaCita(
                             else -> null
                         }
                         Column(if (ancla != null) Modifier.tourAncla(ancla) else Modifier) {
-                            BotonAccion(label, color, !accionando) { onAccion(accion) }
+                            BotonAccion(
+                                if (decidiendo && accion == AccionTarjeta.Completar) "Abriendo…" else label,
+                                color, !accionando && !decidiendo,
+                            ) { onAccion(accion) }
                         }
                     }
                 }

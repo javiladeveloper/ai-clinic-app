@@ -546,15 +546,37 @@ private fun PantallaFichaPacienteContenido(
         }
         val t = activos.firstOrNull { it.id == flujoNutri.tratamientoId } ?: activos.firstOrNull()
         val fechaCtl = pe.saniape.app.data.staff.fechaParaAgendarControl(t?.proximoControl, hoyCtl)
+        // Sin 'agendar' (la nutricionista) el control es SUYO y de nutrición: el
+        // mismo criterio con que /api/staff/cita/crear acepta la excepción
+        // (permiteControlPropioNutricion). Sin tratamiento, la especialidad de
+        // nutrición de quien mira (o la de la clínica).
+        val yo = if (!ctx.puede("agendar")) ctx.miTerapeutaId else null
+        val espTrat = t?.let { tr -> tr.especialidadId ?: especialidadesClinica.firstOrNull { it.nombre == tr.especialidadNombre }?.id }
+        val espNutri = espTrat
+            ?: datosDentales.especialidadesDeQuienMira.orEmpty().firstOrNull { it in ctx.mapaNutricion.ids }
+            ?: ctx.mapaNutricion.ids.firstOrNull()
         crearCita = pe.saniape.app.ui.clinica.PrefillCita(
             tipo = if (t != null && t.usaSesiones && t.sesionesCompletadas < t.totalSesiones) "Sesión" else "Consulta",
             pacienteId = paciente.id, pacienteNombre = paciente.nombre,
             fecha = fechaCtl,
             hora = pe.saniape.app.data.staff.horaInicialNuevaCita(fechaCtl, hoyCtl, pe.saniape.app.ui.proximaHoraEnPunto()),
-            terapeutaId = t?.terapeutaId ?: ctx.miTerapeutaId,
-            especialidadId = t?.let { tr -> tr.especialidadId ?: especialidadesClinica.firstOrNull { it.nombre == tr.especialidadNombre }?.id },
+            terapeutaId = yo ?: t?.terapeutaId ?: ctx.miTerapeutaId,
+            especialidadId = espNutri,
             tratamientoId = t?.id,
         )
+    }
+    // "¿Esta profesional ya atendió al paciente?" para ofrecerle agendar su
+    // siguiente control sin 'agendar' (ofreceAgendarControlNutri). Solo al abrir
+    // 🥗 Plan alimentario y solo si hace falta: con 'agendar' no se pregunta, y
+    // un tratamiento suyo ya cargado basta. Lo que no se pudo leer es NO.
+    var atendioNutri by remember(paciente.id) { mutableStateOf(false) }
+    val miTerNutri = ctx.miTerapeutaId
+    LaunchedEffect(tab, paciente.id, paciente.tratamientos, miTerNutri) {
+        if (tab != "plan" || ctx.puede("agendar") || !ctx.puede("sesiones") || miTerNutri.isNullOrBlank()) return@LaunchedEffect
+        atendioNutri = pe.saniape.app.data.staff.atendioAlPaciente(
+            miTerNutri,
+            tratamientos = paciente.tratamientos.map { pe.saniape.app.data.staff.FilaAtendio(it.terapeutaId, it.estado) },
+        ) || pe.saniape.app.data.staff.NutricionControlRepo.atendio(paciente.id, miTerNutri)
     }
 
     // Se llegó a la pestaña 🏠 (desde la agenda o Sesiones) pero, ya cargada la ficha, el
@@ -1137,10 +1159,18 @@ private fun PantallaFichaPacienteContenido(
                             onAbiertoNuevo = { flujoNutri = flujoNutri.consumido() },
                             clinicaId = ctx.clinicaId,
                             // Sin una próxima cita: "📅 Agendar siguiente control" (el agendar de siempre).
+                            // Recepción ('agendar') o la nutricionista con SU paciente: el mismo
+                            // criterio que /api/staff/cita/crear (ofreceAgendarControlNutri).
                             onAgendarControl = agendarControlNutri.takeIf {
-                                hitos != null && hitos?.proximaCitaFecha == null &&
-                                    (ctx.puede("agendar") || ctx.puede("sesiones")) &&
-                                    !pe.saniape.app.data.staff.fichaInactiva(paciente.estado)
+                                hitos != null && pe.saniape.app.data.staff.ofreceAgendarControlNutri(
+                                    puedeAgendar = ctx.puede("agendar"),
+                                    puedeSesiones = ctx.puede("sesiones"),
+                                    miTerapeutaId = ctx.miTerapeutaId,
+                                    atendioAntes = atendioNutri,
+                                    soloLectura = false,
+                                    inactivo = pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
+                                    citasPorDelante = if (hitos?.proximaCitaFecha != null) 1 else 0,
+                                )
                             },
                         )
                     }

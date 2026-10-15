@@ -138,6 +138,46 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     fun nutricionEnTarjeta(cita: CitaStaff): Boolean =
         cita.pacienteId != null && (ctx.puede("pacientes") || ctx.puede("sesiones")) && esNutricion(cita)
 
+    /** La cita cuyo "✓ Completar" está decidiendo si abre la evaluación ("Abriendo…"). */
+    var decidiendoCita by mutableStateOf<String?>(null); private set
+
+    /**
+     * Al tocar "✓ Completar": ¿se abre "✓ Completar evaluación"? La cita que
+     * evalúa (esCitaQueEvalua), salvo el CONTROL de nutrición: la Consulta de un
+     * paciente ya en seguimiento se cierra como consulta de seguimiento y ofrece
+     * "⚖️ Registrar medidas" (gemelo de `abreEvaluacionAlCompletar` de la web).
+     * Solo en una Consulta de nutrición se lee algo: mientras tanto la tarjeta
+     * dice "Abriendo…" y un segundo toque no hace nada. Si la lectura falla,
+     * evalúa como siempre.
+     */
+    fun decidirCompletar(cita: CitaStaff, alDecidir: (abreEvaluacion: Boolean) -> Unit) {
+        if (decidiendoCita != null) return
+        val evalua = flujoDe(cita).esCitaQueEvalua(cita.tipo)
+        val dental = esDental(cita)
+        val nutri = esNutricion(cita)
+        pe.saniape.app.data.staff.abreEvaluacionSinLeer(cita.tipo, cita.pacienteId, evalua, dental, nutri)
+            ?.let { alDecidir(it); return }
+        val pac = cita.pacienteId ?: run { alDecidir(true); return }
+        decidiendoCita = cita.id
+        viewModelScope.launch {
+            val abre = try {
+                pe.saniape.app.data.staff.abreEvaluacionAlCompletar(
+                    pe.saniape.app.data.staff.CitaNutricionControl(cita.id, cita.tipo, cita.fecha, cita.hora, cita.tratamientoId),
+                    pac, evalua, dental, nutri,
+                ) {
+                    pe.saniape.app.data.staff.NutricionControlRepo.seguimiento(pac, cita.tratamientoId) { f ->
+                        pe.saniape.app.data.staff.citaEsNutricion(
+                            ctx.mapaNutricion, f.especialidadId, null, f.terapeutaId?.let { espsPorTerapeuta[it] },
+                        )
+                    }
+                }
+            } finally {
+                decidiendoCita = null
+            }
+            alDecidir(abre)
+        }
+    }
+
     /** ¿Esta cita es de fisioterapia? (EVA, mejorías, dictado al completar). Gemelo de `citaEsFisio`. */
     fun esFisio(cita: CitaStaff): Boolean = pe.saniape.app.data.staff.citaEsFisio(
         ctx.mapaFisio, cita.especialidadId, cita.especialidadServicioId,

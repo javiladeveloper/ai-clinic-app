@@ -608,6 +608,7 @@ fun PantallaAgenda(
                                 cita = cita,
                                 puedeVerCosto = ctx.puede("pagos"),
                                 accionando = vm.accionando,
+                                decidiendo = vm.decidiendoCita == cita.id,
                                 onAccion = { accion ->
                                     when (accion) {
                                         AccionTarjeta.Confirmar -> vm.ejecutar(AccionCita.Confirmar, cita)
@@ -616,8 +617,12 @@ fun PantallaAgenda(
                                             // (también la Consulta de medicina general, que no tiene
                                             // Evaluación aparte); antes solo "Evaluación" y la consulta
                                             // médica se cerraba sin diagnóstico.
-                                            if (vm.flujoDe(cita).esCitaQueEvalua(cita.tipo) || cita.tipo == "Sesión") completar = cita
-                                            else vm.ejecutar(AccionCita.Completar, cita)
+                                            // El CONTROL de nutrición no: se cierra como consulta de
+                                            // seguimiento y ofrece "⚖️ Registrar medidas" (decidirCompletar).
+                                            vm.decidirCompletar(cita) { abreEvaluacion ->
+                                                if (abreEvaluacion || cita.tipo == "Sesión") completar = cita
+                                                else vm.ejecutar(AccionCita.Completar, cita)
+                                            }
                                         AccionTarjeta.Cancelar -> confirmar = cita to AccionCita.Cancelar
                                         AccionTarjeta.Revertir -> confirmar = cita to AccionCita.Revertir
                                         AccionTarjeta.Editar -> editar = cita
@@ -772,6 +777,8 @@ fun PantallaAgenda(
     }
     completar?.let { cita ->
         // Misma regla que ModalCompletar: la cita que evalúa pide diagnóstico.
+        // El control de nutrición nunca llega aquí: vm.decidirCompletar lo cierra
+        // directo como consulta de seguimiento.
         val flujoCita = vm.flujoDe(cita)
         val evalua = flujoCita.esCitaQueEvalua(cita.tipo)
         val pac = cita.pacienteId
