@@ -1,5 +1,6 @@
 package pe.saniape.app.data.staff
 
+import io.github.jan.supabase.exceptions.RestException
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
@@ -40,14 +41,15 @@ object InformesMedicosRepo {
     suspend fun listar(pacienteId: String): List<InformeMedicoApp>? {
         val clave = "informes-medicos:$pacienteId"
         val filas: List<JsonObject> = try {
-            Supabase.client.postgrest["informes_medicos"]
-                .select(Columns.raw(SELECT_INFORMES_STAFF)) {
-                    filter { eq("paciente_id", pacienteId) }
-                    order("created_at", Order.DESCENDING)
-                    limit(200)
-                }
-                .decodeList<JsonObject>()
-                .also { CacheLectura.guardar(clave, Json.encodeToString(JsonArray.serializer(), JsonArray(it))) }
+            val leidas = try {
+                leerInformes(pacienteId, SELECT_INFORMES_STAFF)
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: RestException) {
+                // Base sin la columna visible_paciente: la lista igual sale (sin el 📱).
+                leerInformes(pacienteId, SELECT_INFORMES_STAFF_BASE)
+            }
+            leidas.also { CacheLectura.guardar(clave, Json.encodeToString(JsonArray.serializer(), JsonArray(it))) }
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -56,6 +58,15 @@ object InformesMedicosRepo {
         }
         return filas.mapNotNull { aInformeMedico(it) }
     }
+
+    private suspend fun leerInformes(pacienteId: String, columnas: String): List<JsonObject> =
+        Supabase.client.postgrest["informes_medicos"]
+            .select(Columns.raw(columnas)) {
+                filter { eq("paciente_id", pacienteId) }
+                order("created_at", Order.DESCENDING)
+                limit(200)
+            }
+            .decodeList<JsonObject>()
 
     /** Exámenes que la clínica ya pidió (los aprende el trigger), más usados primero. Vacío si falla. */
     suspend fun examenesAprendidos(): List<ExamenAprendido> = intentar {

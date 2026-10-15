@@ -17,6 +17,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -68,6 +70,7 @@ import pe.saniape.app.data.staff.restarDias
 import pe.saniape.app.data.staff.sugerenciasExamenes
 import pe.saniape.app.data.staff.titulosSugeridos
 import pe.saniape.app.data.staff.validarInforme
+import pe.saniape.app.data.staff.visiblePacientePorDefecto
 import pe.saniape.app.ui.Toaster
 import pe.saniape.app.ui.clinica.pacientes.CajaSelectorForm
 import pe.saniape.app.ui.clinica.pacientes.DialogoFecha
@@ -149,6 +152,8 @@ fun DialogoInformeMedico(
     var nuevoEx by remember { mutableStateOf("") }
     var indicaciones by remember { mutableStateOf("") }
     var seguimiento by remember { mutableStateOf(true) }
+    // ¿Lo ve el paciente en su app? Descanso y orden: sí; informe: no (como la web).
+    var visiblePaciente by remember { mutableStateOf(visiblePacientePorDefecto(tipoInicial)) }
 
     // Desde la ficha: de qué atención sale el prellenado.
     var origenes by remember { mutableStateOf<List<AtencionOrigenDoc>?>(null) }
@@ -221,6 +226,7 @@ fun DialogoInformeMedico(
             examenes = examenes, indicaciones = indicaciones,
             citaId = (prefill ?: origen)?.citaId, atencionId = (prefill ?: origen)?.atencionId,
             tratamientoId = (prefill ?: origen)?.tratamientoId,
+            visiblePaciente = visiblePaciente,
         )
         val errs = validarInforme(b, hoy)
         errores = errs
@@ -279,7 +285,10 @@ fun DialogoInformeMedico(
             // ── Tipo ──
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 TIPOS_DOC_MEDICO.forEach { t ->
-                    ChipDoc("${iconoTipoDoc(t)} ${nombreTipoDoc(t)}", activo = t == tipo) { tipo = t }
+                    ChipDoc("${iconoTipoDoc(t)} ${nombreTipoDoc(t)}", activo = t == tipo) {
+                        if (t != tipo) visiblePaciente = visiblePacientePorDefecto(t)
+                        tipo = t
+                    }
                 }
             }
 
@@ -453,6 +462,26 @@ fun DialogoInformeMedico(
                 if (tipo == DOC_ORDEN) "Ayuno de 8 a 12 horas, traer los resultados en el próximo control…" else "Opcional",
                 unaLinea = false, minLineas = 2,
             )
+            // ── ¿Lo ve el paciente en su app? ──
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                    .clickable { visiblePaciente = !visiblePaciente }.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("📱 Visible para el paciente en su app", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (tipo == DOC_INFORME) "Apagado por defecto: un informe puede ser para un tercero. Enciéndelo si también se lo dejas a él."
+                        else "Lo ve y lo descarga desde su app. Puedes cambiarlo después desde la ficha.",
+                        color = c.textoSuave, fontSize = 11.sp,
+                    )
+                }
+                Switch(
+                    checked = visiblePaciente, onCheckedChange = { visiblePaciente = it },
+                    colors = SwitchDefaults.colors(checkedTrackColor = c.navy, checkedThumbColor = c.sobreNavy),
+                )
+            }
             Text("Emitido no se edita: si sale mal, se anula y se emite otro.", color = c.textoSuave, fontSize = 11.sp)
         }
     }
