@@ -149,6 +149,18 @@ data class ContextoStaff(
      * vacío y la ficha queda como antes.
      */
     val mapaNutricion: MapaNutricion = MapaNutricion(),
+    /**
+     * Qué especialidades son de podología (pestaña 🦶 Evaluación del pie, por
+     * paciente con `pacienteEsPodologia`; la web las reconoce por el NOMBRE).
+     * Un backend sin el campo deja el mapa vacío y la pestaña no aparece.
+     */
+    val mapaPodologia: MapaPodologia = MapaPodologia(),
+    /**
+     * Qué especialidades son de estética (pestaña 💉 Aplicaciones, por paciente
+     * con `pacienteEsEstetica`; solo el rubro guardado: capilar no cuenta). Un
+     * backend sin el campo deja el mapa vacío y la pestaña no aparece.
+     */
+    val mapaEstetica: MapaEstetica = MapaEstetica(),
     val clinicas: List<ClinicaRef>,
     val tienePortal: Boolean,
     /**
