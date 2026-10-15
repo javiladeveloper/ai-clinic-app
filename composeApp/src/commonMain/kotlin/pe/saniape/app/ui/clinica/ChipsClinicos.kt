@@ -51,9 +51,10 @@ internal val CHIPS_POR_ESPECIALIDAD: List<Pair<String, ChipsEspecialidad>> = lis
     "terapia fisica" to FISIO,
     "kinesi" to FISIO,
     "masoterap" to FISIO,
+    // Psicología (2026-10-15): eran 5 y 5. Mismos textos que el pool compartido.
     "psico" to ChipsEspecialidad(
-        tipos = listOf("Ansiedad", "Depresión", "Estrés", "Familiar", "Conductual"),
-        sintomas = listOf("Insomnio", "Irritabilidad", "Fatiga", "Aislamiento", "Angustia"),
+        tipos = listOf("Ansiedad", "Depresión", "Estrés", "Familiar", "Conductual", "Pareja", "Duelo", "Infantil", "Adolescente", "Aprendizaje", "Autoestima"),
+        sintomas = listOf("Insomnio", "Irritabilidad", "Fatiga", "Aislamiento", "Angustia", "Preocupación excesiva", "Tristeza persistente", "Llanto fácil", "Falta de concentración", "Pensamientos intrusivos"),
     ),
     "odonto" to DENTAL,
     "dental" to DENTAL,
@@ -63,9 +64,10 @@ internal val CHIPS_POR_ESPECIALIDAD: List<Pair<String, ChipsEspecialidad>> = lis
         tipos = listOf("Apiñamiento", "Diastema", "Mordida abierta", "Sobremordida", "Mordida cruzada", "Maloclusión Clase I", "Maloclusión Clase II", "Maloclusión Clase III", "Diente retenido", "Recidiva (se movieron)"),
         sintomas = listOf("Dientes torcidos", "Espacios entre dientes", "Dificultad al morder", "Protrusión", "Respira por la boca", "Dolor en la mandíbula (ATM)", "Rechina los dientes", "Chupa el dedo"),
     ),
+    // Dermatología (2026-10-15): eran 4 y 4.
     "dermato" to ChipsEspecialidad(
-        tipos = listOf("Acné", "Dermatitis", "Alérgica", "Infecciosa"),
-        sintomas = listOf("Picazón", "Enrojecimiento", "Descamación", "Manchas"),
+        tipos = listOf("Acné", "Dermatitis", "Alérgica", "Infecciosa", "Psoriasis", "Rosácea", "Hongos", "Verrugas / virales", "Pigmentaria", "Lunares / tumoral", "Capilar", "Uñas"),
+        sintomas = listOf("Picazón", "Enrojecimiento", "Descamación", "Manchas", "Granos", "Ronchas", "Ardor", "Ampollas", "Lunar que cambia", "Caída de cabello"),
     ),
     // Ginecología y obstetricia (2026-10-07).
     "gineco" to ChipsEspecialidad(
@@ -73,12 +75,12 @@ internal val CHIPS_POR_ESPECIALIDAD: List<Pair<String, ChipsEspecialidad>> = lis
         sintomas = listOf("Dolor pélvico", "Flujo vaginal anormal", "Sangrado anormal", "Retraso menstrual", "Dolor menstrual", "Picazón vaginal", "Ardor al orinar", "Dolor en la mama", "Bochornos"),
     ),
     "obstet" to ChipsEspecialidad(
-        tipos = listOf("Obstétrica", "Control prenatal", "Embarazo de alto riesgo", "Puerperio", "Planificación familiar"),
+        tipos = listOf("Obstétrica", "Control prenatal", "Embarazo de alto riesgo", "Puerperio", "Planificación familiar", "Psicoprofilaxis", "Lactancia materna", "Infección urinaria", "Anemia del embarazo", "Amenaza de aborto"),
         sintomas = listOf("Náuseas del embarazo", "Sangrado", "Dolor abdominal", "Pérdida de líquido", "Menos movimientos fetales", "Hinchazón de piernas", "Dolor de cabeza"),
     ),
     "fertilidad" to ChipsEspecialidad(
         tipos = listOf("Infertilidad", "Ovario poliquístico", "Endometriosis", "Factor masculino", "Reserva ovárica", "Fertilidad"),
-        sintomas = listOf("Deseo de embarazo", "Ciclos irregulares", "Dolor menstrual", "Pérdidas recurrentes"),
+        sintomas = listOf("Deseo de embarazo", "Ciclos irregulares", "Dolor menstrual", "Pérdidas recurrentes", "Ausencia de regla", "Dolor en las relaciones", "Acné o vello excesivo", "Aumento de peso"),
     ),
     "psiquiatr" to ChipsEspecialidad(
         tipos = listOf("Ansiedad", "Depresión", "Trastorno bipolar", "Trastorno del sueño", "Psicótica", "Adicciones"),
@@ -89,17 +91,18 @@ internal val CHIPS_POR_ESPECIALIDAD: List<Pair<String, ChipsEspecialidad>> = lis
         tipos = listOf("Sobrepeso", "Obesidad", "Diabetes", "Resistencia a la insulina", "Colesterol / triglicéridos altos", "Hipertensión", "Hígado graso", "Desnutrición", "Anemia", "Embarazo / lactancia", "Deportista", "Gastritis / colon irritable"),
         sintomas = listOf("Fatiga", "Ansiedad por comida", "Digestión pesada", "Hinchazón abdominal", "Estreñimiento", "Reflujo", "Antojos de dulce", "Retención de líquidos", "Sueño después de comer"),
     ),
+    // Medicina general, pediatría y podología (2026-10-15): eran 4 y 4-5.
     "medicina general" to ChipsEspecialidad(
-        tipos = listOf("Respiratoria", "Digestiva", "Cardiovascular", "Metabólica"),
-        sintomas = listOf("Fiebre", "Dolor", "Mareo", "Náuseas", "Tos"),
+        tipos = listOf("Respiratoria", "Digestiva", "Cardiovascular", "Metabólica", "Infecciosa", "Urinaria", "Dermatológica", "Osteomuscular", "Neurológica", "Alérgica", "Salud mental", "Chequeo preventivo"),
+        sintomas = listOf("Fiebre", "Dolor", "Mareo", "Náuseas", "Tos", "Dolor de garganta", "Dolor de cabeza", "Dolor abdominal", "Diarrea", "Cansancio"),
     ),
     "pediatr" to ChipsEspecialidad(
-        tipos = listOf("Respiratoria", "Digestiva", "Del desarrollo", "Infecciosa"),
-        sintomas = listOf("Fiebre", "Tos", "Vómitos", "Diarrea", "Llanto persistente"),
+        tipos = listOf("Respiratoria", "Digestiva", "Del desarrollo", "Infecciosa", "Control CRED", "Nutricional", "Anemia", "Alérgica", "Dermatológica", "Recién nacido", "Vacunas"),
+        sintomas = listOf("Fiebre", "Tos", "Vómitos", "Diarrea", "Llanto persistente", "Secreción nasal", "Falta de apetito", "Dificultad para respirar", "Dolor de oído", "Erupción en la piel"),
     ),
     "podo" to ChipsEspecialidad(
-        tipos = listOf("Uña encarnada", "Hongos", "Pie diabético", "Callosidades"),
-        sintomas = listOf("Dolor al caminar", "Picazón", "Mal olor", "Engrosamiento de uña"),
+        tipos = listOf("Uña encarnada", "Hongos", "Pie diabético", "Callosidades", "Verruga plantar", "Pie de atleta", "Juanete", "Pie plano", "Talón doloroso", "Grietas en talones", "Biomecánica"),
+        sintomas = listOf("Dolor al caminar", "Picazón", "Mal olor", "Engrosamiento de uña", "Uña enterrada", "Inflamación del dedo", "Ardor en los pies", "Durezas", "Sudoración excesiva", "Adormecimiento"),
     ),
     // Trasplante capilar / tricología (varias claves para distintos nombres).
     "capilar" to CAPILAR, "trasplante" to CAPILAR, "trico" to CAPILAR, "alopecia" to CAPILAR,

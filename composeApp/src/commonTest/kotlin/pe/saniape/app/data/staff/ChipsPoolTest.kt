@@ -220,7 +220,10 @@ class ChipsPoolTest {
             EspecialidadChips("Fisioterapia", chipsSintomas = listOf("Dolor", "Rigidez")),
             EspecialidadChips("Medicina general"),
         ))
-        assertEquals(listOf("Dolor", "Rigidez", "Fiebre", "Mareo", "Náuseas", "Tos"), u.sintomas)
+        assertEquals(
+            listOf("Dolor", "Rigidez", "Fiebre", "Mareo", "Náuseas", "Tos", "Dolor de garganta", "Dolor de cabeza", "Dolor abdominal", "Diarrea", "Cansancio"),
+            u.sintomas,
+        )
         assertEquals(CHIPS_DEFAULT, chipsDeClinica(emptyList()))
     }
 
