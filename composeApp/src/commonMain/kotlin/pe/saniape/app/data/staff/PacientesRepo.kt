@@ -121,16 +121,25 @@ data class TratamientoPaciente(
      * del paciente → la principal ([regionalDeTratamiento]).
      */
     val sedeId: String? = null,
+    /**
+     * SESIÓN SUELTA (lo devengado suma al acordado, data/SesionesSueltas.kt): las
+     * sesiones (id, estado, costo, número, fecha) y los pagos (sesion_id, monto)
+     * del tratamiento. Vienen embebidos en el MISMO select de la ficha (una sola
+     * consulta, sin N+1); null = no se cargaron (lista) → el pactado de siempre.
+     */
+    val sesionesDevengo: List<pe.saniape.app.data.SesionDevengo>? = null,
+    val pagosDevengo: List<pe.saniape.app.data.PagoDevengo>? = null,
 ) {
     /**
      * La cuenta de este tratamiento para el saldo a favor, con lo [pagado].
      * Sin los conteos cargados, un cobro por atención NO arriesga un "a favor"
      * (realizadas = ∞ ⇒ acordado efectivo ≥ lo pagado): ante la duda, no.
+     * [acordado]: el de la regla nueva (en una suelta, lo devengado).
      */
-    fun cuentaCon(pagado: Double): pe.saniape.app.data.CuentaTratamiento {
+    fun cuentaCon(pagado: Double, acordado: Double = montoAcordado): pe.saniape.app.data.CuentaTratamiento {
         val sinConteos = sesionesRealizadas == null && citasNoCanceladas == null
         return pe.saniape.app.data.CuentaTratamiento(
-            acordado = montoAcordado, pagado = pagado, estado = estado, modalidad = modalidad,
+            acordado = acordado, pagado = pagado, estado = estado, modalidad = modalidad,
             precioPorSesion = precioPorSesion, precioAcordado = precioAcordado, totalSesiones = totalSesiones,
             sesionesRealizadas = if (sinConteos) Int.MAX_VALUE / 2 else sesionesRealizadas ?: 0,
             citasNoCanceladas = citasNoCanceladas ?: 0,
@@ -152,17 +161,82 @@ data class TratamientoPaciente(
      * tarjeta): manda sobre `estado_pago`, que puede estar desactualizado si se
      * editó el precio. null = no se cargaron → `estado_pago` de respaldo.
      */
-    fun sinSaldoCon(pagado: Double?): Boolean = tratamientoSinSaldo(montoAcordado, pagado, estadoPago)
+    fun sinSaldoCon(pagado: Double?): Boolean = sinSaldoCon(pagado, null)
 
-    /** Monto total acordado del tratamiento (igual que la web, lib/pagos → montoAcordado). */
+    /**
+     * Lo mismo, contando [incluirSesionId]: la sesión que se está CERRANDO. En
+     * una SUELTA suma al acordado, así el pago de la 1ª sesión ya no "salda" la
+     * 2ª y el cierre pregunta "¿pagó esta sesión?" (como la web, tratSaldado).
+     * Sin [pagado], lo pagado de los pagos embebidos (el `estado_pago` guardado
+     * no sabe de la sesión que se cierra). Suelta sin sus sesiones cargadas:
+     * nunca "saldado" (no se esconde un cobro por falta de datos).
+     */
+    fun sinSaldoCon(pagado: Double?, incluirSesionId: String?): Boolean {
+        if (!esSuelta) return tratamientoSinSaldo(montoAcordado, pagado, estadoPago)
+        val ctx = contextoSueltas(incluirSesionId) ?: return false
+        val pag = pagado ?: pagadoEmbebido ?: return false
+        return tratamientoSinSaldo(pe.saniape.app.data.montoAcordado(tratPago, ctx), pag, estadoPago)
+    }
+
+    /** Es 'Sesión suelta' (su acordado suma lo atendido). */
+    val esSuelta: Boolean get() = pe.saniape.app.data.esSesionSuelta(modalidad)
+
+    /** Lo del tratamiento que lee la regla del acordado (gemelo de COLUMNAS_ACORDADO). */
+    val tratPago: pe.saniape.app.data.TratPago
+        get() = pe.saniape.app.data.TratPago(
+            modalidad = modalidad, precioAcordado = precioAcordado, precioPaquete = precioPaquete,
+            precioPorSesion = precioPorSesion, totalSesiones = totalSesiones,
+            cantidadUnidades = cantidadUnidades, precioUnitario = precioUnitario,
+        )
+
+    /**
+     * Sesiones y pagos de una SUELTA para su acordado; null si no es suelta o no
+     * se cargaron. [pagos] reemplaza a los embebidos (la sección de pagos trae los
+     * suyos, más frescos).
+     */
+    fun contextoSueltas(
+        incluirSesionId: String? = null,
+        pagos: List<pe.saniape.app.data.PagoDevengo>? = null,
+    ): pe.saniape.app.data.ContextoSesiones? {
+        if (!esSuelta) return null
+        val ses = sesionesDevengo ?: return null
+        return pe.saniape.app.data.ContextoSesiones(
+            sesiones = ses, pagos = pagos ?: pagosDevengo.orEmpty(), incluirSesionId = incluirSesionId,
+        )
+    }
+
+    /** Lo pagado NETO según los pagos embebidos (null = no se cargaron). */
+    val pagadoEmbebido: Double?
+        get() = pagosDevengo?.let { l -> l.sumOf { aCentimos(it.monto ?: 0.0) } / 100.0 }
+
+    /**
+     * Monto total acordado del tratamiento (igual que la web, lib/pagos →
+     * montoAcordado con las sesiones del tratamiento). En una SESIÓN SUELTA suma
+     * lo atendido y lo cobrado por adelantado (data/SesionesSueltas.kt); sin sus
+     * sesiones cargadas, o en otra modalidad, el pactado de siempre.
+     */
     val montoAcordado: Double
-        get() = precioAcordado
-            ?: when (modalidad) {
-                "Paquete" -> precioPaquete ?: 0.0
-                // Unidades: cantidad × precio unitario (4000 folículos × 1.50).
-                "Unidades" -> (cantidadUnidades ?: 0) * (precioUnitario ?: 0.0)
-                else -> (precioPorSesion ?: 0.0) * totalSesiones
-            }
+        get() = acordadoCon()
+
+    /** El acordado contando la sesión que se cierra y/o con los [pagos] recién leídos. */
+    fun acordadoCon(
+        incluirSesionId: String? = null,
+        pagos: List<pe.saniape.app.data.PagoDevengo>? = null,
+    ): Double = pe.saniape.app.data.montoAcordado(tratPago, contextoSueltas(incluirSesionId, pagos))
+
+    /** Lo PACTADO (sin lo atendido): "Ampliar" suma sobre esto en el servidor. */
+    val montoPactado: Double get() = pe.saniape.app.data.montoPactado(tratPago)
+
+    /**
+     * Estado de pago a MOSTRAR. Suelta con sus sesiones: la cuenta en vivo (el
+     * `estado_pago` guardado puede ir un paso atrás de lo atendido); si no, el guardado.
+     */
+    fun estadoPagoVivo(pagado: Double? = null): String? {
+        if (!esSuelta) return estadoPago
+        val ctx = contextoSueltas() ?: return estadoPago
+        val pag = pagado ?: pagadoEmbebido ?: return estadoPago
+        return pe.saniape.app.data.estadoPagoDe(pag, pe.saniape.app.data.montoAcordado(tratPago, ctx))
+    }
 
     /** Es una Consulta (especialidad sin sesiones): no muestra contador/acciones de sesión. */
     val esConsulta: Boolean get() = !usaSesiones
@@ -223,6 +297,8 @@ data class PagoFicha(
     val notas: String?,
     val fecha: String,
     val numeroSesion: Int?,   // si el pago nació de una sesión (cobro), su número
+    /** La sesión a la que está ligado (sesion_id): en una suelta, la hace "pagada por adelantado". */
+    val sesionId: String? = null,
     // ── Pagar con saldo a favor (docs/app-contrato-pagar-con-saldo.md §6) ──
     /** null = pago normal · "uso" = parte pagada con saldo · "consumo" = saldo que SALIÓ hacia otro tratamiento (monto < 0). */
     val saldoTipo: String? = null,
@@ -512,7 +588,8 @@ object PacientesRepo {
             diagnostico, medicacion, proximo_control, nota_recepcion, tecnicas_sugeridas,
             procedimiento_id, sesiones_base, cita_origen_id, no_volvio, motivo_cierre, cerrado_at,
             fecha_inicio, created_at, saldo_liberado_at, saldo_liberado_por, control_anclaje, control_indice, sede_id,
-            ses_estados:sesiones!sesiones_tratamiento_id_fkey(estado),
+            ses_estados:sesiones!sesiones_tratamiento_id_fkey(id, estado, costo, numero, fecha),
+            pagos_dev:pagos_tratamiento(sesion_id, monto),
             citas_estados:citas!citas_tratamiento_id_fkey(estado),
             procedimiento:procedimientos(nombre, especialidad_id, modo_cobro, precio, unidad_label, especialidad:especialidades(nombre, usa_sesiones)),
             terapeuta:terapeutas(id, nombre, especialidades:terapeuta_especialidades(especialidad:especialidades(id, nombre)))
@@ -943,7 +1020,7 @@ object PacientesRepo {
     /** Pagos registrados de un tratamiento (para la PagoCard de la ficha). */
     suspend fun pagosDe(tratamientoId: String): List<PagoFicha> {
         val filas = Supabase.client.postgrest["pagos_tratamiento"]
-            .select(Columns.raw("id, monto, metodo, notas, fecha, saldo_tipo, saldo_uso_id, grupo_pago_id, sesion:sesiones(numero)")) {
+            .select(Columns.raw("id, monto, metodo, notas, fecha, saldo_tipo, saldo_uso_id, grupo_pago_id, sesion_id, sesion:sesiones(numero)")) {
                 filter { eq("tratamiento_id", tratamientoId) }
                 order("fecha", Order.DESCENDING)
             }
@@ -957,6 +1034,7 @@ object PacientesRepo {
                 notas = o.str("notas"),
                 fecha = o.str("fecha") ?: "",
                 numeroSesion = numSes,
+                sesionId = o.str("sesion_id"),
                 saldoTipo = o.str("saldo_tipo"),
                 saldoUsoId = o.str("saldo_uso_id"),
                 grupoPagoId = o.str("grupo_pago_id"),
@@ -1762,6 +1840,8 @@ object PacientesRepo {
                 saldoLiberadoAt = t.str("saldo_liberado_at"),
                 saldoLiberadoPor = t.str("saldo_liberado_por"),
                 sedeId = t.str("sede_id"),
+                sesionesDevengo = sesionesDevengoDe(t["ses_estados"]),
+                pagosDevengo = pagosDevengoDe(t["pagos_dev"]),
             )
         }
         return PacienteStaff(
@@ -1943,3 +2023,27 @@ object PacientesRepo {
  */
 fun tratamientoSinSaldo(acordado: Double, pagado: Double?, estadoPago: String?): Boolean =
     if (pagado != null) acordado > 0.0 && pagado >= acordado - 0.005 else estadoPago == "Pagado"
+
+private fun JsonObject.campo(k: String): String? =
+    (this[k] as? JsonPrimitive)?.content?.takeIf { it != "null" }
+
+/**
+ * Las sesiones embebidas de un tratamiento (`ses_estados`) para el acordado de
+ * una suelta. null = no vinieron (select de la lista); una fila rara se salta.
+ * Una sesión sin costo (null/0) vale el precio de la sesión: no rompe nada.
+ */
+internal fun sesionesDevengoDe(e: kotlinx.serialization.json.JsonElement?): List<pe.saniape.app.data.SesionDevengo>? =
+    (e as? JsonArray)?.mapNotNull { x ->
+        val o = x as? JsonObject ?: return@mapNotNull null
+        pe.saniape.app.data.SesionDevengo(
+            id = o.campo("id"), estado = o.campo("estado"), costo = o.campo("costo")?.toDoubleOrNull(),
+            numero = o.campo("numero")?.toDoubleOrNull()?.toInt(), fecha = o.campo("fecha"),
+        )
+    }
+
+/** Los pagos embebidos de un tratamiento (`pagos_dev`: sesion_id, monto). null = no vinieron. */
+internal fun pagosDevengoDe(e: kotlinx.serialization.json.JsonElement?): List<pe.saniape.app.data.PagoDevengo>? =
+    (e as? JsonArray)?.mapNotNull { x ->
+        val o = x as? JsonObject ?: return@mapNotNull null
+        pe.saniape.app.data.PagoDevengo(sesionId = o.campo("sesion_id"), monto = o.campo("monto")?.toDoubleOrNull())
+    }

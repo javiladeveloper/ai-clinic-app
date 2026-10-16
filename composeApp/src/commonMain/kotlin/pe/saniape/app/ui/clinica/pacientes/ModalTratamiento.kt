@@ -1256,6 +1256,15 @@ fun ModalAmpliarTratamiento(
         TarjetaForm(titulo = "Sesiones adicionales", icono = "➕") {
             Text("Quedará en ${t.totalSesiones} + las que agregues.", color = c.textoSuave, fontSize = 11.sp,
                 modifier = Modifier.padding(bottom = 10.dp))
+            // Sesión suelta: ampliar es pactar N sesiones por un monto; el pacto
+            // cubre sus N sesiones. Así se registra una CORTESÍA (como la web).
+            if (t.esSuelta) {
+                Text("🎁 ¿Sesiones de cortesía? Amplía +N sesiones por ${simboloMoneda(moneda)} 0: quedan dentro de lo pactado y no generan deuda. " +
+                    "Poner costo 0 en una sesión no la hace gratis: se cobra al precio de la sesión.",
+                    color = c.texto, fontSize = 11.sp,
+                    modifier = Modifier.padding(bottom = 10.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .background(c.chipBg).padding(horizontal = 10.dp, vertical = 8.dp))
+            }
             EtqForm("Sesiones adicionales"); CampoNum(sesiones) { sesiones = it }
             Spacer(Modifier.height(10.dp))
             EtqForm("Monto adicional (${simboloMoneda(moneda)}) — opcional"); CampoNum(monto) { monto = it }

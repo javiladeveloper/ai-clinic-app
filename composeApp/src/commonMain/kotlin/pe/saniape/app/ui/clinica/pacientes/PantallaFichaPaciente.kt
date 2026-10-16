@@ -1816,8 +1816,9 @@ private fun PantallaFichaPacienteContenido(
             anterior = anterior,
             fotosSesion = if (conFotos) fotosSesion else null,
             tecnicasSugeridas = req.tecnicasSugeridas,
-            // Paquete ya pagado completo: no se pregunta "¿pagó esta sesión?".
-            puedePagos = ctx.puede("pagos") && !req.trat.sinSaldo,
+            // Paquete ya pagado completo: no se pregunta "¿pagó esta sesión?". En una
+            // SUELTA cuenta la sesión que se cierra (la 2ª no queda "saldada" por la 1ª).
+            puedePagos = ctx.puede("pagos") && !req.trat.sinSaldoCon(null, ses.id),
             // Odontología: "¿Qué se le hizo hoy?" solo en tratamientos dentales.
             pacienteId = paciente.id,
             tratamientoId = req.trat.id,
@@ -3190,14 +3191,16 @@ private fun FilaPagoResumen(t: TratamientoPaciente, pagado: Double, aFavor: Doub
     val acordado = t.montoAcordado
     val saldo = (acordado - pagado).coerceAtLeast(0.0)
     val frac = if (acordado > 0) (pagado / acordado).toFloat().coerceIn(0f, 1f) else 0f
-    val pagoEst = EstadosColor.cita(when (t.estadoPago) { "Pagado" -> "Confirmada"; "Parcial" -> "Pendiente"; else -> "Cancelada" })
+    // Suelta: el estado guardado puede ir un paso atrás de lo atendido → manda la cuenta en vivo.
+    val estadoPagoMostrado = t.estadoPagoVivo(pagado)
+    val pagoEst = EstadosColor.cita(when (estadoPagoMostrado) { "Pagado" -> "Confirmada"; "Parcial" -> "Pendiente"; else -> "Cancelada" })
     Column(Modifier.fillMaxWidth().clickable { onVer() }.padding(vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("${if (t.esConsulta) "🩺" else if (t.modalidad == "Paquete") "📦" else "🎫"} ${t.procedimiento ?: "Plan de atención"}",
                 color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1)
             Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(pagoEst.bg)
                 .padding(horizontal = 8.dp, vertical = 2.dp)) {
-                Text(t.estadoPago ?: "—", color = pagoEst.fg, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text(estadoPagoMostrado ?: "—", color = pagoEst.fg, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.width(6.dp))
             Text("Ver →", color = c.navy, fontSize = 11.sp, fontWeight = FontWeight.Bold)

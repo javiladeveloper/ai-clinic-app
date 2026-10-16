@@ -476,12 +476,14 @@ fun TarjetaTratamiento(
         }
 
         // Estado de pago
-        if (verPagos && t.estadoPago != null) {
-            val pago = EstadosColor.cita(when (t.estadoPago) { "Pagado" -> "Confirmada"; "Parcial" -> "Pendiente"; else -> "Cancelada" })
+        // Sesión suelta: la cuenta en vivo (lo atendido), no el estado guardado.
+        val estadoPagoMostrado = t.estadoPagoVivo(pagadoCargado)
+        if (verPagos && estadoPagoMostrado != null) {
+            val pago = EstadosColor.cita(when (estadoPagoMostrado) { "Pagado" -> "Confirmada"; "Parcial" -> "Pendiente"; else -> "Cancelada" })
             Spacer(Modifier.height(6.dp))
             Box(Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(pago.bg)
                 .padding(horizontal = 8.dp, vertical = 3.dp)) {
-                Text("Pago: ${t.estadoPago}", color = pago.fg, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text("Pago: $estadoPagoMostrado", color = pago.fg, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -1207,7 +1209,11 @@ fun SeccionPagos(
         pagos = runCatching { PacientesRepo.pagosDe(t.id) }.getOrDefault(emptyList())
     }
 
-    val acordado = t.montoAcordado
+    // Sesión suelta: el acordado suma lo atendido + lo cobrado por adelantado
+    // (data/SesionesSueltas.kt), con los pagos recién leídos (su sesion_id).
+    val pagosDev = pagos?.map { pe.saniape.app.data.PagoDevengo(it.sesionId, it.monto) }
+    val acordado = t.acordadoCon(pagos = pagosDev)
+    val detalleSuelta = t.contextoSueltas(pagos = pagosDev)?.let { pe.saniape.app.data.detalleSesionesSueltas(t.tratPago, it) }
     // Pagado NETO: Σ de todas las filas, también las de saldo (el "consumo" resta).
     val pagado = pagos?.let { pe.saniape.app.data.staff.pagadoNeto(it) } ?: 0.0
     LaunchedEffect(pagos) { if (pagos != null) onPagado(pagado) }
@@ -1249,9 +1255,23 @@ fun SeccionPagos(
         ColMonto("Pagado", pagado, c.ok)
         // Pagó de más: "A favor" (reglas en data/SaldoAFavor.kt: en suelta/consulta
         // se compara contra lo realizado). Si no aplica, el saldo nunca se muestra negativo.
-        val aFavor = pe.saniape.app.data.saldoAFavorTratamiento(t.cuentaCon(pagado))
+        val aFavor = pe.saniape.app.data.saldoAFavorTratamiento(t.cuentaCon(pagado, acordado))
         if (aFavor > 0.0) ColMonto("A favor", aFavor, c.ok)
         else ColMonto("Saldo", saldo.coerceAtLeast(0.0), if (saldo > 0.005) c.error else c.ok)
+    }
+    // Sesiones sueltas: de dónde sale el acordado ("2 sesiones atendidas · S/ 200")
+    // y, si pagó por sesiones que vienen, cuánto lleva adelantado (no es saldo a
+    // favor: ya tiene sesiones agendadas que lo usan). Como la PagoCard web.
+    if (detalleSuelta != null && pagos != null && t.estado != "Cancelado") {
+        val dinero = { n: Double -> "${simboloMoneda(moneda)} ${formato2(n)}" }
+        val aFavorSuelta = pe.saniape.app.data.saldoAFavorTratamiento(t.cuentaCon(pagado, acordado))
+        val adelantado = kotlin.math.round((pagado - acordado - aFavorSuelta) * 100) / 100
+        Spacer(Modifier.height(4.dp))
+        Text(pe.saniape.app.data.textoSesionesSueltas(detalleSuelta, dinero), color = c.textoSuave, fontSize = 11.sp)
+        if (adelantado > 0.005) {
+            Text("${dinero(adelantado)} adelantado para las próximas sesiones",
+                color = c.teal, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        }
     }
     Spacer(Modifier.height(6.dp))
     Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.chipBg)) {
