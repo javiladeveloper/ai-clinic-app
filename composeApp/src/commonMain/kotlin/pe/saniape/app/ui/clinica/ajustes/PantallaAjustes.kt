@@ -90,6 +90,7 @@ fun PantallaAjustes(ctx: ContextoStaff, onSalir: () -> Unit, onHuboCambios: () -
             "historia-clinica" -> SeccionHistoriaClinica(d, volver)
             "app-paciente" -> SeccionAppPaciente(d, volver, cambio)
             "tus-redes" -> SeccionTusRedes(d, ctx, volver)
+            "sani" -> SeccionSani(d, ctx, volver)
             "cobros" -> SeccionCobrosOnline(d, volver, cambio)
             "notificaciones" -> SeccionNotificaciones(d, volver, cambio)
             "flujo" -> SeccionFlujo(d, volver, cambio)
@@ -168,8 +169,10 @@ private fun ListaSecciones(d: JsonObject, ctx: ContextoStaff, scroll: ScrollStat
             else if (d.b("consentimientoInformado")) add(FilaSeccion("historia-clinica", "📄  Consentimiento informado", "Plantillas por procedimiento"))
             add(FilaSeccion("app-paciente", "📱  App del paciente", "Reservar, pagar y ver su saldo"))
         },
-        "MENSAJES Y COBROS" to listOf(
+        "MENSAJES Y COBROS" to listOfNotNull(
             FilaSeccion("tus-redes", "💬  Tus redes", "WhatsApp, Instagram, Facebook y TikTok"),
+            // 🤖 Cómo conversa Sani (seguimiento, precio repetido, bienvenida): solo el Admin.
+            if (ctx.esAdmin) FilaSeccion("sani", "🤖  Sani: cómo conversa", "Seguimiento antes de 24 h, precio repetido y bienvenida") else null,
             FilaSeccion("cobros", "💳  Cobros por la app", "Mercado Pago"),
             FilaSeccion("notificaciones", "🔔  Recordatorios por WhatsApp",
                 if (!plan.b("whatsapp")) "🔒 Plan Plus" else if (cfg.b("recordatoriosActivo")) "Encendidos" else "Apagados"),
