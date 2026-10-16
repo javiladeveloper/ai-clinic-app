@@ -37,10 +37,16 @@ JDK="$JDK_HOME_PARENT/Contents/Home"
 "$JDK/bin/java" -version   # falla ruidoso (set -e) si el JDK no quedó bien
 mkdir -p "$HOME/.gradle"
 echo "org.gradle.java.home=$JDK" >> "$HOME/.gradle/gradle.properties"
-# Memoria: con -Xmx4g (gradle.properties del proyecto) el enlace del framework
-# release se quedó sin heap en GitHub Actions el 2026-10-16. Este archivo le gana
-# al del proyecto, así que solo afecta a Xcode Cloud.
-echo "org.gradle.jvmargs=-Xmx6g -XX:+UseParallelGC -Dfile.encoding=UTF-8" >> "$HOME/.gradle/gradle.properties"
+# Memoria: el enlace del framework RELEASE de Kotlin/Native (fase LTO
+# DevirtualizationAnalysis) es MUY pesado en heap. Con -Xmx4g (proyecto) y hasta
+# 6g se quedó sin memoria en Xcode Cloud (Compilación 4, 2026-10-16). En vez de
+# un número fijo, usamos casi toda la RAM del runner (deja 6 GB para el OS/Xcode),
+# que es mucho mayor que la de una laptop. Este archivo (GRADLE_USER_HOME) le gana
+# al gradle.properties del proyecto, así que solo afecta a Xcode Cloud.
+RAM_G=$(( $(sysctl -n hw.memsize) / 1073741824 ))
+if [ "$RAM_G" -gt 14 ]; then HEAP_G=$(( RAM_G - 6 )); else HEAP_G=8; fi
+echo "RAM del runner: ${RAM_G} GB -> heap Gradle/Kotlin: ${HEAP_G}g"
+echo "org.gradle.jvmargs=-Xmx${HEAP_G}g -XX:+UseParallelGC -XX:-UseGCOverheadLimit -Dfile.encoding=UTF-8" >> "$HOME/.gradle/gradle.properties"
 echo "JDK para Gradle: $JDK"
 
 # 2) FIRMA AUTOMÁTICA, solo en esta copia. El proyecto firma Release a mano con
