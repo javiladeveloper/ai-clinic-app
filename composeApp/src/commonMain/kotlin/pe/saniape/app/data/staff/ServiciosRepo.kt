@@ -78,8 +78,17 @@ data class ServicioApp(
     val devolucion: String? = null,
     val devolucionProcedimientoId: String? = null,
     val createdAt: String? = null,
+    /** Cita virtual: 'virtual' | null (= presencial). Backend sin la columna → null. */
+    val modalidad: String? = null,
+    /** 'meet_auto' (Premium+) | 'fijo'. */
+    val enlaceModo: String? = null,
+    /** La sala fija (Zoom de la psicóloga…), https. */
+    val enlaceFijo: String? = null,
 ) {
     val activo: Boolean get() = estado == "Activo"
+    val esVirtual: Boolean get() = modalidad == MODALIDAD_VIRTUAL
+    /** Lo que la cita de este servicio hereda (modalidad + enlace). */
+    val servicioModalidad: ServicioModalidad get() = ServicioModalidad(modalidad, enlaceModo, enlaceFijo)
     val esEvaluacionPsico: Boolean get() = tipoClinico == TIPO_CLINICO_EVALUACION_PSICO
 }
 
@@ -201,13 +210,19 @@ data class FormServicio(
     val devolucion: String = "incluida",
     val devolucionProcId: String = "",
     val citasEstimadas: String = "4",
+    /** ¿Cómo se atiende? 'presencial' | 'virtual' (citas virtuales). */
+    val modalidad: String = MODALIDAD_PRESENCIAL,
+    /** Virtual: 'meet_auto' (Google Meet automático, Premium+) | 'fijo' (enlace fijo). */
+    val enlaceModo: String = ENLACE_MODO_MEET,
+    val enlaceFijo: String = "",
 ) {
     val listoParaGuardar: Boolean get() = nombre.isNotBlank() && precio.isNotBlank()
 
     companion object {
         /** Form vacío (nuevo) o cargado desde un servicio. Los pasos llegan aparte. Gemelo del useEffect del form web. */
-        fun desde(s: ServicioApp?, especialidadPorDefecto: String?): FormServicio = if (s == null) {
-            FormServicio(especialidadId = especialidadPorDefecto.orEmpty())
+        fun desde(s: ServicioApp?, especialidadPorDefecto: String?, meetPlan: Boolean = false): FormServicio = if (s == null) {
+            // Nuevo: si es virtual, el Meet automático solo en los planes que lo tienen.
+            FormServicio(especialidadId = especialidadPorDefecto.orEmpty(), enlaceModo = if (meetPlan) ENLACE_MODO_MEET else ENLACE_MODO_FIJO)
         } else FormServicio(
             nombre = s.nombre,
             descripcion = s.descripcion.orEmpty(),
@@ -227,6 +242,9 @@ data class FormServicio(
             devolucion = if (s.devolucion == "adicional") "adicional" else "incluida",
             devolucionProcId = s.devolucionProcedimientoId.orEmpty(),
             citasEstimadas = s.tarifarios.firstOrNull()?.cantidadSesiones?.toString() ?: "4",
+            modalidad = if (s.esVirtual) MODALIDAD_VIRTUAL else MODALIDAD_PRESENCIAL,
+            enlaceModo = if (s.enlaceModo == ENLACE_MODO_FIJO) ENLACE_MODO_FIJO else ENLACE_MODO_MEET,
+            enlaceFijo = s.enlaceFijo.orEmpty(),
         )
     }
 }
@@ -262,8 +280,25 @@ fun problemaFormServicio(f: FormServicio, activas: List<EspecialidadServicio>, m
         modo == "unidades" && malEscrito(f.precioUnitario) -> "El precio por unidad no es válido"
         esDental && modo != "sesiones" && f.precioCaras.values.any(::malEscrito) -> "Revisa el precio según caras"
         f.pasos.any { it.pasoId.isNotBlank() && malEscrito(it.precio) } -> "Revisa el precio de los pasos encadenados"
+        // Servicio virtual con enlace fijo: el enlace tiene que ser válido (https), como la web.
+        f.modalidad == MODALIDAD_VIRTUAL && f.enlaceModo == ENLACE_MODO_FIJO ->
+            (validarEnlaceVirtual(f.enlaceFijo) as? ResultadoEnlace.Error)?.let { "Enlace fijo: ${it.error}" }
         else -> null
     }
+}
+
+/**
+ * Columnas de modalidad del servicio para /api/staff/servicio (gemelo de
+ * `handleSubmit` de ProcedimientoForm.tsx). Solo viajan si el servicio es
+ * virtual o lo era (para limpiarlo): un servicio presencial de siempre manda
+ * el mismo cuerpo que antes. null = no se mandan.
+ */
+fun camposModalidadServicio(f: FormServicio, modalidadInicial: String?): Triple<String?, String?, String?>? {
+    val virtual = f.modalidad == MODALIDAD_VIRTUAL
+    if (!virtual && modalidadInicial != MODALIDAD_VIRTUAL) return null
+    if (!virtual) return Triple(null, null, null)
+    val fijo = if (f.enlaceModo == ENLACE_MODO_FIJO) (validarEnlaceVirtual(f.enlaceFijo) as? ResultadoEnlace.Ok)?.url else null
+    return Triple(MODALIDAD_VIRTUAL, f.enlaceModo, fijo)
 }
 
 /**
@@ -285,6 +320,8 @@ fun cuerpoGuardarServicio(
     mostrarTipoClinico: Boolean,
     esDental: Boolean,
     incluirPasos: Boolean = true,
+    /** La modalidad que tenía el servicio al abrirlo (para limpiar un virtual que pasa a presencial). */
+    modalidadInicial: String? = null,
 ): JsonObject {
     val modo = modoEfectivoForm(f, activas)
     // null si no se entiende: viaja como null y el servidor lo rechaza ("El precio no es válido").
@@ -327,6 +364,12 @@ fun cuerpoGuardarServicio(
             put("tipo_clinico", JsonNull)
             put("devolucion", JsonNull)
             put("devolucion_procedimiento_id", JsonNull)
+        }
+        // Cita virtual: modalidad + Meet automático / enlace fijo (el servidor valida).
+        camposModalidadServicio(f, modalidadInicial)?.let { (modalidad, modo, fijo) ->
+            put("modalidad", modalidad)
+            put("enlace_modo", modo)
+            put("enlace_fijo", fijo)
         }
     }
     return buildJsonObject {
@@ -398,6 +441,9 @@ internal fun parsearServicio(o: JsonObject): ServicioApp? {
         devolucion = o.str("devolucion"),
         devolucionProcedimientoId = o.str("devolucion_procedimiento_id"),
         createdAt = o.str("created_at"),
+        modalidad = o.str("modalidad")?.takeIf { it.isNotBlank() },
+        enlaceModo = o.str("enlace_modo")?.takeIf { it.isNotBlank() },
+        enlaceFijo = o.str("enlace_fijo")?.takeIf { it.isNotBlank() },
     )
 }
 

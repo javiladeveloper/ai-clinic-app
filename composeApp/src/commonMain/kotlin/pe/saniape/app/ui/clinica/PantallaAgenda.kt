@@ -1206,6 +1206,8 @@ fun PantallaAgenda(
             puedeEditarNotas = pe.saniape.app.data.staff.puedeEditarObservaciones(ctx.puede("citas")),
             // Tras guardar, la agenda se recarga (tarjetas y banners al día).
             onNotasGuardadas = { vm.refrescar() },
+            puedeEditarVideollamada = ctx.puede("citas") || ctx.puede("agendar") || ctx.puede("sesiones"),
+            onVideollamadaCambiada = { vm.refrescar() },
         )
     }
 

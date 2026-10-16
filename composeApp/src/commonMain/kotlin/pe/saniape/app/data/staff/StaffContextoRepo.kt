@@ -72,6 +72,7 @@ object StaffContextoRepo {
         maxEspacioDocumentosMB = o?.intOrNull("maxEspacioDocumentosMB") ?: plan?.intOrNull("maxEspacioDocumentosMB"),
         actividadEquipo = o?.bool("actividadEquipo") ?: false,
         calendarioSync = o?.boolOrNull("calendarioSync") ?: true,
+        citasVirtualesMeet = o?.boolOrNull("citasVirtualesMeet") ?: false,
     )
 
     /** Módulos clínicos. Sin el objeto (backend viejo) → todo apagado, como siempre. */

@@ -181,6 +181,10 @@ fun PantallaCrearCita(
     var diagnostico by remember { mutableStateOf("") }
     var notas by remember { mutableStateOf("") }
     var esRegularizacion by remember { mutableStateOf(false) }   // "la cita ya ocurrió"
+    // Cita virtual (2026-10-16): "¿Dónde se atiende?". Arranca con la modalidad del
+    // servicio del tratamiento; lo que se toca a mano ya no lo pisa el servicio.
+    val meetPlan = ctx.can("citasVirtualesMeet")
+    var virt by remember { mutableStateOf(pe.saniape.app.data.staff.VALOR_MODALIDAD_INICIAL) }
 
     var mostrarFecha by remember { mutableStateOf(false) }
     var mostrarHora by remember { mutableStateOf(false) }
@@ -360,6 +364,12 @@ fun PantallaCrearCita(
         } catch (_: Exception) { emptyList() } else emptyList()
         // Si el prefill trae un tratamiento (p.ej. control que nace de un tratamiento), enlazarlo.
         prefill?.tratamientoId?.let { tid -> tratamiento = tratamientos.find { it.id == tid } }
+    }
+
+    // El servicio de la cita (el de su tratamiento) decide cómo arranca el selector.
+    val servicioCita = tratamiento?.servicio
+    LaunchedEffect(tratamiento?.id, servicioCita, meetPlan) {
+        if (!virt.tocado) virt = pe.saniape.app.data.staff.valorModalidadDeServicio(servicioCita, meetPlan)
     }
 
     // Profesional por defecto de una cita de tratamiento (Sesión): el del
@@ -547,6 +557,12 @@ fun PantallaCrearCita(
         if (d != null && !d.disponible && !esRegularizacion) {
             mensaje = d.motivo ?: "El horario no está disponible"; return
         }
+        // Videollamada: un enlace escrito tiene que ser válido (vacío = se pega después).
+        val camposVirt = when (val rv = pe.saniape.app.data.staff.camposModalidadCita(virt, servicioCita, meetPlan)) {
+            is pe.saniape.app.data.staff.ResultadoCampos.Error -> { mensaje = "Videollamada: ${rv.error}"; return }
+            is pe.saniape.app.data.staff.ResultadoCampos.Ok -> rv.campos
+        }
+        val virtualCrear = pe.saniape.app.data.staff.virtualParaCrear(virt, servicioCita, camposVirt)
         guardando = true
         scope.launch {
             // Flujo → Evaluación: completar primero la consulta origen
@@ -582,10 +598,24 @@ fun PantallaCrearCita(
                 // Multisede: la sede viaja en el cuerpo (también en la cola offline).
                 sedeId = if (multiSede) sedeId else null,
                 citaOrigenId = if (tipo == "Evaluación") origenId else null,
+                virtual = virtualCrear,
             )
             guardando = false
             if (r.registrada) {
                 if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Cita agendada")
+                // Google Meet: la cita YA está guardada; si Google falla, la agenda
+                // ofrece "Reintentar Meet" o pegar el enlace (gemelo de crearMeetDeCita).
+                if (!r.encolada) {
+                    val meet = pe.saniape.app.data.staff.parsearResultadoMeet(r.cuerpo)
+                    (meet?.aviso ?: camposVirt.aviso)?.let { pe.saniape.app.ui.Toaster.info(it) }
+                    pe.saniape.app.data.staff.avisoTrasMeet(meet)?.let { a ->
+                        when (a.tipo) {
+                            pe.saniape.app.data.staff.TipoAvisoMeet.EXITO -> pe.saniape.app.ui.Toaster.exito(a.texto)
+                            pe.saniape.app.data.staff.TipoAvisoMeet.INFO -> pe.saniape.app.ui.Toaster.info(a.texto)
+                            pe.saniape.app.data.staff.TipoAvisoMeet.ERROR -> pe.saniape.app.ui.Toaster.error(a.texto)
+                        }
+                    }
+                }
                 onGuardada(fecha)
                 onListo()
             } else {
@@ -818,6 +848,16 @@ fun PantallaCrearCita(
                             modifier = Modifier.padding(top = 4.dp))
                     }
                 }
+
+                // 📍 En el local / 🎥 Videollamada (y con qué enlace).
+                Spacer(Modifier.height(Sania.dim.md))
+                pe.saniape.app.ui.clinica.agenda.componentes.SelectorModalidadCita(
+                    valor = virt,
+                    onChange = { virt = it },
+                    meetPlan = meetPlan,
+                    terapeutaId = if (ctx.miTerapeutaId != null) ctx.miTerapeutaId else terapeuta?.id,
+                    habilitado = !guardando,
+                )
 
                 // Costo (si tiene permiso pagos)
                 // Diagnóstico (Evaluación) — opcional al agendar.

@@ -267,6 +267,7 @@ data class ContextoStaff(
         "recuperacion" -> planEstado.features.recuperacion
         "actividadEquipo" -> planEstado.features.actividadEquipo
         "calendarioSync" -> planEstado.features.calendarioSync
+        "citasVirtualesMeet" -> planEstado.features.citasVirtualesMeet
         else -> false
     }
 
@@ -355,6 +356,12 @@ data class PlanFeatures(
      * de siempre): igual el servidor decide y responde PLAN_SIN_SYNC.
      */
     val calendarioSync: Boolean = true,
+    /**
+     * Citas virtuales: el plan crea el Google Meet solo (Premium/Plus/prueba;
+     * lib/plan.ts `citasVirtualesMeet`). Backend sin el campo → false: se ofrece
+     * pegar el enlace (el servidor decide igual al crear la cita).
+     */
+    val citasVirtualesMeet: Boolean = false,
 )
 
 data class ClinicaRef(val id: String, val nombre: String)

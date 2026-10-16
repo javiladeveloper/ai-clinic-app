@@ -78,6 +78,13 @@ fun DetalleCitaSheet(
     onVerResumen: ((String) -> Unit)?,
     puedeEditarNotas: Boolean = false,
     onNotasGuardadas: (String?) -> Unit = {},
+    /**
+     * Cita virtual: cambiar el enlace, reintentar el Meet o pasarla a presencial
+     * (permiso `citas`, `agendar` o `sesiones`, como la web; el servidor vuelve a
+     * validar). Las presenciales no muestran nada nuevo.
+     */
+    puedeEditarVideollamada: Boolean = false,
+    onVideollamadaCambiada: () -> Unit = {},
 ) {
     val c = Sania.colors
     var cargando by remember(cita.id) { mutableStateOf(true) }
@@ -128,6 +135,9 @@ fun DetalleCitaSheet(
                 if (puedeVerCosto && (cita.costo ?: 0.0) > 0) {
                     Dato("Costo", textoSoles(cita.costo ?: 0.0, monedaDeFila(cita.sedeId)))
                 }
+
+                // Cita por videollamada: Unirse, enlace, estado del Meet (solo virtuales).
+                PanelVideollamada(cita, puedeEditarVideollamada, onCambio = { onVideollamadaCambiada() })
 
                 when {
                     cargando -> Row(

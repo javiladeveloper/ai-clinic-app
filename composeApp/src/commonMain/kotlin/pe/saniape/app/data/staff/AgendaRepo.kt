@@ -4,6 +4,7 @@ import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
@@ -68,7 +69,18 @@ data class CitaStaff(
     val creadaAt: String? = null,
     /** La sesión vinculada (citas.sesion_id): la receta de la sesión también es de la cita. */
     val sesionId: String? = null,
-)
+    /**
+     * Cita virtual (2026-10-16): 'presencial' | 'virtual' | null (= presencial,
+     * todas las de antes). Un backend sin las columnas → null: la cita se ve igual.
+     */
+    val modalidad: String? = null,
+    /** El enlace de la videollamada (https validado por la base). */
+    val enlaceVirtual: String? = null,
+    /** 'meet_auto' | 'manual' | 'servicio' | null: quién puso el enlace. */
+    val enlaceOrigen: String? = null,
+) {
+    val esVirtual: Boolean get() = esCitaVirtual(modalidad)
+}
 
 /**
  * Lee la agenda (citas) directo de Supabase con la RLS de staff. Las acciones de
@@ -96,8 +108,9 @@ object AgendaRepo {
         val sede = SedeActiva.filtro
         val clave = CacheLectura.claveAgenda(fecha) + (miTerapeutaId?.let { ":$it" } ?: "") + (sede?.clave ?: "")
         val filas = filasConRespaldo(clave) {
+            conColumnasVirtuales { cols ->
             Supabase.client.postgrest["citas"]
-                .select(Columns.raw(SELECT_CITA)) {
+                .select(Columns.raw(cols)) {
                     filter {
                         eq("fecha", fecha)
                         if (miTerapeutaId != null) eq("terapeuta_id", miTerapeutaId)
@@ -106,6 +119,7 @@ object AgendaRepo {
                     order("hora", Order.ASCENDING)
                 }
                 .decodeList<JsonObject>()
+            }
         }
         return filas.map { mapearCita(it) }
     }
@@ -119,8 +133,8 @@ object AgendaRepo {
         verHistorial: Boolean, pagina: Int, miTerapeutaId: String?, hoy: String,
     ): List<CitaStaff> {
         val desde = pagina * PAGE_SIZE
-        val filas = Supabase.client.postgrest["citas"]
-            .select(Columns.raw(SELECT_CITA)) {
+        val filas = conColumnasVirtuales { cols -> Supabase.client.postgrest["citas"]
+            .select(Columns.raw(cols)) {
                 filter {
                     if (!verHistorial) gte("fecha", hoy)
                     if (miTerapeutaId != null) eq("terapeuta_id", miTerapeutaId)
@@ -137,7 +151,7 @@ object AgendaRepo {
                 order("hora", orden)
                 range(desde.toLong(), (desde + PAGE_SIZE - 1).toLong())
             }
-            .decodeList<JsonObject>()
+            .decodeList<JsonObject>() }
         return filas.map { mapearCita(it) }
     }
 
@@ -189,6 +203,34 @@ object AgendaRepo {
             "tratamiento:tratamientos!citas_tratamiento_id_fkey(nota_recepcion, procedimiento:procedimientos(id, nombre, especialidad_id)), " +
             "sesion:sesiones!citas_sesion_id_fkey(numero)"
 
+    /** Columnas de la cita virtual (2026-10-16). Nullable: una cita de antes las trae en null. */
+    const val COLUMNAS_VIRTUALES = ", modalidad, enlace_virtual, enlace_origen"
+
+    /**
+     * ¿La base tiene las columnas de citas virtuales? Se asume que sí; si un
+     * select falla por ellas (base sin la migración: Dev atrasada), se repite sin
+     * ellas y no se vuelven a pedir en esta sesión. La agenda nunca se cae por esto.
+     */
+    private var virtualesEnBase = true
+
+    private fun faltaColumnaVirtual(e: Exception): Boolean {
+        val m = e.message.orEmpty()
+        return ("modalidad" in m || "enlace_" in m) && ("42703" in m || "does not exist" in m || "column" in m)
+    }
+
+    private suspend fun <T> conColumnasVirtuales(traer: suspend (String) -> T): T {
+        if (!virtualesEnBase) return traer(SELECT_CITA)
+        return try {
+            traer(SELECT_CITA + COLUMNAS_VIRTUALES)
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (!faltaColumnaVirtual(e)) throw e
+            virtualesEnBase = false
+            traer(SELECT_CITA)
+        }
+    }
+
     fun mapearCita(o: JsonObject): CitaStaff {
             fun s(k: String) = (o[k] as? JsonPrimitive)?.content?.takeIf { it != "null" }
             fun obj(k: String) = o[k] as? JsonObject
@@ -230,6 +272,9 @@ object AgendaRepo {
                 },
                 sedeId = s("sede_id"),
                 sesionId = s("sesion_id")?.takeIf { it.isNotBlank() },
+                modalidad = s("modalidad")?.takeIf { it.isNotBlank() },
+                enlaceVirtual = s("enlace_virtual")?.takeIf { it.isNotBlank() },
+                enlaceOrigen = s("enlace_origen")?.takeIf { it.isNotBlank() },
             )
     }
 
@@ -545,6 +590,80 @@ object AgendaRepo {
         }
     }
 
+    // ── Citas virtuales (2026-10-16) ─────────────────────────────────────────
+    // Contrato: docs/app-contrato-citas-virtuales.md (web). Todo en línea (sin cola
+    // offline): Google se toca en el servidor y la respuesta dice cómo quedó.
+
+    /**
+     * ¿Se puede ofrecer el Meet automático? `GET /api/staff/cita/virtual?terapeutaId=`.
+     * null = sin red o servidor viejo (se ofrece solo pegar el enlace).
+     */
+    suspend fun capacidadMeet(terapeutaId: String?): CapacidadMeet? {
+        val tk = token() ?: return null
+        return try {
+            val q = terapeutaId?.takeIf { it.isNotBlank() }?.let { "?terapeutaId=${pe.saniape.app.ui.urlEncode(it)}" }.orEmpty()
+            val resp = http.get("${Supabase.SITE_URL}/api/staff/cita/virtual$q") { header("Authorization", "Bearer $tk") }
+            if (resp.status.value !in 200..299) null
+            else parsearCapacidadMeet(runCatching { json.parseToJsonElement(resp.bodyAsText()) as? JsonObject }.getOrNull())
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (_: Exception) { null }
+    }
+
+    /** Estado del Meet de UNA cita (`GET …?citaId=`): creando / error. null = no se pudo saber. */
+    suspend fun estadoVirtualCita(citaId: String): FilaVirtual? {
+        val tk = token() ?: return null
+        return try {
+            val resp = http.get("${Supabase.SITE_URL}/api/staff/cita/virtual?citaId=${pe.saniape.app.ui.urlEncode(citaId)}") {
+                header("Authorization", "Bearer $tk")
+            }
+            if (resp.status.value !in 200..299) null
+            else parsearFilaVirtual(runCatching { json.parseToJsonElement(resp.bodyAsText()) as? JsonObject }.getOrNull())
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (_: Exception) { null }
+    }
+
+    /** Respuesta de `POST /api/staff/cita/virtual`: la fila nueva y cómo quedó el Meet, o el error. */
+    data class RespuestaVirtual(val fila: FilaVirtual?, val meet: ResultadoMeet?, val error: String? = null)
+
+    /**
+     * Pasar la cita a virtual (con [enlace] pegado o [meet] = crear el Google Meet)
+     * o a presencial (borra el Meet). Nunca deshace lo guardado si Google falla.
+     */
+    suspend fun configurarVirtual(citaId: String, modalidad: String, enlace: String? = null, meet: Boolean? = null): RespuestaVirtual =
+        postVirtual(buildJsonObject {
+            put("citaId", citaId)
+            put("accion", "configurar")
+            put("modalidad", modalidad)
+            if (!enlace.isNullOrBlank()) put("enlace", enlace)
+            if (meet != null) put("meet", meet)
+        })
+
+    /** "Reintentar Meet" (idempotente; también sirve para refrescar). */
+    suspend fun sincronizarMeet(citaId: String): RespuestaVirtual =
+        postVirtual(buildJsonObject { put("citaId", citaId); put("accion", "sincronizar") })
+
+    private suspend fun postVirtual(cuerpo: JsonObject): RespuestaVirtual {
+        val tk = token() ?: return RespuestaVirtual(null, null, "Tu sesión expiró. Vuelve a entrar.")
+        return try {
+            val resp = http.post("${Supabase.SITE_URL}/api/staff/cita/virtual") {
+                header("Authorization", "Bearer $tk")
+                contentType(ContentType.Application.Json)
+                setBody(cuerpo.toString())
+            }
+            val raiz = runCatching { json.parseToJsonElement(resp.bodyAsText()) as? JsonObject }.getOrNull()
+            if (resp.status.value !in 200..299) {
+                val msg = (raiz?.get("error") as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() && it != "null" }
+                RespuestaVirtual(null, null, msg ?: "No se pudo guardar. Intenta de nuevo.")
+            } else RespuestaVirtual(parsearFilaVirtual(raiz), parsearResultadoMeet(raiz))
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            RespuestaVirtual(null, null, "Sin conexión: no se guardó. Inténtalo de nuevo.")
+        }
+    }
+
     /** Terapeutas activos con sus especialidades (para filtrar por especialidad). */
     suspend fun terapeutasActivos(): List<TerapeutaRef> {
         val filas = filasConRespaldo(CacheLectura.claveCatalogo("terapeutas-activos")) {
@@ -570,13 +689,22 @@ object AgendaRepo {
 
     /** Tratamientos activos de un paciente (para tipo Sesión). */
     suspend fun tratamientosActivos(pacienteId: String): List<TratamientoRef> {
-        val filas = Supabase.client.postgrest["tratamientos"]
-            .select(
-                Columns.raw("id, modalidad, terapeuta_id, diagnostico, fecha_inicio, total_sesiones, sesiones_completadas, procedimiento:procedimientos(nombre, especialidad_id)")
-            ) {
+        // El servicio trae su modalidad (cita virtual): la cita la hereda en el formulario.
+        val base = "id, modalidad, terapeuta_id, diagnostico, fecha_inicio, total_sesiones, sesiones_completadas, procedimiento:procedimientos(nombre, especialidad_id"
+        suspend fun traer(cols: String) = Supabase.client.postgrest["tratamientos"]
+            .select(Columns.raw(cols)) {
                 filter { eq("paciente_id", pacienteId); eq("estado", "Activo") }
             }
             .decodeList<JsonObject>()
+        val filas = if (!virtualesEnBase) traer("$base)") else try {
+            traer("$base, modalidad, enlace_modo, enlace_fijo)")
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (!faltaColumnaVirtual(e)) throw e
+            virtualesEnBase = false
+            traer("$base)")
+        }
         return filas.mapNotNull {
             val id = it.str("id") ?: return@mapNotNull null
             TratamientoRef(
@@ -589,6 +717,9 @@ object AgendaRepo {
                 fechaInicio = it.str("fecha_inicio"),
                 totalSesiones = it.dbl("total_sesiones")?.toInt(),
                 sesionesCompletadas = it.dbl("sesiones_completadas")?.toInt(),
+                servicio = it.nested("procedimiento")?.let { p ->
+                    ServicioModalidad(p.str("modalidad"), p.str("enlace_modo"), p.str("enlace_fijo"))
+                },
             )
         }
     }
@@ -733,13 +864,16 @@ object AgendaRepo {
         // al profesional que la atiende crear la evaluación aunque no tenga
         // permiso de agendar (es parte de atender).
         citaOrigenId: String? = null,
+        // Cita virtual: null = no se manda nada (presencial de siempre, o la base
+        // hereda la del servicio del tratamiento). Ver [virtualParaCrear].
+        virtual: VirtualParaCrear? = null,
     ): pe.saniape.app.data.offline.ResultadoEscritura {
         if (token() == null) return pe.saniape.app.data.offline.ResultadoEscritura(
             registrada = false, rechazo = pe.saniape.app.data.offline.RechazoServidor("Tu sesión expiró. Vuelve a entrar."),
         )
         return enviarOEncolarDetalle("cita:crear", "/api/staff/cita/crear", cuerpoCrearCita(
             pacienteId, tipo, fecha, hora, terapeutaId, tratamientoId, costo, duracion, notas,
-            especialidadId, diagnostico, campaniaId, sedeId, citaOrigenId,
+            especialidadId, diagnostico, campaniaId, sedeId, citaOrigenId, virtual,
         ))
     }
 
@@ -748,6 +882,7 @@ object AgendaRepo {
         terapeutaId: String?, tratamientoId: String?, costo: Double, duracion: Int, notas: String?,
         especialidadId: String?, diagnostico: String?, campaniaId: String?,
         sedeId: String? = null, citaOrigenId: String? = null,
+        virtual: VirtualParaCrear? = null,
     ): JsonObject = buildJsonObject {
         put("pacienteId", pacienteId)
         put("tipo", tipo)
@@ -763,6 +898,11 @@ object AgendaRepo {
         if (!campaniaId.isNullOrBlank()) put("campaniaId", campaniaId)
         if (!sedeId.isNullOrBlank()) put("sedeId", sedeId)
         if (!citaOrigenId.isNullOrBlank()) put("citaOrigenId", citaOrigenId)
+        if (virtual != null) {
+            put("modalidad", virtual.modalidad)
+            if (!virtual.enlaceVirtual.isNullOrBlank()) put("enlaceVirtual", virtual.enlaceVirtual)
+            if (virtual.meet != null) put("meet", virtual.meet)
+        }
     }
 
     /** Crea una cita vía endpoint (maneja sesión vinculada + notificación). */
@@ -822,6 +962,8 @@ data class TratamientoRef(
     val fechaInicio: String? = null,
     val totalSesiones: Int? = null,
     val sesionesCompletadas: Int? = null,
+    /** Modalidad del servicio (cita virtual): la cita de este tratamiento nace como él. */
+    val servicio: ServicioModalidad? = null,
 ) {
     /**
      * Cómo se nombra en una lista para elegir. Con dos tratamientos del mismo

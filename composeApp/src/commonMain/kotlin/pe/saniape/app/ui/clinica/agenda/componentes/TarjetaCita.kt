@@ -219,6 +219,14 @@ fun TarjetaCita(
             // Sala de espera: ○ Por llegar · 🔔 Llegó · 12 min · 🩺 Triaje ✓ PA 120/80 · ▶ En consulta.
             sala?.let { IndicadorLlegada(it) }
 
+            // Cita virtual con enlace y viva: "🎥 Unirse · Google Meet" (abre la app de
+            // Meet / Zoom o el navegador). Las presenciales no cambian en nada.
+            val enlace = cita.enlaceVirtual
+            if (enlace != null && pe.saniape.app.data.staff.puedeUnirseStaff(cita.modalidad, enlace, cita.estado)) {
+                Spacer(Modifier.height(8.dp))
+                BotonUnirse(enlace) { acciones.abrirUrl(enlace) }
+            }
+
             // Dinero de la cita (como la web): solo Consulta/Evaluación con costo; la
             // sesión se cobra desde su tratamiento, nunca como cita.
             val cobrable = cita.tipo != "Sesión" && (cita.costo ?: 0.0) > 0 && cita.estado != "Cancelada"
@@ -247,6 +255,8 @@ fun TarjetaCita(
                     add(Triple("⚠ Debe ${textoSoles(cita.costo ?: 0.0, moneda)}", c.error, c.errorBg))
                 }
                 recetaVinculada?.let { add(Triple(it, c.purple, c.purpleBg)) }
+                // Cita por videollamada (sin enlace todavía: el detalle dice qué falta).
+                if (cita.esVirtual) add(Triple(if (cita.enlaceVirtual == null && !cerrada) "🎥 Virtual · sin enlace" else "🎥 Virtual", c.purple, c.purpleBg))
                 if (cita.origen == "online") add(Triple("🌐 Web", c.purple, c.purpleBg))
                 if (cita.terapeutaId == null && cita.origen == "online") add(Triple("⚠ Asignar", c.pend, c.pendBg))
                 // Solapamiento: N citas en la misma hora del mismo profesional.
@@ -459,6 +469,29 @@ private fun accionesPara(
     return lista
 }
 
+/**
+ * "🎥 Unirse · Zoom" (o el dominio: "Unirse · sala.clinica.pe"), gemelo de
+ * `BotonUnirse` de la web. Ancho completo en la tarjeta: es la acción del momento.
+ */
+@Composable
+fun BotonUnirse(enlace: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val c = Sania.colors
+    Row(
+        modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+            .background(c.ok.copy(alpha = 0.12f))
+            .border(1.dp, c.ok, RoundedCornerShape(Sania.shape.sm.dp))
+            .tocable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Text("🎥 Unirse", color = c.ok, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(" · ${pe.saniape.app.data.staff.etiquetaEnlace(enlace)}", color = c.ok, fontSize = 12.sp,
+            maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false))
+    }
+}
+
 @Composable
 private fun BotonAccion(label: String, color: Color, habilitado: Boolean, onClick: () -> Unit) {
     Box(
@@ -556,5 +589,8 @@ private fun mensajeWhatsAppDeCita(cita: CitaStaff, flujo: FlujoClinica): String?
         profesional = cita.terapeutaNombre,
         direccion = sede?.direccion?.takeIf { it.isNotBlank() } ?: ctx?.clinicaDireccion,
         recienAgendada = pe.saniape.app.ui.citaRecienAgendada(cita.creadaAt, hoy, pe.saniape.app.data.staff.zonaDe(zona)),
+        // Cita virtual: el enlace en lugar de la dirección (gemelo de la web).
+        virtual = cita.esVirtual,
+        enlaceVirtual = cita.enlaceVirtual,
     )
 }

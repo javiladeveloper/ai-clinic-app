@@ -272,6 +272,8 @@ private fun CitaHero(cita: CitaPortal, onCambio: () -> Unit = {}) {
                 (cita.tipo ?: "Cita") + (cita.profesional?.let { " · con $it" } ?: ""),
                 color = c.textoSuave, fontSize = 13.sp,
             )
+            // Cita por videollamada: "Unirse" desde 15 min antes (gemelo del portal web).
+            if (cita.virtual) UnirseVideollamada(cita) { acciones.abrirUrl(it) }
             AccionesCita(cita, onCambio = onCambio, abrirUrl = { acciones.abrirUrl(it) })
         }
     }
@@ -301,6 +303,7 @@ private fun CitaItem(cita: CitaPortal, atenuar: Boolean, onResenado: () -> Unit 
             (cita.tipo ?: "") + (cita.profesional?.let { " · $it" } ?: ""),
             color = c.textoSuave, fontSize = 12.sp,
         )
+        if (cita.virtual) Text("🎥 Videollamada", color = c.purple, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         ResenarCita(cita, onListo = onResenado)
     }
 }
@@ -572,6 +575,52 @@ private fun TarjetaPedirDni(onGuardado: (String) -> Unit) {
         error?.let {
             Spacer(Modifier.height(6.dp))
             Text("⚠ $it", color = RedDanger, fontSize = 12.sp)
+        }
+    }
+}
+/**
+ * Cita por videollamada en el portal (gemelo de `UnirsePortal` de la web): el
+ * botón "Unirse" se activa 15 min antes y hasta 60 min después del final; antes
+ * dice desde cuándo. Se re-evalúa cada 30 s. El enlace se abre en la app de
+ * Meet / Zoom o en el navegador (nunca dentro de la app).
+ */
+@Composable
+private fun UnirseVideollamada(cita: CitaPortal, abrir: (String) -> Unit) {
+    val c = Sania.colors
+    var ahora by remember { mutableStateOf(kotlinx.datetime.Clock.System.now().toEpochMilliseconds()) }
+    LaunchedEffect(cita.id) {
+        while (true) {
+            kotlinx.coroutines.delay(30_000)
+            ahora = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+        }
+    }
+    val estado = pe.saniape.app.data.staff.estadoUnirsePaciente(cita.enlaceVirtual, cita.unirseDesde, cita.unirseHasta, ahora)
+    Column(Modifier.fillMaxWidth().padding(top = 10.dp)) {
+        Text("🎥 Cita por videollamada", color = c.purple, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        val enlace = cita.enlaceVirtual
+        when {
+            estado == pe.saniape.app.data.staff.EstadoUnirsePaciente.ABIERTA && enlace != null -> {
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(c.ok)
+                        .clickable { abrir(enlace) }.padding(horizontal = 14.dp, vertical = 11.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Unirse a la videollamada", color = c.superficie, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text(" · ${pe.saniape.app.data.staff.etiquetaEnlace(enlace)}", color = c.superficie.copy(alpha = 0.9f),
+                        fontSize = 13.sp, maxLines = 1)
+                }
+            }
+            estado == pe.saniape.app.data.staff.EstadoUnirsePaciente.ANTES -> {
+                val hora = pe.saniape.app.data.staff.horaUnirseDesde(cita.unirseDesde, cita.zona)
+                Text("El botón “Unirse” se activa 15 min antes${hora?.let { " ($it)" } ?: ""}.",
+                    color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+            }
+            estado == pe.saniape.app.data.staff.EstadoUnirsePaciente.SIN_ENLACE ->
+                Text("La clínica te enviará el enlace.", color = c.textoSuave, fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 2.dp))
+            else -> Unit
         }
     }
 }

@@ -70,7 +70,7 @@ fun AccionesCita(
     Column(Modifier.fillMaxWidth()) {
         // Dónde es. En una clínica con varios locales, sin esto el paciente no
         // sabe a cuál ir — el dato ya venía del servidor y se descartaba.
-        if (!cita.sede.isNullOrBlank() || !cita.direccion.isNullOrBlank()) {
+        if (!cita.virtual && (!cita.sede.isNullOrBlank() || !cita.direccion.isNullOrBlank())) {
             Column(Modifier.fillMaxWidth().padding(top = 10.dp)) {
                 cita.sede?.takeIf { it.isNotBlank() }?.let {
                     Text(it, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -101,8 +101,11 @@ fun AccionesCita(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             // Mapa: se abre con las coordenadas si las hay; si no, con la dirección
-            // escrita, que en una ciudad chica funciona igual de bien.
-            if (cita.lat != null && cita.lng != null) {
+            // escrita, que en una ciudad chica funciona igual de bien. La cita por
+            // videollamada no tiene a dónde llegar: sin "Cómo llegar".
+            if (cita.virtual) {
+                Unit
+            } else if (cita.lat != null && cita.lng != null) {
                 BotonCita("📍 Cómo llegar") {
                     abrirUrl("https://www.google.com/maps/search/?api=1&query=${cita.lat},${cita.lng}")
                 }

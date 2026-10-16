@@ -17,6 +17,9 @@ import kotlinx.datetime.toLocalDateTime
  *
  * [recienAgendada] (la cita se creó hoy) = confirmación; si no, recordatorio.
  * Línea sin dato = no se escribe.
+ *
+ * [virtual] (cita por videollamada, 2026-10-16): va `🎥 Enlace: …` (o "le
+ * enviaremos el enlace") EN LUGAR de la dirección física, como la web.
  */
 fun mensajeCita(
     nombrePaciente: String?,
@@ -29,6 +32,8 @@ fun mensajeCita(
     profesional: String? = null,
     direccion: String? = null,
     recienAgendada: Boolean = false,
+    virtual: Boolean = false,
+    enlaceVirtual: String? = null,
 ): String {
     fun limpio(v: String?) = v?.trim().orEmpty()
     val nombre = nombreCompletoBonito(primerNombreSinTitulo(nombrePaciente))
@@ -55,7 +60,8 @@ fun mensajeCita(
         horaTxt.takeIf { it.isNotEmpty() }?.let { "🕒 $it" },
         limpio(servicio).takeIf { it.isNotEmpty() }?.let { "🩺 $it" },
         limpio(profesional).takeIf { it.isNotEmpty() }?.let { "🧑‍⚕️ Con: $it" },
-        limpio(direccion).takeIf { it.isNotEmpty() }?.let { "📍 $it" },
+        if (virtual) pe.saniape.app.data.staff.lineaEnlaceVirtual(enlaceVirtual)
+        else limpio(direccion).takeIf { it.isNotEmpty() }?.let { "📍 $it" },
     )
     val cierre = if (recienAgendada) {
         listOfNotNull("Si necesita reprogramar, escríbanos por aquí.", enlace?.let { "Puede ver su cita aquí: $it" })

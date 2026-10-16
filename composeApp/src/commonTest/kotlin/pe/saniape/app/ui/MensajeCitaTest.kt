@@ -98,4 +98,38 @@ class MensajeCitaTest {
         assertEquals("Hola%20%F0%9F%91%8B%20%C2%BFS%C3%AD%3F", urlEncode("Hola 👋 ¿Sí?"))
         assertEquals("Calle-Sim%C3%B3n_638.~", urlEncode("Calle-Simón_638.~"))
     }
+    // ── Cita virtual (2026-10-16): gemelo de "WhatsApp prearmado de una cita virtual" (web) ──
+
+    private fun virtualDatos(virtual: Boolean, enlaceVirtual: String?) = mensajeCita(
+        nombrePaciente = "JOSE LUIS SANDOVAL", fecha = "2026-10-17", hora = "15:00", clinica = "Centro OMER",
+        hoy = "2026-10-14", enlace = "https://x.test/cita/t1", servicio = "Terapia psicológica",
+        profesional = "Lic. Ana Quispe", direccion = "Calle Simón Bolívar 638",
+        virtual = virtual, enlaceVirtual = enlaceVirtual,
+    )
+
+    @Test
+    fun virtual_lleva_el_enlace_y_no_la_direccion() {
+        val m = virtualDatos(true, "https://meet.google.com/abc-defg-hij")
+        assertTrue(m.contains("🎥 Enlace: https://meet.google.com/abc-defg-hij"))
+        assertFalse(m.contains("📍"))
+        assertFalse(m.contains("Simón Bolívar"))
+        assertTrue(m.indexOf("🧑‍⚕️ Con: Lic. Ana Quispe") < m.indexOf("🎥 Enlace"))
+        // Sale por urlWhatsApp (api.whatsapp.com, %XX): el 🎥 no se rompe como con wa.me.
+        val url = urlWhatsApp("51987654321", m)
+        assertTrue(url.contains(urlEncode("🎥 Enlace: https://meet.google.com/abc-defg-hij")))
+    }
+
+    @Test
+    fun virtual_sin_enlace_lo_dice_sin_inventar() {
+        val m = virtualDatos(true, null)
+        assertTrue(m.contains("🎥 Cita por videollamada"))
+        assertFalse(m.contains("📍"))
+    }
+
+    @Test
+    fun presencial_igual_que_siempre() {
+        val m = virtualDatos(false, "https://meet.google.com/abc-defg-hij")
+        assertTrue(m.contains("📍 Calle Simón Bolívar 638"))
+        assertFalse(m.contains("🎥"))
+    }
 }

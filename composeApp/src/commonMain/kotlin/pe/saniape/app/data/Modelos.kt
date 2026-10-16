@@ -68,4 +68,16 @@ data class CitaPortal(
     val lng: Double? = null,
     /** WhatsApp de la sede (o de la clínica): para escribir sin buscar el número. */
     val whatsapp: String? = null,
+    /**
+     * Cita por videollamada (2026-10-16). Sin dirección: el servidor manda
+     * `direccion`/`lat`/`lng` en null. Un servidor viejo no manda nada → presencial.
+     */
+    val virtual: Boolean = false,
+    /** Solo en sus citas Pendiente/Confirmada; null = la clínica todavía no lo puso. */
+    val enlaceVirtual: String? = null,
+    /** Ventana del botón "Unirse" (ISO UTC): 15 min antes → 60 min después del final. */
+    val unirseDesde: String? = null,
+    val unirseHasta: String? = null,
+    /** Zona IANA de la cita (para decir "se activa a las 3:45 p. m."). */
+    val zona: String? = null,
 )

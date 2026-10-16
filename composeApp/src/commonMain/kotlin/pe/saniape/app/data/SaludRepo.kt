@@ -479,6 +479,11 @@ object SaludRepo {
                     lat = o["lat"]?.jsonPrimitive?.doubleOrNull,
                     lng = o["lng"]?.jsonPrimitive?.doubleOrNull,
                     whatsapp = o.str("whatsapp"),
+                    virtual = o.str("virtual") == "true",
+                    enlaceVirtual = o.str("enlaceVirtual")?.takeIf { it.isNotBlank() },
+                    unirseDesde = o.str("unirseDesde"),
+                    unirseHasta = o.str("unirseHasta"),
+                    zona = o.str("zona"),
                 )
             }
         return ResultadoPortal.Ok(mapear("proximas") to mapear("pasadas"))

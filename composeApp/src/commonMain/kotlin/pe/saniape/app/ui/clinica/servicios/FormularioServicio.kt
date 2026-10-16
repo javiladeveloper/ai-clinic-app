@@ -24,6 +24,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -43,6 +45,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import pe.saniape.app.data.staff.ContextoStaff
+import pe.saniape.app.data.staff.ENLACE_MODO_FIJO
+import pe.saniape.app.data.staff.ENLACE_MODO_MEET
+import pe.saniape.app.data.staff.MODALIDAD_PRESENCIAL
+import pe.saniape.app.data.staff.MODALIDAD_VIRTUAL
 import pe.saniape.app.data.staff.EspecialidadServicio
 import pe.saniape.app.data.staff.FormServicio
 import pe.saniape.app.data.staff.PROTOCOLOS_CONTROLES
@@ -88,7 +94,9 @@ fun FormularioServicio(
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     val activas = remember(especialidades) { especialidades.filter { it.activa } }
-    var f by remember(inicial?.id) { mutableStateOf(FormServicio.desde(inicial, especialidadInicial(activas)?.id)) }
+    // Citas virtuales: el Meet automático es del plan (Premium+); en Básico, enlace fijo.
+    val meetPlan = ctx.can("citasVirtualesMeet")
+    var f by remember(inicial?.id) { mutableStateOf(FormServicio.desde(inicial, especialidadInicial(activas)?.id, meetPlan)) }
     var guardando by remember { mutableStateOf(false) }
     // Los pasos se mandan ENTEROS al guardar (reemplazo). true SOLO si se leyeron
     // bien: si la lectura falla, guardar borraría la cadena (lavado → PRP de Renova).
@@ -140,6 +148,7 @@ fun FormularioServicio(
         val cuerpo = cuerpoGuardarServicio(
             f, activas, inicial?.id, inicial?.tipoClinico, mostrarTipoClinico, esDental,
             incluirPasos = pasosCargados,
+            modalidadInicial = inicial?.modalidad,
         )
         scope.launch {
             val r = try { conIndicador { ServiciosRepo.guardar(cuerpo) } } finally { guardando = false }
@@ -243,6 +252,63 @@ fun FormularioServicio(
                 else -> "Cobro único por el servicio (sin sesiones ni unidades)."
             },
         )
+
+        // ¿Cómo se atiende? En el local / por videollamada (citas virtuales).
+        Espacio()
+        EtqForm("¿Cómo se atiende?")
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(MODALIDAD_PRESENCIAL to "📍 En el local", MODALIDAD_VIRTUAL to "🎥 Por videollamada").forEach { (v, t) ->
+                val sel = f.modalidad == v
+                Box(
+                    Modifier.weight(1f).heightIn(min = 44.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .background(if (sel) c.navy else c.superficie)
+                        .border(1.dp, if (sel) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                        .clickable { f = f.copy(modalidad = v) }
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) { Text(t, color = if (sel) c.sobreNavy else c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
+            }
+        }
+        if (f.modalidad == MODALIDAD_VIRTUAL) {
+            Spacer(Modifier.height(8.dp))
+            Caja {
+                val meetSel = f.enlaceModo == ENLACE_MODO_MEET
+                // Básico: el Meet automático no se elige (salvo que ya lo tuviera guardado).
+                val meetElegible = meetPlan || meetSel
+                Row(verticalAlignment = Alignment.Top,
+                    modifier = Modifier.clickable(enabled = meetElegible) { f = f.copy(enlaceModo = ENLACE_MODO_MEET) }) {
+                    RadioButton(selected = meetSel, enabled = meetElegible, onClick = { f = f.copy(enlaceModo = ENLACE_MODO_MEET) },
+                        colors = RadioButtonDefaults.colors(selectedColor = c.navy))
+                    Column(Modifier.padding(top = 12.dp)) {
+                        Text("Crear Google Meet automáticamente", color = if (meetElegible) c.texto else c.textoSuave,
+                            fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (meetPlan) "Cada cita tendrá su Meet en el Google Calendar conectado (Ajustes → Calendario)."
+                            else "🔒 Es de Premium: en tu plan pegas el enlace en cada cita.",
+                            color = c.textoSuave, fontSize = 12.sp,
+                        )
+                    }
+                }
+                Row(verticalAlignment = Alignment.Top,
+                    modifier = Modifier.clickable { f = f.copy(enlaceModo = ENLACE_MODO_FIJO) }) {
+                    RadioButton(selected = f.enlaceModo == ENLACE_MODO_FIJO, onClick = { f = f.copy(enlaceModo = ENLACE_MODO_FIJO) },
+                        colors = RadioButtonDefaults.colors(selectedColor = c.navy))
+                    Column(Modifier.padding(top = 12.dp)) {
+                        Text("Enlace fijo", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Tu sala de Zoom o Meet de siempre.", color = c.textoSuave, fontSize = 12.sp)
+                    }
+                }
+                if (f.enlaceModo == ENLACE_MODO_FIJO) {
+                    OutlinedTextField(
+                        value = f.enlaceFijo, onValueChange = { f = f.copy(enlaceFijo = it) },
+                        placeholder = { Text("https://zoom.us/j/…", color = Sania.colors.textoSuave) }, singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                        colors = coloresCampoForm(), modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    )
+                }
+                Ayuda("Las citas de este servicio nacen por videollamada; al agendar se puede cambiar.")
+            }
+        }
 
         // Evaluación psicológica (solo clínicas con psicología).
         if (mostrarTipoClinico) {
