@@ -35,6 +35,7 @@ fun nombreTipoDoc(t: String): String = when (t) {
     DOC_INFORME -> "Informe médico"
     DOC_DESCANSO -> "Descanso médico"
     DOC_ORDEN -> "Orden de exámenes"
+    DOC_CERTIFICADO -> NOMBRE_CERTIFICADO
     else -> "Documento"
 }
 
@@ -42,6 +43,7 @@ fun iconoTipoDoc(t: String): String = when (t) {
     DOC_INFORME -> "📄"
     DOC_DESCANSO -> "🛌"
     DOC_ORDEN -> "🧪"
+    DOC_CERTIFICADO -> ICONO_CERTIFICADO
     else -> "📄"
 }
 
@@ -375,10 +377,12 @@ fun documentosMedicosActivos(m: ModulosClinicos): Boolean =
 fun pacienteRecibeDocumentos(m: ModulosClinicos, esPacienteMedico: Boolean, esPacienteReceta: Boolean): Boolean =
     documentosMedicosActivos(m) && (esPacienteMedico || (esPacienteReceta && !m.recetasOptIn))
 
-/** El nombre de la pestaña, como la web. */
-fun etiquetaPestanaRecetas(esPacienteReceta: Boolean, esPacienteDocs: Boolean): String = when {
-    esPacienteReceta && esPacienteDocs -> "💊 Recetas y documentos"
+/** El nombre de la pestaña, como la web ([esPacienteSaludMental]: 🧠 certificados de salud mental). */
+fun etiquetaPestanaRecetas(esPacienteReceta: Boolean, esPacienteDocs: Boolean, esPacienteSaludMental: Boolean = false): String = when {
+    esPacienteReceta && (esPacienteDocs || esPacienteSaludMental) -> "💊 Recetas y documentos"
     esPacienteDocs -> "📄 Documentos médicos"
+    esPacienteReceta -> "💊 Recetas"
+    esPacienteSaludMental -> "📄 Documentos"
     else -> "💊 Recetas"
 }
 
