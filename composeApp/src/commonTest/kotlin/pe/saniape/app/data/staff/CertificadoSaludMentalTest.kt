@@ -96,6 +96,15 @@ class CertificadoSaludMentalTest {
         assertNull(fraseDocumento(PacienteCertificado("", documento = "  ")))
     }
 
+    @Test fun hcConDniYNumeroDeOtraFormaSaleComoEnLaWeb() {
+        // Sin tipo en la ficha, la HC dice "DNI" y el número no tiene 8 dígitos: "el DNI", no "el documento".
+        val p = PacienteCertificado("ANA", documento = "1234567", tipoDocumento = null, tipoDocumentoHc = "DNI", pais = "PE")
+        assertEquals("el DNI 1234567", fraseDocumento(p))
+        assertEquals("DNI", etiquetaDocumentoPaciente(null, "PE", "1234567", "DNI"))
+        // Sin la HC, sigue siendo "Documento" (como la web).
+        assertEquals("el documento de identidad N° 1234567", fraseDocumento(p.copy(tipoDocumentoHc = null)))
+    }
+
     // ── Edad ──
 
     @Test fun unAnoEnSingularYSinEdadSeOmite() {

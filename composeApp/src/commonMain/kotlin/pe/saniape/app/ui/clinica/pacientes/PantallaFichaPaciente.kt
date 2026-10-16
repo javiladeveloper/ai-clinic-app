@@ -105,6 +105,8 @@ fun PantallaFichaPaciente(
     ortodonciaAlAbrir: pe.saniape.app.ui.clinica.ortodoncia.AperturaOrtodoncia? = null,
     /** 🤰 Desde la agenda ("🤰 Embarazo"): la ficha arranca en la pestaña Embarazo. */
     embarazoAlAbrir: Boolean = false,
+    /** …con un control prenatal nuevo vinculado a ESA cita. */
+    embarazoCitaId: String? = null,
 ) {
     // Multipaís: el dinero de la ficha va en la moneda de la sede del paciente
     // (solo con "pacientes por sede"; si no, la de la sede activa). Una clínica de
@@ -118,7 +120,7 @@ fun PantallaFichaPaciente(
     androidx.compose.runtime.CompositionLocalProvider(
         pe.saniape.app.ui.LocalMoneda provides pe.saniape.app.data.staff.monedaDeFila(sedePaciente),
     ) {
-        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir, sedePaciente, embarazoAlAbrir)
+        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir, sedePaciente, embarazoAlAbrir, embarazoCitaId)
     }
 }
 
@@ -132,6 +134,7 @@ private fun PantallaFichaPacienteContenido(
     /** Multipaís: la sede del paciente (null = sin multisede o sin sede). */
     sedePaciente: String? = null,
     embarazoAlAbrir: Boolean = false,
+    embarazoCitaId: String? = null,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val tpl = LocalTerminologiaPaciente.current
@@ -211,9 +214,9 @@ private fun PantallaFichaPacienteContenido(
     }
     // ── 🧠 Salud mental (certificado), por el RUBRO guardado de cada especialidad
     // (mapaSaludMental de la web; nunca por preset). Las especialidades con rubro
-    // se leen aparte (liviano); sin ellas, el mapa queda vacío y nada nuevo aparece.
+    // se leen una vez por sesión (caché); sin ellas, el mapa queda vacío y nada nuevo aparece.
     var espsRubro by remember { mutableStateOf<List<pe.saniape.app.data.staff.EspecialidadNombre>>(emptyList()) }
-    LaunchedEffect(Unit) { espsRubro = pe.saniape.app.data.staff.InformesMedicosRepo.especialidades() }
+    LaunchedEffect(Unit) { espsRubro = pe.saniape.app.data.staff.InformesMedicosRepo.especialidadesSesion() }
     val mapaSaludMental = remember(espsRubro) {
         pe.saniape.app.data.staff.mapaSaludMental(
             espsRubro.filter { (it.estado ?: "Activa") == "Activa" }.map { Triple(it.id, it.nombre, it.rubro) },
@@ -1409,6 +1412,7 @@ private fun PantallaFichaPacienteContenido(
                             clinicaDireccion = ctx.clinicaDireccion,
                             logoUrl = ctx.logoUrl,
                             colorPrincipal = ctx.colorPrincipal,
+                            citaId = embarazoCitaId,
                             // "📅 Agendar próximo control" (gemelo de `agendarControlGineco`): la entrada del
                             // flujo, con la especialidad de gineco de quien mira (o la primera de la clínica).
                             onAgendarControl = { fechaCtl: String ->

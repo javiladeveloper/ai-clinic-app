@@ -164,6 +164,8 @@ fun PantallaAgenda(
     var fichaNutricion by remember { mutableStateOf<pe.saniape.app.ui.clinica.nutricion.AperturaNutricion?>(null) }
     // La ficha se abre en la pestaña 🤰 Embarazo (gineco-obstetricia).
     var fichaEmbarazo by remember { mutableStateOf(false) }
+    // ESA cita: el control prenatal nuevo queda vinculado a ella (rutaFichaEmbarazo(pacienteId, citaId) de la web).
+    var fichaEmbarazoCita by remember { mutableStateOf<String?>(null) }
     // La ficha se abre en 📝 Indicaciones con una hoja nueva (plantilla sugerida + cita vinculada).
     var fichaIndicaciones by remember { mutableStateOf<pe.saniape.app.data.staff.AperturaIndicaciones?>(null) }
     // La ficha se abre en 😁 Ortodoncia con el control vinculado a la cita.
@@ -221,8 +223,8 @@ fun PantallaAgenda(
         }
     }
     /**
-     * Gineco-obstetricia: a la ficha en 🤰 Embarazo. El control prenatal nuevo se
-     * vincula solo a la cita del día de la paciente (`citaParaVincular`).
+     * Gineco-obstetricia: a la ficha en 🤰 Embarazo con un control nuevo vinculado a
+     * ESA cita (gemelo de `rutaFichaEmbarazo(pacienteId, citaId)` de /citas).
      */
     fun abrirFichaEmbarazo(cita: CitaStaff) {
         val pid = cita.pacienteId ?: return
@@ -236,6 +238,7 @@ fun PantallaAgenda(
                 return@launch
             }
             fichaEmbarazo = true
+            fichaEmbarazoCita = cita.id
             fichaPaciente = pac
         }
     }
@@ -1390,10 +1393,11 @@ fun PantallaAgenda(
         Box(Modifier.fillMaxSize().background(c.fondo)) {
             pe.saniape.app.tutoriales.PantallaTutorial("Ficha") { PantallaFichaPaciente(
                 ctx = ctx, pacienteInicial = pac,
-                onCerrar = { fichaPaciente = null; fichaEjercicios = null; fichaNutricion = null; fichaEmbarazo = false; fichaIndicaciones = null; fichaOrtodoncia = null },
+                onCerrar = { fichaPaciente = null; fichaEjercicios = null; fichaNutricion = null; fichaEmbarazo = false; fichaEmbarazoCita = null; fichaIndicaciones = null; fichaOrtodoncia = null },
                 ejerciciosAlAbrir = fichaEjercicios,
                 nutricionAlAbrir = fichaNutricion,
                 embarazoAlAbrir = fichaEmbarazo,
+                embarazoCitaId = fichaEmbarazoCita,
                 indicacionesAlAbrir = fichaIndicaciones,
                 ortodonciaAlAbrir = fichaOrtodoncia,
             ) }

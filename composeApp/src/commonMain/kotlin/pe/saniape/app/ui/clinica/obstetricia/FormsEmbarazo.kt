@@ -421,6 +421,8 @@ internal fun FormControl(
     clinicaId: String?,
     onCerrar: () -> Unit,
     onGuardado: (ControlPrenatal, Boolean) -> Unit,
+    /** La cita que se trae de la agenda (manda sobre la regla del día, como la web). */
+    citaId: String? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -465,7 +467,7 @@ internal fun FormControl(
     // Cita a vincular: la ÚNICA de gineco-obstetricia de la fecha que aún no tenga control.
     var citas by remember { mutableStateOf<List<CitaVinculable>>(emptyList()) }
     if (nuevo) LaunchedEffect(fecha) { citas = EmbarazoRepo.citasDelDia(pacienteId, fecha) }
-    val citaVinculo = if (control != null) control.citaId else citaParaVincular(citas, fecha, citasUsadas, mapaGineco)
+    val citaVinculo = if (control != null) control.citaId else citaId ?: citaParaVincular(citas, fecha, citasUsadas, mapaGineco)
 
     val proximoSugerido = proximoControlSugerido(fecha, eg)
     val ref = auEsperada(eg)

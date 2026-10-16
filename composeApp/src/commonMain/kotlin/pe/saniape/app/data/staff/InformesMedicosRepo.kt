@@ -1,5 +1,6 @@
 package pe.saniape.app.data.staff
 
+import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.exceptions.RestException
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
@@ -105,6 +106,19 @@ object InformesMedicosRepo {
                 )
             }
     }.getOrNull()
+
+    @kotlin.concurrent.Volatile private var espsSesion: Pair<String, List<EspecialidadNombre>>? = null
+
+    /**
+     * Las mismas [especialidades], en caché por SESIÓN (usuario): la ficha las
+     * pide al abrirse (🧠 salud mental) y no hace falta una consulta por ficha.
+     * Vacío (falló o no hay) no se guarda: la próxima ficha vuelve a preguntar.
+     */
+    suspend fun especialidadesSesion(): List<EspecialidadNombre> {
+        val usuario = Supabase.client.auth.currentUserOrNull()?.id ?: return especialidades()
+        espsSesion?.let { (u, l) -> if (u == usuario) return l }
+        return especialidades().also { if (it.isNotEmpty()) espsSesion = usuario to it }
+    }
 
     /** Especialidades de la clínica con nombre y estado (¿la atención es de psiquiatría?). Vacío si falla. */
     suspend fun especialidades(): List<EspecialidadNombre> = intentar {

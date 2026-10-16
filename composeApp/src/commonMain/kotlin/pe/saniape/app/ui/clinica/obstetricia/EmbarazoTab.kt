@@ -143,6 +143,11 @@ fun EmbarazoTab(
     colorPrincipal: String?,
     /** "📅 Agendar próximo control" (null = no se ofrece). */
     onAgendarControl: ((String) -> Unit)? = null,
+    /**
+     * Desde la agenda (citaId de la web): abre un control nuevo vinculado a ESA
+     * cita. Se consume al guardarlo (otro control nuevo vuelve a la regla del día).
+     */
+    citaId: String? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -162,6 +167,9 @@ fun EmbarazoTab(
     }
     var editorEmb by remember { mutableStateOf<String?>(null) }          // "nuevo" | "editar"
     var editorCtrl by remember { mutableStateOf<EditorControl?>(null) }
+    var citaPendiente by remember(pacienteId) { mutableStateOf(citaId) }
+    // Desde la agenda abre un control nuevo, una sola vez (como la web: editorCtrl = 'nuevo').
+    var abrioDesdeAgenda by remember(pacienteId) { mutableStateOf(false) }
     var finalizar by remember { mutableStateOf(false) }
     var borrarEmb by remember { mutableStateOf<Embarazo?>(null) }
     var borrarCtrl by remember { mutableStateOf<ControlPrenatal?>(null) }
@@ -191,6 +199,12 @@ fun EmbarazoTab(
     val embarazos = ordenarEmbarazos(d0.embarazos.orEmpty())
     val activo = embarazos.firstOrNull { it.activo }
     val anteriores = embarazos.filter { it.id != activo?.id }
+    LaunchedEffect(activo?.id) {
+        if (!abrioDesdeAgenda && citaPendiente != null && activo != null && puedeEditar && editorCtrl == null) {
+            abrioDesdeAgenda = true
+            editorCtrl = EditorControl.Nuevo
+        }
+    }
     fun controlesDe(id: String) = d0.controles.filter { it.embarazoId == id }
     fun ponerEmbarazo(e: Embarazo) {
         val lista = d0.embarazos.orEmpty()
@@ -287,9 +301,11 @@ fun EmbarazoTab(
                     embarazo = embCtrl, pacienteId = pacienteId, hoy = hoy, control = enEdicion,
                     anterior = if (enEdicion == null) lista.lastOrNull() else lista.getOrNull(idx - 1),
                     citasUsadas = lista.mapNotNull { it.citaId }.toSet(), mapaGineco = mapaGineco, clinicaId = clinicaId,
+                    citaId = if (m is EditorControl.Nuevo) citaPendiente else null,
                     onCerrar = { editorCtrl = null },
                     onGuardado = { ctl, nuevo ->
                         editorCtrl = null
+                        if (nuevo) citaPendiente = null
                         val actuales = datos?.controles.orEmpty()
                         datos = datos?.copy(controles = if (nuevo) listOf(ctl) + actuales else actuales.map { if (it.id == ctl.id) ctl else it })
                     },

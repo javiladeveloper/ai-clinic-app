@@ -122,7 +122,10 @@ fun etiquetaDocumentoPaciente(tipo: String?, pais: String?, dni: String? = null,
         null -> {
             val d = dni?.trim().orEmpty()
             val esDni = d.length == 8 && d.all { it.isDigit() }
-            if (normPaisDoc(pais) == PAIS_POR_DEFECTO && d.isNotEmpty() && !esDni) "Documento" else nombreDocumentoNacional(pais)
+            // La HC dice "DNI" (tipoDocumentoDeHc no lo toma como tipo propio): manda,
+            // como la web (tipo !== 'DNI'): "el DNI 1234567", no "el documento".
+            val hcDni = normalizarTipoDocumento(tipoHc) == "DNI"
+            if (normPaisDoc(pais) == PAIS_POR_DEFECTO && d.isNotEmpty() && !esDni && !hcDni) "Documento" else nombreDocumentoNacional(pais)
         }
         "Otro" -> "Documento"
         else -> t

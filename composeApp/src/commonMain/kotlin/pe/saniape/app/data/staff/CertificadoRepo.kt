@@ -58,10 +58,11 @@ object CertificadoRepo {
 
     // ── ¿El servidor ya tiene el certificado? ────────────────────────────────
 
-    private var disponibleCache: Boolean? = null
-    private var disponibleEn: Long = 0
+    // @Volatile: la ficha y la consulta pueden preguntar a la vez desde corrutinas distintas.
+    @kotlin.concurrent.Volatile private var disponibleCache: Boolean? = null
+    @kotlin.concurrent.Volatile private var disponibleEn: Long = 0
     /** De quién es la respuesta guardada (otro usuario puede tener otro permiso). */
-    private var disponibleDe: String? = null
+    @kotlin.concurrent.Volatile private var disponibleDe: String? = null
     /** Un "no" se vuelve a preguntar pasado este tiempo (el deploy puede llegar con la app abierta). */
     private const val REINTENTO_NO_MS = 10 * 60 * 1000L
 
