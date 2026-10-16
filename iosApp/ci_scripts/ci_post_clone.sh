@@ -56,6 +56,15 @@ sed -i '' \
   "$PBX"
 echo "Firma: automática (solo en Xcode Cloud)"
 
+# 2b) JAVA_HOME para la fase "Compile Kotlin Framework". El wrapper ./gradlew
+#     necesita un JVM para ARRANCAR (busca JAVA_HOME o java en el PATH);
+#     org.gradle.java.home solo lo lee Gradle DESPUÉS de arrancar, y las env vars
+#     de este script NO pasan a la fase de build de Xcode. Sin esto, gradlew muere
+#     en segundos con "JAVA_HOME is not set" (Compilación 3, 2026-10-16). Inyectamos
+#     el export en la fase del pbxproj; $HOME queda literal y lo expande la fase.
+sed -i '' 's#\./gradlew :composeApp:embedAndSignAppleFrameworkForXcode#export JAVA_HOME=\\"$HOME/jdk17/Contents/Home\\"\\n./gradlew :composeApp:embedAndSignAppleFrameworkForXcode#' "$PBX"
+echo "JAVA_HOME inyectado en la fase Compile Kotlin Framework"
+
 # 3) VERSIÓN = la de Android, igual que hace el Fastfile en GitHub Actions.
 #    Build number: el de Xcode Cloud + 1000, para quedar siempre por encima de
 #    los que subió GitHub Actions (TestFlight rechaza un número repetido).
