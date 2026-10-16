@@ -1,0 +1,9 @@
+# Novedades de la 2.57.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Agenda por meses, pacientes por nombre y sesiones sueltas que suman.
+---
+Clínicas:
+• Agenda: toca el mes para ver el calendario completo con las citas de cada día y salta al día que elijas.
+• Nueva cita: busca al paciente por DNI o por nombre. Si no lo tienes, regístralo solo con su nombre y completa sus datos después.
+• Sesiones sueltas: lo acordado suma cada sesión atendida (2 sesiones de S/ 100 = S/ 200), y al cerrar una sesión te pregunta si pagó.
+• Datos personales del paciente según el permiso de cada rol, igual que en la web.
