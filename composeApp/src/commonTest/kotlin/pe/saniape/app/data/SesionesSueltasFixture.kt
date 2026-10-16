@@ -3,7 +3,14 @@ package pe.saniape.app.data
 // ─────────────────────────────────────────────────────────────────────────────
 // Los MISMOS casos que supabase/fixes/sueltas-prueba-gemelo.sql (web), el que
 // prueba public.acordado_suelta y public.costo_sesion_al_cobrar en la base.
-// Generado del .sql tal cual: si la web agrega un caso, se agrega aquí.
+// SNAPSHOT generada del .sql tal cual (web: supabase/fixes/sueltas-prueba-gemelo.sql).
+// Si la web agrega o cambia un caso, SesionesSueltasFixtureSqlTest (androidUnitTest)
+// falla cuando el repo web está al lado ($SANIA_WEB_DIR o ../ai-clinic-dashboard).
+// Para regenerar, en el mismo orden: cada fila de _casos_sueltas →
+// CasoAcordado(nombre, pactado, precio_acordado, precio_por_sesion, total_sesiones,
+// sesiones = el jsonb como S(id, estado, costo, numero, fecha, pagada), incluir =
+// el uuid o null, esperado); cada fila de _casos_costo → CasoCosto(...). Luego
+// actualizar los conteos de SesionesSueltasTest.fixture_trae_los_31_casos.
 // "pagada" = la sesión tiene un pago ligado con monto > 0.
 // ─────────────────────────────────────────────────────────────────────────────
 

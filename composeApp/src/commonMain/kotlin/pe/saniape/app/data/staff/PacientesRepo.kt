@@ -170,10 +170,12 @@ data class TratamientoPaciente(
      * Sin [pagado], lo pagado de los pagos embebidos (el `estado_pago` guardado
      * no sabe de la sesión que se cierra). Suelta sin sus sesiones cargadas:
      * nunca "saldado" (no se esconde un cobro por falta de datos).
+     * [costoSesion]: el costo de la que se cierra, por si todavía no está entre
+     * las sesiones cargadas (entonces cuenta como sesión NUEVA: siempre suma).
      */
-    fun sinSaldoCon(pagado: Double?, incluirSesionId: String?): Boolean {
+    fun sinSaldoCon(pagado: Double?, incluirSesionId: String?, costoSesion: Double? = null): Boolean {
         if (!esSuelta) return tratamientoSinSaldo(montoAcordado, pagado, estadoPago)
-        val ctx = contextoSueltas(incluirSesionId) ?: return false
+        val ctx = contextoSueltas(incluirSesionId, costoIncluida = costoSesion) ?: return false
         val pag = pagado ?: pagadoEmbebido ?: return false
         return tratamientoSinSaldo(pe.saniape.app.data.montoAcordado(tratPago, ctx), pag, estadoPago)
     }
@@ -197,11 +199,18 @@ data class TratamientoPaciente(
     fun contextoSueltas(
         incluirSesionId: String? = null,
         pagos: List<pe.saniape.app.data.PagoDevengo>? = null,
+        /** Costo de [incluirSesionId] si no está entre las sesiones cargadas (sesión nueva). */
+        costoIncluida: Double? = null,
     ): pe.saniape.app.data.ContextoSesiones? {
         if (!esSuelta) return null
         val ses = sesionesDevengo ?: return null
+        // La que se cierra y no vino en el embebido (creada después de cargar la
+        // ficha): cuenta igual, como la sesión que nace al cerrar (web: sesionNueva).
+        val falta = !incluirSesionId.isNullOrEmpty() && ses.none { it.id == incluirSesionId }
         return pe.saniape.app.data.ContextoSesiones(
-            sesiones = ses, pagos = pagos ?: pagosDevengo.orEmpty(), incluirSesionId = incluirSesionId,
+            sesiones = ses, pagos = pagos ?: pagosDevengo.orEmpty(),
+            incluirSesionId = if (falta) null else incluirSesionId,
+            sesionNueva = if (falta) pe.saniape.app.data.SesionNueva(costoIncluida) else null,
         )
     }
 
@@ -222,7 +231,8 @@ data class TratamientoPaciente(
     fun acordadoCon(
         incluirSesionId: String? = null,
         pagos: List<pe.saniape.app.data.PagoDevengo>? = null,
-    ): Double = pe.saniape.app.data.montoAcordado(tratPago, contextoSueltas(incluirSesionId, pagos))
+        costoIncluida: Double? = null,
+    ): Double = pe.saniape.app.data.montoAcordado(tratPago, contextoSueltas(incluirSesionId, pagos, costoIncluida))
 
     /** Lo PACTADO (sin lo atendido): "Ampliar" suma sobre esto en el servidor. */
     val montoPactado: Double get() = pe.saniape.app.data.montoPactado(tratPago)

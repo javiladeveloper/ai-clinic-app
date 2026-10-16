@@ -36,6 +36,19 @@ data class EstadoPagoCita(
     val mostrable: Boolean get() = estado != "sin_dato" && etiqueta.isNotBlank()
 }
 
+/**
+ * El estado de pago del TRATAMIENTO de una cita de sesión, EN VIVO (el servidor
+ * aplica la regla de las sueltas: lo atendido + esta sesión), con el vocabulario
+ * de `estado_pago`. Sin respuesta útil, el [guardado] (o "Pendiente"). Así el
+ * cierre no dice "Parcial" mientras la cabecera dice "✓ Pagado".
+ */
+fun estadoTratamientoEnVivo(vivo: EstadoPagoCita?, guardado: String?): String = when (vivo?.estado) {
+    "pagado" -> "Pagado"
+    "parcial" -> "Parcial"
+    "debe" -> "Pendiente"   // el servidor: nada pagado
+    else -> guardado?.ifBlank { null } ?: "Pendiente"
+}
+
 @Serializable
 internal data class RespuestaEstadosPago(
     val estados: Map<String, EstadoPagoCita> = emptyMap(),

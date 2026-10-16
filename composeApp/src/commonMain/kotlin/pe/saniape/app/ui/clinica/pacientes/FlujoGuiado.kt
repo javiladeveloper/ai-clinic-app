@@ -96,7 +96,8 @@ fun BarraRecorrido(
     val controles = if (esServUnico || esUnidades) pe.saniape.app.data.staff.resumenControles(citasTrat) else null
     val hayControles = controles != null && controles.total > 0
     val enControl = pe.saniape.app.data.staff.enControl(trat, citasTrat)
-    val servPagado = trat.estadoPago == "Pagado"
+    // Suelta: el estado en vivo (lo atendido), el mismo que la tarjeta y su sección de pagos.
+    val servPagado = trat.estadoPagoVivo() == "Pagado"
     val usaSesiones = !trat.esConsulta && !esServUnico
     val sesComp = trat.sesionesCompletadas
     val sesTot = trat.totalSesiones

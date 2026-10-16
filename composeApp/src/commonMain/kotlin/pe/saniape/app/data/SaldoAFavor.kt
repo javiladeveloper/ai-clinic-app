@@ -14,7 +14,9 @@ import kotlin.math.round
 //  · Sesión suelta / Consulta (y cualquier otra): se cobra por atención, así que
 //    el acordado EFECTIVO crece con lo realizado:
 //        acordado efectivo = max(acordado, unit × realizadas)
-//        unit       = precio_por_sesion ?: precio_acordado / max(total_sesiones ?: 1, 1)
+//        unit       = precio_por_sesion ?: acordado / max(total_sesiones ?: 1, 1)
+//        (el acordado NUEVO: en una suelta, lo devengado — igual que la web y
+//        _saldo_por_tratamiento en SQL)
 //        realizadas = max(sesiones no anuladas, citas no canceladas)  del tratamiento
 //    Sesión anulada = Cancelada / Reprogramada / No asistió.
 //  · Acordado efectivo 0 o unit 0 → 0 (no hay contra qué comparar).
@@ -54,9 +56,15 @@ data class CuentaTratamiento(
     val saldoLiberado: Boolean = false,
 )
 
-/** Precio de UNA atención (Sesión suelta / Consulta). */
+/**
+ * Precio de UNA atención (Sesión suelta / Consulta): precio por sesión o, sin él,
+ * el ACORDADO (el nuevo: en una suelta, lo devengado) / total de sesiones. Gemelo
+ * de acordadoEfectivo / valorAtendidoCancelado (lib/saldo-a-favor.ts) y de
+ * _saldo_por_tratamiento (SQL). Con precio_acordado el pacto por N daba un
+ * "a favor" que el servidor no reconoce.
+ */
 fun precioUnitario(c: CuentaTratamiento): Double =
-    c.precioPorSesion ?: ((c.precioAcordado ?: 0.0) / max(c.totalSesiones ?: 1, 1))
+    c.precioPorSesion ?: (c.acordado / max(c.totalSesiones ?: 1, 1))
 
 /**
  * Lo que de verdad se acordó a la fecha: en Paquete / Unidades el acordado; en el

@@ -1818,7 +1818,7 @@ private fun PantallaFichaPacienteContenido(
             tecnicasSugeridas = req.tecnicasSugeridas,
             // Paquete ya pagado completo: no se pregunta "¿pagó esta sesión?". En una
             // SUELTA cuenta la sesión que se cierra (la 2ª no queda "saldada" por la 1ª).
-            puedePagos = ctx.puede("pagos") && !req.trat.sinSaldoCon(null, ses.id),
+            puedePagos = ctx.puede("pagos") && !req.trat.sinSaldoCon(null, ses.id, ses.costo),
             // Odontología: "¿Qué se le hizo hoy?" solo en tratamientos dentales.
             pacienteId = paciente.id,
             tratamientoId = req.trat.id,

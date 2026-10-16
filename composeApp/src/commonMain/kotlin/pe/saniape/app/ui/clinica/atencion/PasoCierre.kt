@@ -365,8 +365,11 @@ private fun BloqueCobro(vm: AtencionViewModel, d: DatosConsultaApp, ctx: Context
             d.flags.esProcedimiento -> {
                 val tr = cita.tratamiento
                 Text(
-                    "Se cobra en su tratamiento (${tr?.estado_pago?.ifBlank { null } ?: "Pendiente"}" +
-                        (tr?.precio_acordado?.takeIf { it > 0 }?.let { " · ${textoSoles(it, moneda)}" } ?: "") + ").",
+                    // En vivo (el servidor con la regla de las sueltas: lo atendido + esta
+                    // sesión), no el estado_pago guardado: igual que la cabecera y la ficha.
+                    "Se cobra en su tratamiento (${pe.saniape.app.data.staff.estadoTratamientoEnVivo(vm.estadoPago, tr?.estado_pago)}" +
+                        (vm.estadoPago?.deuda?.takeIf { it > 0.005 }?.let { " · debe ${textoSoles(it, moneda)}" }
+                            ?: tr?.precio_acordado?.takeIf { it > 0 && vm.estadoPago == null }?.let { " · ${textoSoles(it, moneda)}" } ?: "") + ").",
                     color = c.texto, fontSize = 13.sp,
                 )
                 Text(

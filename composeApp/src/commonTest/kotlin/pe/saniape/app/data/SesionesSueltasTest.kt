@@ -396,6 +396,46 @@ class SesionesSueltasTest {
         assertEquals("Pagado", dalu.estadoPagoVivo())
     }
 
+    // ── Saldo a favor con el acordado NUEVO (gemelo de acordadoEfectivo / _saldo_por_tratamiento) ──
+
+    @Test fun saldo_a_favor_pacto_300_por_3_cuatro_atendidas_500_pagados_es_0() {
+        // Sin precio por sesión: unit = acordado nuevo (400) / 3 = 133.33 → ×4 = 533.33 > 500.
+        // Con precio_acordado (100) daba un "a favor" de 100 que el servidor no reconoce.
+        val t = trat(total = 3, precioPorSesion = null, precioAcordado = 300.0,
+            sesiones = List(4) { ses("s$it", "Completada", null, it + 1) }, pagos = listOf(pago(500.0)))
+        assertEquals(400.0, t.montoAcordado)
+        val cuenta = t.copy(sesionesRealizadas = 4, citasNoCanceladas = 4).cuentaCon(500.0)
+        assertEquals(0.0, saldoAFavorTratamiento(cuenta))
+        assertEquals(0.0, saldoDisponibleTratamiento(cuenta))
+        // Cancelado liberado: lo atendido también vale con el acordado nuevo.
+        val cancelado = t.copy(estado = "Cancelado", saldoLiberadoAt = "2026-10-15", sesionesRealizadas = 4, citasNoCanceladas = 4).cuentaCon(500.0)
+        assertEquals(400.0 / 3 * 4, valorAtendidoCancelado(cancelado)!!, 0.001)
+        assertEquals(0.0, noAtendidoCancelado(cancelado))
+    }
+
+    // ── La sesión que se cierra SIEMPRE cuenta, aunque no esté en lo cargado ──
+
+    @Test fun cierre_de_una_sesion_que_no_vino_en_el_embebido_cuenta_como_nueva() {
+        val t = trat(estadoPago = "Pagado", sesiones = listOf(ses("s1", "Completada")), pagos = listOf(pago(100.0, "s1")))
+        // s2 se creó después de cargar la ficha: sin ella parecía saldado.
+        assertFalse(t.sinSaldoCon(null, "s2", 100.0))
+        assertFalse(t.sinSaldoCon(null, "s2"))   // sin costo: vale el precio de la sesión
+        assertEquals(220.0, t.acordadoCon("s2", costoIncluida = 120.0))
+        // Si ya estaba cargada no se cuenta dos veces.
+        assertEquals(100.0, t.acordadoCon("s1", costoIncluida = 100.0))
+    }
+
+    // ── Estado en vivo del cierre de la atención (servidor) ──
+
+    @Test fun estado_del_tratamiento_en_el_cierre_es_el_del_servidor() {
+        fun vivo(e: String) = pe.saniape.app.data.staff.EstadoPagoCita(estado = e, etiqueta = "x")
+        assertEquals("Parcial", pe.saniape.app.data.staff.estadoTratamientoEnVivo(vivo("parcial"), "Pagado"))
+        assertEquals("Pagado", pe.saniape.app.data.staff.estadoTratamientoEnVivo(vivo("pagado"), "Parcial"))
+        assertEquals("Pendiente", pe.saniape.app.data.staff.estadoTratamientoEnVivo(vivo("debe"), null))
+        assertEquals("Pagado", pe.saniape.app.data.staff.estadoTratamientoEnVivo(null, "Pagado"))
+        assertEquals("Pendiente", pe.saniape.app.data.staff.estadoTratamientoEnVivo(vivo("sin_dato"), ""))
+    }
+
     // ── El select de la ficha: una sesión sin costo no rompe nada ──
 
     @Test fun parseo_del_embebido_tolera_costos_nulos() {
