@@ -105,6 +105,7 @@ Versión 2.59.0, build 10xx
 | `PhaseScriptExecution failed` en "Compile Kotlin Framework" | Java no encontrado o error de Kotlin | Mira el log de `ci_post_clone.sh`; si el JDK se instaló, el error es de compilación: corre el paso 2 en la Mac |
 | Error de firma / "No profiles for 'pe.saniape.app'" | La firma no pasó a automática | Verifica que el log diga "Firma: automática"; revisa los `sed` del script contra `project.pbxproj` |
 | "Scheme iosApp not found" | Esquema no compartido | Confirma `xcodebuild -list`; el archivo está en `xcshareddata/xcschemes/` |
+| `OutOfMemoryError: Java heap space` en "Compile Kotlin Framework" | El enlace del framework release necesita más de 4 GB (pasó en GitHub Actions el 16-oct con la 2.59.0) | El script ya fija `-Xmx6g`; si vuelve a pasar, revisa que el log muestre esa línea en `~/.gradle/gradle.properties` |
 | Build number repetido en TestFlight | Choca con uno de GitHub Actions | Sube el `+ 1000` del script |
 
 ## Al terminar, reporta a Jonathan
