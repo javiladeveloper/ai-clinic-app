@@ -18,8 +18,23 @@ cd "$CI_PRIMARY_REPOSITORY_PATH"
 # 1) JAVA para Gradle. Las variables de entorno no pasan de este script a la
 #    fase de build de Xcode, así que el JDK se fija en el gradle.properties del
 #    usuario, que Gradle sí lee siempre.
-brew install openjdk@17
-JDK="$(brew --prefix openjdk@17)/libexec/openjdk.jdk/Contents/Home"
+#
+#    NO usamos `brew install openjdk@17`: el runner de Xcode Cloud a veces sale
+#    Intel x86_64 ("Tier 3" para Homebrew, sin bottles) y brew intenta compilar
+#    el JDK desde fuente → "configure: error: C compiler cannot create
+#    executables" (Compilación 1 murió así el 2026-10-16). Descargamos un JDK ya
+#    compilado (Temurin/Adoptium) según la arquitectura; funciona en ARM e Intel.
+case "$(uname -m)" in
+  arm64)  ADOPT_ARCH="aarch64" ;;
+  x86_64) ADOPT_ARCH="x64" ;;
+  *) echo "Arquitectura no esperada: $(uname -m)"; exit 1 ;;
+esac
+JDK_HOME_PARENT="$HOME/jdk17"
+mkdir -p "$JDK_HOME_PARENT"
+curl -fsSL "https://api.adoptium.net/v3/binary/latest/17/ga/mac/${ADOPT_ARCH}/jdk/hotspot/normal/eclipse?project=jdk" -o /tmp/jdk17.tar.gz
+tar -xzf /tmp/jdk17.tar.gz -C "$JDK_HOME_PARENT" --strip-components=1
+JDK="$JDK_HOME_PARENT/Contents/Home"
+"$JDK/bin/java" -version   # falla ruidoso (set -e) si el JDK no quedó bien
 mkdir -p "$HOME/.gradle"
 echo "org.gradle.java.home=$JDK" >> "$HOME/.gradle/gradle.properties"
 # Memoria: con -Xmx4g (gradle.properties del proyecto) el enlace del framework
