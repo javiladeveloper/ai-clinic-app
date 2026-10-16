@@ -1,0 +1,9 @@
+# Novedades de la 2.58.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Certificado de salud mental para psiquiatría y acceso directo al control prenatal.
+---
+Clínicas:
+• Psiquiatría: 🧠 Certificado de salud mental con casillas por hallazgo. Si todo es normal, el texto sale tal cual el formato habitual; si cambia algo, se ajusta con un toque o se edita a mano. Se imprime con firma, CMP y RNE.
+• Ginecología y obstetricia: desde la cita en la agenda, "🤰 Embarazo" abre el control prenatal de esa cita.
+Pacientes:
+• Los certificados de salud mental aparecen en Documentos médicos para descargarlos.
