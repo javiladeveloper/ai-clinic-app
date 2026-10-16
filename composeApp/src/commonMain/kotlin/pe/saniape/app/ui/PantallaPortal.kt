@@ -603,13 +603,18 @@ private fun UnirseVideollamada(cita: CitaPortal, abrir: (String) -> Unit) {
                 Spacer(Modifier.height(6.dp))
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(c.ok)
-                        .clickable { abrir(enlace) }.padding(horizontal = 14.dp, vertical = 11.dp),
+                        .clickable {
+                            // Revalidado antes de abrir (mismo criterio que la web).
+                            pe.saniape.app.data.staff.enlaceSeguro(enlace)?.let(abrir)
+                                ?: Toaster.error("Ese enlace no es válido: pídele a la clínica uno nuevo.")
+                        }.padding(horizontal = 14.dp, vertical = 11.dp),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Unirse a la videollamada", color = c.superficie, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text(" · ${pe.saniape.app.data.staff.etiquetaEnlace(enlace)}", color = c.superficie.copy(alpha = 0.9f),
-                        fontSize = 13.sp, maxLines = 1)
+                    Text("Unirse a la videollamada", color = c.sobreNavy, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text(" · ${pe.saniape.app.data.staff.etiquetaEnlace(enlace)}", color = c.sobreNavy.copy(alpha = 0.9f),
+                        fontSize = 13.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false))
                 }
             }
             estado == pe.saniape.app.data.staff.EstadoUnirsePaciente.ANTES -> {

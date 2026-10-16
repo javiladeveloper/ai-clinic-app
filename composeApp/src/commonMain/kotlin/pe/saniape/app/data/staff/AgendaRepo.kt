@@ -218,7 +218,8 @@ object AgendaRepo {
         return ("modalidad" in m || "enlace_" in m) && ("42703" in m || "does not exist" in m || "column" in m)
     }
 
-    private suspend fun <T> conColumnasVirtuales(traer: suspend (String) -> T): T {
+    /** [traer] con las columnas virtuales; sin ellas si la base no las tiene (ver [virtualesEnBase]). */
+    internal suspend fun <T> conColumnasVirtuales(traer: suspend (String) -> T): T {
         if (!virtualesEnBase) return traer(SELECT_CITA)
         return try {
             traer(SELECT_CITA + COLUMNAS_VIRTUALES)
@@ -1016,14 +1017,14 @@ object AgendaBanners {
 
     private fun mapCita(o: JsonObject) = AgendaRepo.mapearCita(o)
 
-    private const val SEL = AgendaRepo.SELECT_CITA
 
     suspend fun cargar(hoy: String, manana: String, miTerapeutaId: String?, esGestor: Boolean): BannersAgenda {
         // Multisede: los avisos (mañana / vencidas) son de la sede activa, como la agenda.
         val sede = SedeActiva.filtro
         // Mañana: citas de mañana no completadas.
-        val mananaCitas = Supabase.client.postgrest["citas"]
-            .select(Columns.raw(SEL)) {
+        // Con las columnas virtuales (🎥 y el enlace en el WhatsApp del banner), con el mismo respaldo.
+        val mananaCitas = AgendaRepo.conColumnasVirtuales { sel -> Supabase.client.postgrest["citas"]
+            .select(Columns.raw(sel)) {
                 filter {
                     eq("fecha", manana)
                     neq("estado", "Completada")
@@ -1033,7 +1034,7 @@ object AgendaBanners {
                 }
                 order("hora", Order.ASCENDING)
             }
-            .decodeList<JsonObject>().map { mapCita(it) }
+            .decodeList<JsonObject>() }.map { mapCita(it) }
 
         // Vencidas: fecha < hoy y >= hace 7 días + estado Pendiente/Confirmada. Las más
         // viejas (>7 días) las cierra solo el cron de la web (/api/cron/cerrar-citas-viejas),
@@ -1042,8 +1043,8 @@ object AgendaBanners {
             kotlinx.datetime.LocalDate.parse(hoy)
                 .plus(-7, kotlinx.datetime.DateTimeUnit.DAY).toString()
         }.getOrDefault(hoy)
-        val vencidas = Supabase.client.postgrest["citas"]
-            .select(Columns.raw(SEL)) {
+        val vencidas = AgendaRepo.conColumnasVirtuales { sel -> Supabase.client.postgrest["citas"]
+            .select(Columns.raw(sel)) {
                 filter {
                     lt("fecha", hoy)
                     gte("fecha", hace7)
@@ -1054,7 +1055,7 @@ object AgendaBanners {
                 order("fecha", Order.DESCENDING)
                 limit(50)
             }
-            .decodeList<JsonObject>().map { mapCita(it) }
+            .decodeList<JsonObject>() }.map { mapCita(it) }
 
         // Pendientes de agendar (solo gestor/recepción): derivaciones + exámenes INTERNOS
         // (lugar=Interno), ambos con un área de destino. Recepción los agenda en esa área.

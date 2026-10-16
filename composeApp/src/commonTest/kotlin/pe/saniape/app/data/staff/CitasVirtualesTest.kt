@@ -55,6 +55,23 @@ class CitasVirtualesTest {
     }
 
     @Test
+    fun rechaza_espacios_no_ascii_como_el_s_de_javascript() {
+        // NBSP (pegado desde WhatsApp/Word), espacio fino, ideográfico, BOM, separador de línea.
+        listOf(' ', ' ', ' ', '　', '﻿', ' ', '\u000B').forEach { ch ->
+            malo("https://meet.google.com/abc${ch}def")
+        }
+        assertEquals("https://meet.google.com/abc-defg-hij", ok("https://meet.google.com/abc-defg-hij"))
+    }
+
+    @Test
+    fun enlace_seguro_revalida_antes_de_abrir() {
+        assertEquals("https://zoom.us/j/1", enlaceSeguro("zoom.us/j/1"))
+        assertNull(enlaceSeguro("javascript:alert(1)"))
+        assertNull(enlaceSeguro("https://meet.google.com/a b"))
+        assertNull(enlaceSeguro(null))
+    }
+
+    @Test
     fun rechaza_vacio_no_texto_sin_dominio_con_usuario_y_largo() {
         malo("")
         malo(null)

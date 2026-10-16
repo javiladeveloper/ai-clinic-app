@@ -88,8 +88,8 @@ fun PanelVideollamada(
             FilaVirtual(
                 id = cita.id, modalidad = cita.modalidad, enlaceVirtual = cita.enlaceVirtual,
                 enlaceOrigen = cita.enlaceOrigen,
-                // Meet automático sin enlace: "creando…" hasta que el servidor diga su estado.
-                meetPendiente = cita.enlaceOrigen == ORIGEN_MEET_AUTO && cita.enlaceVirtual == null,
+                // Sin enlace hasta que el servidor diga su estado (creando / error).
+                meetPendiente = null,
             ),
         )
     }
@@ -107,7 +107,16 @@ fun PanelVideollamada(
     // servidor (citas_meet, que la app NO lee). Se pregunta al abrir, solo en ese caso.
     val preguntarEstado = fila.esVirtual && fila.enlaceOrigen == ORIGEN_MEET_AUTO && fila.enlaceVirtual == null
     LaunchedEffect(cita.id, preguntarEstado) {
-        if (preguntarEstado) AgendaRepo.estadoVirtualCita(cita.id)?.let { fila = it }
+        if (!preguntarEstado) return@LaunchedEffect
+        // Si no se pudo preguntar, se dice y se ofrece "Reintentar Meet".
+        fila = AgendaRepo.estadoVirtualCita(cita.id)
+            ?: fila.copy(meetError = "No se pudo saber el estado del Meet (sin conexión). Reintenta o pega un enlace.")
+    }
+
+    /** Abre el enlace solo si sigue siendo válido (revalidado como en la web). */
+    fun abrir(enlace: String) {
+        val ok = pe.saniape.app.data.staff.enlaceSeguro(enlace)
+        if (ok != null) acciones.abrirUrl(ok) else Toaster.error("Ese enlace no es válido: cámbialo desde \"Cambiar enlace\".")
     }
 
     fun ejecutar(exito: String, llamada: suspend () -> AgendaRepo.RespuestaVirtual) {
@@ -176,12 +185,12 @@ fun PanelVideollamada(
         fila.enlaceVirtual?.let { enlace ->
             Spacer(Modifier.height(8.dp))
             if (enCurso) {
-                BotonUnirse(enlace) { acciones.abrirUrl(enlace) }
+                BotonUnirse(enlace) { abrir(enlace) }
                 Spacer(Modifier.height(6.dp))
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(enlace, color = c.navy, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f).tocable { acciones.abrirUrl(enlace) })
+                    modifier = Modifier.weight(1f).tocable { abrir(enlace) })
                 Spacer(Modifier.width(8.dp))
                 BotonPanel("Copiar", c.texto) {
                     acciones.copiarTexto(enlace, "Enlace de la videollamada")
@@ -265,7 +274,7 @@ fun PanelVideollamada(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(if (trabajando) "Creando…" else "🎥 Crear Google Meet automáticamente",
-                        color = c.superficie, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        color = c.sobreNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
                 Text("o pega un enlace:", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(vertical = 8.dp))
             } else if (ofrecerMeet && cap != null && !cap.disponible) {

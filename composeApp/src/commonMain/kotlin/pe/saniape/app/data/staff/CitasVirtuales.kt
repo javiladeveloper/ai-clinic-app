@@ -45,8 +45,13 @@ const val MINUTOS_DESPUES_UNIRSE = 60
 const val AVISO_MEET_PLAN =
     "Tu plan no crea el Google Meet solo: pega el enlace de la videollamada (Meet, Zoom…). El Meet automático es de Premium."
 
-/** Mismo patrón que el CHECK `citas_enlace_virtual_chk`. */
-private val RE_ENLACE = Regex("^https://[^\\s<>\"'\\\\]+$")
+/**
+ * Mismo patrón que el CHECK `citas_enlace_virtual_chk` y que la web. Los espacios
+ * van listados (los mismos que `\s` de JavaScript, NBSP incluido): `\s` de Kotlin
+ * es solo ASCII y `(?U)` no existe en todas las plataformas (iOS).
+ */
+private const val ESPACIOS_JS = "\\t\\n\\u000B\\f\\r \\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF"
+private val RE_ENLACE = Regex("^https://[^$ESPACIOS_JS<>\"'\\\\]+$")
 private val RE_ESQUEMA = Regex("^[a-z][a-z0-9+.-]*:", RegexOption.IGNORE_CASE)
 private val RE_DOMINIO_SIN_ESQUEMA = Regex("^[a-z0-9-]+(\\.[a-z0-9-]+)+(/|$)", RegexOption.IGNORE_CASE)
 private val RE_HTTP = Regex("^http://", RegexOption.IGNORE_CASE)
@@ -96,6 +101,12 @@ private fun hostDeAutoridad(autoridad: String): String? {
     } else sinUsuario
     return host.lowercase().takeIf { it.isNotEmpty() }
 }
+
+/**
+ * El enlace listo para abrir, revalidado (un dato viejo o tocado a mano en la
+ * base no se abre sin pasar por la misma regla). null = no es válido.
+ */
+fun enlaceSeguro(url: String?): String? = (validarEnlaceVirtual(url) as? ResultadoEnlace.Ok)?.url
 
 /** El dominio de un enlace (en minúsculas), o null si no tiene forma de URL. */
 fun hostDeEnlace(url: String?): String? {

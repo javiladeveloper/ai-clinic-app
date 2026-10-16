@@ -224,7 +224,11 @@ fun TarjetaCita(
             val enlace = cita.enlaceVirtual
             if (enlace != null && pe.saniape.app.data.staff.puedeUnirseStaff(cita.modalidad, enlace, cita.estado)) {
                 Spacer(Modifier.height(8.dp))
-                BotonUnirse(enlace) { acciones.abrirUrl(enlace) }
+                BotonUnirse(enlace) {
+                    // Revalidado antes de abrir (mismo criterio que la web y la base).
+                    pe.saniape.app.data.staff.enlaceSeguro(enlace)?.let { acciones.abrirUrl(it) }
+                        ?: pe.saniape.app.ui.Toaster.error("Ese enlace no es válido: cámbialo desde el detalle de la cita.")
+                }
             }
 
             // Dinero de la cita (como la web): solo Consulta/Evaluación con costo; la
