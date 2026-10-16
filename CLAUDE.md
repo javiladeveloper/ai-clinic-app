@@ -98,6 +98,15 @@ iPhone físico + App Store (Fase 3).
 
 ---
 
+## 🍎 SI ESTÁS EN LA MAC (2026-10-16): configurar Xcode Cloud
+
+**Sigue [docs/XCODE-CLOUD-SETUP-MAC.md](docs/XCODE-CLOUD-SETUP-MAC.md) paso a paso.**
+Ahí está qué ya quedó hecho en el repo (script `ci_post_clone.sh`, esquema compartido,
+versión 2.59.0), qué hace Jonathan en pantalla y qué reportar al terminar. La sección
+de abajo (julio) es historia: iOS ya compiló, corrió y subió a TestFlight en julio–agosto.
+
+---
+
 ## 🍎 iOS — DÓNDE NOS QUEDAMOS (2026-07-07)
 
 Se agregó la plataforma **iOS** a la app (antes era Android-only). **Todo el andamiaje
