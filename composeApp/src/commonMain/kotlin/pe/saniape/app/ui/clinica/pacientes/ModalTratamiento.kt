@@ -162,6 +162,15 @@ fun ModalCrearTratamiento(
      * la sesión #1 es esa cita, así que no se ofrece "Agendarla ahora" (duplicaría).
      */
     desdeCita: Boolean = false,
+    /**
+     * 🧾 "¿Lo está pensando o son varios servicios? Arma un presupuesto": al crear,
+     * quien llama lo ofrece para cambiar el plan único por un presupuesto con varios
+     * servicios y precio de paquete (gemelo de `onArmarPresupuesto` de TratamientoForm).
+     * null = no se ofrece.
+     */
+    onArmarPresupuesto: (() -> Unit)? = null,
+    /** Plan sin presupuestos (Básico / vencido): el atajo se ve con 🔒 y lleva a mejorar el plan. */
+    presupuestoBloqueado: Boolean = false,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
@@ -619,6 +628,23 @@ fun ModalCrearTratamiento(
                 Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
+                // 🧾 Atajo a un presupuesto (solo al crear, no en "Nuevo paquete" ni en el plan psicológico).
+                if (onArmarPresupuesto != null && renovacion == null && prefillPlan == null) {
+                    val accionesPresu = pe.saniape.app.ui.recordarAcciones()
+                    val formaPresu = RoundedCornerShape(Sania.shape.sm.dp)
+                    Text(
+                        if (presupuestoBloqueado) "🔒 Presupuestos con precio de paquete — en Premium y Plus. Mejorar plan →"
+                        else "🧾 ¿Lo está pensando o son varios servicios? Arma un presupuesto con precio de paquete y envíaselo.",
+                        color = if (presupuestoBloqueado) c.textoSuave else c.texto, fontSize = 12.sp,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp).clip(formaPresu).background(c.chipBg)
+                            .border(1.dp, c.lav, formaPresu)
+                            .clickable {
+                                if (presupuestoBloqueado) accionesPresu.abrirUrl("${pe.saniape.app.data.Supabase.SITE_URL}/suscripcion")
+                                else onArmarPresupuesto()
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                    )
+                }
                 // Bloque 1 · ATENCIÓN ─────────────────────────────────────
                 Tarjeta(titulo = "Atención", icono = "🩺") {
                     // ⚡ Plantilla ("combo" de la clínica): autocompleta servicio + comercial + clínico.

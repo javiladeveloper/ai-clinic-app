@@ -268,6 +268,7 @@ data class ContextoStaff(
         "actividadEquipo" -> planEstado.features.actividadEquipo
         "calendarioSync" -> planEstado.features.calendarioSync
         "citasVirtualesMeet" -> planEstado.features.citasVirtualesMeet
+        "presupuestos" -> planEstado.features.presupuestos
         else -> false
     }
 
@@ -362,6 +363,12 @@ data class PlanFeatures(
      * pegar el enlace (el servidor decide igual al crear la cita).
      */
     val citasVirtualesMeet: Boolean = false,
+    /**
+     * 🧾 Presupuestos y paquetes (Premium, Plus y prueba; lib/plan.ts
+     * `presupuestos`). Básico o vencido: la pestaña se ve con 🔒 y el servidor
+     * responde 403 PLAN_REQUERIDO. Backend sin el campo → false (candado).
+     */
+    val presupuestos: Boolean = false,
 )
 
 data class ClinicaRef(val id: String, val nombre: String)

@@ -107,6 +107,8 @@ fun PantallaFichaPaciente(
     embarazoAlAbrir: Boolean = false,
     /** …con un control prenatal nuevo vinculado a ESA cita. */
     embarazoCitaId: String? = null,
+    /** 🧾 Desde Más → Presupuestos pendientes: la ficha arranca en la pestaña 🧾. */
+    presupuestosAlAbrir: Boolean = false,
 ) {
     // Multipaís: el dinero de la ficha va en la moneda de la sede del paciente
     // (solo con "pacientes por sede"; si no, la de la sede activa). Una clínica de
@@ -120,7 +122,7 @@ fun PantallaFichaPaciente(
     androidx.compose.runtime.CompositionLocalProvider(
         pe.saniape.app.ui.LocalMoneda provides pe.saniape.app.data.staff.monedaDeFila(sedePaciente),
     ) {
-        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir, sedePaciente, embarazoAlAbrir, embarazoCitaId)
+        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir, sedePaciente, embarazoAlAbrir, embarazoCitaId, presupuestosAlAbrir)
     }
 }
 
@@ -135,6 +137,7 @@ private fun PantallaFichaPacienteContenido(
     sedePaciente: String? = null,
     embarazoAlAbrir: Boolean = false,
     embarazoCitaId: String? = null,
+    presupuestosAlAbrir: Boolean = false,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val tpl = LocalTerminologiaPaciente.current
@@ -175,6 +178,7 @@ private fun PantallaFichaPacienteContenido(
             else if (indicacionesAlAbrir != null) "indicaciones"
             else if (ortodonciaAlAbrir != null) "ortodoncia"
             else if (embarazoAlAbrir) "embarazo"
+            else if (presupuestosAlAbrir && pe.saniape.app.data.staff.puedeVerPresupuestos { ctx.puede(it) }) "presupuestos"
             else nutricionAlAbrir?.tab ?: "atenciones",
         )
     }
@@ -186,6 +190,9 @@ private fun PantallaFichaPacienteContenido(
     // 😁 Ortodoncia: la cita de la agenda (vale una vez: se suelta al registrar su
     // control o al pasar a otra pestaña).
     var flujoOrto by remember { mutableStateOf(ortodonciaAlAbrir) }
+    // 🧾 Presupuestos: "🧾 Arma un presupuesto" (formulario de crear tratamiento) abre
+    // el editor nuevo UNA vez, vinculado a la cita de la que se venía (si la hay).
+    var flujoPresu by remember { mutableStateOf<Pair<String?, Boolean>>(null to false) }
     // Nutrición: el flujo medidas → plan con la cita de la que se viene (los
     // "abrir de una" valen una vez: al pasar a otra pestaña se apagan).
     var flujoNutri by remember {
@@ -997,6 +1004,9 @@ private fun PantallaFichaPacienteContenido(
                     // después de las de la especialidad y antes de Pagos/Resumen (como la web).
                     // 📝 y no 📋: 📋 ya es Resumen en esta misma barra.
                     add("indicaciones" to "📝 Indicaciones")
+                    // 🧾 Presupuestos: TODAS las especialidades (ver: sesiones, pagos o
+                    // pacientes, como el API). Sin plan Premium se ve con 🔒.
+                    if (pe.saniape.app.data.staff.puedeVerPresupuestos { ctx.puede(it) }) add("presupuestos" to "🧾 Presupuestos")
                     if (ctx.puede("pagos")) add("pagos" to "💰 Pagos")
                     add("resumen" to "📋 Resumen")
                 }
@@ -1228,6 +1238,28 @@ private fun PantallaFichaPacienteContenido(
                     }
                     // 📝 Indicaciones para casa (todas las especialidades): consulta SOLO al
                     // abrirse. Mismo permiso que el API; el resto la ve (e imprime) en solo lectura.
+                    // 🧾 Presupuestos (todas las especialidades): consulta SOLO al abrirse.
+                    "presupuestos" -> if (pe.saniape.app.data.staff.puedeVerPresupuestos { ctx.puede(it) }) {
+                        pe.saniape.app.ui.clinica.presupuestos.PresupuestosTab(
+                            ctx = ctx,
+                            pacienteId = paciente.id,
+                            pacienteNombre = paciente.nombre,
+                            pacienteDocumento = paciente.dni,
+                            telefono = pe.saniape.app.data.staff.telefonoParaAvisos(
+                                paciente.telefono, paciente.apoderadoTelefono, paciente.apoderadoRecibeAvisos,
+                            ),
+                            pais = pe.saniape.app.data.staff.paisDeFila(sedePaciente),
+                            moneda = moneda,
+                            zona = ctx.zonaDeSede(sedePaciente),
+                            inactivo = pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
+                            citaId = flujoPresu.first,
+                            especialidadId = paciente.tratamientos.mapNotNull { it.especialidadId }.distinct().singleOrNull(),
+                            abrirNuevo = flujoPresu.second,
+                            onAbiertoNuevo = { flujoPresu = flujoPresu.first to false },
+                            onCambioFuerte = { recargar() },
+                            onAgendar = { pf -> crearCita = pf },
+                        )
+                    }
                     "indicaciones" -> {
                         // La especialidad de la hoja: la de la cita de la agenda o, si el
                         // paciente tiene UNA sola entre sus tratamientos, esa.
@@ -1557,6 +1589,15 @@ private fun PantallaFichaPacienteContenido(
             diagnosticoPrevio = renovar?.diagnostico ?: paciente.diagnostico,
             renovacion = renovar,
             onCancelar = { creandoTratamiento = false; renovarDesde = null },
+            // 🧾 "Arma un presupuesto": a la pestaña 🧾 con el editor nuevo abierto.
+            onArmarPresupuesto = if (renovar == null && pe.saniape.app.data.staff.puedeArmarPresupuesto { ctx.puede(it) } &&
+                !pe.saniape.app.data.staff.fichaInactiva(paciente.estado)
+            ) ({
+                creandoTratamiento = false
+                flujoPresu = null to true
+                tab = "presupuestos"
+            }) else null,
+            presupuestoBloqueado = !ctx.can("presupuestos"),
             onGuardar = { nuevo ->
                 creandoTratamiento = false
                 renovarDesde = null

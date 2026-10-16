@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica
 
+import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.togetherWith
@@ -106,6 +107,9 @@ fun ClinicaConTabs(
     var verEquipo by remember { mutableStateOf(false) }
     var verComisiones by remember { mutableStateOf(false) }
     var verRetencion by remember { mutableStateOf(false) }
+    // 🧾 Presupuestos pendientes (Más) y la ficha que abre en su pestaña 🧾.
+    var verPresupuestos by remember { mutableStateOf(false) }
+    var fichaEnPresupuestos by remember { mutableStateOf(false) }
     var verCampanias by remember { mutableStateOf(false) }
     var verActividad by remember { mutableStateOf(false) }
     var verMiPlan by remember { mutableStateOf(false) }
@@ -168,8 +172,9 @@ fun ClinicaConTabs(
 
     // Con un flujo a pantalla completa abierto, el "atrás" es de ese flujo (tiene
     // su propio ManejarAtras, con la confirmación de salir sin guardar).
-    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verEspecialidades || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verCampanias || verActividad || verMiPlan || verMiCalendario || verAjustes || horarioDe != null || tab != TabClinica.Inicio)) {
+    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verEspecialidades || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verPresupuestos || verCampanias || verActividad || verMiPlan || verMiCalendario || verAjustes || horarioDe != null || tab != TabClinica.Inicio)) {
         when {
+            verPresupuestos -> verPresupuestos = false
             verRetencion -> verRetencion = false
             verCampanias -> verCampanias = false
             verActividad -> verActividad = false
@@ -259,6 +264,7 @@ fun ClinicaConTabs(
         verEquipo = false
         verComisiones = false
         verRetencion = false
+        verPresupuestos = false
         verCampanias = false; verActividad = false; verMiPlan = false; verMiCalendario = false
         verAjustes = false
     }
@@ -295,7 +301,7 @@ fun ClinicaConTabs(
         urlPagina = pe.saniape.app.data.staff.OnboardingRepo.slugClinica(contexto.clinicaId)
             ?.let { pe.saniape.app.data.staff.urlPaginaClinica(it) }
     }
-    val hayOverlay = verSesiones || verCaja || verEspecialidades || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verCampanias || verActividad || verMiPlan || verMiCalendario || verAjustes || horarioDe != null
+    val hayOverlay = verSesiones || verCaja || verEspecialidades || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verPresupuestos || verCampanias || verActividad || verMiPlan || verMiCalendario || verAjustes || horarioDe != null
     val tabs = buildList {
         add(TabClinica.Inicio)
         if (verAgenda) add(TabClinica.Agenda)
@@ -372,6 +378,8 @@ fun ClinicaConTabs(
                         onCambioClinica = { pe.saniape.app.data.staff.DashboardRepo.limpiarCache(); pe.saniape.app.data.staff.OdontogramaRepo.limpiarCache(); pe.saniape.app.data.staff.FotosRepo.limpiarCache(); pe.saniape.app.data.staff.ChipsRepo.limpiar(); pe.saniape.app.data.staff.FrasesCampoRepo.limpiar(); tab = TabClinica.Inicio; intento++ },
                         onAbrirSesiones = if (contexto.puede("sesiones")) ({ verSesiones = true }) else null,
                         onAbrirCaja = if (contexto.puede("pagos")) ({ verCaja = true }) else null,
+                        // 🧾 Presupuestos pendientes: mismo permiso que ver presupuestos (el plan lo muestra la pantalla).
+                        onAbrirPresupuestos = if (pe.saniape.app.data.staff.puedeVerPresupuestos { contexto.puede(it) }) ({ verPresupuestos = true }) else null,
                         // Nativo (crear + asistente). Mismo permiso que /api/staff/especialidad/*.
                         onAbrirEspecialidades = if (contexto.puede("equipo")) ({ verEspecialidades = true }) else null,
                         // 📈 Reportes nativo (mes a mes). Mismo permiso que /api/reportes/series.
@@ -517,6 +525,25 @@ fun ClinicaConTabs(
                 }
             }
             AnimatedVisibility(
+                visible = verPresupuestos && pe.saniape.app.data.staff.puedeVerPresupuestos { contexto.puede(it) },
+                enter = entrarDetalle(), exit = salirDetalle(),
+            ) {
+                val alcance = androidx.compose.runtime.rememberCoroutineScope()
+                Box(Modifier.fillMaxSize().background(c.fondo)) {
+                    pe.saniape.app.ui.clinica.presupuestos.PantallaPresupuestosPendientes(
+                        ctx = contexto,
+                        onSalir = { verPresupuestos = false },
+                        onAbrirFicha = { id ->
+                            alcance.launch {
+                                val pac = runCatching { pe.saniape.app.data.staff.PacientesRepo.porId(id) }.getOrNull()
+                                if (pac == null) pe.saniape.app.ui.Toaster.error("No se pudo abrir la ficha")
+                                else { fichaEnPresupuestos = true; fichaBuscada = pac }
+                            }
+                        },
+                    )
+                }
+            }
+            AnimatedVisibility(
                 visible = verCampanias && (contexto.puede("servicios") || contexto.puede("marketing")),
                 enter = entrarDetalle(), exit = salirDetalle(),
             ) {
@@ -588,7 +615,8 @@ fun ClinicaConTabs(
                 pac?.let {
                     Box(Modifier.fillMaxSize().background(c.fondo)) {
                         pe.saniape.app.tutoriales.PantallaTutorial("Ficha") { pe.saniape.app.ui.clinica.pacientes.PantallaFichaPaciente(
-                            ctx = contexto, pacienteInicial = it, onCerrar = { fichaBuscada = null },
+                            ctx = contexto, pacienteInicial = it, onCerrar = { fichaBuscada = null; fichaEnPresupuestos = false },
+                            presupuestosAlAbrir = fichaEnPresupuestos,
                         ) }
                     }
                 }
