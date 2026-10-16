@@ -539,6 +539,23 @@ class PresupuestosTest {
         assertEquals("999", textoPrecioCampo(999.0))
     }
 
+    @Test fun conversionParcialMuestraLoCreado() {
+        // 409 PARCIAL: el JSON del rechazo llega en `cuerpo` (resultadoDeRespuesta).
+        val r = AtencionRepo.resultadoDeRespuesta(409, """{"error":"Se crearon 1 de 2","codigo":"PARCIAL","tratamientos":[{"id":"t1","clave":"tox","nombre":"Toxina","monto":675,"modalidad":"Unidades","totalSesiones":null,"procedimientoId":"p1","terapeutaId":null,"sedeId":null,"yaExistia":false}]}""")
+        assertFalse(r.registrada)
+        assertEquals("PARCIAL", r.codigo)
+        val l = tratamientosDeConversion(r)
+        assertEquals(listOf("t1"), l.map { it.id })
+        assertEquals(675.0, l[0].monto); assertEquals("Unidades", l[0].modalidad)
+        assertEquals(emptyList(), tratamientosDeConversion(AtencionRepo.resultadoDeRespuesta(500, null)))
+    }
+
+    @Test fun clavesNuevasDistintas() {
+        val claves = (1..200).map { nuevaClave() }.toSet()
+        assertEquals(200, claves.size)
+        assertTrue(claves.all { Regex("^l_[a-z0-9]{10}$").matches(it) })
+    }
+
     @Test fun hojaSinNotasInternasYEscapada() {
         val p = presu().copy(notasPaciente = "<b>Incluye</b>", estado = "Aceptado", aceptadoAt = "2026-10-16T20:30:00Z", aceptadoCanal = "en_persona")
         val h = htmlPresupuesto(p, "Glam", null, "http://x/logo.png", "#7c3aed", "María", "12345678", "Dr. Juan", "America/Lima")

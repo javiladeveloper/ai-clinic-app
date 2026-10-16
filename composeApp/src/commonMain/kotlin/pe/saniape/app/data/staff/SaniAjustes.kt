@@ -119,11 +119,11 @@ fun validarBienvenida(valor: String?): String? {
  * "virtual" a secas NO divulga ("consultas virtuales"): hace falta "asistente
  * virtual", "bot", "automático" o "inteligencia artificial". GEMELA de YA_DIVULGA de LeadAI.
  */
-private val YA_DIVULGA = Regex("asistente virtual|\\bbot\\b|autom[aá]tic|inteligencia artificial", RegexOption.IGNORE_CASE)
+private val YA_DIVULGA = Regex("(?u)asistente virtual|\\bbot\\b|autom[aá]tic|inteligencia artificial", RegexOption.IGNORE_CASE)
 
 /** Abreviaturas que terminan en punto sin terminar la oración ("Dr.", "Sra."). */
 private val ABREVIATURAS = Regex(
-    "(?:^|[\\s(])(?:dr|dra|dres|sr|sra|srta|lic|ing|mg|mgtr|psic|ps|obst|odont|tec|av|jr|nro|dpto|urb|mz|lt|of|cel|telf|tlf|st)\\.$",
+    "(?u)(?:^|[\\s(])(?:dr|dra|dres|sr|sra|srta|lic|ing|mg|mgtr|psic|ps|obst|odont|tec|av|jr|nro|dpto|urb|mz|lt|of|cel|telf|tlf|st)\\.$",
     RegexOption.IGNORE_CASE,
 )
 
@@ -230,7 +230,7 @@ private val ENCLITICOS = listOf(
 
 private class Reemplazo(val re: Regex, val rep: (MatchResult) -> String)
 
-private fun r(patron: String, reemplazo: String) = Reemplazo(Regex("$I(?:$patron)$F", RegexOption.IGNORE_CASE)) { reemplazo }
+private fun r(patron: String, reemplazo: String) = Reemplazo(Regex("(?u)$I(?:$patron)$F", RegexOption.IGNORE_CASE)) { reemplazo }
 
 private val REEMPLAZOS: List<Reemplazo> by lazy {
     listOf(
@@ -238,18 +238,18 @@ private val REEMPLAZOS: List<Reemplazo> by lazy {
         r("te has", "se ha"), r("te hiciste", "se hizo"), r("te atendiste", "se atendió"), r("te vas", "se va"),
         r("te enfrentas", "se enfrenta"), r("te preocupes", "se preocupe"), r("te sientas", "se sienta"),
         r("te sientes", "se siente"), r("te animas", "se anima"), r("te olvides", "se olvide"),
-        Reemplazo(Regex("$I(?:te (lo|la|los|las))$F", RegexOption.IGNORE_CASE)) { m -> "se ${m.groupValues[1]}" },
+        Reemplazo(Regex("(?u)$I(?:te (lo|la|los|las))$F", RegexOption.IGNORE_CASE)) { m -> "se ${m.groupValues[1]}" },
         r("dime tú", "dígame usted"), r("tú mismo", "usted mismo"), r("tú misma", "usted misma"),
         r("contigo", "con usted"),
-        Reemplazo(Regex("(?<!(?:se|los|las|lo|la|le|les) )${I}ven$F", RegexOption.IGNORE_CASE)) { "venga" },
-        Reemplazo(Regex("$I(${ENCLITICOS.joinToString("|")})te$F", RegexOption.IGNORE_CASE)) { m -> "${m.groupValues[1]}le" },
-        Reemplazo(Regex("$I(${VERBOS.keys.filter { it !in IMPERATIVO_AMBIGUO }.joinToString("|")})$F", RegexOption.IGNORE_CASE)) { m ->
+        Reemplazo(Regex("(?u)(?<!(?:se|los|las|lo|la|le|les) )${I}ven$F", RegexOption.IGNORE_CASE)) { "venga" },
+        Reemplazo(Regex("(?u)$I(${ENCLITICOS.joinToString("|")})te$F", RegexOption.IGNORE_CASE)) { m -> "${m.groupValues[1]}le" },
+        Reemplazo(Regex("(?u)$I(${VERBOS.keys.filter { it !in IMPERATIVO_AMBIGUO }.joinToString("|")})$F", RegexOption.IGNORE_CASE)) { m ->
             VERBOS[m.value.lowercase()] ?: m.value
         },
-        Reemplazo(Regex("(^|[.!?¡¿]\\s*|—\\s*|:\\s*)(${IMPERATIVO_AMBIGUO.joinToString("|")})$F", RegexOption.IGNORE_CASE)) { m ->
+        Reemplazo(Regex("(?u)(^|[.!?¡¿]\\s*|—\\s*|:\\s*)(${IMPERATIVO_AMBIGUO.joinToString("|")})$F", RegexOption.IGNORE_CASE)) { m ->
             m.groupValues[1] + (VERBOS[m.groupValues[2].lowercase()] ?: m.groupValues[2])
         },
-        Reemplazo(Regex("$I(agenda|reserva)(?= (?:tu|tus)$F)", RegexOption.IGNORE_CASE)) { m -> VERBOS[m.value.lowercase()] ?: m.value },
+        Reemplazo(Regex("(?u)$I(agenda|reserva)(?= (?:tu|tus)$F)", RegexOption.IGNORE_CASE)) { m -> VERBOS[m.value.lowercase()] ?: m.value },
         r("tú", "usted"), r("ti", "usted"), r("tus", "sus"), r("tu", "su"), r("te", "le"),
     )
 }

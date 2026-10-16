@@ -41,6 +41,20 @@ import pe.saniape.app.ui.clinica.pacientes.EtqForm
 import pe.saniape.app.ui.clinica.pacientes.coloresCampoForm
 import pe.saniape.app.ui.theme.Sania
 
+/**
+ * Anti doble toque para lo que abre otra app o un visor (WhatsApp, PDF, la ficha):
+ * dos toques seguidos (en ~1,5 s) abren una sola vez.
+ */
+internal class UnToque(private val ventanaMs: Long = 1_500) {
+    private var ultimo = 0L
+    fun permitir(): Boolean {
+        val ahora = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+        if (ahora - ultimo < ventanaMs) return false
+        ultimo = ahora
+        return true
+    }
+}
+
 /** Colores del estado visible (BADGE_ESTADO de la web: gris, azul, ámbar, verde, rojo). */
 @Composable
 internal fun coloresEstadoPresupuesto(estado: String): Pair<Color, Color> {

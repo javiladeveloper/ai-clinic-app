@@ -168,6 +168,9 @@ fun PantallaAgenda(
     var fichaEmbarazoCita by remember { mutableStateOf<String?>(null) }
     // La ficha se abre en 📝 Indicaciones con una hoja nueva (plantilla sugerida + cita vinculada).
     var fichaIndicaciones by remember { mutableStateOf<pe.saniape.app.data.staff.AperturaIndicaciones?>(null) }
+    // 🧾 "Arma un presupuesto" (formulario de crear plan): la ficha abre el editor nuevo vinculado a la cita.
+    var fichaPresupuestoCita by remember { mutableStateOf<String?>(null) }
+    var fichaPresupuesto by remember { mutableStateOf(false) }
     // La ficha se abre en 😁 Ortodoncia con el control vinculado a la cita.
     var fichaOrtodoncia by remember { mutableStateOf<pe.saniape.app.ui.clinica.ortodoncia.AperturaOrtodoncia?>(null) }
     var cargandoFicha by remember { mutableStateOf(false) }
@@ -265,6 +268,27 @@ fun PantallaAgenda(
             fichaPaciente = pac
         }
     }
+    /**
+     * 🧾 "¿Lo está pensando? Arma un presupuesto": a la ficha en la pestaña 🧾 con el
+     * editor nuevo abierto y vinculado a la cita (gemelo de `rutaFichaPresupuestoNuevo`).
+     */
+    fun abrirFichaPresupuesto(pacienteId: String, citaId: String?) {
+        if (cargandoFicha) return
+        cargandoFicha = true
+        scope.launch {
+            val pac = runCatching { PacientesRepo.porId(pacienteId) }.getOrNull()
+            cargandoFicha = false
+            if (pac == null) {
+                pe.saniape.app.ui.Toaster.error("No se pudo abrir la ficha. Revisa tu conexión.")
+                return@launch
+            }
+            fichaPresupuestoCita = citaId
+            fichaPresupuesto = true
+            fichaPaciente = pac
+        }
+    }
+    /** Quien arma presupuestos (sesiones o pagos), con plan o con el candado a la vista. */
+    val ofrecePresupuesto = pe.saniape.app.data.staff.puedeArmarPresupuesto { ctx.puede(it) }
     /**
      * 😁 "Registrar control": a la ficha en la pestaña 😁 con el control vinculado a
      * esta cita (el suyo si ya lo tiene; sin plan, primero el plan). Gemelo de
@@ -822,6 +846,11 @@ fun PantallaAgenda(
                 diagnosticoPrevio = prefill.diagnostico,
                 prefillPlan = prefill,
                 onCancelar = { planPsico = null },
+                onArmarPresupuesto = if (ofrecePresupuesto) ({ citaOrigen ->
+                    planPsico = null
+                    abrirFichaPresupuesto(pid, citaOrigen ?: cita.id)
+                }) else null,
+                presupuestoBloqueado = !ctx.can("presupuestos"),
                 onGuardar = { nuevo ->
                     planPsico = null
                     scope.launch {
@@ -1287,6 +1316,11 @@ fun PantallaAgenda(
             citaOrigenId = citaTrat.id,
             terapeutaInicialId = citaTrat.terapeutaId,
             onCancelar = { cerrarTratamiento() },
+            onArmarPresupuesto = if (ofrecePresupuesto) ({ citaOrigen ->
+                cerrarTratamiento()
+                abrirFichaPresupuesto(pidTrat, citaOrigen ?: citaTrat.id)
+            }) else null,
+            presupuestoBloqueado = !ctx.can("presupuestos"),
             onGuardar = { nuevo ->
                 cerrarTratamiento()
                 scope.launch {
@@ -1395,13 +1429,15 @@ fun PantallaAgenda(
         Box(Modifier.fillMaxSize().background(c.fondo)) {
             pe.saniape.app.tutoriales.PantallaTutorial("Ficha") { PantallaFichaPaciente(
                 ctx = ctx, pacienteInicial = pac,
-                onCerrar = { fichaPaciente = null; fichaEjercicios = null; fichaNutricion = null; fichaEmbarazo = false; fichaEmbarazoCita = null; fichaIndicaciones = null; fichaOrtodoncia = null },
+                onCerrar = { fichaPaciente = null; fichaEjercicios = null; fichaNutricion = null; fichaEmbarazo = false; fichaEmbarazoCita = null; fichaIndicaciones = null; fichaOrtodoncia = null; fichaPresupuesto = false; fichaPresupuestoCita = null },
                 ejerciciosAlAbrir = fichaEjercicios,
                 nutricionAlAbrir = fichaNutricion,
                 embarazoAlAbrir = fichaEmbarazo,
                 embarazoCitaId = fichaEmbarazoCita,
                 indicacionesAlAbrir = fichaIndicaciones,
                 ortodonciaAlAbrir = fichaOrtodoncia,
+                presupuestoNuevoCitaId = fichaPresupuestoCita,
+                presupuestoNuevo = fichaPresupuesto,
             ) }
         }
     }

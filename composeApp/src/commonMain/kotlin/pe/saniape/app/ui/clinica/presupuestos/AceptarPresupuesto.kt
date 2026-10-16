@@ -51,7 +51,7 @@ import pe.saniape.app.data.staff.repartirAdelanto
 import pe.saniape.app.data.staff.textoCantidad
 import pe.saniape.app.data.staff.tipoAgendaDeModalidad
 import pe.saniape.app.data.staff.totalesDe
-import pe.saniape.app.data.staff.tratamientosConvertidosDeJson
+import pe.saniape.app.data.staff.tratamientosDeConversion
 import pe.saniape.app.ui.Toaster
 import pe.saniape.app.ui.clinica.PrefillCita
 import pe.saniape.app.ui.clinica.pacientes.CajaSelectorForm
@@ -123,13 +123,13 @@ internal fun AceptarPresupuesto(
                 if (crearAhora && puedeConvertir) {
                     val r = PresupuestosRepo.convertir(p.id, terapeutaId, servLibre)
                     if (r.registrada) {
-                        val lista = tratamientosConvertidosDeJson(r.cuerpo)
+                        val lista = tratamientosDeConversion(r)
                         creados = lista
                         Toaster.exito(if (lista.size == 1) "Presupuesto aceptado: tratamiento creado" else "Presupuesto aceptado: ${lista.size} tratamientos creados")
                         onCambio()
                     } else {
                         // Parcial: lo creado queda y se puede agendar; el reintento crea lo que falta.
-                        val parcial = tratamientosConvertidosDeJson(r.rechazo?.datos)
+                        val parcial = tratamientosDeConversion(r)
                         if (parcial.isNotEmpty()) { creados = parcial; onCambio() }
                         Toaster.error(mensajeRechazoPresupuesto(r, "No se pudieron crear los tratamientos"))
                     }

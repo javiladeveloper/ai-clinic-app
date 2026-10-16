@@ -109,6 +109,12 @@ fun PantallaFichaPaciente(
     embarazoCitaId: String? = null,
     /** 🧾 Desde Más → Presupuestos pendientes: la ficha arranca en la pestaña 🧾. */
     presupuestosAlAbrir: Boolean = false,
+    /**
+     * 🧾 "Arma un presupuesto" desde la agenda (tras la valoración / consulta): la
+     * pestaña 🧾 abre el editor nuevo UNA vez, vinculado a esa cita.
+     */
+    presupuestoNuevoCitaId: String? = null,
+    presupuestoNuevo: Boolean = false,
 ) {
     // Multipaís: el dinero de la ficha va en la moneda de la sede del paciente
     // (solo con "pacientes por sede"; si no, la de la sede activa). Una clínica de
@@ -122,7 +128,7 @@ fun PantallaFichaPaciente(
     androidx.compose.runtime.CompositionLocalProvider(
         pe.saniape.app.ui.LocalMoneda provides pe.saniape.app.data.staff.monedaDeFila(sedePaciente),
     ) {
-        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir, sedePaciente, embarazoAlAbrir, embarazoCitaId, presupuestosAlAbrir)
+        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir, sedePaciente, embarazoAlAbrir, embarazoCitaId, presupuestosAlAbrir || presupuestoNuevo, presupuestoNuevoCitaId, presupuestoNuevo)
     }
 }
 
@@ -138,6 +144,8 @@ private fun PantallaFichaPacienteContenido(
     embarazoAlAbrir: Boolean = false,
     embarazoCitaId: String? = null,
     presupuestosAlAbrir: Boolean = false,
+    presupuestoNuevoCitaId: String? = null,
+    presupuestoNuevo: Boolean = false,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val tpl = LocalTerminologiaPaciente.current
@@ -192,7 +200,7 @@ private fun PantallaFichaPacienteContenido(
     var flujoOrto by remember { mutableStateOf(ortodonciaAlAbrir) }
     // 🧾 Presupuestos: "🧾 Arma un presupuesto" (formulario de crear tratamiento) abre
     // el editor nuevo UNA vez, vinculado a la cita de la que se venía (si la hay).
-    var flujoPresu by remember { mutableStateOf<Pair<String?, Boolean>>(null to false) }
+    var flujoPresu by remember { mutableStateOf<Pair<String?, Boolean>>(presupuestoNuevoCitaId to presupuestoNuevo) }
     // Nutrición: el flujo medidas → plan con la cita de la que se viene (los
     // "abrir de una" valen una vez: al pasar a otra pestaña se apagan).
     var flujoNutri by remember {
@@ -1592,9 +1600,10 @@ private fun PantallaFichaPacienteContenido(
             // 🧾 "Arma un presupuesto": a la pestaña 🧾 con el editor nuevo abierto.
             onArmarPresupuesto = if (renovar == null && pe.saniape.app.data.staff.puedeArmarPresupuesto { ctx.puede(it) } &&
                 !pe.saniape.app.data.staff.fichaInactiva(paciente.estado)
-            ) ({
+            ) ({ citaOrigen ->
                 creandoTratamiento = false
-                flujoPresu = null to true
+                // Vinculado a la cita de la que nació el plan (si la hay).
+                flujoPresu = citaOrigen to true
                 tab = "presupuestos"
             }) else null,
             presupuestoBloqueado = !ctx.can("presupuestos"),

@@ -104,6 +104,7 @@ fun PantallaPresupuestosPendientes(
     var bloqueado by remember { mutableStateOf(false) }
     var recarga by remember { mutableIntStateOf(0) }
     var ocupado by remember { mutableStateOf(false) }
+    val unToque = remember { UnToque() }
     // "Recordado" lo marca quien puede escribir (sesiones o pagos). Sin eso, el WhatsApp igual se abre.
     val puedeEscribir = puedeArmarPresupuesto { ctx.puede(it) }
 
@@ -131,6 +132,7 @@ fun PantallaPresupuestosPendientes(
     }
 
     fun recordar(f: FilaPendiente) {
+        if (!unToque.permitir()) return
         val pac = f.p.paciente
         val tel = telefonoParaAvisos(pac?.telefono, pac?.apoderadoTelefono, pac?.apoderadoRecibeAvisos == true)
         val url = enlaceWhatsAppSede(tel, textoRecordatorioWhatsApp(f.p, f.hoy, ctx.clinicaNombre, pac?.nombre), f.pais)
@@ -196,7 +198,7 @@ fun PantallaPresupuestosPendientes(
                                         PildoraPresu(del.size.toString(), fg, bg)
                                     }
                                     Text(g.ayuda, color = c.textoSuave, fontSize = 11.sp)
-                                    del.forEach { f -> androidx.compose.runtime.key(f.p.id) { FilaPresupuestoPendiente(f, onAbrirFicha, ::recordar) } }
+                                    del.forEach { f -> androidx.compose.runtime.key(f.p.id) { FilaPresupuestoPendiente(f, { id -> if (unToque.permitir()) onAbrirFicha(id) }, ::recordar) } }
                                 }
                             }
                         }

@@ -95,6 +95,9 @@ class SaniAjustesTest {
             vistaPreviaBienvenida("¡Hola! Cuéntame qué necesitas.", "Clínica Sol", "usted"),
         )
         assertEquals("¿En qué le puedo ayudar? Agende su cita con usted mismo.", aUsted("¿En qué te puedo ayudar? Agenda tu cita contigo mismo.").replace("con usted mismo", "con usted mismo"))
+        // Mayúsculas acentuadas: IGNORE_CASE con unicode.
+        assertEquals("Está listo y Tiene su cita", aUsted("ESTÁS listo y TIENES tu cita"))
+        assertEquals("Cuénteme", aUsted("CUÉNTAME"))
         assertEquals("Venga con ropa cómoda; se ven los resultados.", aUsted("Ven con ropa cómoda; se ven los resultados."))
         assertEquals("Podemos agendarle hoy y se lo explica la doctora.", aUsted("Podemos agendarte hoy y te lo explica la doctora."))
     }

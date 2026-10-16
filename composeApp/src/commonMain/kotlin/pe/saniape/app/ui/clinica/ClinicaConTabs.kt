@@ -529,13 +529,17 @@ fun ClinicaConTabs(
                 enter = entrarDetalle(), exit = salirDetalle(),
             ) {
                 val alcance = androidx.compose.runtime.rememberCoroutineScope()
+                // Anti doble toque: una sola ficha por toque (se pide por red).
+                var abriendoFicha by remember { mutableStateOf(false) }
                 Box(Modifier.fillMaxSize().background(c.fondo)) {
                     pe.saniape.app.ui.clinica.presupuestos.PantallaPresupuestosPendientes(
                         ctx = contexto,
                         onSalir = { verPresupuestos = false },
                         onAbrirFicha = { id ->
-                            alcance.launch {
+                            if (!abriendoFicha && fichaBuscada == null) alcance.launch {
+                                abriendoFicha = true
                                 val pac = runCatching { pe.saniape.app.data.staff.PacientesRepo.porId(id) }.getOrNull()
+                                abriendoFicha = false
                                 if (pac == null) pe.saniape.app.ui.Toaster.error("No se pudo abrir la ficha")
                                 else { fichaEnPresupuestos = true; fichaBuscada = pac }
                             }

@@ -166,9 +166,10 @@ fun ModalCrearTratamiento(
      * 🧾 "¿Lo está pensando o son varios servicios? Arma un presupuesto": al crear,
      * quien llama lo ofrece para cambiar el plan único por un presupuesto con varios
      * servicios y precio de paquete (gemelo de `onArmarPresupuesto` de TratamientoForm).
-     * null = no se ofrece.
+     * Recibe la cita de origen (la evaluación elegida o la de la agenda) para vincular
+     * el presupuesto. null = no se ofrece.
      */
-    onArmarPresupuesto: (() -> Unit)? = null,
+    onArmarPresupuesto: ((citaOrigen: String?) -> Unit)? = null,
     /** Plan sin presupuestos (Básico / vencido): el atajo se ve con 🔒 y lleva a mejorar el plan. */
     presupuestoBloqueado: Boolean = false,
 ) {
@@ -628,8 +629,8 @@ fun ModalCrearTratamiento(
                 Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
-                // 🧾 Atajo a un presupuesto (solo al crear, no en "Nuevo paquete" ni en el plan psicológico).
-                if (onArmarPresupuesto != null && renovacion == null && prefillPlan == null) {
+                // 🧾 Atajo a un presupuesto (solo al crear; no en "Nuevo paquete").
+                if (onArmarPresupuesto != null && renovacion == null) {
                     val accionesPresu = pe.saniape.app.ui.recordarAcciones()
                     val formaPresu = RoundedCornerShape(Sania.shape.sm.dp)
                     Text(
@@ -640,7 +641,7 @@ fun ModalCrearTratamiento(
                             .border(1.dp, c.lav, formaPresu)
                             .clickable {
                                 if (presupuestoBloqueado) accionesPresu.abrirUrl("${pe.saniape.app.data.Supabase.SITE_URL}/suscripcion")
-                                else onArmarPresupuesto()
+                                else onArmarPresupuesto(evaluacion?.id ?: citaOrigenId)
                             }
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                     )

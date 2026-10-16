@@ -428,14 +428,10 @@ fun fechaHoraAceptacion(iso: String, zona: String?): String = runCatching {
 // ─────────────────────────────────────────────────────────────────────────────
 
 private val RE_CLAVE = Regex("^[A-Za-z0-9_-]{1,40}$")
-private var contadorClave = 0
-
 /** Clave corta y estable para una línea nueva ("l_" + 10 caracteres). */
 fun nuevaClave(): String {
     val abc = "abcdefghijklmnopqrstuvwxyz0123456789"
-    val semilla = kotlinx.datetime.Clock.System.now().toEpochMilliseconds() + (contadorClave++) * 7919L
-    val r = kotlin.random.Random(semilla)
-    return "l_" + (1..10).map { abc[r.nextInt(abc.length)] }.joinToString("")
+    return "l_" + (1..10).map { abc[kotlin.random.Random.Default.nextInt(abc.length)] }.joinToString("")
 }
 
 /**

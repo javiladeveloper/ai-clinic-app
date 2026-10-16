@@ -217,6 +217,13 @@ object PresupuestosRepo {
         enviar(HttpMethod.Delete, "$RUTA/plantillas", buildJsonObject { put("id", id) })
 }
 
+/**
+ * Los tratamientos que dejó /convertir: en el OK y también en el 409 PARCIAL (el
+ * JSON del rechazo llega en `cuerpo`): lo creado se ve, se cobra y se agenda.
+ */
+fun tratamientosDeConversion(r: ResultadoEscritura): List<TratamientoConvertido> =
+    tratamientosConvertidosDeJson(r.cuerpo ?: r.rechazo?.datos)
+
 /** La fila que devolvió una escritura (`cuerpo["presupuesto"]`). */
 fun presupuestoDeRespuesta(r: ResultadoEscritura): Presupuesto? =
     (r.cuerpo?.get("presupuesto") as? JsonObject)?.let(::presupuestoDeJson)

@@ -146,6 +146,7 @@ fun PresupuestosTab(
     var rechazar by remember { mutableStateOf<Pair<Presupuesto, String>?>(null) }
     var borrar by remember { mutableStateOf<Presupuesto?>(null) }
     var ocupado by remember { mutableStateOf(false) }
+    val unToque = remember { UnToque() }
 
     LaunchedEffect(pacienteId, token, planOk) {
         if (!planOk) { cargando = false; return@LaunchedEffect }
@@ -189,6 +190,7 @@ fun PresupuestosTab(
 
     /** WhatsApp con el detalle (urlWhatsApp) y, si era borrador, se marca enviado. */
     fun porWhatsApp(p: Presupuesto) {
+        if (!unToque.permitir()) return
         val texto = textoPresupuestoWhatsApp(p, ctx.clinicaNombre, pacienteNombre, nombreProf(p.terapeutaId), ctx.tienePortal)
         val url = enlaceWhatsAppSede(telefono, texto, pais)
         if (url == null) { Toaster.error("El paciente no tiene un celular válido"); return }
@@ -196,7 +198,18 @@ fun PresupuestosTab(
         if (p.estado == "Borrador") accion(p, "enviar")
         enviar = null
     }
+    /** 🖨 La hoja (PDF) para ver o compartir: NO marca nada (como el enlace 🖨 PDF de la web). */
+    fun verPdf(p: Presupuesto) {
+        if (!unToque.permitir()) return
+        acciones.abrirHtml(
+            htmlPresupuesto(p, ctx.clinicaNombre, ctx.clinicaDireccion, ctx.logoUrl, ctx.colorPrincipal, pacienteNombre,
+                pacienteDocumento, nombreProf(p.terapeutaId), zona),
+            "Presupuesto",
+        )
+    }
+    /** Desde "📤 ¿Cómo se lo envías?": el PDF y, si era borrador, se marca enviado. */
     fun porPdf(p: Presupuesto) {
+        if (!unToque.permitir()) return
         if (p.estado == "Borrador") accion(p, "enviar")
         enviar = null
         acciones.abrirHtml(
@@ -206,6 +219,7 @@ fun PresupuestosTab(
         )
     }
     fun recordar(p: Presupuesto) {
+        if (!unToque.permitir()) return
         val url = enlaceWhatsAppSede(telefono, textoRecordatorioWhatsApp(p, hoy, ctx.clinicaNombre, pacienteNombre), pais)
         if (url == null) { Toaster.error("El paciente no tiene un celular válido"); return }
         acciones.abrirUrl(url)
@@ -284,7 +298,7 @@ fun PresupuestosTab(
                         profesional = nombreProf(p.terapeutaId),
                         trats = tratamientos.filter { it.presupuestoId == p.id && it.estado != "Eliminado" },
                         onEnviar = { enviar = p }, onWhatsApp = { porWhatsApp(p) }, onRecordar = { recordar(p) },
-                        onPdf = { porPdf(p) }, onAceptar = { aceptar = p }, onEditar = { editor = p to p.citaId },
+                        onPdf = { verPdf(p) }, onAceptar = { aceptar = p }, onEditar = { editor = p to p.citaId },
                         onExtender = { extender(p) }, onRechazar = { rechazar = p to "" },
                         onReabrir = { accion(p, "reabrir") }, onBorrar = { borrar = p },
                     )
