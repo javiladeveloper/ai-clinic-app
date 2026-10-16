@@ -162,6 +162,8 @@ fun PantallaAgenda(
     var fichaEjercicios by remember { mutableStateOf<pe.saniape.app.ui.clinica.fisio.IndicarEjercicios?>(null) }
     // La ficha se abre en ⚖️ Medidas / 🥗 Plan alimentario (nutrición), con la cita vinculada.
     var fichaNutricion by remember { mutableStateOf<pe.saniape.app.ui.clinica.nutricion.AperturaNutricion?>(null) }
+    // La ficha se abre en la pestaña 🤰 Embarazo (gineco-obstetricia).
+    var fichaEmbarazo by remember { mutableStateOf(false) }
     // La ficha se abre en 📝 Indicaciones con una hoja nueva (plantilla sugerida + cita vinculada).
     var fichaIndicaciones by remember { mutableStateOf<pe.saniape.app.data.staff.AperturaIndicaciones?>(null) }
     // La ficha se abre en 😁 Ortodoncia con el control vinculado a la cita.
@@ -215,6 +217,25 @@ fun PantallaAgenda(
                 return@launch
             }
             fichaNutricion = pe.saniape.app.ui.clinica.nutricion.AperturaNutricion(tab, cita.id, abrirFormulario, cita.tratamientoId)
+            fichaPaciente = pac
+        }
+    }
+    /**
+     * Gineco-obstetricia: a la ficha en 🤰 Embarazo. El control prenatal nuevo se
+     * vincula solo a la cita del día de la paciente (`citaParaVincular`).
+     */
+    fun abrirFichaEmbarazo(cita: CitaStaff) {
+        val pid = cita.pacienteId ?: return
+        if (cargandoFicha) return
+        cargandoFicha = true
+        scope.launch {
+            val pac = runCatching { PacientesRepo.porId(pid) }.getOrNull()
+            cargandoFicha = false
+            if (pac == null) {
+                pe.saniape.app.ui.Toaster.error("No se pudo abrir la ficha. Revisa tu conexión.")
+                return@launch
+            }
+            fichaEmbarazo = true
             fichaPaciente = pac
         }
     }
@@ -701,6 +722,7 @@ fun PantallaAgenda(
                                         }
                                         AccionTarjeta.Medidas -> abrirFichaNutricion(cita, "medidas", abrirFormulario = true)
                                         AccionTarjeta.PlanAlimentario -> abrirFichaNutricion(cita, "plan", abrirFormulario = false)
+                                        AccionTarjeta.Embarazo -> abrirFichaEmbarazo(cita)
                                     }
                                 },
                                 onVerResumen = { resumenPacienteId = it },
@@ -722,6 +744,7 @@ fun PantallaAgenda(
                                     pe.saniape.app.data.staff.etiquetaRecetaVinculada(it)
                                 },
                                 nutricion = vm.nutricionEnTarjeta(cita),
+                                embarazo = vm.embarazoEnTarjeta(cita),
                                 // Gemelo de evalPsicoDe (/citas web): servicio de evaluación + Admin o
                                 // quien atiende la cita. La base decide al abrir.
                                 evaluacionPsico = cita.procedimientoId != null && cita.procedimientoId in procsEvalPsico &&
@@ -1367,9 +1390,10 @@ fun PantallaAgenda(
         Box(Modifier.fillMaxSize().background(c.fondo)) {
             pe.saniape.app.tutoriales.PantallaTutorial("Ficha") { PantallaFichaPaciente(
                 ctx = ctx, pacienteInicial = pac,
-                onCerrar = { fichaPaciente = null; fichaEjercicios = null; fichaNutricion = null; fichaIndicaciones = null; fichaOrtodoncia = null },
+                onCerrar = { fichaPaciente = null; fichaEjercicios = null; fichaNutricion = null; fichaEmbarazo = false; fichaIndicaciones = null; fichaOrtodoncia = null },
                 ejerciciosAlAbrir = fichaEjercicios,
                 nutricionAlAbrir = fichaNutricion,
+                embarazoAlAbrir = fichaEmbarazo,
                 indicacionesAlAbrir = fichaIndicaciones,
                 ortodonciaAlAbrir = fichaOrtodoncia,
             ) }

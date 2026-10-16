@@ -54,6 +54,14 @@ fun mapaGineco(especialidades: List<Pair<String, String?>>?): MapaGineco {
     return MapaGineco(ids, esps.isNotEmpty() && ids.size == esps.size)
 }
 
+/**
+ * ¿La tarjeta de la cita ofrece "🤰 Embarazo"? Gemelo de `ofreceAccesoEmbarazo`:
+ * cita de gineco-obstetricia (por el rubro guardado), con paciente y con permiso
+ * de escribir en la ficha ('pacientes' o 'sesiones').
+ */
+fun ofreceAccesoEmbarazo(pacienteId: String?, esGineco: Boolean, puedeFicha: Boolean): Boolean =
+    !pacienteId.isNullOrEmpty() && esGineco && puedeFicha
+
 /** ¿Esta cita / tratamiento es de gineco-obstetricia? Misma cadena que `citaEsFisio`. */
 fun citaEsGineco(
     mapa: MapaGineco,

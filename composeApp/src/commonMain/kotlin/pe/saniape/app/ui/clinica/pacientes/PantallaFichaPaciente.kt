@@ -103,6 +103,8 @@ fun PantallaFichaPaciente(
      * la pestaña 😁 con el control vinculado a esa cita (el suyo si ya lo tiene).
      */
     ortodonciaAlAbrir: pe.saniape.app.ui.clinica.ortodoncia.AperturaOrtodoncia? = null,
+    /** 🤰 Desde la agenda ("🤰 Embarazo"): la ficha arranca en la pestaña Embarazo. */
+    embarazoAlAbrir: Boolean = false,
 ) {
     // Multipaís: el dinero de la ficha va en la moneda de la sede del paciente
     // (solo con "pacientes por sede"; si no, la de la sede activa). Una clínica de
@@ -116,7 +118,7 @@ fun PantallaFichaPaciente(
     androidx.compose.runtime.CompositionLocalProvider(
         pe.saniape.app.ui.LocalMoneda provides pe.saniape.app.data.staff.monedaDeFila(sedePaciente),
     ) {
-        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir, sedePaciente)
+        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir, sedePaciente, embarazoAlAbrir)
     }
 }
 
@@ -129,6 +131,7 @@ private fun PantallaFichaPacienteContenido(
     ortodonciaAlAbrir: pe.saniape.app.ui.clinica.ortodoncia.AperturaOrtodoncia?,
     /** Multipaís: la sede del paciente (null = sin multisede o sin sede). */
     sedePaciente: String? = null,
+    embarazoAlAbrir: Boolean = false,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val tpl = LocalTerminologiaPaciente.current
@@ -168,6 +171,7 @@ private fun PantallaFichaPacienteContenido(
             if (ejerciciosAlAbrir != null) "ejercicios"
             else if (indicacionesAlAbrir != null) "indicaciones"
             else if (ortodonciaAlAbrir != null) "ortodoncia"
+            else if (embarazoAlAbrir) "embarazo"
             else nutricionAlAbrir?.tab ?: "atenciones",
         )
     }
@@ -337,7 +341,7 @@ private fun PantallaFichaPacienteContenido(
         especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
     )
     // 🤰 Gineco-obstetricia (carné perinatal): misma cadena, solo por el rubro guardado.
-    val esPacienteGineco = pe.saniape.app.data.staff.pacienteEsGineco(
+    val esPacienteGineco = embarazoAlAbrir || pe.saniape.app.data.staff.pacienteEsGineco(
         ctx.mapaGineco, atenciones = atencionesConCitas, tieneEmbarazos = tieneEmbarazos,
         especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
     )

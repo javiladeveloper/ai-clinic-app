@@ -550,6 +550,18 @@ class EmbarazoTest {
         assertEquals(MapaGineco(emptyList(), false), mapaGineco(null))
     }
 
+    @Test fun agendaOfreceEmbarazoSoloGinecoConPacienteYPermiso() {
+        assertTrue(ofreceAccesoEmbarazo("p1", esGineco = true, puedeFicha = true))
+        assertFalse(ofreceAccesoEmbarazo("p1", esGineco = false, puedeFicha = true))
+        assertFalse(ofreceAccesoEmbarazo("p1", esGineco = true, puedeFicha = false))
+        assertFalse(ofreceAccesoEmbarazo(null, esGineco = true, puedeFicha = true))
+        // Por el rubro guardado de la especialidad: fisio o sin rubro no cuentan.
+        val m = mapaGineco(listOf("g" to "ginecologia", "f" to "fisio", "x" to null))
+        assertTrue(citaEsGineco(m, especialidadId = "g"))
+        assertFalse(citaEsGineco(m, especialidadId = "f"))
+        assertFalse(citaEsGineco(m, especialidadId = "x"))
+    }
+
     @Test fun clinicaMixtaPorCitaEmbarazosOQuienMira() {
         val m = mapaGineco(listOf("g" to "ginecologia", "m" to "medicina_general"))
         assertTrue(citaEsGineco(m, especialidadId = "g"))

@@ -135,6 +135,17 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         cita.terapeutaId?.let { espsPorTerapeuta[it] },
     )
 
+    /** ¿Esta cita es de gineco-obstetricia? (🤰 Embarazo). Gemelo de `citaEsGineco`: solo por el rubro guardado. */
+    fun esGineco(cita: CitaStaff): Boolean = pe.saniape.app.data.staff.citaEsGineco(
+        ctx.mapaGineco, cita.especialidadId, cita.especialidadServicioId,
+        cita.terapeutaId?.let { espsPorTerapeuta[it] },
+    )
+
+    /** "🤰 Embarazo" en la tarjeta: cita de gineco + paciente + permiso de escribir en la ficha. */
+    fun embarazoEnTarjeta(cita: CitaStaff): Boolean = pe.saniape.app.data.staff.ofreceAccesoEmbarazo(
+        cita.pacienteId, esGineco(cita), ctx.puede("pacientes") || ctx.puede("sesiones"),
+    )
+
     /** "⚖️ Medidas" / "🥗 Plan alimentario" en la tarjeta: cita de nutrición + permiso de escribir en la ficha. */
     fun nutricionEnTarjeta(cita: CitaStaff): Boolean =
         cita.pacienteId != null && (ctx.puede("pacientes") || ctx.puede("sesiones")) && esNutricion(cita)

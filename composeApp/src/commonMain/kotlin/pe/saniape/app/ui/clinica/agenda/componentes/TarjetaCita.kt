@@ -129,6 +129,8 @@ fun TarjetaCita(
      * buscar la pestaña (gemelo del menú de /citas web). Lo decide la pantalla.
      */
     nutricion: Boolean = false,
+    /** Cita de GINECO-OBSTETRICIA y quien mira puede escribir en la ficha: "🤰 Embarazo". Lo decide la pantalla. */
+    embarazo: Boolean = false,
 ) {
     // Multipaís: el costo va en la moneda de la sede de la cita ("todas las sedes").
     val moneda = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)
@@ -279,7 +281,8 @@ fun TarjetaCita(
                 cobrar = cobrable && puedeCobrar && !pagada,
                 anularCobro = anularCobro && pagada,
                 receta = textoReceta?.takeIf { cita.pacienteId != null },
-                nutricion = nutricion && cita.pacienteId != null)
+                nutricion = nutricion && cita.pacienteId != null,
+                embarazo = embarazo && cita.pacienteId != null)
             if (acc.isNotEmpty()) {
                 Spacer(Modifier.height(Sania.dim.md))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
@@ -323,6 +326,8 @@ enum class AccionTarjeta {
     Receta,
     /** Nutrición: la ficha en ⚖️ Medidas (formulario abierto, vinculado a la cita) o en 🥗 Plan alimentario. */
     Medidas, PlanAlimentario,
+    /** Gineco-obstetricia: la ficha en la pestaña 🤰 Embarazo. */
+    Embarazo,
 }
 
 /**
@@ -386,6 +391,8 @@ private fun accionesPara(
     receta: String? = null,
     /** Nutrición: "⚖️ Medidas" y "🥗 Plan alimentario" de la atención. */
     nutricion: Boolean = false,
+    /** Gineco-obstetricia: "🤰 Embarazo" (la pestaña del carné perinatal). */
+    embarazo: Boolean = false,
 ): List<Triple<String, AccionTarjeta, Color>> {
     val c = Sania.colors
     val lista = mutableListOf<Triple<String, AccionTarjeta, Color>>()
@@ -439,6 +446,8 @@ private fun accionesPara(
         lista.add(Triple("⚖️ Medidas", AccionTarjeta.Medidas, c.teal))
         lista.add(Triple("🥗 Plan alimentario", AccionTarjeta.PlanAlimentario, c.teal))
     }
+    // Gineco-obstetricia: el carné perinatal de la paciente (no en la cancelada).
+    if (embarazo && estado != "Cancelada") lista.add(Triple("🤰 Embarazo", AccionTarjeta.Embarazo, c.teal))
     // Crear el plan desde la cita que evalúa (no cancelada), como la web.
     if (crearTratamiento && estado != "Cancelada") lista.add(Triple("🩺 Crear tratamiento", AccionTarjeta.CrearTratamiento, c.purple))
     // Corregir un cobro dividido es anularlo y volver a cobrar (como la web, solo Admin).
