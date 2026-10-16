@@ -22,6 +22,10 @@ brew install openjdk@17
 JDK="$(brew --prefix openjdk@17)/libexec/openjdk.jdk/Contents/Home"
 mkdir -p "$HOME/.gradle"
 echo "org.gradle.java.home=$JDK" >> "$HOME/.gradle/gradle.properties"
+# Memoria: con -Xmx4g (gradle.properties del proyecto) el enlace del framework
+# release se quedó sin heap en GitHub Actions el 2026-10-16. Este archivo le gana
+# al del proyecto, así que solo afecta a Xcode Cloud.
+echo "org.gradle.jvmargs=-Xmx6g -XX:+UseParallelGC -Dfile.encoding=UTF-8" >> "$HOME/.gradle/gradle.properties"
 echo "JDK para Gradle: $JDK"
 
 # 2) FIRMA AUTOMÁTICA, solo en esta copia. El proyecto firma Release a mano con

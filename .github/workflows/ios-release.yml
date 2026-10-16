@@ -52,7 +52,7 @@ jobs:
     # OJO: tiene que quedar POR ENCIMA del timeout del paso de compilar (30), o
     # el job moriría antes y se perdería el guardado de caché — que es lo que
     # hace que la corrida siguiente llegue más lejos.
-    timeout-minutes: 40
+    timeout-minutes: 50
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -206,12 +206,24 @@ jobs:
       # a los 55 min pero el JOB SIGUE VIVO → los pasos "Guardar caché" corren normal y el
       # progreso queda banqueado para la siguiente corrida (efecto trinquete: cada corrida
       # llega más lejos). Con el timeout solo a nivel job, el corte cancelaba todo.
+      # MÁS MEMORIA PARA KOTLIN/NATIVE (2026-10-16). El build de la 2.59.0 murió a los
+      # 26 min con "OutOfMemoryError: Java heap space" al ENLAZAR el framework release:
+      # el código compiló entero, pero con -Xmx4g (gradle.properties) ya no alcanza para
+      # optimizar una app que creció mucho desde agosto (2.9.10). El runner macos-15
+      # tiene 7 GB. El gradle.properties de GRADLE_USER_HOME le gana al del proyecto,
+      # así que esto sube la memoria solo en CI, sin tocar las máquinas de desarrollo.
+      - name: Más memoria para Kotlin/Native
+        run: |
+          mkdir -p ~/.gradle
+          echo "org.gradle.jvmargs=-Xmx6g -XX:+UseParallelGC -Dfile.encoding=UTF-8" >> ~/.gradle/gradle.properties
+          cat ~/.gradle/gradle.properties
+
       # testflight → lane 'beta'       (testers, sin revisión de Apple)
       # produccion → lane 'production' (sube el binario; el envío a revisión se hace
       #               desde App Store Connect — esperar el procesado de Apple
       #               costaba ~20 min de runner macOS a 10x por release)
       - name: Compilar y subir a Apple
-        timeout-minutes: 30
+        timeout-minutes: 40
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
