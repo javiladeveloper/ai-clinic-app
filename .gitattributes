@@ -1,0 +1,2 @@
+# Los scripts de shell corren en macOS/Linux (Xcode Cloud, CI): siempre LF.
+*.sh text eol=lf
