@@ -22,6 +22,21 @@ rescue => e
   upload_to_play_store(**opciones.merge(skip_upload_changelogs: true))
 end
 
+# LA VERSIÓN DE iOS ES LA DE ANDROID (2026-10-16). El Info.plist se quedó en
+# 2.9.11 desde agosto mientras Android llegaba a 2.59.0: nadie lo tocaba a mano
+# porque el CI de iOS estaba en pausa. Ahora cada build de iOS copia el
+# versionName de composeApp/build.gradle.kts al CFBundleShortVersionString, así
+# las dos tiendas muestran el mismo número y "Novedades" de la app coincide.
+# El código Ruby del Fastfile corre desde fastlane/; las acciones, desde la raíz:
+# por eso se prueban las dos rutas.
+def version_android
+  gradle = ["../composeApp/build.gradle.kts", "composeApp/build.gradle.kts"].find { |p| File.exist?(p) }
+  UI.user_error!("No encontré composeApp/build.gradle.kts para leer el versionName") unless gradle
+  version = File.read(gradle)[/versionName\s*=\s*"([^"]+)"/, 1]
+  UI.user_error!("No encontré versionName en #{gradle}") unless version
+  version
+end
+
 platform :android do
   # OJO: sube al canal de PRUEBAS CERRADAS (Closed testing), cuyo track en la API de
   # Google se llama "alpha" (el nombre por defecto del canal cerrado). NO es "internal"
@@ -91,12 +106,13 @@ platform :ios do
     )
 
     # Build number único = (último de TestFlight) + 1, para no chocar en cada corrida.
-    # El versionName (CFBundleShortVersionString) queda como esté en el Info.plist.
+    # El versionName (CFBundleShortVersionString) se copia del de Android (version_android).
     ultimo = latest_testflight_build_number(
       app_identifier: "pe.saniape.app",
       initial_build_number: 6,   # ya subimos hasta el 6 a mano
     ) rescue 6
     set_info_plist_value(path: "iosApp/iosApp/Info.plist", key: "CFBundleVersion", value: (ultimo + 1).to_s)
+    set_info_plist_value(path: "iosApp/iosApp/Info.plist", key: "CFBundleShortVersionString", value: version_android)
 
     # Compila el framework Kotlin + el app iOS y produce el .ipa firmado.
     # La firma la resuelve Xcode con el perfil/cert que instala el workflow (o match).
@@ -148,6 +164,7 @@ platform :ios do
       initial_build_number: 6,
     ) rescue 6
     set_info_plist_value(path: "iosApp/iosApp/Info.plist", key: "CFBundleVersion", value: (ultimo + 1).to_s)
+    set_info_plist_value(path: "iosApp/iosApp/Info.plist", key: "CFBundleShortVersionString", value: version_android)
 
     build_app(
       project: "iosApp/iosApp.xcodeproj",
