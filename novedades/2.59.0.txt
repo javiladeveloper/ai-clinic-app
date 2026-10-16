@@ -1,0 +1,9 @@
+# Novedades de la 2.59.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Citas virtuales: atiende por videollamada con tu enlace o con Google Meet automático.
+---
+Clínicas:
+• 🎥 Citas virtuales: marca un servicio o una cita como virtual y pega tu enlace (Meet, Zoom…). En Premium y Plus, con tu Google Calendar conectado, el Meet se crea solo.
+• En la agenda, el botón "Unirse" abre la videollamada; el WhatsApp de la cita lleva el enlace en lugar de la dirección.
+Pacientes:
+• "Unirse a la videollamada" aparece en tu próxima cita desde 15 minutos antes.
