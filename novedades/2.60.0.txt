@@ -1,0 +1,10 @@
+# Novedades de la 2.60.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Presupuestos y paquetes, y los ajustes de Sani desde la app.
+---
+Clínicas:
+• 🧾 Presupuestos: arma el plan del paciente con sesiones sueltas o paquetes del catálogo, descuento en % o en monto, y envíalo por WhatsApp o PDF. Si el paciente está en la clínica, acéptalo por él y conviértelo en tratamientos con su adelanto.
+• Presupuestos pendientes en Más, para recordarlos por WhatsApp.
+• 🤖 Sani: configura el seguimiento antes de las 24 h, qué hacer cuando preguntan el precio varias veces y el mensaje de bienvenida.
+Pacientes:
+• En Mis presupuestos ves tu plan con su detalle y puedes aceptarlo.
