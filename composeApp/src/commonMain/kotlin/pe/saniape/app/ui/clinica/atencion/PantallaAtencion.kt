@@ -327,6 +327,27 @@ private fun ColumnScope.ContenidoAtencion(
             },
         )
     }
+    // 🧠 Certificado de salud mental (psiquiatría), prellenado con esta atención.
+    if (vm.certificadoAbierto) {
+        val pac = d.cita.paciente
+        pe.saniape.app.ui.clinica.certificados.DialogoCertificadoSaludMental(
+            ctx = ctx,
+            pacienteId = pac?.id ?: d.cita.paciente_id.orEmpty(),
+            pacienteNombre = pac?.nombre.orEmpty(),
+            citaId = d.cita.id,
+            atencionId = d.atencion?.id,
+            tratamientoId = d.cita.tratamiento_id,
+            onCancelar = { vm.cerrarCertificado() },
+            onEmitido = { id, numero ->
+                vm.cerrarCertificado()
+                // Como la web: emitido → la hoja para imprimir.
+                if (id.isNotBlank()) vm.lanzar {
+                    AtencionRepo.htmlImprimible("certificado", id)?.let { acciones.abrirHtml(it, numero) }
+                        ?: Toaster.error("Se emitió, pero no se pudo abrir la impresión. Reimprímelo desde la ficha.")
+                }
+            },
+        )
+    }
 }
 
 /**

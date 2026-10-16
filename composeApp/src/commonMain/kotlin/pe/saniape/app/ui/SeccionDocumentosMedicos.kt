@@ -77,6 +77,8 @@ internal fun LazyListScope.seccionDocumentosMedicos(
     grupoDocs("informes", "📄", "Informes médicos", datos.informes, abriendo, onVer)
     grupoDocs("descansos", "🛌", "Descansos médicos", datos.descansos, abriendo, onVer)
     grupoDocs("ordenes", "🧪", "Órdenes de exámenes", datos.ordenes, abriendo, onVer)
+    // 🧠 Certificados de salud mental (§14): el que le emitió su psiquiatra o psicólogo para el trámite.
+    grupoDocs("certificados", "🧠", "Certificados de salud mental", datos.certificados, abriendo, onVer)
     if (datos.presupuestos.isNotEmpty()) {
         item(key = "docmed-g-presupuestos") { TituloGrupoDoc("🦷", "Presupuestos", datos.presupuestos.size) }
         items(datos.presupuestos, key = { "docmed-presu-" + it.id }) { p ->

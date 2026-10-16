@@ -192,6 +192,15 @@ internal fun PasoCierre(
                     ) { vm.abrirDocumento(t) }
                 }
             }
+            // 🧠 Certificado de salud mental: solo si ESTA atención es de psiquiatría
+            // (por la especialidad de la cita, nunca por preset) y el servidor ya lo tiene.
+            if (certificadoEnCierre(ctx, soloLectura, esProc, vm.psiq, vm.certificadoDisponible)) {
+                BotonChico(
+                    if (vm.accionando == "certificado") "Abriendo…"
+                    else "${pe.saniape.app.data.staff.ICONO_CERTIFICADO} ${pe.saniape.app.data.staff.NOMBRE_CERTIFICADO}",
+                    c.navy, c.superficie, borde = c.borde, habilitado = vm.accionando == null,
+                ) { vm.abrirCertificado() }
+            }
         }
 
         // ── Acciones ──
@@ -256,6 +265,18 @@ internal fun docsMedicosEnCierre(ctx: ContextoStaff, soloLectura: Boolean, esPro
     pe.saniape.app.data.staff.documentosMedicosActivos(ctx.modulosClinicos) &&
         pe.saniape.app.data.staff.puedeEmitirDocumentos(ctx.rol, ctx.miTerapeutaId, ctx.puede("sesiones")) &&
         !soloLectura && !esProcedimiento
+
+/**
+ * ¿El cierre ofrece el 🧠 certificado de salud mental? (certificadoOn de
+ * ConsultaGuiada.tsx): atención de psiquiatría, quien puede emitir (Admin o
+ * profesional, con `sesiones`), no en solo lectura ni en un procedimiento, y un
+ * servidor que ya tiene /api/staff/certificado (si no, 404: no se ofrece).
+ */
+internal fun certificadoEnCierre(
+    ctx: ContextoStaff, soloLectura: Boolean, esProcedimiento: Boolean, psiq: Boolean, disponible: Boolean?,
+): Boolean =
+    psiq && disponible == true && !soloLectura && !esProcedimiento &&
+        pe.saniape.app.data.staff.puedeEmitirDocumentos(ctx.rol, ctx.miTerapeutaId, ctx.puede("sesiones"))
 
 /** "J06.9 Faringitis aguda (P); Fiebre (D)" — como el resumen de la web. */
 internal fun textoDiagnosticos(l: List<DiagnosticoCie>): String =

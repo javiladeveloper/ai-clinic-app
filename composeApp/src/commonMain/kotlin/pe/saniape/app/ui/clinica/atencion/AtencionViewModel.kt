@@ -108,6 +108,13 @@ class AtencionViewModel(
     var cargandoInstrumentos by mutableStateOf(false); private set
     /** Informe / descanso / orden abierto desde el cierre: (tipo, prellenado). */
     var documentoAbierto by mutableStateOf<Pair<String, PrefillInforme>?>(null); private set
+    /** 🧠 Certificado de salud mental abierto desde el cierre (solo psiquiatría). */
+    var certificadoAbierto by mutableStateOf(false); private set
+    /**
+     * ¿El servidor ya tiene /api/staff/certificado? Se pregunta una vez, solo en
+     * psiquiatría. null = no se sabe (sin red): el botón no aparece.
+     */
+    var certificadoDisponible by mutableStateOf<Boolean?>(null); private set
 
     val pasos: List<PasoAtencion> get() = pasosConPsiquiatria(datos?.flags?.pasos ?: emptyList(), psiq)
     val pasoActual: PasoAtencion? get() = pasos.getOrNull(paso)
@@ -156,6 +163,9 @@ class AtencionViewModel(
                     pediatria = variantes.pediatria
                     borrador = borradorDesde(d, miTerapeutaId, psiq)
                     if (psiq && instrumentos == null) cargarInstrumentos()
+                    if (psiq && certificadoDisponible != true) {
+                        viewModelScope.launch { certificadoDisponible = pe.saniape.app.data.staff.CertificadoRepo.disponible() }
+                    }
                     triajePrestado = if (d.flags.soloLectura) null else pe.saniape.app.data.staff.triajeDeHoyAplicable(d)
                     triajeUsado = false
                     sucio = false
@@ -388,6 +398,19 @@ class AtencionViewModel(
     }
 
     fun cerrarDocumento() { documentoAbierto = null }
+
+    /**
+     * 🧠 Certificado de salud mental (abrirCertificado de la web): guarda antes,
+     * así el examen mental de hoy se lee de la atención guardada.
+     */
+    fun abrirCertificado() {
+        lanzar("certificado") {
+            if (!guardarAntes()) return@lanzar
+            certificadoAbierto = true
+        }
+    }
+
+    fun cerrarCertificado() { certificadoAbierto = false }
 
     // ── Cierre ───────────────────────────────────────────────────────────────
 

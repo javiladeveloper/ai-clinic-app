@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import pe.saniape.app.data.offline.CacheLectura
+import pe.saniape.app.data.staff.DOC_CERTIFICADO
 import pe.saniape.app.data.staff.DOC_DESCANSO
 import pe.saniape.app.data.staff.DOC_INFORME
 import pe.saniape.app.data.staff.DOC_ORDEN
@@ -145,10 +146,15 @@ data class DocumentosClinicos(
     val ordenes: List<DocMedicoPortal>,
     val presupuestos: List<PresupuestoPortal>,
     val cuotas: List<PlanCuotasPortal>,
+    /**
+     * 🧠 Certificados de salud mental (clave `certificados`, contrato §14). Un
+     * servidor viejo no la manda: queda vacía y nada cambia.
+     */
+    val certificados: List<DocMedicoPortal> = emptyList(),
 ) {
     val tieneDatos: Boolean
         get() = informes.isNotEmpty() || descansos.isNotEmpty() || ordenes.isNotEmpty() ||
-            presupuestos.isNotEmpty() || cuotas.isNotEmpty()
+            presupuestos.isNotEmpty() || cuotas.isNotEmpty() || certificados.isNotEmpty()
 
     companion object {
         val VACIOS = DocumentosClinicos(emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
@@ -199,7 +205,7 @@ fun enlaceSeguro(enlace: String?): String? {
 private fun docDe(o: JsonObject, tipoLista: String): DocMedicoPortal? {
     val id = o.txtDoc("id")?.takeIf { RE_UUIDISH.matches(it) } ?: return null
     // El tipo del propio documento; sin él (o desconocido), el de la lista donde vino.
-    val tipo = o.txtDoc("tipo")?.takeIf { esTipoDocMedico(it) } ?: tipoLista
+    val tipo = o.txtDoc("tipo")?.takeIf { esTipoDocMedico(it) || it == tipoLista } ?: tipoLista
     val prof = o["profesional"]
     val profesional = (prof as? JsonObject)?.txtDoc("nombre")
         ?: (prof as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
@@ -362,6 +368,8 @@ fun parsearDocumentosClinicos(texto: String): DocumentosClinicos? {
         ordenes = docs("ordenes", DOC_ORDEN),
         presupuestos = raiz.arr("presupuestos").mapNotNull { presupuestoDe(it) }.distinctBy { it.id },
         cuotas = raiz.arr("cuotas").mapNotNull { planCuotasDe(it) }.distinctBy { it.id },
+        // Clave nueva (§14): si falta, vacía.
+        certificados = docs("certificados", DOC_CERTIFICADO),
     )
 }
 

@@ -209,6 +209,17 @@ private fun PantallaFichaPacienteContenido(
     LaunchedEffect(Unit) {
         especialidadesClinica = runCatching { PacientesRepo.especialidadesClinica() }.getOrDefault(emptyList())
     }
+    // ── 🧠 Salud mental (certificado), por el RUBRO guardado de cada especialidad
+    // (mapaSaludMental de la web; nunca por preset). Las especialidades con rubro
+    // se leen aparte (liviano); sin ellas, el mapa queda vacío y nada nuevo aparece.
+    var espsRubro by remember { mutableStateOf<List<pe.saniape.app.data.staff.EspecialidadNombre>>(emptyList()) }
+    LaunchedEffect(Unit) { espsRubro = pe.saniape.app.data.staff.InformesMedicosRepo.especialidades() }
+    val mapaSaludMental = remember(espsRubro) {
+        pe.saniape.app.data.staff.mapaSaludMental(
+            espsRubro.filter { (it.estado ?: "Activa") == "Activa" }.map { Triple(it.id, it.nombre, it.rubro) },
+        )
+    }
+    val mixtaSaludMental = mapaSaludMental.ids.isNotEmpty() && !mapaSaludMental.solo
     // ── Odontología, por PACIENTE ──
     // En una clínica con fisio y odontología, el paciente de fisio no ve la
     // pestaña 🦷 (Jonathan, 23/09/2026). Solo en ese caso hace falta mirar sus
@@ -223,7 +234,8 @@ private fun PantallaFichaPacienteContenido(
         (ctx.mapaEstetica.ids.isNotEmpty() && !ctx.mapaEstetica.solo) ||
         (ctx.mapaOrtodoncia.ids.isNotEmpty() && !ctx.mapaDental.solo) ||
         (ctx.mapaPediatria.ids.isNotEmpty() && !ctx.mapaPediatria.solo) ||
-        (ctx.mapaGineco.ids.isNotEmpty() && !ctx.mapaGineco.solo)
+        (ctx.mapaGineco.ids.isNotEmpty() && !ctx.mapaGineco.solo) ||
+        mixtaSaludMental
     LaunchedEffect(paciente.id, mixtaDental, mixtaMapas, recargarToken) {
         if (mixtaDental || mixtaMapas) datosDentales = pe.saniape.app.data.staff.OdontogramaRepo
             .datosDentalesPaciente(paciente.id, ctx.miTerapeutaId)
@@ -431,6 +443,25 @@ private fun PantallaFichaPacienteContenido(
         especialidadesDeQuienMira = datosReceta.second,
     )
     val esPacienteDocs = pe.saniape.app.data.staff.pacienteRecibeDocumentos(ctx.modulosClinicos, esPacienteMedico, esPacienteReceta)
+    // 🧠 Certificado de salud mental (pacienteEsSaludMental de la ficha web): por
+    // cita, tratamiento, certificados ya emitidos o quien mira. Y solo si el
+    // servidor ya tiene /api/staff/certificado (un backend viejo responde 404:
+    // ni pestaña ni tarjeta).
+    var tieneCertificados by remember(paciente.id) { mutableStateOf(false) }
+    LaunchedEffect(paciente.id, mixtaSaludMental, recargarToken) {
+        if (mixtaSaludMental) tieneCertificados = pe.saniape.app.data.staff.CertificadoRepo.tieneCertificados(paciente.id)
+    }
+    val saludMentalBase = pe.saniape.app.data.staff.pacienteEsSaludMental(
+        mapaSaludMental, atenciones = atencionesConCitas, tieneCertificados = tieneCertificados,
+        especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
+    )
+    var certificadoDisponible by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(saludMentalBase, recargarToken) {
+        if (saludMentalBase && certificadoDisponible != true) {
+            certificadoDisponible = pe.saniape.app.data.staff.CertificadoRepo.disponible()
+        }
+    }
+    val esPacienteSaludMental = saludMentalBase && certificadoDisponible == true
     // ── 📝 Receta / indicaciones por ATENCIÓN (tras completar y desde el menú) ──
     // Solo con recetas en el paciente; la lectura (por paciente, con índice) es liviana
     // y se repite al emitir una (RecetaTrasAtencion.emitidas) para el indicador.
@@ -953,8 +984,9 @@ private fun PantallaFichaPacienteContenido(
                     if (esPacienteGineco) add("embarazo" to "🤰 Embarazo")
                     // SOLO pacientes de especialidades que recetan (`esPacienteReceta`).
                     // + documentos médicos (informe/descanso/orden) en clínicas médicas.
-                    if (esPacienteReceta || esPacienteDocs) {
-                        add("recetas" to pe.saniape.app.data.staff.etiquetaPestanaRecetas(esPacienteReceta, esPacienteDocs))
+                    // + 🧠 certificados de salud mental (psiquiatría / psicología).
+                    if (esPacienteReceta || esPacienteDocs || esPacienteSaludMental) {
+                        add("recetas" to pe.saniape.app.data.staff.etiquetaPestanaRecetas(esPacienteReceta, esPacienteDocs, esPacienteSaludMental))
                     }
                     // SOLO pacientes capilares (`esPacienteCapilar`). 💇 y no 🔬: 🔬 ya es Exámenes.
                     if (esPacienteCapilar) add("tricoscopia" to "💇 Tricoscopía")
@@ -1097,7 +1129,7 @@ private fun PantallaFichaPacienteContenido(
                         onVerHistoria = { historiaAbierta = true },
                     )
                     // Doble candado, como la 🦷: sin recetas en el paciente no se monta.
-                    "recetas" -> if (esPacienteReceta || esPacienteDocs) {
+                    "recetas" -> if (esPacienteReceta || esPacienteDocs || esPacienteSaludMental) {
                         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                             if (esPacienteReceta) ContenidoRecetasFicha(
                                 ctx = ctx, pacienteId = paciente.id,
@@ -1105,6 +1137,11 @@ private fun PantallaFichaPacienteContenido(
                                 acciones = acciones,
                             )
                             if (esPacienteDocs) ContenidoDocumentosMedicos(
+                                ctx = ctx, pacienteId = paciente.id, pacienteNombre = paciente.nombre,
+                                fichaInactiva = pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
+                                acciones = acciones,
+                            )
+                            if (esPacienteSaludMental) pe.saniape.app.ui.clinica.certificados.ContenidoCertificadosSaludMental(
                                 ctx = ctx, pacienteId = paciente.id, pacienteNombre = paciente.nombre,
                                 fichaInactiva = pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
                                 acciones = acciones,

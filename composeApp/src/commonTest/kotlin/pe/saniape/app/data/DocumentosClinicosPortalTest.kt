@@ -1,5 +1,6 @@
 package pe.saniape.app.data
 
+import pe.saniape.app.data.staff.DOC_CERTIFICADO
 import pe.saniape.app.data.staff.DOC_DESCANSO
 import pe.saniape.app.data.staff.DOC_INFORME
 import pe.saniape.app.data.staff.DOC_ORDEN
@@ -251,5 +252,40 @@ class DocumentosClinicosPortalTest {
     @Test fun repetidosPorIdSeQuitan() {
         val t = """{"informes":[{"id":"a","tipo":"informe"},{"id":"a","tipo":"informe"}]}"""
         assertEquals(1, parsearDocumentosClinicos(t)!!.informes.size)
+    }
+
+    // ── 🧠 Certificados de salud mental (contrato §14) ──
+
+    @Test fun certificadosDeSaludMental() {
+        val t = """{"informes":[],"certificados":[{
+          "id": "cc000000-0000-0000-0000-000000000001", "tipo": "certificado_salud_mental", "fecha": "2026-10-16",
+          "numeroTexto": "CSM N° 000001", "titulo": "Certificado de salud mental", "detalle": "Para: Licencia de conducir",
+          "clinica": { "nombre": "Clínica Andina", "logo_url": null, "color_principal": "#0f766e" },
+          "profesional": { "nombre": "Dra. Rosa Quispe", "profesion": "Médica Psiquiatra", "especialidad": null, "colegiatura": "CMP 45678" },
+          "dirigidoA": null, "diagnosticos": [], "diagnosticoReservado": false, "descanso": null, "examenes": [], "indicaciones": null,
+          "ruta": "/portal/documento/certificado_salud_mental/cc000000-0000-0000-0000-000000000001",
+          "urlHtml": "/api/paciente/mis-documentos-clinicos/certificado_salud_mental/cc000000-0000-0000-0000-000000000001"
+        }, {"id": "c2", "urlHtml": "https://evil.example/x"}]}"""
+        val d = assertNotNull(parsearDocumentosClinicos(t))
+        assertTrue(d.tieneDatos)
+        assertEquals(2, d.certificados.size)
+        val c = d.certificados[0]
+        assertEquals(DOC_CERTIFICADO, c.tipo)
+        assertEquals("CSM N° 000001", c.numeroTexto)
+        assertEquals("Para: Licencia de conducir", c.detalle)
+        assertEquals("Dra. Rosa Quispe", c.profesional)
+        assertEquals("/api/paciente/mis-documentos-clinicos/certificado_salud_mental/cc000000-0000-0000-0000-000000000001", c.urlHtml)
+        // Sin título ni tipo: el de la lista; una URL ajena nunca recibe el Bearer.
+        val c2 = d.certificados[1]
+        assertEquals(DOC_CERTIFICADO, c2.tipo)
+        assertEquals("Certificado de salud mental", c2.titulo)
+        assertEquals("/api/paciente/mis-documentos-clinicos/certificado_salud_mental/c2", c2.urlHtml)
+    }
+
+    @Test fun backendViejoSinCertificadosSeIgnora() {
+        val d = assertNotNull(parsearDocumentosClinicos("""{"informes":[{"id":"a","tipo":"informe"}]}"""))
+        assertTrue(d.certificados.isEmpty())
+        assertEquals(1, d.informes.size)
+        assertFalse(assertNotNull(parsearDocumentosClinicos("""{"certificados":null}""")).tieneDatos)
     }
 }
