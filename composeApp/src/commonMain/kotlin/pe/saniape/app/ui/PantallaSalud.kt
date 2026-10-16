@@ -70,6 +70,9 @@ import pe.saniape.app.data.MisVacunas
 import pe.saniape.app.data.MiPediatriaRepo
 import pe.saniape.app.data.IndicacionPortal
 import pe.saniape.app.data.MisIndicacionesRepo
+import pe.saniape.app.data.MisPresupuestosRepo
+import pe.saniape.app.data.MiPresupuesto
+import pe.saniape.app.data.htmlMiPresupuesto
 import pe.saniape.app.data.conEjercicioMarcado
 import pe.saniape.app.data.agruparPorTratamiento
 import pe.saniape.app.data.claseArchivo
@@ -138,6 +141,12 @@ fun PantallaSalud() {
     // no se sabe (servidor viejo, sin red y sin caché). Sin ninguna, la sección no aparece.
     var indicaciones by remember { mutableStateOf<List<IndicacionPortal>?>(null) }
     var verIndicacionesAnteriores by remember { mutableStateOf(false) }
+    // 🧾 Presupuestos que le envió su clínica: null = no se sabe (servidor viejo, sin red y
+    // sin caché). Sin ninguno, la sección no aparece.
+    var presupuestos by remember { mutableStateOf<List<MiPresupuesto>?>(null) }
+    // El que pide confirmar ("¿Aceptas…?") y el que se está enviando (anti doble toque).
+    var aceptarPresu by remember { mutableStateOf<MiPresupuesto?>(null) }
+    var respondiendoPresu by remember { mutableStateOf<String?>(null) }
     // 🩺 Documentos médicos (informes, descansos, órdenes, presupuestos, cuotas): null =
     // no se sabe (servidor viejo, sin red y sin caché). Sin nada, la sección no aparece.
     var docsMedicos by remember { mutableStateOf<DocumentosClinicos?>(null) }
@@ -174,6 +183,7 @@ fun PantallaSalud() {
         if (crecimiento == null) crecimiento = withContext(Dispatchers.Default) { MiPediatriaRepo.crecimientoGuardado() }
         if (vacunas == null) vacunas = withContext(Dispatchers.Default) { MiPediatriaRepo.vacunasGuardadas() }
         if (indicaciones == null) indicaciones = withContext(Dispatchers.Default) { MisIndicacionesRepo.guardada() }
+        if (presupuestos == null) presupuestos = withContext(Dispatchers.Default) { MisPresupuestosRepo.guardados() }
         if (docsMedicos == null) docsMedicos = withContext(Dispatchers.Default) { DocumentosClinicosRepo.guardados() }
         try {
             // Las cuatro consultas EN PARALELO (antes iban en fila: la pantalla
@@ -192,6 +202,7 @@ fun PantallaSalud() {
                 val dCrecimiento = async { runCatching { MiPediatriaRepo.crecimiento() }.getOrNull() }
                 val dVacunas = async { runCatching { MiPediatriaRepo.vacunas() }.getOrNull() }
                 val dIndicaciones = async { runCatching { MisIndicacionesRepo.cargar() }.getOrNull() }
+                val dPresupuestos = async { runCatching { MisPresupuestosRepo.cargar() }.getOrNull() }
                 val dDocsMedicos = async { runCatching { DocumentosClinicosRepo.cargar() }.getOrNull() }
                 when (val rt = dTrat.await()) {
                     is ResultadoPortal.Ok -> tratamientos = rt.datos
@@ -219,6 +230,7 @@ fun PantallaSalud() {
                 dCrecimiento.await()?.let { crecimiento = it }
                 dVacunas.await()?.let { vacunas = it }
                 dIndicaciones.await()?.let { indicaciones = it }
+                dPresupuestos.await()?.let { presupuestos = it }
                 dDocsMedicos.await()?.let { docsMedicos = it }
             }
         } catch (_: Exception) { errorCarga = true }
@@ -233,6 +245,7 @@ fun PantallaSalud() {
     val datosCrecimiento = crecimiento?.takeIf { it.tieneDatos }
     val datosVacunas = vacunas?.takeIf { it.tieneDatos }
     val listaIndicaciones = indicaciones.orEmpty()
+    val listaPresupuestos = presupuestos.orEmpty()
     val datosDocsMedicos = docsMedicos?.takeIf { it.tieneDatos }
 
     /** "Ver / PDF": pide la hoja con el Bearer del paciente y la abre en el visor con impresión. */
@@ -339,7 +352,37 @@ fun PantallaSalud() {
     val hayTratamientos = separados.vigentes.isNotEmpty() || separados.cancelados.isNotEmpty()
     val sinNada = !hayTratamientos && documentos.isEmpty() && fotos.isEmpty() && listaRecetas.isEmpty() &&
         planesEjercicios.isEmpty() && datosNutricion == null && datosCapilar == null && datosOrto == null && listaIndicaciones.isEmpty() &&
+        listaPresupuestos.isEmpty() &&
         datosEmbarazo == null && datosDocsMedicos == null && datosCrecimiento == null && datosVacunas == null
+
+    // 🧾 "¿Aceptas el presupuesto por S/ X?" (con el updated_at que vio: si la clínica lo
+    // cambió, 409 CAMBIO → se recarga y ve la versión nueva).
+    aceptarPresu?.let { pr ->
+        AlertDialog(
+            onDismissRequest = { aceptarPresu = null },
+            title = { Text("¿Aceptas el presupuesto?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text("«${pr.titulo}» por ${pe.saniape.app.data.staff.formatearDinero(pr.total, pr.moneda)}. " +
+                    "Tu clínica creará tu plan y te escribirá para agendar.", color = c.textoSuave)
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (respondiendoPresu != null) return@TextButton
+                    aceptarPresu = null
+                    respondiendoPresu = pr.id
+                    scope.launch {
+                        val r = MisPresupuestosRepo.responder(pr.id, "aceptar", pr.updatedAt)
+                        respondiendoPresu = null
+                        if (r.ok) Toaster.exito("¡Listo! Aceptaste el presupuesto. Tu clínica te escribirá para agendar.")
+                        else Toaster.error(r.error ?: "No se pudo responder")
+                        if (r.ok || r.recargar) MisPresupuestosRepo.cargar()?.let { presupuestos = it }
+                    }
+                }) { Text("Sí, acepto", color = c.ok, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = { TextButton(onClick = { aceptarPresu = null }) { Text("Ahora no", color = c.textoSuave) } },
+            containerColor = c.superficie,
+        )
+    }
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -420,11 +463,19 @@ fun PantallaSalud() {
                             }
                         }
                     }
+                    // 🧾 Mis presupuestos: solo si su clínica le envió alguno (primero los que esperan respuesta).
+                    seccionPresupuestos(
+                        items = listaPresupuestos,
+                        espacioArriba = hayTratamientos,
+                        respondiendo = respondiendoPresu,
+                        onVer = { p -> acciones.abrirHtml(htmlMiPresupuesto(p), "Presupuesto") },
+                        onAceptar = { p -> if (respondiendoPresu == null) aceptarPresu = p },
+                    )
                     // 🏠 Mis ejercicios de apoyo: solo si su fisio le dejó alguno vigente
                     // (el portal de un paciente de otra especialidad no cambia en nada).
                     if (planesEjercicios.isNotEmpty()) {
                         item {
-                            if (hayTratamientos) Spacer(Modifier.height(Sania.dim.sm))
+                            if (hayTratamientos || listaPresupuestos.isNotEmpty()) Spacer(Modifier.height(Sania.dim.sm))
                             Etiqueta("🏠 MIS EJERCICIOS DE APOYO")
                         }
                         items(planesEjercicios, key = { "ejercicios-" + it.id }) { p ->
