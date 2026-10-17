@@ -1,0 +1,14 @@
+# Novedades de la 2.61.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Pedido para recepción, caja que abre sola y comisiones con monto fijo.
+---
+Clínicas:
+• 🧾 Pedido para recepción: en la atención anota los productos que se lleva o un servicio extra; recepción lo ve "por cobrar" y lo cobra junto con la cita.
+• 🔓 La caja abre sola con lo que contaste al cerrar; registra retiros o ingresos de efectivo con su motivo.
+• Comisiones: además del %, un monto fijo por paquete.
+• Campañas que incluyen la consulta o evaluación: si el paciente toma el paquete, lo pagado se descuenta.
+• 💲 Poner precio a las citas que llegaron sin costo (por ejemplo, desde Google Calendar).
+• El psicólogo colegiado firma el informe psicológico.
+• Foto del profesional en Equipo y Profesionales.
+• Consulta: los chips se marcan solo con la frase completa, dermatología trae sus propias frases, el ejemplo CIE-10 va según la especialidad y el próximo control cae en un día que el profesional atiende.
+• Podología: tras un diagnóstico de pie diabético, "🦶 Evaluar el pie" en un toque.
