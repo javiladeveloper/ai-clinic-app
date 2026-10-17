@@ -113,6 +113,74 @@ class ComisionesReglasTest {
         assertNull(e["idNuevo"])
     }
 
+    // Monto fijo por paquete (web 2026-10-16, PlantillasPanel / comision-plantillas).
+    @Test
+    fun montoFijoValidaYViajaComoLaWeb() {
+        val base = FormEsquema(nombre = "Masajistas", tipo = "porcentaje", calculo = "monto_fijo")
+        assertEquals("Pon el monto fijo por paquete (mayor que cero)", R.validar(base) { null })
+        assertEquals("Pon el monto fijo por paquete (mayor que cero)", R.validar(base.copy(montoFijo = "0")) { null })
+        // En monto fijo NO se exige el %.
+        assertNull(R.validar(base.copy(montoFijo = "50")) { null })
+        val malo = base.copy(montoFijo = "50", asignados = listOf("t1"), ajustes = mapOf("t1" to AjusteForm(montoFijo = "-3")))
+        assertEquals("El monto fijo de María no es válido", R.validar(malo) { "María" })
+
+        val f = base.copy(montoFijo = "50", porcentaje = "40", asignados = listOf("t1"),
+            ajustes = mapOf("t1" to AjusteForm(montoFijo = "60", liquidacion = "egreso")))
+        val b = R.cuerpoGuardar(f, null)
+        assertEquals("monto_fijo", (b["calculo"] as JsonPrimitive).content)
+        assertEquals(50.0, (b["montoFijo"] as JsonPrimitive).content.toDouble())
+        assertEquals(JsonNull, b["porcentaje"])   // el % no va en un esquema de monto fijo
+        val aj = (b["ajustes"] as JsonObject)["t1"] as JsonObject
+        assertEquals("60", (aj["montoFijo"] as JsonPrimitive).content)
+
+        // % de lo cobrado: calculo 'porcentaje' y sin monto fijo.
+        val pct = R.cuerpoGuardar(FormEsquema(nombre = "X", tipo = "porcentaje", porcentaje = "40", montoFijo = "50"), null)
+        assertEquals("porcentaje", (pct["calculo"] as JsonPrimitive).content)
+        assertEquals(JsonNull, pct["montoFijo"])
+        assertEquals(40.0, (pct["porcentaje"] as JsonPrimitive).content.toDouble())
+    }
+
+    @Test
+    fun montoFijoDesdeElServidorYServidorViejo() {
+        val p = esquema(tipo = "porcentaje", avances = listOf(
+            AvanceComision(terapeutaId = "t1", montoFijo = 60.0, montoFijoPropio = 60.0, porcentajePropio = null, propioPresente = true),
+            AvanceComision(terapeutaId = "t2", montoFijo = 50.0),
+        )).copy(calculo = "monto_fijo", montoFijo = 50.0, porcentaje = 0.0, tramos = emptyList())
+        val f = FormEsquema.desde(p)
+        assertTrue(f.esFijo)
+        assertEquals("50", f.montoFijo)
+        assertEquals("", f.porcentaje)
+        assertEquals("60", f.ajusteDe("t1").montoFijo)
+        assertEquals("", f.ajusteDe("t1").porcentaje)
+        assertEquals("", f.ajusteDe("t2").montoFijo)
+        R.titularAvance(p, p.avances[0]).let { assertTrue("60" in it && it.endsWith(" por paquete"), it) }
+        assertTrue("las sesiones sueltas no suman" in R.reglaSinNiveles(p))
+        // Servidor sin las columnas: no manda calculo → porcentaje, como siempre.
+        val viejo = esquema(tipo = "porcentaje", avances = listOf(AvanceComision(terapeutaId = "t1", porcentaje = 20.0)))
+            .copy(porcentaje = 40.0, tramos = emptyList())
+        assertEquals("porcentaje", viejo.calculo)
+        assertEquals("20%", R.titularAvance(viejo, viejo.avances[0]))
+        assertEquals("20", FormEsquema.desde(viejo).ajusteDe("t1").porcentaje)
+    }
+
+    @Test
+    fun parseoMarcaElPorcentajePropio() {
+        val nuevo = ComisionesRepo.parsearEsquemas(
+            """{"plantillas":[{"id":"p","tipo":"porcentaje","calculo":"monto_fijo","montoFijo":50,"avances":[""" +
+                """{"terapeutaId":"t1","montoFijo":60,"porcentajePropio":null,"montoFijoPropio":60},{"terapeutaId":"t2","porcentaje":20}]}]}""",
+        )!!
+        val p = nuevo.plantillas.single()
+        assertEquals("monto_fijo", p.calculo)
+        assertTrue(p.avances[0].propioPresente)
+        assertFalse(p.avances[1].propioPresente)
+        val f = FormEsquema.desde(p)
+        assertEquals("", f.ajusteDe("t1").porcentaje)
+        assertEquals("60", f.ajusteDe("t1").montoFijo)
+        // Sin la columna: calculo ausente → porcentaje.
+        val viejo = ComisionesRepo.parsearEsquemas("""{"plantillas":[{"id":"p","tipo":"porcentaje","porcentaje":40,"avances":[]}]}""")!!
+        assertEquals("porcentaje", viejo.plantillas.single().calculo)
+    }
+
     @Test
     fun porEvaluacionesNoMandaRangoNiMontoYSiElEquipo() {
         val f = FormEsquema(nombre = "Bono recepción", unidad = "evaluaciones", minSes = "10", montoPaq = "400",

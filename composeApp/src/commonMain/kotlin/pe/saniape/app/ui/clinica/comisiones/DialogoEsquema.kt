@@ -128,6 +128,13 @@ internal fun DialogoEsquema(
         )
 
         if (f.tipo == "porcentaje") {
+            // % de lo cobrado o MONTO FIJO por cada paquete cobrado (2026-10-16).
+            Spacer(Modifier.height(Sania.dim.md))
+            EtqForm("Cuánto se lleva")
+            OpcionElegible("% de lo cobrado", detalle = "Ej. 40% de cada paquete", elegida = !f.esFijo) { f = f.copy(calculo = "porcentaje") }
+            OpcionElegible("Monto fijo (${simboloActivo()})", detalle = "Ej. ${simboloActivo()} 50 por cada paquete", elegida = f.esFijo) { f = f.copy(calculo = "monto_fijo") }
+        }
+        if (f.tipo == "porcentaje" && !f.esFijo) {
             Spacer(Modifier.height(Sania.dim.md))
             EtqForm("Porcentaje por defecto")
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -135,6 +142,18 @@ internal fun DialogoEsquema(
                 Text("  % de lo cobrado", color = c.textoSuave, fontSize = 13.sp)
             }
             Ayuda("Es el que se usa para quien no tenga uno propio. Más abajo puedes ponerle a cada persona el suyo: dos personas con porcentajes distintos pueden estar en este mismo esquema.")
+        }
+        if (f.esFijo) {
+            Spacer(Modifier.height(Sania.dim.md))
+            EtqForm("Monto fijo por defecto")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("${simboloActivo()}  ", color = c.textoSuave, fontSize = 13.sp)
+                CampoNumero(f.montoFijo, "50", Modifier.width(100.dp)) { f = f.copy(montoFijo = it) }
+                Text("  por cada paquete cobrado", color = c.textoSuave, fontSize = 13.sp)
+            }
+            Text("Monto fijo: solo cuentan paquetes; las sesiones sueltas no suman.", color = c.texto, fontSize = 12.sp,
+                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+            Ayuda("Se paga una vez por paquete, nunca más de lo que costó. Si el paquete se cobra en partes, el monto se reparte entre los cobros (la mitad pagada, la mitad del monto). Más abajo puedes ponerle a cada persona el suyo.")
         }
 
         if (f.tipo == "tramos") {
@@ -261,7 +280,13 @@ internal fun DialogoEsquema(
                         .background(c.superficie).padding(10.dp),
                 ) {
                     Text(nombre, color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    if (f.tipo == "porcentaje") {
+                    if (f.esFijo) {
+                        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("${simboloActivo()}  ", color = c.textoSuave, fontSize = 13.sp)
+                            CampoNumero(aj.montoFijo, f.montoFijo.ifBlank { "50" }, Modifier.width(100.dp)) { v -> ajustar(id) { it.copy(montoFijo = v) } }
+                            Text("  por paquete", color = c.textoSuave, fontSize = 13.sp)
+                        }
+                    } else if (f.tipo == "porcentaje") {
                         Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                             CampoNumero(aj.porcentaje, f.porcentaje.ifBlank { "40" }, Modifier.width(100.dp)) { v -> ajustar(id) { it.copy(porcentaje = v) } }
                             Text("  %", color = c.textoSuave, fontSize = 13.sp)
@@ -283,7 +308,7 @@ internal fun DialogoEsquema(
                 }
             }
             Ayuda(
-                (if (f.tipo == "porcentaje") "Sin porcentaje propio se usa el del esquema. " else "") +
+                (if (f.esFijo) "Sin monto propio se usa el del esquema. " else if (f.tipo == "porcentaje") "Sin porcentaje propio se usa el del esquema. " else "") +
                     "“Sale sola al cobrar” registra el egreso apenas se cobra: en Finanzas se filtra por comisión y se paga lo del día.",
             )
         }

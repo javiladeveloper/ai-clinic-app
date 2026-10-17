@@ -2,7 +2,9 @@ package pe.saniape.app.data.staff
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonTransformingSerializer
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -38,6 +40,17 @@ data class AvanceComision(
     val pagado: PagoComisionRef? = null,
     val ultimoPago: UltimoPagoComision? = null,
     val porcentaje: Double? = null,
+    /** Monto fijo por paquete de esta persona (esquema con cálculo 'monto_fijo'). */
+    val montoFijo: Double? = null,
+    /** Lo PROPIO de la persona (solo Admin; null = usa el del esquema). */
+    val porcentajePropio: Double? = null,
+    val montoFijoPropio: Double? = null,
+    /**
+     * ¿El servidor mandó `porcentajePropio`? Uno viejo no lo manda y entonces
+     * el formulario arranca con el % que se le aplica, como antes. Lo marca
+     * [AvanceComisionSerializer] (null y ausente se decodifican igual).
+     */
+    val propioPresente: Boolean = false,
     val liquidacion: String? = null,
     val metodoPago: String? = null,
 )
@@ -58,11 +71,25 @@ data class EsquemaComision(
     val etiquetaRango: String = "",
     val periodoMeses: Int = 1,
     val porcentaje: Double? = null,
+    /**
+     * Un esquema por porcentaje paga un % de lo cobrado o un MONTO FIJO por
+     * paquete (2026-10-16). Un servidor sin la columna no lo manda: 'porcentaje'.
+     */
+    val calculo: String = "porcentaje",
+    /** El monto fijo por defecto del esquema (solo Admin). */
+    val montoFijo: Double? = null,
     val desde: String = "",
     val hasta: String = "",
     val tramos: List<TramoComision> = emptyList(),
-    val avances: List<AvanceComision> = emptyList(),
+    val avances: List<@Serializable(with = AvanceComisionSerializer::class) AvanceComision> = emptyList(),
 )
+
+/** Marca si el avance trae la clave `porcentajePropio` (aunque sea null): servidor nuevo. */
+object AvanceComisionSerializer : JsonTransformingSerializer<AvanceComision>(AvanceComision.serializer()) {
+    override fun transformDeserialize(element: JsonElement): JsonElement =
+        if (element is JsonObject && "porcentajePropio" in element) JsonObject(element + ("propioPresente" to JsonPrimitive(true)))
+        else element
+}
 
 @Serializable
 data class EsquemasComision(
@@ -148,12 +175,21 @@ data class MiembroEquipoComision(val id: String, val nombre: String, val rol: St
 data class TramoForm(val nombre: String = "", val objetivo: String = "", val montoBono: String = "")
 
 /** Lo pactado con una persona dentro de un esquema. */
-data class AjusteForm(val porcentaje: String = "", val liquidacion: String = "aprobar", val metodoPago: String = "")
+data class AjusteForm(
+    val porcentaje: String = "",
+    val liquidacion: String = "aprobar",
+    val metodoPago: String = "",
+    /** Monto fijo por paquete propio (vacío = el del esquema). */
+    val montoFijo: String = "",
+)
 
 data class FormEsquema(
     val id: String? = null,
     val tipo: String = "tramos",
     val porcentaje: String = "",
+    /** 'porcentaje' (% de lo cobrado) | 'monto_fijo' (S/ X por paquete). Solo en tipo 'porcentaje'. */
+    val calculo: String = "porcentaje",
+    val montoFijo: String = "",
     val nombre: String = "",
     val minSes: String = "",
     val maxSes: String = "",
@@ -167,6 +203,8 @@ data class FormEsquema(
     val ajustes: Map<String, AjusteForm> = emptyMap(),
 ) {
     val porEvaluaciones: Boolean get() = tipo == "tramos" && unidad == "evaluaciones"
+    /** "Un % de lo que cobra" con monto fijo por paquete. */
+    val esFijo: Boolean get() = tipo == "porcentaje" && calculo == "monto_fijo"
     fun ajusteDe(id: String): AjusteForm = ajustes[id] ?: AjusteForm()
 
     companion object {
@@ -177,7 +215,10 @@ data class FormEsquema(
             return FormEsquema(
                 id = p.id,
                 tipo = if (p.tipo == "porcentaje") "porcentaje" else "tramos",
-                porcentaje = num(p.porcentaje),
+                calculo = if (p.calculo == "monto_fijo") "monto_fijo" else "porcentaje",
+                // El % por defecto no aplica a un esquema de monto fijo (como la web).
+                porcentaje = if (p.calculo == "monto_fijo") "" else num(p.porcentaje),
+                montoFijo = num(p.montoFijo),
                 nombre = p.nombre,
                 minSes = p.minSesiones?.toString() ?: "",
                 maxSes = p.maxSesiones?.toString() ?: "",
@@ -191,9 +232,12 @@ data class FormEsquema(
                 asignadosEquipo = p.avances.mapNotNull { it.perfilId },
                 ajustes = p.avances.filter { it.terapeutaId != null }.associate { a ->
                     a.terapeutaId!! to AjusteForm(
-                        porcentaje = num(a.porcentaje),
+                        // Lo PROPIO de la persona (vacío = usa el del esquema). Un servidor
+                        // que aún no lo manda: el % que se le aplica, como antes.
+                        porcentaje = if (a.propioPresente) num(a.porcentajePropio) else num(a.porcentaje),
                         liquidacion = if (a.liquidacion == "egreso") "egreso" else "aprobar",
                         metodoPago = a.metodoPago ?: "",
+                        montoFijo = num(a.montoFijoPropio),
                     )
                 },
             )
@@ -298,9 +342,24 @@ object ReglasComisiones {
         (if (u.monto > 0) "Anular el pago de ${dineroActivo(u.monto)}" else "Deshacer el corte") +
             (u.hastaCorte?.let { " (al $it)" } ?: "")
 
-    /** Lo que se ve grande en la fila del Admin: su % (esquema por porcentaje) o su nivel. */
-    fun titularAvance(p: EsquemaComision, a: AvanceComision): String =
-        if (p.tipo == "porcentaje") "${numTxt(a.porcentaje ?: 0.0)}%" else (a.nivelActual ?: "—")
+    /** ¿El esquema paga un monto fijo por paquete? */
+    fun esMontoFijo(p: EsquemaComision): Boolean = p.tipo == "porcentaje" && p.calculo == "monto_fijo"
+
+    /** Lo que se ve grande en la fila del Admin: su % o "S/ X por paquete" (esquema por porcentaje), o su nivel. */
+    fun titularAvance(p: EsquemaComision, a: AvanceComision): String = when {
+        esMontoFijo(p) -> "${dineroActivo(a.montoFijo ?: 0.0)} por paquete"
+        p.tipo == "porcentaje" -> "${numTxt(a.porcentaje ?: 0.0)}%"
+        else -> a.nivelActual ?: "—"
+    }
+
+    /** La regla de un esquema sin niveles, en una línea (como la web). */
+    fun reglaSinNiveles(p: EsquemaComision): String = when {
+        esMontoFijo(p) -> "Acumula un monto fijo por cada paquete pagado" +
+            (p.montoFijo?.let { " (${dineroActivo(it)} por defecto)" } ?: "") +
+            ". Solo cuentan paquetes; las sesiones sueltas no suman."
+        p.tipo == "porcentaje" -> "Acumula un porcentaje de cada paquete pagado. Sin niveles ni objetivo."
+        else -> "Bono único al alcanzar el objetivo."
+    }
 
     /** Lo que se ve debajo del titular (Admin). */
     fun montoAvance(p: EsquemaComision, a: AvanceComision): String = when {
@@ -346,7 +405,15 @@ object ReglasComisiones {
         if (f.nombre.isBlank()) return "Ponle un nombre al esquema"
         val llenos = f.tramos.filter { it.objetivo.isNotBlank() && it.nombre.isNotBlank() }
         if (f.tipo == "tramos" && llenos.isEmpty()) return "Completa al menos un nivel"
-        if (f.tipo == "porcentaje") {
+        if (f.esFijo) {
+            val fijo = f.montoFijo.trim().replace(',', '.').toDoubleOrNull()
+            if (fijo == null || !fijo.isFinite() || fijo <= 0) return "Pon el monto fijo por paquete (mayor que cero)"
+            val malo = f.asignados.firstOrNull { id ->
+                val v = f.ajusteDe(id).montoFijo.trim()
+                if (v.isEmpty()) false else (v.replace(',', '.').toDoubleOrNull()?.let { !it.isFinite() || it < 0 } ?: true)
+            }
+            if (malo != null) return "El monto fijo de ${nombreDe(malo) ?: "esa persona"} no es válido"
+        } else if (f.tipo == "porcentaje") {
             val pct = f.porcentaje.trim().replace(',', '.').toDoubleOrNull()
             if (pct == null || pct <= 0 || pct > 100) return "Pon el porcentaje del esquema (entre 0 y 100)"
             val malo = f.asignados.firstOrNull { id ->
@@ -373,7 +440,10 @@ object ReglasComisiones {
         put("soloPacientesNuevos", !porEval && f.soloNuevos)
         put("montoPaquete", if (porEval) null else numero(f.montoPaq))
         put("periodoMeses", f.periodoMeses.trim().toIntOrNull()?.takeIf { it > 0 } ?: 1)
-        put("porcentaje", if (f.tipo == "porcentaje") numero(f.porcentaje) else null)
+        put("porcentaje", if (f.tipo == "porcentaje" && !f.esFijo) numero(f.porcentaje) else null)
+        // % de lo cobrado o monto fijo por paquete (como la web: siempre viaja).
+        put("calculo", if (f.tipo == "porcentaje") f.calculo else "porcentaje")
+        put("montoFijo", if (f.esFijo) numero(f.montoFijo) else null)
         put("tramos", JsonArray(if (f.tipo == "tramos") {
             f.tramos.filter { it.objetivo.isNotBlank() && it.nombre.isNotBlank() }.map { t ->
                 buildJsonObject {
@@ -389,6 +459,7 @@ object ReglasComisiones {
             val a = f.ajusteDe(id)
             buildJsonObject {
                 put("porcentaje", a.porcentaje.trim().replace(',', '.'))
+                put("montoFijo", a.montoFijo.trim().replace(',', '.'))
                 put("liquidacion", a.liquidacion)
                 put("metodoPago", a.metodoPago)
             }

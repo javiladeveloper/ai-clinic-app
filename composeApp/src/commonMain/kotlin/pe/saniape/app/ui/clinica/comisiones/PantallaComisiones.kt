@@ -397,7 +397,7 @@ private fun TarjetaEsquemaAdmin(
         Spacer(Modifier.height(8.dp))
         if (p.tipo != "tramos") {
             Text(
-                if (p.tipo == "porcentaje") "Acumula un porcentaje de cada paquete pagado. Sin niveles ni objetivo." else "Bono único al alcanzar el objetivo.",
+                ReglasComisiones.reglaSinNiveles(p),
                 color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp),
             )
         }
