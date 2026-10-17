@@ -138,7 +138,7 @@ fun PantallaFinanzas(ctx: ContextoStaff, onSalir: () -> Unit) = PantallaTutorial
             Box(Modifier.weight(1f)) {
                 when (tab) {
                     TabFin.Caja -> TabCaja(ctx, categorias)
-                    TabFin.Cierre -> TabCierre()
+                    TabFin.Cierre -> TabCierre(puedeAjustar = ctx.puede("finanzas"))
                     TabFin.PorCobrar -> TabPorCobrar()
                     TabFin.Gastos -> TabGastosFijos(gastos, categorias.gastoFijo, falloGastos) { recargaGastos++ }
                 }

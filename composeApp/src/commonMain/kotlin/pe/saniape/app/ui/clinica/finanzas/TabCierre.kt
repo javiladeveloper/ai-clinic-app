@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import kotlinx.datetime.toLocalDateTime
+import pe.saniape.app.data.staff.CajaApertura
 import pe.saniape.app.data.staff.DiaCierre
 import pe.saniape.app.data.staff.Finanzas
 import pe.saniape.app.data.staff.FinanzasRepo
@@ -64,7 +65,10 @@ import pe.saniape.app.ui.theme.Sania
  * Multisede: cada local cierra su cajón; en "todas las sedes" no se cierra.
  */
 @Composable
-internal fun TabCierre() {
+internal fun TabCierre(
+    /** "± Registrar retiro o ingreso de efectivo": permiso finanzas (el servidor lo vuelve a validar). */
+    puedeAjustar: Boolean = false,
+) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     // "Hoy" se recalcula al volver la app al frente (puede quedar abierta de un día para otro).
@@ -82,6 +86,12 @@ internal fun TabCierre() {
     var eligiendo by remember { mutableStateOf(false) }
     var verMovs by remember { mutableStateOf(false) }
     var guardando by remember { mutableStateOf(false) }
+    // Ajuste de caja (retiro / ingreso de efectivo) de HOY.
+    var ajusteAbierto by remember { mutableStateOf(false) }
+    var ajusteTipo by remember { mutableStateOf("retiro") }
+    var ajusteMonto by remember { mutableStateOf("") }
+    var ajusteMotivo by remember { mutableStateOf("") }
+    var guardandoAjuste by remember { mutableStateOf(false) }
     val sede by SedeActiva.estado.collectAsState()
 
     LaunchedEffect(fecha, sede.filtro, sede.sedeId, recarga) {
@@ -154,10 +164,99 @@ internal fun TabCierre() {
                 }
                 TarjetaFin(Modifier.tourAncla("caja.efectivo")) {
                     RotuloFin("Arqueo de efectivo", modifier = Modifier.padding(bottom = 8.dp))
+                    // Servidor con la apertura automática: manda `esperadoMovimientos`.
+                    val conApertura = d.cerrable && d.esperadoMovimientos != null
+                    if (conApertura) {
+                        // Días sin cerrar entre el último cierre y este: su efectivo ya va
+                        // en la apertura, pero cada día cuadra solo si se cierra.
+                        d.apertura?.takeIf { it.diasSinCerrar.isNotEmpty() }?.let { a ->
+                            AvisoFin("⚠ " + CajaApertura.mensajeDiasSinCerrar(a.diasSinCerrar), c.pend, c.pendBg)
+                            Spacer(Modifier.height(6.dp))
+                        }
+                        // La apertura sale sola y NO se edita: si salió o entró efectivo,
+                        // eso es un ajuste con motivo.
+                        d.apertura?.let { a ->
+                            FilaArqueo("🔓 Apertura", CajaApertura.origenApertura(a), "🔒 " + formatearDinero(a.monto, moneda))
+                        }
+                        FilaArqueo("± Cobros − gastos en efectivo del día", null, formatearDinero(d.esperadoMovimientos ?: 0.0, moneda))
+                        d.ajustes.forEach { a ->
+                            val hora = a.createdAt?.let { horaFin(it) }
+                            val sub = listOfNotNull(hora, a.creadoPorNombre).joinToString(" · ") +
+                                (if (a.despuesDelCierre) " · después del cierre (va a la apertura de mañana)" else "")
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text((if (a.monto < 0) "↘ " else "↗ ") + CajaApertura.etiquetaAjuste(a.monto) + ": " + a.motivo,
+                                        color = if (a.despuesDelCierre) c.textoSuave else c.texto, fontSize = 12.sp)
+                                    if (sub.isNotBlank()) Text(sub, color = c.textoSuave, fontSize = 10.sp)
+                                }
+                                Text((if (a.monto < 0) "−" else "+") + formatearDinero(kotlin.math.abs(a.monto), moneda),
+                                    color = if (a.monto < 0) c.error else c.ok, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        // ± Retiro / ingreso: solo HOY, sin un cierre posterior, con la base lista y permiso finanzas.
+                        if (puedeAjustar && fecha == hoy && d.cierrePosterior == null && d.ajustesDisponibles) {
+                            if (!ajusteAbierto) {
+                                Text("± Registrar retiro o ingreso de efectivo", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(vertical = 4.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                        .clickable { ajusteAbierto = true }.padding(vertical = 4.dp))
+                            } else {
+                                Column(
+                                    Modifier.fillMaxWidth().padding(vertical = 6.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                        .background(c.fondo).padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        listOf("retiro" to "Retiro de efectivo", "ingreso" to "Ingreso de efectivo").forEach { (v, t) ->
+                                            val activo = ajusteTipo == v
+                                            Text(t, color = if (activo) c.sobreNavy else c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+                                                    .background(if (activo) c.navy else c.chipBg)
+                                                    .clickable { ajusteTipo = v }.padding(horizontal = 12.dp, vertical = 7.dp))
+                                        }
+                                    }
+                                    OutlinedTextField(
+                                        colors = coloresCampoForm(), value = ajusteMonto,
+                                        onValueChange = { ajusteMonto = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }.take(12) },
+                                        placeholder = { Text("0.00", color = c.textoSuave) }, singleLine = true,
+                                        label = { Text("Monto (${simboloMoneda(moneda)})") },
+                                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                    OutlinedTextField(
+                                        colors = coloresCampoForm(), value = ajusteMotivo, onValueChange = { ajusteMotivo = it.take(300) },
+                                        placeholder = { Text(if (ajusteTipo == "retiro") "Motivo (ej. depósito al banco)" else "Motivo (ej. fondo de cambio)", color = c.textoSuave) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                    Text("Queda registrado con tu nombre y no se puede borrar.", color = c.textoSuave, fontSize = 11.sp)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        BotonFin("Cancelar", Modifier.weight(1f), color = c.textoSuave, habilitado = !guardandoAjuste) { ajusteAbierto = false }
+                                        BotonFin(if (guardandoAjuste) "Guardando…" else "Registrar", Modifier.weight(1f), habilitado = !guardandoAjuste) {
+                                            val monto = Finanzas.parsearMonto(ajusteMonto)
+                                            CajaApertura.validarAjuste(monto, ajusteMotivo)?.let { Toaster.error(it); return@BotonFin }
+                                            guardandoAjuste = true
+                                            scope.launch {
+                                                val r = conIndicador(Gestion.GUARDANDO) { FinanzasRepo.ajusteCaja(ajusteTipo, monto!!, ajusteMotivo) }
+                                                guardandoAjuste = false
+                                                if (r.ok) {
+                                                    Toaster.exito(if (ajusteTipo == "retiro") "Retiro registrado" else "Ingreso de efectivo registrado")
+                                                    ajusteAbierto = false; ajusteMonto = ""; ajusteMotivo = ""
+                                                    recarga++
+                                                } else Toaster.error(r.error ?: "No se pudo registrar el ajuste")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                    }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("💵 Efectivo esperado en caja", color = c.texto, fontSize = 13.sp)
-                            Text("cobros en efectivo − gastos en efectivo", color = c.textoSuave, fontSize = 11.sp)
+                            Text(CajaApertura.rotuloEsperado(conApertura, d.totalAjustes != 0.0), color = c.textoSuave, fontSize = 11.sp)
                         }
                         Text(formatearDinero(d.esperado, moneda), color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
@@ -175,11 +274,23 @@ internal fun TabCierre() {
                             )
                         }
                     }
-                    val arqueo = contadoNum?.let { Finanzas.compararArqueo(d.esperado, it, moneda) }
+                    // La vista previa es lo que se GUARDARÍA al cerrar o recontar (la apertura de
+                    // ahora y todos los ajustes del día); con el día cerrado y ajustes posteriores,
+                    // se muestran los dos: lo guardado y lo que daría recontar.
+                    val esperadoAlGuardar = d.esperadoAlActualizar ?: d.esperado
+                    val recuentoCambia = CajaApertura.recuentoCambia(d.cierre != null, d.cerrable, d.esperado, d.esperadoAlActualizar)
+                    if (recuentoCambia) d.cierre?.let { ci ->
+                        val guardado = Finanzas.compararArqueo(d.esperado, ci.efectivoContado, moneda)
+                        Spacer(Modifier.height(6.dp))
+                        Text("Cierre guardado: ${guardado.mensaje.lowercase()}. Si actualizas el cierre, los ajustes posteriores al cierre entran en el arqueo de este día: esperado ${formatearDinero(esperadoAlGuardar, moneda)}.",
+                            color = c.textoSuave, fontSize = 11.sp)
+                    }
+                    val arqueo = contadoNum?.let { Finanzas.compararArqueo(esperadoAlGuardar, it, moneda) }
                     if (arqueo != null) {
                         Spacer(Modifier.height(8.dp))
                         val cuadra = arqueo.estado == Finanzas.EstadoArqueo.CUADRA
-                        AvisoFin((if (cuadra) "✓ " else "⚠ ") + arqueo.mensaje, if (cuadra) c.ok else c.error, if (cuadra) c.okBg else c.errorBg)
+                        AvisoFin((if (cuadra) "✓ " else "⚠ ") + (if (recuentoCambia) "Al actualizar el cierre: " else "") + arqueo.mensaje,
+                            if (cuadra) c.ok else c.error, if (cuadra) c.okBg else c.errorBg)
                         // La nota explica el descuadre: sin ella, un "faltan S/5" de hace dos semanas es un misterio.
                         if (!cuadra && d.cerrable) {
                             Spacer(Modifier.height(8.dp))
@@ -194,11 +305,18 @@ internal fun TabCierre() {
                     if (!d.cerrable) {
                         Text("🏢 Estás viendo todas las sedes. Cada local cuenta y cierra su propio cajón: elige una sede arriba para cerrar su caja.",
                             color = c.textoSuave, fontSize = 12.sp)
+                    } else if (d.cierrePosterior != null) {
+                        // Ya se cerró un día posterior que abrió con lo contado antes: este no se recuenta.
+                        Text("🔒 " + CajaApertura.mensajeCierrePosterior(d.cierrePosterior), color = c.textoSuave, fontSize = 12.sp)
                     } else {
                         d.cierre?.let { ci ->
                             Text("Cerrada" + (ci.cerradoAt?.let { " el " + fechaHoraFin(it) } ?: "") + (ci.nota?.let { " · $it" } ?: ""),
                                 color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(bottom = 6.dp))
-                        } ?: Text("Cuenta el efectivo y cierra el día.", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(bottom = 6.dp))
+                        } ?: Text(
+                            if (d.esperadoMovimientos != null) "Cuenta el efectivo y cierra el día. Si retiras efectivo al cerrar, regístralo antes como retiro: mañana la caja abre con lo que cuentes."
+                            else "Cuenta el efectivo y cierra el día.",
+                            color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(bottom = 6.dp),
+                        )
                         BotonFin(
                             if (guardando) "Guardando…" else if (d.cierre != null) "↻ Actualizar cierre" else "🔒 Cerrar caja del día",
                             Modifier.fillMaxWidth().tourAncla("caja.cerrar"),
@@ -241,6 +359,19 @@ internal fun TabCierre() {
                 Spacer(Modifier.height(Sania.dim.xxl))
             }
         }
+    }
+}
+
+/** Una fila del arqueo: rótulo (con su aclaración en gris) y el monto a la derecha. */
+@Composable
+private fun FilaArqueo(rotulo: String, detalle: String?, valor: String) {
+    val c = Sania.colors
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(rotulo, color = c.textoSuave, fontSize = 13.sp)
+            detalle?.let { Text(it, color = c.textoSuave, fontSize = 10.sp) }
+        }
+        Text(valor, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 

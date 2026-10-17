@@ -46,6 +46,21 @@ data class DiaCierre(
     val moneda: String? = null,
     /** "Todas las sedes" con varias monedas: un total por moneda (nunca sumados). Vacío = una sola moneda. */
     val totalesPorMoneda: List<TotalMoneda> = emptyList(),
+    // ── Apertura automática (2026-10-16). Un servidor sin la migración no los manda. ──
+    /** Con cuánto abrió la caja (null en "todas las sedes" o sin la migración). */
+    val apertura: AperturaCajaApp? = null,
+    /** Retiros / ingresos de efectivo del día, con autor. */
+    val ajustes: List<AjusteCajaApp> = emptyList(),
+    /** Los ajustes que entran en el arqueo (los de antes del cierre). */
+    val totalAjustes: Double = 0.0,
+    /** Solo cobros − gastos en efectivo del día. null = servidor viejo (`esperado` es eso). */
+    val esperadoMovimientos: Double? = null,
+    /** Lo que guardaría "Actualizar cierre" (apertura de ahora + TODOS los ajustes). */
+    val esperadoAlActualizar: Double? = null,
+    /** Fecha de un cierre POSTERIOR de esta caja: este día ya no se cierra ni se recuenta. */
+    val cierrePosterior: String? = null,
+    /** ¿La base ya tiene los ajustes de caja? (sin la migración no se ofrecen). */
+    val ajustesDisponibles: Boolean = false,
 )
 
 /** Totales de un día en UNA moneda (consolidado multipaís). */
@@ -293,6 +308,16 @@ object FinanzasRepo {
         return (r.cuerpo?.let { parsearDiaCierre(it) } ?: return null to "Respuesta inesperada del servidor.") to null
     }
 
+    /**
+     * Retiro o ingreso de efectivo en la caja de HOY (la base fija la fecha y el
+     * autor; no se edita ni se borra). [tipo]: "retiro" | "ingreso".
+     */
+    suspend fun ajusteCaja(tipo: String, monto: Double, motivo: String): RespuestaFinanzas =
+        post("/api/staff/caja/ajuste", buildJsonObject {
+            put("tipo", tipo); put("monto", monto); put("motivo", motivo.trim())
+            sedeActual()?.let { put("sede", it) }
+        })
+
     /** Cierra la caja del día (o actualiza el cierre si ya estaba cerrada). */
     suspend fun cerrar(fecha: String, contado: Double, nota: String?, actualizar: Boolean): RespuestaFinanzas {
         val cuerpo = buildJsonObject {
@@ -340,6 +365,30 @@ object FinanzasRepo {
                 )
             },
             moneda = o.str("moneda")?.takeIf { it.isNotBlank() },
+            apertura = (o["apertura"] as? JsonObject)?.let { a ->
+                AperturaCajaApp(
+                    monto = a.dbl("monto") ?: 0.0,
+                    desde = a.str("desde")?.takeIf { it.isNotBlank() },
+                    diasSinCerrar = (a["diasSinCerrar"] as? JsonArray).orEmpty()
+                        .mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.takeIf { d -> d.isNotBlank() } },
+                )
+            },
+            ajustes = (o["ajustes"] as? JsonArray).orEmpty().mapNotNull { e ->
+                val x = e as? JsonObject ?: return@mapNotNull null
+                AjusteCajaApp(
+                    id = x.str("id") ?: return@mapNotNull null,
+                    monto = x.dbl("monto") ?: 0.0,
+                    motivo = x.str("motivo") ?: "",
+                    creadoPorNombre = x.str("creadoPorNombre")?.takeIf { it.isNotBlank() },
+                    createdAt = x.str("createdAt"),
+                    despuesDelCierre = x.bool("despuesDelCierre") ?: false,
+                )
+            },
+            totalAjustes = o.dbl("totalAjustes") ?: 0.0,
+            esperadoMovimientos = o.dbl("esperadoMovimientos"),
+            esperadoAlActualizar = o.dbl("esperadoAlActualizar"),
+            cierrePosterior = o.str("cierrePosterior")?.takeIf { it.isNotBlank() },
+            ajustesDisponibles = o.bool("ajustesDisponibles") ?: false,
             totalesPorMoneda = (o["totalesPorMoneda"] as? JsonArray).orEmpty().mapNotNull { e ->
                 val x = e as? JsonObject ?: return@mapNotNull null
                 TotalMoneda(
