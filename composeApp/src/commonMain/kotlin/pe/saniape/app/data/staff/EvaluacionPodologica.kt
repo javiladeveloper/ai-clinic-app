@@ -647,6 +647,16 @@ private val RE_NO_DIABETES = Regex("""no (es )?diab[eé]t|niega diab""", RegexOp
 fun diabeticoPorAntecedentes(vararg textos: String?): Boolean =
     textos.any { t -> RE_DIABETES.containsMatchIn(t.orEmpty()) && !RE_NO_DIABETES.containsMatchIn(t.orEmpty()) }
 
+/**
+ * ¿El diagnóstico pide la evaluación del pie con su tamizaje IWGDF? (pie
+ * diabético / diabetes / pie de riesgo). Gemelo de `diagnosticoPideEvaluacionPie`
+ * (web 2026-10-16): tras completar con ese diagnóstico se ofrece "🦶 Evaluar el pie".
+ */
+fun diagnosticoPideEvaluacionPie(diagnostico: String?): Boolean {
+    val t = diagnostico.orEmpty()
+    return diabeticoPorAntecedentes(t) || Regex("pie (de|en) riesgo", RegexOption.IGNORE_CASE).containsMatchIn(t)
+}
+
 /** Recomendaciones para el informe según la categoría (educación IWGDF 2023). */
 fun recomendacionesRiesgo(categoria: Int?): List<String> {
     if (categoria == null) return emptyList()

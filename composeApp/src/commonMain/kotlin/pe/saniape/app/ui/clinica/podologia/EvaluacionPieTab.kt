@@ -112,6 +112,12 @@ import pe.saniape.app.ui.recordarAcciones
 import pe.saniape.app.ui.theme.Sania
 
 /** El editor: cerrado, una evaluación nueva o la que se edita (por id). */
+/**
+ * Cómo se abre la pestaña desde la agenda ("🦶 Evaluar el pie" tras un
+ * diagnóstico de pie diabético): una evaluación nueva vinculada a esa cita.
+ */
+data class AperturaPie(val citaId: String?)
+
 private sealed interface EditorPie {
     data object Nueva : EditorPie
     data class Editar(val id: String) : EditorPie
@@ -156,6 +162,11 @@ fun EvaluacionPieTab(
     onAgendarControl: ((fecha: String, ev: EvaluacionPodologica) -> Unit)? = null,
     /** "📝 Indicaciones: cuidado del pie diabético" (riesgo ≥ 2; null = no se ofrece). */
     onIndicacionesPieDiabetico: (() -> Unit)? = null,
+    /** La cita de la que viene (agenda → "🦶 Evaluar el pie"): la evaluación nueva queda vinculada a ella. */
+    citaId: String? = null,
+    /** Abrir de entrada una evaluación nueva (vale una vez: [onNuevoAbierto] avisa al padre). */
+    abrirNuevo: Boolean = false,
+    onNuevoAbierto: () -> Unit = {},
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -174,7 +185,10 @@ fun EvaluacionPieTab(
     LaunchedEffect(Unit) {
         profesionales = runCatching { PacientesRepo.terapeutasActivos().associate { it.id to it.nombre } }.getOrDefault(emptyMap())
     }
-    var editor by remember { mutableStateOf<EditorPie?>(null) }
+    var editor by remember { mutableStateOf<EditorPie?>(if (abrirNuevo && puedeEditar) EditorPie.Nueva else null) }
+    // La cita se recuerda al abrir: el padre olvida "abrir de una" pero la evaluación sigue vinculada.
+    val citaVinculada = remember { citaId }
+    LaunchedEffect(Unit) { if (abrirNuevo) onNuevoAbierto() }
     var recien by remember { mutableStateOf<String?>(null) }
     var confirmarBorrar by remember { mutableStateOf<EvaluacionPodologica?>(null) }
     var borrando by remember { mutableStateOf(false) }
@@ -296,6 +310,7 @@ fun EvaluacionPieTab(
                     anterior = if (enEdicion == null) lista.firstOrNull() else lista.getOrNull(idx + 1),
                     diabeticoSugerido = diabeticoPorAntecedentes(antecedentes, diagnostico),
                     clinicaId = clinicaId,
+                    citaId = if (enEdicion == null) citaVinculada else null,
                     onCerrar = { editor = null },
                     onGuardado = { ev, nueva ->
                         editor = null
@@ -505,6 +520,8 @@ private fun EditorEvaluacionPie(
     clinicaId: String?,
     onCerrar: () -> Unit,
     onGuardado: (EvaluacionPodologica, Boolean) -> Unit,
+    /** Solo en una evaluación NUEVA: la cita de la que viene. */
+    citaId: String? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -552,6 +569,7 @@ private fun EditorEvaluacionPie(
         if (guardando) return
         val b = BorradorEvaluacionPodo(
             pacienteId = pacienteId, fecha = fecha.ifBlank { hoy }, zonas = zonas,
+            citaId = if (evaluacion == null) citaId else null,
             // No diabético y nada registrado = sin tamizaje (así "evaluación vacía" se detecta).
             tamizaje = tam.takeIf { tamizajeTieneDatos(it) },
             tipoPie = tipoPie, pisada = pisada, higiene = higiene,

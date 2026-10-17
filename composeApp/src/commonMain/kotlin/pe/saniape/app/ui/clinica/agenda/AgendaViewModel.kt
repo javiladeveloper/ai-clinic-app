@@ -1010,6 +1010,14 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     fun cerrarOfertaMedidas() { ofrecerMedidas = null }
 
     /**
+     * 🦶 Podología: tras completar con diagnóstico de pie diabético (o diabetes /
+     * pie de riesgo), "🦶 Evaluar el pie" (gemelo de `ofrecerEvaluacionPie` de
+     * /citas). AVISO que no bloquea; va después de "⚖️ Registrar medidas".
+     */
+    var ofrecerPie by mutableStateOf<CitaStaff?>(null); private set
+    fun cerrarOfertaPie() { ofrecerPie = null }
+
+    /**
      * 📝 "Dejar indicaciones" tras completar (gemelo de `ofrecerIndicaciones` de
      * /citas): solo si el SERVICIO de la cita sugiere una plantilla base (el
      * catálogo del servidor decide; la app no adivina por palabras). AVISO que no
@@ -1305,6 +1313,17 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                         encolada = completadaEncolada,
                     )) {
                     ofrecerMedidas = cita.copy(estado = "Completada")
+                }
+                // Podología: "🦶 Evaluar el pie" si el diagnóstico es de pie diabético.
+                if (accion == AccionCita.Completar && !completadaEncolada && cita.pacienteId != null &&
+                    (ctx.puede("pacientes") || ctx.puede("sesiones")) &&
+                    pe.saniape.app.data.staff.diagnosticoPideEvaluacionPie(diagnostico) &&
+                    pe.saniape.app.data.staff.citaEsPodologia(
+                        ctx.mapaPodologia, cita.especialidadId, cita.especialidadServicioId,
+                        cita.terapeutaId?.let { espsPorTerapeuta[it] },
+                    )
+                ) {
+                    ofrecerPie = cita.copy(estado = "Completada")
                 }
                 // Fisioterapia: la evaluación estructurada (opcional). Aparte, para no
                 // demorar la recarga de la agenda; nunca bloquea: la cita ya quedó

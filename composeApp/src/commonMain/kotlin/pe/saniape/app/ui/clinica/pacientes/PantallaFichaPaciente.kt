@@ -115,6 +115,8 @@ fun PantallaFichaPaciente(
      */
     presupuestoNuevoCitaId: String? = null,
     presupuestoNuevo: Boolean = false,
+    /** 🦶 Desde la agenda ("🦶 Evaluar el pie"): la pestaña del pie con una evaluación nueva vinculada a la cita. */
+    pieAlAbrir: pe.saniape.app.ui.clinica.podologia.AperturaPie? = null,
 ) {
     // Multipaís: el dinero de la ficha va en la moneda de la sede del paciente
     // (solo con "pacientes por sede"; si no, la de la sede activa). Una clínica de
@@ -128,7 +130,7 @@ fun PantallaFichaPaciente(
     androidx.compose.runtime.CompositionLocalProvider(
         pe.saniape.app.ui.LocalMoneda provides pe.saniape.app.data.staff.monedaDeFila(sedePaciente),
     ) {
-        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir, sedePaciente, embarazoAlAbrir, embarazoCitaId, presupuestosAlAbrir || presupuestoNuevo, presupuestoNuevoCitaId, presupuestoNuevo)
+        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir, sedePaciente, embarazoAlAbrir, embarazoCitaId, presupuestosAlAbrir || presupuestoNuevo, presupuestoNuevoCitaId, presupuestoNuevo, pieAlAbrir)
     }
 }
 
@@ -146,6 +148,7 @@ private fun PantallaFichaPacienteContenido(
     presupuestosAlAbrir: Boolean = false,
     presupuestoNuevoCitaId: String? = null,
     presupuestoNuevo: Boolean = false,
+    pieAlAbrir: pe.saniape.app.ui.clinica.podologia.AperturaPie? = null,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val tpl = LocalTerminologiaPaciente.current
@@ -186,6 +189,7 @@ private fun PantallaFichaPacienteContenido(
             else if (indicacionesAlAbrir != null) "indicaciones"
             else if (ortodonciaAlAbrir != null) "ortodoncia"
             else if (embarazoAlAbrir) "embarazo"
+            else if (pieAlAbrir != null) "evaluacion_pie"
             else if (presupuestosAlAbrir && pe.saniape.app.data.staff.puedeVerPresupuestos { ctx.puede(it) }) "presupuestos"
             else nutricionAlAbrir?.tab ?: "atenciones",
         )
@@ -198,6 +202,8 @@ private fun PantallaFichaPacienteContenido(
     // 😁 Ortodoncia: la cita de la agenda (vale una vez: se suelta al registrar su
     // control o al pasar a otra pestaña).
     var flujoOrto by remember { mutableStateOf(ortodonciaAlAbrir) }
+    // 🦶 Pie: "abrir una evaluación nueva" vale una vez (la cita queda en la pestaña).
+    var flujoPie by remember { mutableStateOf(pieAlAbrir) }
     // 🧾 Presupuestos: "🧾 Arma un presupuesto" (formulario de crear tratamiento) abre
     // el editor nuevo UNA vez, vinculado a la cita de la que se venía (si la hay).
     var flujoPresu by remember { mutableStateOf<Pair<String?, Boolean>>(presupuestoNuevoCitaId to presupuestoNuevo) }
@@ -366,7 +372,7 @@ private fun PantallaFichaPacienteContenido(
     // lectura liviana que ya se hace en las clínicas mixtas).
     val atencionesConCitas = atencionesPaciente +
         datosDentales.especialidadesDeCitas.map { pe.saniape.app.data.staff.AtencionFisio(especialidadId = it) }
-    val esPacientePodologia = pe.saniape.app.data.staff.pacienteEsPodologia(
+    val esPacientePodologia = pieAlAbrir != null || pe.saniape.app.data.staff.pacienteEsPodologia(
         ctx.mapaPodologia, atenciones = atencionesConCitas, tieneEvaluaciones = tieneEvalPodo,
         especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
     )
@@ -1381,6 +1387,9 @@ private fun PantallaFichaPacienteContenido(
                             logoUrl = ctx.logoUrl,
                             colorPrincipal = ctx.colorPrincipal,
                             clinicaId = ctx.clinicaId,
+                            citaId = pieAlAbrir?.citaId,
+                            abrirNuevo = flujoPie != null,
+                            onNuevoAbierto = { flujoPie = null },
                             // "📅 Agendar próximo control": la fecha la pone la categoría IWGDF; va como
                             // la entrada del flujo, con quien evaluó y la especialidad de podología
                             // (gemelo de `agendarControlPodo`), en el formulario de cita de siempre.

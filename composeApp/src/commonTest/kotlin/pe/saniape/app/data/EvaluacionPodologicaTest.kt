@@ -454,4 +454,12 @@ class EvaluacionPodologicaTest {
         assertFalse(viejo.mapaPodologia.activo)
         assertFalse(viejo.mapaEstetica.activo)
     }
+
+    // Gemelo de lib/__tests__/podologia-evaluacion-pie-cta.test.ts (web, 2026-10-16).
+    @Test fun diagnosticoQuePideEvaluarElPie() {
+        listOf("Pie diabético", "PIE DIABETICO", "Úlcera plantar en paciente diabético", "Diabetes mellitus tipo 2", "DM2 con neuropatía", "Pie de riesgo")
+            .forEach { kotlin.test.assertTrue(pe.saniape.app.data.staff.diagnosticoPideEvaluacionPie(it), it) }
+        listOf("Onicocriptosis", "Uña encarnada", "Heloma plantar", "No diabético, hiperqueratosis", "", null)
+            .forEach { kotlin.test.assertFalse(pe.saniape.app.data.staff.diagnosticoPideEvaluacionPie(it), it.toString()) }
+    }
 }

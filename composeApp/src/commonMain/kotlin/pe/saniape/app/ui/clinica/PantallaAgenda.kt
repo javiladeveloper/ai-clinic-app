@@ -182,6 +182,8 @@ fun PantallaAgenda(
     var fichaPresupuesto by remember { mutableStateOf(false) }
     // La ficha se abre en 😁 Ortodoncia con el control vinculado a la cita.
     var fichaOrtodoncia by remember { mutableStateOf<pe.saniape.app.ui.clinica.ortodoncia.AperturaOrtodoncia?>(null) }
+    // 🦶 "Evaluar el pie": la ficha en la pestaña del pie con una evaluación nueva vinculada a la cita.
+    var fichaPie by remember { mutableStateOf<pe.saniape.app.ui.clinica.podologia.AperturaPie?>(null) }
     var cargandoFicha by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val acciones = pe.saniape.app.ui.recordarAcciones()
@@ -303,6 +305,21 @@ fun PantallaAgenda(
      * esta cita (el suyo si ya lo tiene; sin plan, primero el plan). Gemelo de
      * `rutaFichaOrtodoncia(pacienteId, citaId)` de /citas.
      */
+    fun abrirFichaPie(cita: CitaStaff) {
+        val pid = cita.pacienteId ?: return
+        if (cargandoFicha) return
+        cargandoFicha = true
+        scope.launch {
+            val pac = runCatching { PacientesRepo.porId(pid) }.getOrNull()
+            cargandoFicha = false
+            if (pac == null) {
+                pe.saniape.app.ui.Toaster.error("No se pudo abrir la ficha. Revisa tu conexión.")
+                return@launch
+            }
+            fichaPie = pe.saniape.app.ui.clinica.podologia.AperturaPie(cita.id)
+            fichaPaciente = pac
+        }
+    }
     fun abrirFichaOrtodoncia(of: AgendaViewModel.OfertaControlOrto) {
         val pid = of.cita.pacienteId ?: return
         if (cargandoFicha) return
@@ -1421,6 +1438,27 @@ fun PantallaAgenda(
         }
     }
 
+    // 🦶 "Evaluar el pie" (podología): el mismo lugar que la barra de medidas, después de ella.
+    vm.ofrecerPie?.let { cp ->
+        val recetaEnPantalla = pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.oferta != null &&
+            ctx.modulosClinicos.recetas && ctx.puede("sesiones")
+        val visible = fichaPaciente == null && tratCita == null && vm.ofrecerTratamiento == null &&
+            !recetaEnPantalla && vm.ofrecerSiguiente == null && vm.cobroFallido == null && vm.ofrecerMedidas == null
+        LaunchedEffect(cp, visible) {
+            if (!visible) return@LaunchedEffect
+            kotlinx.coroutines.delay(pe.saniape.app.ui.clinica.nutricion.VIDA_OFERTA_MEDIDAS_MS)
+            if (vm.ofrecerPie === cp) vm.cerrarOfertaPie()
+        }
+        if (visible) {
+            pe.saniape.app.ui.clinica.agenda.modales.BarraOfertaPie(
+                pacienteNombre = cp.pacienteNombre,
+                cargando = cargandoFicha,
+                onEvaluar = { vm.cerrarOfertaPie(); abrirFichaPie(cp) },
+                onCerrar = { vm.cerrarOfertaPie() },
+            )
+        }
+    }
+
     // 📝 "Dejar indicaciones" tras completar: el mismo lugar que la barra de medidas o
     // la de la receta, NUNCA encima de ellas, ni de "¿Agendar la siguiente?" (sale
     // cuando ese diálogo se cierra), ni del cobro fallido; su tiempo no corre detrás.
@@ -1429,7 +1467,7 @@ fun PantallaAgenda(
             ctx.modulosClinicos.recetas && ctx.puede("sesiones")
         val visible = fichaPaciente == null && tratCita == null && vm.ofrecerTratamiento == null &&
             !recetaEnPantalla && vm.ofrecerSiguiente == null && vm.cobroFallido == null &&
-            vm.ofrecerMedidas == null && ofertaPrimera == null && completar == null
+            vm.ofrecerMedidas == null && vm.ofrecerPie == null && ofertaPrimera == null && completar == null
         LaunchedEffect(oi, visible) {
             if (!visible) return@LaunchedEffect
             kotlinx.coroutines.delay(pe.saniape.app.data.staff.VIDA_OFERTA_INDICACIONES_MS)
@@ -1456,7 +1494,7 @@ fun PantallaAgenda(
             ctx.modulosClinicos.recetas && ctx.puede("sesiones")
         val visible = fichaPaciente == null && tratCita == null && vm.ofrecerTratamiento == null &&
             !recetaEnPantalla && vm.ofrecerSiguiente == null && vm.cobroFallido == null &&
-            vm.ofrecerMedidas == null && ofertaPrimera == null && completar == null
+            vm.ofrecerMedidas == null && vm.ofrecerPie == null && ofertaPrimera == null && completar == null
         LaunchedEffect(oo, visible) {
             if (!visible) return@LaunchedEffect
             kotlinx.coroutines.delay(pe.saniape.app.data.staff.VIDA_OFERTA_INDICACIONES_MS)
@@ -1480,13 +1518,14 @@ fun PantallaAgenda(
         Box(Modifier.fillMaxSize().background(c.fondo)) {
             pe.saniape.app.tutoriales.PantallaTutorial("Ficha") { PantallaFichaPaciente(
                 ctx = ctx, pacienteInicial = pac,
-                onCerrar = { fichaPaciente = null; fichaEjercicios = null; fichaNutricion = null; fichaEmbarazo = false; fichaEmbarazoCita = null; fichaIndicaciones = null; fichaOrtodoncia = null; fichaPresupuesto = false; fichaPresupuestoCita = null },
+                onCerrar = { fichaPaciente = null; fichaEjercicios = null; fichaNutricion = null; fichaEmbarazo = false; fichaEmbarazoCita = null; fichaIndicaciones = null; fichaOrtodoncia = null; fichaPresupuesto = false; fichaPresupuestoCita = null; fichaPie = null },
                 ejerciciosAlAbrir = fichaEjercicios,
                 nutricionAlAbrir = fichaNutricion,
                 embarazoAlAbrir = fichaEmbarazo,
                 embarazoCitaId = fichaEmbarazoCita,
                 indicacionesAlAbrir = fichaIndicaciones,
                 ortodonciaAlAbrir = fichaOrtodoncia,
+                pieAlAbrir = fichaPie,
                 presupuestoNuevoCitaId = fichaPresupuestoCita,
                 presupuestoNuevo = fichaPresupuesto,
             ) }
