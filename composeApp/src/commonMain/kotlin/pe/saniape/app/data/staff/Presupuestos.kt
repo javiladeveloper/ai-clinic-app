@@ -71,6 +71,11 @@ data class ItemPresupuesto(
     val cobro: String? = null,
     /** Solo modo 'sesiones': lista de UNA sesión (el "por sueltas" del paquete). */
     val precioSesion: Double? = null,
+    /**
+     * Campaña vigente aplicada al ítem (web 2026-10-16): el tratamiento nace con
+     * ella (regalos, «incluye la evaluación»). La valida el servidor.
+     */
+    val campaniaId: String? = null,
 )
 
 /** El paciente de una fila de pendientes (`?pendientes=1`). */
@@ -652,8 +657,9 @@ fun conListaDelCatalogo(items: List<ItemPresupuesto>, catalogo: List<ServicioPre
         val s = it.procedimientoId?.let { id -> porId[id] }
         if (s == null) {
             val modo = if (it.procedimientoId != null) ModoItemPresu.SIMPLE else it.modo
+            // Sin servicio no hay campaña que lo alcance.
             return@map it.copy(
-                procedimientoId = null, precioLista = null, precioSesion = null, modo = modo,
+                procedimientoId = null, precioLista = null, precioSesion = null, modo = modo, campaniaId = null,
                 cobro = if (modo == ModoItemPresu.SESIONES) (it.cobro ?: CobroPresu.SUELTAS) else null,
             )
         }
@@ -1034,9 +1040,12 @@ fun leerItemsPresupuesto(v: JsonElement?): List<ItemPresupuesto> {
             precioLista = x.numP("precio_lista"),
             cobro = if (modoCrudo == ModoItemPresu.SESIONES) (if (x.txtP("cobro") == CobroPresu.PAQUETE) CobroPresu.PAQUETE else CobroPresu.SUELTAS) else null,
             precioSesion = x.numP("precio_sesion"),
+            campaniaId = x.txtP("campania_id")?.takeIf { UUID_CAMPANIA.matches(it) },
         )
     }
 }
+
+private val UUID_CAMPANIA = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 /** Una fila de la API → [Presupuesto]. null si no trae id. */
 fun presupuestoDeJson(o: JsonObject): Presupuesto? {
@@ -1114,6 +1123,8 @@ fun itemsAJson(items: List<ItemPresupuesto>): JsonArray = buildJsonArray {
             put("cantidad", it.cantidad)
             put("precioUnitario", it.precioUnitario)
             if (it.modo == ModoItemPresu.SESIONES) put("cobro", it.cobro ?: CobroPresu.SUELTAS)
+            // La campaña del ítem (si tiene): sin ella la clave no viaja.
+            it.campaniaId?.let { id -> put("campaniaId", id) }
         })
     }
 }
@@ -1226,3 +1237,52 @@ $sello
 <div class="pie"><span>Presupuesto referencial: el plan puede ajustarse según la evolución clínica.</span><span>Emitido con Sania</span></div>
 </body></html>"""
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Campañas en el presupuesto (web 2026-10-16) — la misma capa de precio que el
+// formulario del tratamiento, por ítem. Gemelas de campaniasParaItem /
+// precioCampaniaDeItem / itemConCampania / itemSinCampania de lib/presupuestos.ts.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Las campañas VIGENTES que se ofrecen en un ítem: las de su servicio (nunca las
+ * de alcance 'citas'). Un paquete promocional solo en un ítem por sesiones.
+ * [camps] ya viene filtrada por vigencia (CatalogosCobroRepo.campaniasVigentes).
+ */
+fun campaniasParaItem(camps: List<CampaniaApp>, it: ItemPresupuesto): List<CampaniaApp> {
+    val proc = it.procedimientoId ?: return emptyList()
+    return CatalogosCobroRepo.paraProcedimiento(camps, proc)
+        .filter { c -> !c.esPaquete || it.modo == ModoItemPresu.SESIONES }
+}
+
+/**
+ * El precio que fija la campaña en el ítem, o null si no encaja: paquete → el del
+ * combo, y solo si el ítem ES ese paquete; precio fijo → el de oferta; % / monto
+ * → sobre la lista del ítem (sin lista, null).
+ */
+fun precioCampaniaDeItem(it: ItemPresupuesto, c: CampaniaApp, moneda: String?): Double? {
+    if (c.esPaquete) {
+        if (!esPaquete(it) || c.cantidad == null || it.cantidad != c.cantidad || c.precio == null) return null
+        return redondearPrecio(c.precio, moneda)
+    }
+    if (c.tipo == "precio_fijo") return c.precio?.let { redondearPrecio(it, moneda) }
+    val lista = it.precioLista ?: return null
+    return redondearPrecio(c.precioCon(lista), moneda)
+}
+
+/**
+ * Aplica la campaña al ítem: paquete → cobro paquete de N sesiones con el precio
+ * del combo; los demás tipos → el precio que fija. Recuerda [ItemPresupuesto.campaniaId].
+ */
+fun itemConCampania(it: ItemPresupuesto, c: CampaniaApp, s: ServicioPresupuesto?, otraMoneda: Boolean, moneda: String?): ItemPresupuesto {
+    if (c.esPaquete && c.cantidad != null && c.precio != null) {
+        val n = max(1, c.cantidad)
+        val paq = comoPaquete(it.copy(cantidad = n), s, otraMoneda, PaqueteServicio(null, n, c.precio))
+        return paq.copy(cantidad = n, precioUnitario = redondearPrecio(c.precio, moneda), precioLista = listaPaquete(s, n, otraMoneda), campaniaId = c.id)
+    }
+    val precio = precioCampaniaDeItem(it, c, moneda) ?: return it
+    return it.copy(precioUnitario = precio, campaniaId = c.id)
+}
+
+/** Quita la campaña del ítem (el precio queda; "↺ Precio de lista" lo devuelve). */
+fun itemSinCampania(it: ItemPresupuesto): ItemPresupuesto = it.copy(campaniaId = null)

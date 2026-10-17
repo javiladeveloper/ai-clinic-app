@@ -197,6 +197,7 @@ fun PantallaCampanias(ctx: ContextoStaff, onSalir: () -> Unit) {
             inicial = editando,
             servicios = servicios.filter { it.activo },
             hoy = hoy,
+            flujo = ctx.flujo,
             onCerrar = { formAbierto = false },
             onGuardado = { formAbierto = false; recarga++ },
         )
@@ -317,6 +318,10 @@ private fun TarjetaCampania(
         if (!cp.descripcion.isNullOrBlank()) {
             Text(cp.descripcion, color = c.textoSuave, fontSize = Sania.txt.mini, modifier = Modifier.padding(top = 2.dp))
         }
+        if (pe.saniape.app.data.staff.campaniaIncluyeEntrada(cp.alcance, cp.incluyeEntrada)) {
+            Text("🩺 Incluye la cita de entrada (si toma el plan)", color = c.teal, fontSize = Sania.txt.mini,
+                fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 2.dp))
+        }
         Spacer(Modifier.height(6.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             // Aviso solo de las vigentes (el servidor topa a 1 por semana por clínica).
@@ -356,6 +361,8 @@ private fun OpcionTarjeta(titulo: String, detalle: String?, sel: Boolean, modifi
 @Composable
 private fun FormularioCampania(
     inicial: CampaniaGestion?, servicios: List<ServicioApp>, hoy: String,
+    /** El flujo de la clínica: cómo se llama su cita de entrada (Consulta / Evaluación / Valoración). */
+    flujo: pe.saniape.app.data.staff.FlujoClinica = pe.saniape.app.data.staff.FlujoClinica(),
     onCerrar: () -> Unit, onGuardado: () -> Unit,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
@@ -489,6 +496,28 @@ private fun FormularioCampania(
                             )
                         }
                     }
+                }
+            }
+        }
+        // «Incluye la evaluación»: solo campañas de tratamiento (con alcance 'citas'
+        // la campaña ya ES el descuento de la consulta/evaluación).
+        if (pe.saniape.app.data.staff.admiteIncluyeEntrada(f.alcance)) {
+            val (tituloEntrada, detalleEntrada) = pe.saniape.app.data.staff.etiquetaIncluyeEntrada(pe.saniape.app.data.staff.nombreCitaEntrada(flujo))
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                    .background(if (f.incluyeEntrada) c.teal.copy(alpha = 0.10f) else c.superficie)
+                    .border(2.dp, if (f.incluyeEntrada) c.teal else c.borde, RoundedCornerShape(10.dp))
+                    .clickable { f = f.copy(incluyeEntrada = !f.incluyeEntrada) }.padding(10.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                androidx.compose.material3.Checkbox(
+                    checked = f.incluyeEntrada, onCheckedChange = { f = f.copy(incluyeEntrada = it) },
+                    colors = androidx.compose.material3.CheckboxDefaults.colors(checkedColor = c.teal),
+                )
+                Column(Modifier.weight(1f).padding(top = 10.dp)) {
+                    Text("🩺 $tituloEntrada", color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text(detalleEntrada, color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
                 }
             }
         }

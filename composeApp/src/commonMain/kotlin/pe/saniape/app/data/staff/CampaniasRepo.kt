@@ -50,6 +50,8 @@ data class CampaniaGestion(
     val fechaFin: String? = null,
     val activo: Boolean = true,
     val serviciosIds: List<String> = emptyList(),
+    /** «Incluye la evaluación» (cita de entrada): solo campañas de tratamiento. */
+    val incluyeEntrada: Boolean = false,
 )
 
 /** Estado de una campaña frente a hoy (espejo de la lista web). */
@@ -115,6 +117,10 @@ data class FormCampania(
      * clave `regalos` (ausente = el servidor no los toca). Mandar [] los borraría.
      */
     val regalosCargados: Boolean = true,
+    /** «Incluye la evaluación» (lib/campania-entrada.ts). */
+    val incluyeEntrada: Boolean = false,
+    /** Lo que tenía guardado: apagarla se manda; si nunca la tuvo, no se manda el campo. */
+    val incluyeEntradaInicial: Boolean = false,
 ) {
     companion object {
         fun desde(c: CampaniaGestion?, hoy: String): FormCampania = if (c == null) FormCampania(desde = hoy) else FormCampania(
@@ -131,6 +137,8 @@ data class FormCampania(
             hasta = c.fechaFin.orEmpty(),
             activo = c.activo,
             regalosCargados = false,
+            incluyeEntrada = c.incluyeEntrada,
+            incluyeEntradaInicial = c.incluyeEntrada,
         )
     }
 }
@@ -176,6 +184,8 @@ fun cuerpoGuardarCampania(f: FormCampania, id: String?): JsonObject = buildJsonO
     put("valor", if (f.tipo == "porcentaje" || f.tipo == "monto_fijo") aDec(f.valor) else null)
     put("activo", f.activo)
     put("servicios_ids", buildJsonArray { if (f.alcance == "servicios") f.serviciosIds.forEach { add(JsonPrimitive(it)) } })
+    // Solo si aplica (campoIncluyeEntrada): un servidor sin la columna no recibe el campo.
+    campoIncluyeEntrada(f.incluyeEntrada, f.alcance, f.incluyeEntradaInicial)?.let { put("incluye_entrada", it) }
     if (f.regalosCargados) put("regalos", buildJsonArray {
         f.regalos.filter { it.procedimientoId.isNotBlank() }.forEach { r ->
             add(buildJsonObject {
@@ -206,6 +216,7 @@ internal fun parsearCampania(o: JsonObject): CampaniaGestion? {
         activo = o.str("activo") != "false",
         serviciosIds = (o["campania_servicios"] as? JsonArray)
             ?.mapNotNull { ((it as? JsonObject)?.str("procedimiento_id")) }.orEmpty(),
+        incluyeEntrada = o.str("incluye_entrada") == "true",
     )
 }
 

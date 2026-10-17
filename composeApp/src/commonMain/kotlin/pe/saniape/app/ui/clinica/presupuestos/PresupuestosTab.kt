@@ -307,6 +307,11 @@ fun PresupuestosTab(
         }
     }
 
+    // Campañas vigentes por servicio (⚡ en cada ítem): solo con el editor abierto.
+    var campaniasEditor by remember { mutableStateOf<List<pe.saniape.app.data.staff.CampaniaApp>>(emptyList()) }
+    LaunchedEffect(editor != null) {
+        if (editor != null) campaniasEditor = runCatching { pe.saniape.app.data.staff.CatalogosCobroRepo.campaniasVigentes() }.getOrDefault(emptyList())
+    }
     editor?.let { (inicial, _) ->
         val monedaPresu = inicial?.moneda ?: moneda
         val serv = servicios
@@ -321,6 +326,7 @@ fun PresupuestosTab(
                 onCerrar = { editor = null },
                 onGuardar = { d, env -> guardar(d, env) },
                 onGuardarPaquete = { n, d -> guardarPaquete(n, d) },
+                campanias = campaniasEditor,
             )
         }
     }

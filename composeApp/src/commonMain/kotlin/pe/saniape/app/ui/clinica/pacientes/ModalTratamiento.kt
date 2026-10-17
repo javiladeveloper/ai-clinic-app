@@ -1,5 +1,6 @@
 package pe.saniape.app.ui.clinica.pacientes
 
+import kotlinx.serialization.json.contentOrNull
 import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -748,8 +749,14 @@ fun ModalCrearTratamiento(
                                     .background(c.chipBg).padding(10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text("⚡ ${ca.nombre}: ${ca.etiqueta()}", color = c.navy, fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                Column(Modifier.weight(1f)) {
+                                    Text("⚡ ${ca.nombre}: ${ca.etiqueta()}", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    if (pe.saniape.app.data.staff.campaniaIncluyeEntrada(ca.alcance, ca.incluyeEntrada)) {
+                                        val n = pe.saniape.app.data.staff.nombreCitaEntrada(pe.saniape.app.data.staff.StaffContextoRepo.actual?.flujo)
+                                        Text("🩺 Incluye ${pe.saniape.app.data.staff.conArticulo(n)}: lo pagado en ella se descuenta al guardar el plan creado desde esa cita",
+                                            color = c.teal, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
                                 Text("✕ Quitar", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                                     modifier = Modifier.clickable {
                                         // Quitar = volver a los precios del servicio (mismo prefill).
@@ -771,6 +778,11 @@ fun ModalCrearTratamiento(
                                 Column(Modifier.weight(1f)) {
                                     Text(camp.nombre, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                     Text(camp.etiqueta(), color = c.textoSuave, fontSize = 11.sp)
+                                    if (pe.saniape.app.data.staff.campaniaIncluyeEntrada(camp.alcance, camp.incluyeEntrada)) {
+                                        val n = pe.saniape.app.data.staff.nombreCitaEntrada(pe.saniape.app.data.staff.StaffContextoRepo.actual?.flujo)
+                                        Text("🩺 Incluye ${pe.saniape.app.data.staff.conArticulo(n)}: lo pagado en ella se descuenta al guardar el plan creado desde esa cita",
+                                            color = c.teal, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                    }
                                 }
                                 Box(
                                     Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.navy)
@@ -1163,6 +1175,10 @@ suspend fun guardarTratamientoNuevo(pacienteId: String, nuevo: TratamientoNuevo,
         nuevo.primeraFecha != null -> pe.saniape.app.ui.Toaster.exito("Tratamiento creado con su primera sesión")
         else -> pe.saniape.app.ui.Toaster.exito("Tratamiento creado")
     }
+    // Campaña con «incluye la evaluación»: si no se pudo descontar (o se descontará al
+    // cobrarla), el servidor lo dice en `avisoEntrada`.
+    ((r.cuerpo?.get("avisoEntrada")) as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+        ?.takeIf { it.isNotBlank() }?.let { pe.saniape.app.ui.Toaster.info(it) }
     // En la cola offline aún no hay id: no hay qué agendar todavía.
     val oferta = trasCrear(pacienteId, nuevo, nombrePaciente, if (r.encolada) null else id,
         primeraAgendada = r.registrada && nuevo.primeraFecha != null, respuesta = r.cuerpo ?: r.rechazo?.datos,

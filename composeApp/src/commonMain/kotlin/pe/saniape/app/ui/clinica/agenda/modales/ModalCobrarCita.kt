@@ -87,6 +87,15 @@ fun ModalCobrarCita(
     val moneda = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)
     val c = Sania.colors
     var modo by remember(cita.id) { mutableStateOf("cobrar") }
+    // El plan que nació de esta cita trae una campaña que «incluye la evaluación»:
+    // lo cobrado va al plan (sin tocar lo que ya eligió quien cobra). Gemelo de
+    // debeAbonarPorCampania en /citas web. Sin dato, lo de siempre.
+    androidx.compose.runtime.LaunchedEffect(cita.id) {
+        val pid = cita.pacienteId
+        if (cita.tipo != "Sesión" && pid != null &&
+            pe.saniape.app.data.staff.CampaniaEntradaRepo.debeAbonar(pid, cita.id) && modo == "cobrar"
+        ) modo = "abonar"
+    }
     var metodo by rememberMetodoPagoInicial(cita.pacienteId)
     // Por defecto HOY (Lima): el cobro entra a la caja del día en que se cobra
     // (decisión del dueño 2026-10-08), no la de la cita. Se cambia solo si el

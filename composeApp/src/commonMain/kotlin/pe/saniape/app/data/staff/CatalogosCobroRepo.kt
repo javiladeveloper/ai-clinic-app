@@ -33,6 +33,8 @@ data class CampaniaApp(
     val precio: Double?,       // precio cerrado (paquete_fijo / precio_fijo)
     val cantidad: Int?,        // sesiones del combo (paquete_fijo)
     val serviciosIds: List<String>,
+    /** «Incluye la evaluación» (sin la columna en la base: false). */
+    val incluyeEntrada: Boolean = false,
 ) {
     val esPaquete: Boolean get() = tipo == "paquete_fijo"
 
@@ -115,7 +117,9 @@ object CatalogosCobroRepo {
         val hoy = hoyClinicaIso()
         val res = try {
             Supabase.client.postgrest["campanias"]
-                .select(Columns.raw("id, nombre, tipo, alcance, aplica_a, valor, precio, cantidad, fecha_inicio, fecha_fin, activo, campania_servicios(procedimiento_id)"))
+                // `*` (no las columnas por nombre): sin la migración de «incluye la
+                // entrada» la lectura sigue funcionando igual.
+                .select(Columns.raw("*, campania_servicios(procedimiento_id)"))
                 .decodeList<JsonObject>()
                 .filter { o ->
                     val activo = (o["activo"] as? JsonPrimitive)?.content == "true"
@@ -134,6 +138,7 @@ object CatalogosCobroRepo {
                         cantidad = o.str("cantidad")?.toIntOrNull(),
                         serviciosIds = (o["campania_servicios"] as? JsonArray)
                             ?.mapNotNull { (it as? JsonObject)?.str("procedimiento_id") } ?: emptyList(),
+                        incluyeEntrada = o.str("incluye_entrada") == "true",
                     )
                 }
         } catch (_: Exception) { emptyList() }

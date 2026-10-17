@@ -114,8 +114,11 @@ internal fun EditorPresupuesto(
     /** Guarda (crear o editar); `enviar` = lo siguiente es enviarlo. Devuelve un error o null. */
     onGuardar: suspend (DatosPresupuesto, Boolean) -> String?,
     onGuardarPaquete: (suspend (String, DatosPresupuesto) -> String?)?,
+    /** Campañas vigentes de la clínica (⚡ en cada ítem del servicio). */
+    campanias: List<pe.saniape.app.data.staff.CampaniaApp> = emptyList(),
 ) {
     val c = Sania.colors
+    val nombreEntrada = pe.saniape.app.data.staff.nombreCitaEntrada(pe.saniape.app.data.staff.StaffContextoRepo.actual?.flujo)
     val scope = rememberCoroutineScope()
     var titulo by remember { mutableStateOf(inicial?.titulo ?: "") }
     var lineas by remember { mutableStateOf(inicial?.items.orEmpty().map { conPrecio(it) }) }
@@ -150,8 +153,10 @@ internal fun EditorPresupuesto(
         busqueda = ""
     }
     fun cambiarLinea(i: Int, f: (LineaForm) -> LineaForm) { lineas = lineas.mapIndexed { k, l -> if (k == i) f(l) else l } }
-    fun cambiarCantidad(i: Int, n: Int) = cambiarLinea(i) { l ->
+    fun cambiarCantidad(i: Int, n: Int) = cambiarLinea(i) { l0 ->
         val cantidad = n.coerceIn(1, LimitesPresupuesto.CANTIDAD_MAX)
+        // Otra cantidad ya no es la promo: se quita la campaña (el precio se revisa).
+        val l = if (cantidad == l0.item.cantidad) l0 else l0.copy(item = pe.saniape.app.data.staff.itemSinCampania(l0.item))
         if (!esPaquete(l.item)) return@cambiarLinea l.copy(item = l.item.copy(cantidad = cantidad))
         // Paquete: si el catálogo tiene uno de ESAS sesiones, su precio (y su lista); si no, personalizado.
         val lista = listaPaquete(servicioDe(l.item), cantidad, otraMoneda)
@@ -162,7 +167,8 @@ internal fun EditorPresupuesto(
     fun elegirCobro(i: Int, cobro: String, paquete: PaqueteServicio? = null) = cambiarLinea(i) { l ->
         val s2 = servicioDe(l.item)
         val leido = leerPrecio(l.precio, moneda)
-        val actual = l.item.copy(precioUnitario = if (leido.ok && leido.valor != null) leido.valor else l.item.precioUnitario)
+        val actual = pe.saniape.app.data.staff.itemSinCampania(l.item)
+            .copy(precioUnitario = if (leido.ok && leido.valor != null) leido.valor else l.item.precioUnitario)
         conPrecio(if (cobro == CobroPresu.PAQUETE) comoPaquete(actual, s2, otraMoneda, paquete) else comoSueltas(actual, s2, otraMoneda))
     }
     fun aplicarPaquete(pq: PlantillaPresupuesto) {
@@ -293,6 +299,13 @@ internal fun EditorPresupuesto(
                             onCantidad = { n -> cambiarCantidad(i, n) },
                             onPrecio = { v -> cambiarLinea(i) { it.copy(precio = v) } },
                             onCobro = { cobro, pq -> elegirCobro(i, cobro, pq) },
+                            promos = pe.saniape.app.data.staff.campaniasParaItem(campanias, l.item),
+                            puesta = l.item.campaniaId?.let { id -> campanias.firstOrNull { it.id == id } },
+                            nombreEntrada = nombreEntrada,
+                            onCampania = { camp ->
+                                cambiarLinea(i) { x -> conPrecio(pe.saniape.app.data.staff.itemConCampania(x.item, camp, servicioDe(x.item), otraMoneda, moneda)) }
+                            },
+                            onQuitarCampania = { cambiarLinea(i) { x -> x.copy(item = pe.saniape.app.data.staff.itemSinCampania(x.item)) } },
                         )
                     }
                 }
@@ -477,6 +490,13 @@ private fun LineaEditor(
     onCantidad: (Int) -> Unit,
     onPrecio: (String) -> Unit,
     onCobro: (String, PaqueteServicio?) -> Unit,
+    /** ⚡ Campañas vigentes del servicio del ítem. */
+    promos: List<pe.saniape.app.data.staff.CampaniaApp> = emptyList(),
+    /** La campaña puesta en el ítem (null: ninguna, o ya no está vigente). */
+    puesta: pe.saniape.app.data.staff.CampaniaApp? = null,
+    nombreEntrada: String = "evaluación",
+    onCampania: (pe.saniape.app.data.staff.CampaniaApp) -> Unit = {},
+    onQuitarCampania: () -> Unit = {},
 ) {
     val c = Sania.colors
     val l = linea.item
@@ -516,6 +536,23 @@ private fun LineaEditor(
             }
             if (paquete && paquetes.isEmpty()) {
                 Text("Sin paquetes en el catálogo: paquete personalizado", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+            }
+        }
+        // ⚡ Campañas vigentes del servicio: un toque aplica su precio.
+        if (l.campaniaId != null || promos.isNotEmpty()) {
+            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (l.campaniaId != null) {
+                    ChipPresu("⚡ ${puesta?.nombre ?: "Campaña aplicada"}", true) {}
+                    Text("Quitar", color = c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).clickable(role = Role.Button) { onQuitarCampania() }
+                            .padding(horizontal = 6.dp, vertical = 8.dp))
+                } else promos.forEach { camp ->
+                    ChipPresu("⚡ ${camp.nombre} · ${camp.etiqueta(moneda)}", false) { onCampania(camp) }
+                }
+            }
+            if (puesta != null && pe.saniape.app.data.staff.campaniaIncluyeEntrada(puesta.alcance, puesta.incluyeEntrada)) {
+                Text("🩺 Incluye ${pe.saniape.app.data.staff.conArticulo(nombreEntrada)}: lo pagado en ella se descuenta al crear el tratamiento desde esa cita.",
+                    color = c.teal, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
             }
         }
         // Cantidad
