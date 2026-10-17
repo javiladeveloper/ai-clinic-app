@@ -60,7 +60,9 @@ import pe.saniape.app.data.staff.cuerpoEmitirInforme
 import pe.saniape.app.data.staff.diasDescanso
 import pe.saniape.app.data.staff.filtrarExamenes
 import pe.saniape.app.data.staff.firmanteInicial
+import pe.saniape.app.data.staff.colegiaturaFirmante
 import pe.saniape.app.data.staff.firmantesDocumento
+import pe.saniape.app.data.staff.mensajeSinFirmantes
 import pe.saniape.app.data.staff.formatearNumeroInforme
 import pe.saniape.app.data.staff.hastaPorDias
 import pe.saniape.app.data.staff.iconoTipoDoc
@@ -127,13 +129,16 @@ fun DialogoInformeMedico(
         falloEquipo = r == null
         equipo = r.orEmpty()
     }
-    val firmantes = remember(equipo) { firmantesDocumento(equipo.orEmpty(), esAdmin, ctx.miTerapeutaId) }
+    var tipo by remember { mutableStateOf(tipoInicial) }
+    // Según el TIPO (puedeEmitirTipo, como la base): médicos y odontólogos todo;
+    // el psicólogo colegiado, solo el informe.
+    fun firmantesDe(t: String) = firmantesDocumento(equipo.orEmpty(), esAdmin, ctx.miTerapeutaId, t)
+    val firmantes = remember(equipo, tipo) { firmantesDe(tipo) }
     var terapeutaId by remember { mutableStateOf("") }
     LaunchedEffect(equipo) {
         if (equipo != null && terapeutaId.isEmpty()) terapeutaId = firmanteInicial(firmantes, esAdmin, ctx.miTerapeutaId, p.terapeutaId)
     }
 
-    var tipo by remember { mutableStateOf(tipoInicial) }
     var fecha by remember { mutableStateOf(hoy) }
     var titulo by remember { mutableStateOf("") }
     var dirigidoA by remember { mutableStateOf("") }
@@ -286,7 +291,15 @@ fun DialogoInformeMedico(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 TIPOS_DOC_MEDICO.forEach { t ->
                     ChipDoc("${iconoTipoDoc(t)} ${nombreTipoDoc(t)}", activo = t == tipo) {
-                        if (t != tipo) visiblePaciente = visiblePacientePorDefecto(t)
+                        if (t != tipo) {
+                            visiblePaciente = visiblePacientePorDefecto(t)
+                            // El firmante se mantiene si puede firmar el nuevo tipo; si no
+                            // (psicólogo → descanso), el de por defecto para ese tipo.
+                            val lista = firmantesDe(t)
+                            if (lista.none { it.id == terapeutaId }) {
+                                terapeutaId = firmanteInicial(lista, esAdmin, ctx.miTerapeutaId, (prefill ?: origen)?.terapeutaId)
+                            }
+                        }
                         tipo = t
                     }
                 }
@@ -298,14 +311,10 @@ fun DialogoInformeMedico(
                 when {
                     equipo == null -> CircularProgressIndicator(color = c.navy, strokeWidth = 2.dp)
                     falloEquipo -> Text("No se pudo cargar el equipo. Revisa tu conexión y vuelve a abrir.", color = c.error, fontSize = 13.sp)
-                    firmantes.isEmpty() -> Text(
-                        if (esAdmin) "Ningún médico u odontólogo tiene N° de colegiatura (CMP): complétalo en Equipo."
-                        else "Solo un médico u odontólogo con N° de colegiatura (CMP) firma estos documentos: revisa tu ficha en Equipo.",
-                        color = c.error, fontSize = 13.sp,
-                    )
+                    firmantes.isEmpty() -> Text(mensajeSinFirmantes(tipo, esAdmin), color = c.error, fontSize = 13.sp)
                     // El profesional firma solo a su nombre (el servidor también lo exige: PROFESIONAL_AJENO).
-                    !esAdmin -> CajaFija(firmante?.let { "${it.nombre} · ${it.cmp.orEmpty()}" } ?: "—")
-                    else -> SelectorDialogo("", terapeutaId, firmantes.map { it.id to "${it.nombre} · ${it.cmp.orEmpty()}" }) { terapeutaId = it }
+                    !esAdmin -> CajaFija(firmante?.let { "${it.nombre} · ${colegiaturaFirmante(it.cmp, it.rubros)}" } ?: "—")
+                    else -> SelectorDialogo("", terapeutaId, firmantes.map { it.id to "${it.nombre} · ${colegiaturaFirmante(it.cmp, it.rubros)}" }) { terapeutaId = it }
                 }
             }
 

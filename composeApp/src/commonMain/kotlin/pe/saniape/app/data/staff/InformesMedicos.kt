@@ -317,6 +317,65 @@ fun esEmisorMedico(rubros: List<String?>): Boolean {
     return lista.any { it in RUBROS_QUE_RECETAN } || lista.none { it !in RUBROS_QUE_RECETAN }
 }
 
+/**
+ * ¿Es psicólogo (y no médico)? Alguna especialidad de rubro 'psicologia' y
+ * ninguna que recete. GEMELO de `esEmisorPsicologo` (v_psico de
+ * informe_medico_preparar, 20261102100000).
+ */
+fun esEmisorPsicologo(rubros: List<String?>?): Boolean {
+    val lista = rubros.orEmpty().filterNotNull().filter { it.isNotBlank() }
+    return "psicologia" in lista && !esEmisorMedico(lista)
+}
+
+/**
+ * ¿Este profesional puede firmar un documento de este TIPO? Médicos y
+ * odontólogos (y quien no tiene rubros cargados), todos; el psicólogo
+ * colegiado, SOLO el informe (informe psicológico): el descanso y la orden de
+ * exámenes son médicos. GEMELO de `puedeEmitirTipo` de lib/informes-medicos.ts
+ * (y del chequeo INFORME_PROFESIONAL_NO_MEDICO de la base). La colegiatura va
+ * aparte. `esEmisorMedico` sigue siendo la regla de la receta.
+ */
+fun puedeEmitirTipo(rubros: List<String?>?, tipo: String?): Boolean {
+    if (esEmisorMedico(rubros.orEmpty())) return true
+    return tipo == DOC_INFORME && esEmisorPsicologo(rubros)
+}
+
+private fun docConArticulo(tipo: String): String = when (tipo) {
+    DOC_DESCANSO -> "el descanso médico"
+    DOC_ORDEN -> "la orden de exámenes"
+    else -> "el informe"
+}
+
+/** Por qué este profesional no puede firmar este tipo (403 del servidor). */
+fun mensajeNoPuedeEmitirTipo(tipo: String?): String =
+    if (tipo == DOC_INFORME) "Solo un médico, odontólogo o psicólogo con N° de colegiatura puede firmar el informe."
+    else "Solo un médico u odontólogo puede emitir descansos médicos u órdenes de exámenes."
+
+/** El formulario no tiene a nadie que pueda firmar el tipo activo (gemelo de `mensajeSinFirmantes`). */
+fun mensajeSinFirmantes(tipo: String, esAdmin: Boolean): String {
+    if (tipo == DOC_INFORME) {
+        return if (esAdmin) "Ningún profesional con N° de colegiatura puede firmar el informe (médico, odontólogo o psicólogo): complétalo en Equipo."
+        else "Solo un médico, odontólogo o psicólogo con N° de colegiatura firma el informe: revisa tu ficha en Equipo."
+    }
+    return if (esAdmin) "Solo médicos u odontólogos con CMP firman ${docConArticulo(tipo)}: ninguno tiene N° de colegiatura (complétalo en Equipo)."
+    else "Solo un médico u odontólogo con N° de colegiatura (CMP) firma ${docConArticulo(tipo)}."
+}
+
+/** "12345" → "C.Ps.P. 12345" (gemelo de `colegiaturaPsicologo`); un texto con letras queda tal cual. */
+fun colegiaturaPsicologo(cmp: String?): String {
+    val v = cmp.orEmpty().trim()
+    if (v.isEmpty()) return ""
+    return if (Regex("^[0-9][0-9 .-]*$").matches(v)) "C.Ps.P. $v" else v
+}
+
+/**
+ * La colegiatura al elegir firmante: el psicólogo con el Colegio de Psicólogos
+ * ("C.Ps.P. 12345", lo mismo que congela la base); los demás, tal como está
+ * cargada. Gemelo de `colegiaturaFirmante`.
+ */
+fun colegiaturaFirmante(cmp: String?, rubros: List<String?>?): String =
+    if (esEmisorPsicologo(rubros)) colegiaturaPsicologo(cmp) else cmp.orEmpty().trim()
+
 /** ¿Quién puede EMITIR? Admin o el profesional vinculado, siempre con permiso `sesiones`. */
 fun puedeEmitirDocumentos(rol: String?, miTerapeutaId: String?, permisoSesiones: Boolean): Boolean =
     permisoSesiones && (rol == "Admin" || !miTerapeutaId.isNullOrBlank())
@@ -340,12 +399,14 @@ data class FirmanteDoc(
 }
 
 /**
- * Los que firman (el filtro de InformeMedicoForm.tsx): activos, con colegiatura
- * (≥ 3), médicos u odontólogos; el profesional (no Admin) solo a su nombre.
+ * Los que firman un documento de [tipo] (el filtro de InformeMedicoForm.tsx):
+ * activos, con colegiatura (≥ 3) y que pueden firmar ese tipo (puedeEmitirTipo:
+ * médicos y odontólogos todo; el psicólogo colegiado, solo el informe); el
+ * profesional (no Admin) solo a su nombre.
  */
-fun firmantesDocumento(equipo: List<FirmanteDoc>, esAdmin: Boolean, miTerapeutaId: String?): List<FirmanteDoc> =
+fun firmantesDocumento(equipo: List<FirmanteDoc>, esAdmin: Boolean, miTerapeutaId: String?, tipo: String): List<FirmanteDoc> =
     equipo.filter { it.estado != "Inactivo" && (it.cmp?.trim()?.length ?: 0) >= 3 }
-        .filter { esEmisorMedico(it.rubros) }
+        .filter { puedeEmitirTipo(it.rubros, tipo) }
         .filter { esAdmin || it.id == miTerapeutaId }
 
 /**

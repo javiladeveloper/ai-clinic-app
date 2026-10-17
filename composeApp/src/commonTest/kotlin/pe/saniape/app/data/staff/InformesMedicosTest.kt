@@ -115,18 +115,65 @@ class InformesMedicosTest {
             FirmanteDoc("t4", "Dr. Sin CMP", " 1", "Activo", listOf("medicina_general")),
             FirmanteDoc("t5", "Dr. Baja", "77777", "Inactivo", listOf("medicina_general")),
         )
-        assertEquals(listOf("t1", "t2"), firmantesDocumento(equipo, esAdmin = true, miTerapeutaId = null).map { it.id })
-        assertEquals(listOf("t2"), firmantesDocumento(equipo, esAdmin = false, miTerapeutaId = "t2").map { it.id })
-        assertEquals(emptyList(), firmantesDocumento(equipo, esAdmin = false, miTerapeutaId = "t3"))
+        // Descanso y orden: solo médicos u odontólogos.
+        assertEquals(listOf("t1", "t2"), firmantesDocumento(equipo, esAdmin = true, miTerapeutaId = null, tipo = DOC_DESCANSO).map { it.id })
+        assertEquals(listOf("t1", "t2"), firmantesDocumento(equipo, esAdmin = true, miTerapeutaId = null, tipo = DOC_ORDEN).map { it.id })
+        assertEquals(listOf("t2"), firmantesDocumento(equipo, esAdmin = false, miTerapeutaId = "t2", tipo = DOC_DESCANSO).map { it.id })
+        assertEquals(emptyList(), firmantesDocumento(equipo, esAdmin = false, miTerapeutaId = "t3", tipo = DOC_DESCANSO))
+        // El informe: también el psicólogo colegiado (2026-10-16, ValienteMente).
+        assertEquals(listOf("t1", "t2", "t3"), firmantesDocumento(equipo, esAdmin = true, miTerapeutaId = null, tipo = DOC_INFORME).map { it.id })
+        assertEquals(listOf("t3"), firmantesDocumento(equipo, esAdmin = false, miTerapeutaId = "t3", tipo = DOC_INFORME).map { it.id })
         assertTrue(equipo[0].psiquiatra)
         assertFalse(equipo[1].psiquiatra)
 
-        val f = firmantesDocumento(equipo, esAdmin = true, miTerapeutaId = null)
+        val f = firmantesDocumento(equipo, esAdmin = true, miTerapeutaId = null, tipo = DOC_DESCANSO)
         assertEquals("t2", firmanteInicial(f, esAdmin = true, miTerapeutaId = null, sugerido = "t2"))
         assertEquals("", firmanteInicial(f, esAdmin = true, miTerapeutaId = null, sugerido = "t3"))
         assertEquals("t1", firmanteInicial(f.take(1), esAdmin = true, miTerapeutaId = null, sugerido = null))
-        val propio = firmantesDocumento(equipo, esAdmin = false, miTerapeutaId = "t1")
+        val propio = firmantesDocumento(equipo, esAdmin = false, miTerapeutaId = "t1", tipo = DOC_DESCANSO)
         assertEquals("t1", firmanteInicial(propio, esAdmin = false, miTerapeutaId = "t1", sugerido = "t2"))
+    }
+
+    // Gemelo de lib/__tests__/informe-psicologo.test.ts (web, 2026-10-16).
+    @Test fun quienFirmaCadaTipo() {
+        for (r in listOf(listOf("medicina_general"), listOf("odontologia"), listOf("ginecologia"), listOf("psicologia", "medicina_general"))) {
+            for (t in TIPOS_DOC_MEDICO) assertTrue(puedeEmitirTipo(r, t), "$r $t")
+        }
+        for (t in TIPOS_DOC_MEDICO) {
+            assertTrue(puedeEmitirTipo(emptyList(), t))
+            assertTrue(puedeEmitirTipo(listOf(null), t))
+            assertTrue(puedeEmitirTipo(null, t))
+        }
+        assertTrue(puedeEmitirTipo(listOf("psicologia"), DOC_INFORME))
+        assertFalse(puedeEmitirTipo(listOf("psicologia"), DOC_DESCANSO))
+        assertFalse(puedeEmitirTipo(listOf("psicologia"), DOC_ORDEN))
+        assertTrue(puedeEmitirTipo(listOf("psicologia", "fisioterapia"), DOC_INFORME))
+        assertFalse(puedeEmitirTipo(listOf("psicologia"), ""))
+        assertFalse(puedeEmitirTipo(listOf("psicologia"), null))
+        for (t in TIPOS_DOC_MEDICO) {
+            assertFalse(puedeEmitirTipo(listOf("fisioterapia"), t))
+            assertFalse(puedeEmitirTipo(listOf("nutricion"), t))
+        }
+        assertFalse(esEmisorMedico(listOf("psicologia")))
+        assertTrue(esEmisorPsicologo(listOf("psicologia")))
+        assertFalse(esEmisorPsicologo(listOf("psicologia", "medicina_general")))
+        assertFalse(esEmisorPsicologo(emptyList()))
+        assertFalse(esEmisorPsicologo(listOf("fisioterapia")))
+    }
+
+    @Test fun colegiaturaYMensajesPorTipo() {
+        assertEquals("C.Ps.P. 12345", colegiaturaFirmante("12345", listOf("psicologia")))
+        assertEquals("C.Ps.P. 999", colegiaturaFirmante("C.Ps.P. 999", listOf("psicologia")))
+        assertEquals("12345", colegiaturaFirmante("12345", listOf("medicina_general")))
+        assertEquals("CMP 777", colegiaturaFirmante(" CMP 777 ", listOf("medicina_general")))
+        assertEquals("12345", colegiaturaFirmante("12345", listOf("psicologia", "medicina_general")))
+        assertTrue("psicólogo" in mensajeSinFirmantes(DOC_INFORME, true))
+        assertFalse("CMP" in mensajeSinFirmantes(DOC_INFORME, true))
+        assertTrue("psicólogo" in mensajeSinFirmantes(DOC_INFORME, false))
+        assertTrue("médicos u odontólogos con CMP firman el descanso médico" in mensajeSinFirmantes(DOC_DESCANSO, true))
+        assertTrue(Regex("médico u odontólogo .*la orden de exámenes").containsMatchIn(mensajeSinFirmantes(DOC_ORDEN, false)))
+        assertTrue("psicólogo" in mensajeNoPuedeEmitirTipo(DOC_INFORME))
+        assertFalse("psicólogo" in mensajeNoPuedeEmitirTipo(DOC_DESCANSO))
     }
 
     // ── Visibilidad (DALU / RENOVA no ven nada) ──
