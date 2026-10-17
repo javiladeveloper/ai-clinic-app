@@ -168,8 +168,13 @@ fun PantallaHorarioProfesional(
         scope.launch {
             subiendoFoto = true
             try {
-                val listo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                    runCatching { pe.saniape.app.ui.comprimirImagen(archivo, maxLado = 1200, calidad = 82) }.getOrDefault(archivo)
+                val comprimida = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    runCatching { pe.saniape.app.ui.comprimirImagen(archivo, maxLado = 1200, calidad = 82) }.getOrNull()
+                }
+                // Sin comprimir solo se sube un formato que la web muestra (un HEIC del iPhone no).
+                val listo = comprimida ?: archivo.takeIf { pe.saniape.app.data.staff.fotoSubibleSinComprimir(it.mime) } ?: run {
+                    Toaster.error("No se pudo procesar esa foto (formato no compatible). Elige una JPG o PNG.")
+                    return@launch
                 }
                 if (listo.bytes.size > 15 * 1024 * 1024) { Toaster.error("La foto pesa demasiado. Elige una más liviana."); return@launch }
                 val url = pe.saniape.app.data.staff.FotoProfesionalRepo.subir(listo.nombre, listo.bytes, listo.mime)

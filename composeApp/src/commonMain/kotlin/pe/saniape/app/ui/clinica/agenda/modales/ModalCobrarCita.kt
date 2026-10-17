@@ -90,11 +90,18 @@ fun ModalCobrarCita(
     // El plan que nació de esta cita trae una campaña que «incluye la evaluación»:
     // lo cobrado va al plan (sin tocar lo que ya eligió quien cobra). Gemelo de
     // debeAbonarPorCampania en /citas web. Sin dato, lo de siempre.
+    // Quien cobra ya tocó un destino: la lectura nunca lo pisa. Mientras la lectura
+    // no llega (y nadie eligió), Cobrar espera: así no se cobra "normal" por apuro
+    // lo que debía abonarse al plan.
+    var modoElegido by remember(cita.id) { mutableStateOf(false) }
+    var leyendoCampania by remember(cita.id) { mutableStateOf(cita.tipo != "Sesión" && cita.pacienteId != null) }
     androidx.compose.runtime.LaunchedEffect(cita.id) {
         val pid = cita.pacienteId
-        if (cita.tipo != "Sesión" && pid != null &&
-            pe.saniape.app.data.staff.CampaniaEntradaRepo.debeAbonar(pid, cita.id) && modo == "cobrar"
-        ) modo = "abonar"
+        try {
+            if (cita.tipo != "Sesión" && pid != null &&
+                pe.saniape.app.data.staff.CampaniaEntradaRepo.debeAbonar(pid, cita.id) && !modoElegido && modo == "cobrar"
+            ) modo = "abonar"
+        } finally { leyendoCampania = false }
     }
     var metodo by rememberMetodoPagoInicial(cita.pacienteId)
     // Por defecto HOY (Lima): el cobro entra a la caja del día en que se cobra
@@ -140,7 +147,7 @@ fun ModalCobrarCita(
             modo == "abonar" -> "Cobrar y abonar $monto"
             else -> "Cobrar $monto"
         },
-        accionHabilitada = !guardando && (!conDivision || reparto != null),
+        accionHabilitada = !guardando && (!conDivision || reparto != null) && (!leyendoCampania || modoElegido),
         ancla = "cobro",
         anclaAccion = "cobro.confirmar",
         onCancelar = { if (!guardando) onCancelar() },
@@ -169,7 +176,7 @@ fun ModalCobrarCita(
                 Triple("abonar", "Cobrar y abonar al tratamiento", "El monto se descuenta de la deuda del tratamiento del ${LocalTerminologiaPaciente.current.paciente}"),
                 Triple("gratis", "No cobrar", "Sigue a tratamiento: la $tipoMin queda en ${simboloMoneda(moneda)} 0"),
             ).forEach { (valor, titulo, detalle) ->
-                OpcionModo(titulo, detalle, activo = modo == valor) { if (!guardando) modo = valor }
+                OpcionModo(titulo, detalle, activo = modo == valor) { if (!guardando) { modo = valor; modoElegido = true } }
             }
         }
 

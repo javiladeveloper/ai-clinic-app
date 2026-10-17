@@ -99,9 +99,15 @@ object FotoProfesionalRepo {
      * guardado de TerapeutaForm (UPDATE directo; la RLS lo acota a la clínica).
      */
     suspend fun guardar(terapeutaId: String, url: String?): Boolean = runCatching {
-        Supabase.client.postgrest["terapeutas"].update(buildJsonObject {
+        // Con select: la RLS puede dejar el UPDATE en 0 filas sin error (sin permiso
+        // sobre ese profesional). 0 filas = no se guardó.
+        val filas = Supabase.client.postgrest["terapeutas"].update(buildJsonObject {
             if (url == null) put("foto_url", JsonNull) else put("foto_url", url)
-        }) { filter { eq("id", terapeutaId) } }
+        }) {
+            select(Columns.list("id"))
+            filter { eq("id", terapeutaId) }
+        }.decodeList<JsonObject>()
+        if (filas.isEmpty()) return@runCatching false
         cache = cache?.let { m -> if (url == null) m - terapeutaId else m + (terapeutaId to url) }
         true
     }.getOrElse {
@@ -109,3 +115,7 @@ object FotoProfesionalRepo {
         false
     }
 }
+
+/** Formatos que el navegador muestra tal cual (sin comprimir no se sube otro: HEIC no se ve en la web). */
+fun fotoSubibleSinComprimir(mime: String?): Boolean =
+    mime?.lowercase() in setOf("image/jpeg", "image/jpg", "image/png", "image/webp")

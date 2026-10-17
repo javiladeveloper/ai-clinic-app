@@ -511,6 +511,25 @@ data class PacienteStaff(
  * SELECT de usePacientes (web): pacientes + tratamientos(procedimiento, terapeuta).
  * Las escrituras complejas (crear paciente/tratamiento, pagos) van por endpoints.
  */
+/**
+ * Los valores de los campos personalizados tipados según su definición
+ * (booleano / número; "12,5" también es número). Antes `?.let { put } ?: put`
+ * pisaba el número con el texto (put devuelve null la primera vez).
+ */
+fun jsonCamposCustom(campos: List<CampoPaciente>, valores: Map<String, String>): JsonObject = buildJsonObject {
+    valores.forEach { (id, v) ->
+        if (v.isBlank()) return@forEach
+        when (campos.find { it.id == id }?.tipo) {
+            "booleano" -> put(id, v == "true")
+            "numero" -> {
+                val n = v.replace(',', '.').toDoubleOrNull()
+                if (n != null && n.isFinite()) put(id, n) else put(id, v)
+            }
+            else -> put(id, v)
+        }
+    }
+}
+
 object PacientesRepo {
 
     private val http = crearHttpClient()
@@ -1515,16 +1534,7 @@ object PacientesRepo {
     suspend fun guardarCamposCustom(
         pacienteId: String, campos: List<CampoPaciente>, valores: Map<String, String>,
     ): Boolean = try {
-        val json = buildJsonObject {
-            valores.forEach { (id, v) ->
-                if (v.isBlank()) return@forEach
-                when (campos.find { it.id == id }?.tipo) {
-                    "booleano" -> put(id, v == "true")
-                    "numero" -> v.toDoubleOrNull()?.let { put(id, it) } ?: put(id, v)
-                    else -> put(id, v)
-                }
-            }
-        }
+        val json = jsonCamposCustom(campos, valores)
         Supabase.client.postgrest["pacientes"].update(
             { set("campos_custom", json) }
         ) { filter { eq("id", pacienteId) } }

@@ -114,7 +114,11 @@ data class PendienteCobro(
 )
 
 /** Resultado de una escritura: null = ok; si no, el mensaje del servidor. */
-data class RespuestaFinanzas(val ok: Boolean, val error: String? = null, val cuerpo: JsonObject? = null)
+data class RespuestaFinanzas(
+    val ok: Boolean, val error: String? = null, val cuerpo: JsonObject? = null,
+    /** No llegó respuesta (sin red / corte): la escritura PUDO haber entrado. */
+    val sinRed: Boolean = false,
+)
 
 /**
  * "Finanzas y caja" nativo. Lecturas simples directo a Supabase (RLS por clínica;
@@ -157,7 +161,7 @@ object FinanzasRepo {
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (_: Exception) {
-            RespuestaFinanzas(false, "Sin conexión. Revisa tu internet.")
+            RespuestaFinanzas(false, "Sin conexión. Revisa tu internet.", sinRed = true)
         }
     }
 

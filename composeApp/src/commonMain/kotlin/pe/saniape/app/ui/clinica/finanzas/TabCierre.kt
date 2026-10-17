@@ -93,6 +93,12 @@ internal fun TabCierre(
     var ajusteMotivo by remember { mutableStateOf("") }
     var guardandoAjuste by remember { mutableStateOf(false) }
     val sede by SedeActiva.estado.collectAsState()
+    // "Hoy" es el de la SEDE de la caja (multipaís: otra zona horaria). Al cambiar de
+    // sede se recalcula: el ajuste y el cierre solo valen para el hoy de esa sede.
+    LaunchedEffect(sede.sedeId) {
+        val nuevo = hoyClinicaIso()
+        if (nuevo != hoy) { if (fecha == hoy) fecha = nuevo; hoy = nuevo }
+    }
 
     LaunchedEffect(fecha, sede.filtro, sede.sedeId, recarga) {
         fallo = null; dia = null
@@ -243,6 +249,12 @@ internal fun TabCierre(
                                                 if (r.ok) {
                                                     Toaster.exito(if (ajusteTipo == "retiro") "Retiro registrado" else "Ingreso de efectivo registrado")
                                                     ajusteAbierto = false; ajusteMonto = ""; ajusteMotivo = ""
+                                                    recarga++
+                                                } else if (r.sinRed) {
+                                                    // La respuesta se perdió: el ajuste PUDO entrar. Se relee la caja
+                                                    // y el formulario se cierra (no queda listo para reenviarlo a ciegas).
+                                                    Toaster.error("Sin conexión: puede haber entrado. Revisa la lista antes de repetir.")
+                                                    ajusteAbierto = false
                                                     recarga++
                                                 } else Toaster.error(r.error ?: "No se pudo registrar el ajuste")
                                             }

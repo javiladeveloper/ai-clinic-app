@@ -173,6 +173,13 @@ object CobroRepo {
      * que ver el resultado. Devuelve null si se guardó; si no, el texto a mostrar.
      */
     suspend fun ponerPrecio(citaId: String, monto: Double): String? {
+        // Justo antes de escribir: ¿sigue sin precio y sin pagar? (otro pudo ponérselo o
+        // cobrarla mientras el diálogo estaba abierto; ajustar-monto lo pisaría).
+        when (estadoPrecioCita(citaId)) {
+            EstadoPrecioCita.SIN_PRECIO -> Unit
+            EstadoPrecioCita.YA_TIENE -> return "Esta cita ya tiene precio o ya está pagada: recarga la agenda."
+            EstadoPrecioCita.NO_SE_SABE -> return "Sin conexión: no se pudo revisar la cita. Inténtalo con señal."
+        }
         val cuerpo = buildJsonObject { put("citaId", citaId); put("monto", monto) }
         val (res, rechazo, _) = runCatching {
             pe.saniape.app.data.offline.Sincronizador.enviarAhoraCompleto(
@@ -192,6 +199,21 @@ object CobroRepo {
                 else -> rechazo?.error?.takeIf { it.isNotBlank() } ?: "No se pudo guardar el precio."
             }
         }
+    }
+
+    enum class EstadoPrecioCita { SIN_PRECIO, YA_TIENE, NO_SE_SABE }
+
+    /** Lee costo y pagada_at de la cita (RLS por clínica). */
+    private suspend fun estadoPrecioCita(citaId: String): EstadoPrecioCita = runCatching {
+        val o = Supabase.client.postgrest["citas"]
+            .select(Columns.list("costo", "pagada_at")) { filter { eq("id", citaId) } }
+            .decodeList<JsonObject>().firstOrNull() ?: return@runCatching EstadoPrecioCita.NO_SE_SABE
+        val costo = (o["costo"] as? JsonPrimitive)?.content?.toDoubleOrNull() ?: 0.0
+        val pagada = (o["pagada_at"] as? JsonPrimitive)?.content?.takeIf { it != "null" && it.isNotBlank() }
+        if (costo > 0 || pagada != null) EstadoPrecioCita.YA_TIENE else EstadoPrecioCita.SIN_PRECIO
+    }.getOrElse {
+        if (it is kotlin.coroutines.cancellation.CancellationException) throw it
+        EstadoPrecioCita.NO_SE_SABE
     }
 
     /** Atajo para una sola cita (consulta guiada, completar sesión). */
