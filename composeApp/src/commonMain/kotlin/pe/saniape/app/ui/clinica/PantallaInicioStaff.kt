@@ -124,6 +124,17 @@ fun PantallaInicioStaff(
     }
     val noLeidas = notifs.count { !it.leida }
 
+    // "✓ Ya pagó" también en las SESIONES de hoy (gemelo de useEstadoPagoCitas del
+    // Inicio web): UNA llamada agrupada al estado de pago con las citas de hoy, con
+    // clave por ids ordenados — el refresco de las stats (realtime, volver a la app)
+    // no vuelve a pedir si son las mismas. Si falla, queda el yaPago del endpoint.
+    val idsHoy = stats?.agendaHoy?.filter { it.estado != "Cancelada" }?.map { it.id }?.sorted().orEmpty()
+    var estadosPagoHoy by remember { mutableStateOf<Map<String, pe.saniape.app.data.staff.EstadoPagoCita>>(emptyMap()) }
+    LaunchedEffect(idsHoy) {
+        estadosPagoHoy = if (idsHoy.isEmpty()) emptyMap()
+        else pe.saniape.app.data.staff.CobroRepo.estadosPago(idsHoy)
+    }
+
     // Sin el título: "Lic. Fisio Prueba" saludaba "Hola, Lic. 👋", que no es el
     // nombre de nadie. Pasa con casi todos los profesionales.
     val primerNombre = nombreDeSaludo(ctx.nombre)
@@ -340,7 +351,10 @@ fun PantallaInicioStaff(
                             }
                         }
                     } else {
-                        items(s.agendaHoy) { cita -> FilaAgenda(cita, onClick = onIrAgenda) }
+                        items(s.agendaHoy) { cita ->
+                            FilaAgenda(cita, onClick = onIrAgenda,
+                                yaPago = pe.saniape.app.data.staff.yaPagoConRespaldo(cita.estado, estadosPagoHoy[cita.id]?.estado, cita.yaPago))
+                        }
                     }
                 } else {
                     item { Text("No se pudieron cargar tus datos.", color = c.error, fontSize = Sania.txt.cuerpo) }
@@ -495,7 +509,7 @@ private fun StatCard(
 }
 
 @Composable
-private fun FilaAgenda(cita: CitaAgenda, onClick: () -> Unit = {}) {
+private fun FilaAgenda(cita: CitaAgenda, onClick: () -> Unit = {}, yaPago: Boolean = false) {
     val c = Sania.colors
     Row(
         Modifier.fillMaxWidth().tarjeta(Sania.shape.sm)
@@ -507,6 +521,11 @@ private fun FilaAgenda(cita: CitaAgenda, onClick: () -> Unit = {}) {
         Column(Modifier.weight(1f)) {
             Text(cita.paciente, color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
             Text(cita.procedimiento, color = c.textoSuave, fontSize = 12.sp)
+        }
+        // Fila apretada: la versión corta "✓ Pagó" (nunca solo ícono).
+        if (yaPago) {
+            pe.saniape.app.ui.clinica.agenda.componentes.EtiquetaYaPago(compacta = true)
+            Spacer(Modifier.width(6.dp))
         }
         BadgeEstadoCita(cita.estado)
     }

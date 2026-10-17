@@ -23,6 +23,12 @@ data class CitaAgenda(
     val estado: String,
     val paciente: String,
     val procedimiento: String,
+    /**
+     * "✓ Ya pagó" que calcula /api/dashboard/stats con la regla de la agenda
+     * (citaYaPago) y las columnas de su misma consulta: solo las citas que se
+     * cobran solas. Ausente (servidor viejo, caché en disco) = false.
+     */
+    val yaPago: Boolean = false,
 )
 
 /** Stats del dashboard (server-side, ya filtrados por miTerapeutaId si aplica). */
@@ -140,6 +146,7 @@ object DashboardRepo {
                 estado = a.str("estado") ?: "",
                 paciente = a.str("paciente") ?: "Paciente",
                 procedimiento = a.str("procedimiento") ?: "Consulta",
+                yaPago = a.bool("yaPago"),
             )
         }
         return StatsDashboard(
