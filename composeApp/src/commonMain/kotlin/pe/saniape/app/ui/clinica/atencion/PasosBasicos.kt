@@ -78,13 +78,13 @@ internal fun PasoMotivo(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura:
         CampoTextoClinico(
             label = "Motivo de consulta",
             valor = t["motivo_consulta"].orEmpty(), onChange = { vm.texto("motivo_consulta", it) },
-            frases = frasesDe(d, "motivo", vm.pediatria), soloLectura = soloLectura, minLineas = 2,
+            frases = frasesDe(d, "motivo", vm.pediatria, vm.derma), soloLectura = soloLectura, minLineas = 2,
             placeholder = if (dental) "Ej. Dolor dental al masticar" else "Ej. Dolor de garganta y fiebre",
         )
         CampoTextoClinico(
             label = if (dental) "Tiempo de enfermedad (opcional)" else "Tiempo de enfermedad",
             valor = t["tiempo_enfermedad"].orEmpty(), onChange = { vm.texto("tiempo_enfermedad", it) },
-            frases = frasesDe(d, "tiempo", vm.pediatria), soloLectura = soloLectura, minLineas = 1,
+            frases = frasesDe(d, "tiempo", vm.pediatria, vm.derma), soloLectura = soloLectura, minLineas = 1,
             placeholder = "Ej. 3 días · inicio brusco · curso progresivo",
         )
         CampoTextoClinico(
@@ -192,7 +192,7 @@ internal fun PasoExamen(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura:
                 else -> "Examen físico: general y regional"
             },
             valor = vm.borrador.textos["examen_fisico"].orEmpty(), onChange = { vm.texto("examen_fisico", it) },
-            frases = frasesDe(d, "examen", vm.pediatria), soloLectura = soloLectura, minLineas = if (psiq) 3 else 6,
+            frases = frasesDe(d, "examen", vm.pediatria, vm.derma), soloLectura = soloLectura, minLineas = if (psiq) 3 else 6,
             placeholder = if (dental) "Ej. Tejidos blandos sin alteraciones; pieza 36 con cavidad profunda…"
             else "Ej. BEG, LOTEP. Orofaringe congestiva, amígdalas hipertróficas con exudado…",
             porLinea = true,
@@ -555,15 +555,21 @@ internal fun BotonChico(
 /**
  * Frases aprendidas de un campo, las más usadas primero. Odontología guarda
  * aparte con prefijo (`odonto_motivo`), como `claveFrase` de la web.
- * PEDIATRÍA (varianteFrases de la web): su base para niños delante, y lo
+ * PEDIATRÍA y DERMATOLOGÍA (varianteFrases de la web): su base delante, y lo
  * aprendido en las mismas claves que medicina (frasesConBase).
  */
-internal fun frasesDe(d: DatosConsultaApp, campo: String, pediatria: Boolean = false): List<FraseFrecuenteApp> {
+internal fun frasesDe(d: DatosConsultaApp, campo: String, pediatria: Boolean = false, derma: Boolean = false): List<FraseFrecuenteApp> {
     val clave = if (d.flags.dental) "odonto_$campo" else campo
     val aprendidas = d.frases.filter { it.campo == clave && it.texto.isNotBlank() }
         .distinctBy { normalizarFrase(it.texto) }
         .sortedByDescending { it.usos }
-    val base = if (pediatria && !d.flags.dental) FRASES_BASE_PEDIATRIA[campo].orEmpty() else emptyList()
+    // varianteFrases de la web: dermatología gana a pediatría.
+    val base = when {
+        d.flags.dental -> emptyList()
+        derma -> FRASES_BASE_DERMA[campo].orEmpty()
+        pediatria -> FRASES_BASE_PEDIATRIA[campo].orEmpty()
+        else -> emptyList()
+    }
     return frasesConBase(base, aprendidas)
 }
 
@@ -642,12 +648,76 @@ internal fun normalizarFrase(s: String): String =
 
 private fun lineasDe(texto: String): List<String> = texto.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
 
+// ── ¿Está la frase COMPLETA? (gemelo de lib/frases-clinicas.ts, 2026-10-16) ──
+// Antes se buscaba como subcadena: en dermatología, tocar "Granitos" marcaba
+// también "Tos" (grani-TOS), y tocar "Tos" para deshacerlo dejaba "Grani". Lo
+// mismo "Dolor" dentro de "Dolor de cabeza". Ahora el texto se parte en ÍTEMS
+// por sus separadores y un chip cuenta solo si coincide con un ítem entero (o
+// con varios seguidos, si la frase misma trae separadores, como las líneas del
+// examen). Separadores: coma, punto y coma, salto de línea, punto de fin de
+// oración, dos puntos, paréntesis, "/", " - ", " y ", " o ", y el marcador de
+// lista al inicio de una línea ("- ", "• ", "1. ", "2) ").
+// Decisión de la web: "Dolor lumbar crónico" NO marca "Dolor lumbar" (otro ítem).
+
+/** Marcador de lista solo, al inicio de la línea ("- ", "1. "). */
+private val MARCADOR_LISTA = Regex("""^[ \t]*(?:[-•*·]|\d+[.)])[ \t]+$""")
+
+/**
+ * SEPARADOR_ITEMS de la web. El `(?<=^|\n)` del marcador de lista se escribe
+ * con MULTILINE (`^` = inicio de cada línea), que es lo mismo.
+ */
+private val SEPARADOR_ITEMS = Regex(
+    """^[ \t]*(?:[-•*·]|\d+[.)])[ \t]+|[,;\n:()]|\.(?=\s|$)|[ \t]*/[ \t]*|[ \t]+-[ \t]+|[ \t]+(?:y|o)[ \t]+""",
+    setOf(RegexOption.MULTILINE, RegexOption.IGNORE_CASE),
+)
+
+/** Un ítem del texto: su forma normalizada y dónde está (sin los espacios de los bordes). */
+private class ItemTexto(val n: String, val ini: Int, val fin: Int)
+
+private fun itemsDe(texto: String): List<ItemTexto> {
+    val out = mutableListOf<ItemTexto>()
+    fun agregar(desde: Int, hasta: Int) {
+        val crudo = texto.substring(desde, hasta)
+        val contenido = crudo.trim()
+        val n = normalizarFrase(contenido)
+        if (n.isEmpty()) return
+        val ini = desde + (crudo.length - crudo.trimStart().length)
+        out += ItemTexto(n, ini, ini + contenido.length)
+    }
+    var pos = 0
+    for (m in SEPARADOR_ITEMS.findAll(texto)) {
+        agregar(pos, m.range.first)
+        pos = m.range.last + 1
+    }
+    agregar(pos, texto.length)
+    return out
+}
+
+/** Dónde está la frase como ítems seguidos del texto: (primero, último) o null. */
+private fun ubicarFrase(items: List<ItemTexto>, frase: String): Pair<Int, Int>? {
+    val f = itemsDe(frase).map { it.n }
+    if (f.isEmpty()) return null
+    var i = 0
+    while (i + f.size <= items.size) {
+        if (f.indices.all { k -> items[i + k].n == f[k] }) return i to (i + f.size - 1)
+        i++
+    }
+    return null
+}
+
+/**
+ * ¿La frase está en el texto COMPLETA (como ítem, no como pedazo de otra
+ * palabra o de otra frase)? "Granitos" no contiene "Tos"; "Dolor lumbar" no
+ * contiene "Dolor"; "Fiebre y tos", "Fiebre; tos", "Tos: 3 días" sí contienen "Tos".
+ */
+internal fun contieneFraseCompleta(texto: String, frase: String): Boolean =
+    ubicarFrase(itemsDe(texto), frase) != null
+
 /** ¿El chip ya está en el texto? (un bloque, si están todas sus líneas). */
 internal fun fraseUsada(texto: String, frase: String): Boolean {
-    val t = normalizarFrase(texto)
-    if (t.isEmpty()) return false
+    if (normalizarFrase(texto).isEmpty()) return false
     val partes = lineasDe(frase)
-    return partes.isNotEmpty() && partes.all { t.contains(normalizarFrase(it)) }
+    return partes.isNotEmpty() && partes.all { contieneFraseCompleta(texto, it) }
 }
 
 private val MAYUSCULA = Regex("[A-ZÁÉÍÓÚÑ]")
@@ -716,30 +786,57 @@ internal fun sugerirPara(fragmento: String, opciones: List<String>, max: Int = 6
 }
 
 /**
- * Quita la frase (deshacer un chip): solo si está escrita tal cual (sin
- * distinguir mayúsculas); si el médico ya la editó, no toca nada. También quita
- * el separador que la acompañaba.
+ * Quita la frase (deshacer un chip): solo si está como ítem completo (misma
+ * regla y misma normalización que [fraseUsada]); si el médico ya la editó, no
+ * toca nada. También quita el separador que la acompañaba: el de DESPUÉS si
+ * sigue otro ítem ("Motivo: tos, fiebre" → "Motivo: fiebre"), el de ANTES si
+ * era el último ("Fiebre, tos." → "Fiebre.", "Fiebre y tos" → "Fiebre"), los
+ * dos paréntesis si iba sola entre ellos ("Fiebre (tos)" → "Fiebre"), y la
+ * línea entera si la ocupaba (con su marcador de lista y su punto final).
+ * Gemelo de `quitarFrase` de lib/frases-clinicas.ts.
  */
 internal fun quitarFrase(texto: String, frase: String, porLinea: Boolean): String {
     var r = texto
     for (p in lineasDe(frase)) {
-        val i = r.lowercase().indexOf(p.lowercase())
-        if (i < 0) continue
-        val antes = r.substring(0, i)
-        val despues = r.substring(i + p.length)
-        r = if (porLinea) {
-            val a = antes.replace(Regex("\\n?[ \\t]*$"), "")
-            val d = despues.replace(Regex("^[ \\t]*\\n?"), "")
-            (a + (if (antes.isNotBlank() && despues.isNotBlank()) "\n" else "") + d).trim()
-        } else {
-            val a = antes.replace(Regex("[,;]?\\s*$"), "")
-            val d = despues.replace(Regex("^\\s*[,;]?\\s*"), "")
-            when {
-                a.isNotEmpty() && d.isNotEmpty() -> "$a, $d"
-                a.isNotEmpty() -> a
-                else -> enMayuscula(d)
-            }
+        val items = itemsDe(r)
+        val u = ubicarFrase(items, p) ?: continue
+        var ini = items[u.first].ini
+        var fin = items[u.second].fin
+        // Los paréntesis separan ítems: una frase que los trae ("Control de niño
+        // sano (CRED)") termina como ítem ANTES del ")": se lo come también (y el
+        // "(" si la frase empieza así).
+        val pt = p.trim()
+        if (pt.endsWith(")")) CIERRA_PARENTESIS.find(r.substring(fin))?.let { fin += it.value.length }
+        if (pt.startsWith("(")) ABRE_PARENTESIS_AL_FINAL.find(r.substring(0, ini))?.let { ini -= it.value.length }
+        // La frase ocupa su línea entera (con su punto final): se va la línea con
+        // su salto, sin dejar una línea en blanco ni un punto suelto.
+        val iniLinea = r.lastIndexOf('\n', ini - 1) + 1
+        val finLineaN = r.indexOf('\n', fin)
+        val finLinea = if (finLineaN < 0) r.length else finLineaN
+        val previoEnLinea = r.substring(iniLinea, ini)
+        if ((previoEnLinea.isBlank() || MARCADOR_LISTA.matches(previoEnLinea)) && RESTO_DE_LINEA_VACIO.matches(r.substring(fin, finLinea))) {
+            r = (if (finLineaN >= 0) r.substring(0, iniLinea) + r.substring(finLineaN + 1) else r.substring(0, maxOf(0, iniLinea - 1))).trim()
+            continue
         }
+        var antes = r.substring(0, ini)
+        var despues = r.substring(fin)
+        val haySiguiente = u.second + 1 < items.size && items[u.second + 1].ini >= fin
+        if (ABRE_PARENTESIS_AL_FINAL.containsMatchIn(antes) && CIERRA_PARENTESIS.containsMatchIn(despues)) {
+            antes = antes.replaceFirst(Regex("""[ \t]*\([ \t]*$"""), "")
+            despues = despues.replaceFirst(CIERRA_PARENTESIS, "")
+        } else if (haySiguiente) {
+            despues = despues.replaceFirst(Regex("""^[ \t]*(?:[,;:/\n.-]|[yo](?=[ \t]))?[ \t]*""", RegexOption.IGNORE_CASE), "")
+        } else {
+            antes = antes.replaceFirst(Regex("""(?:[ \t]*[,;:/\n(.-]|[ \t]+[yo])?[ \t]*$""", RegexOption.IGNORE_CASE), "")
+        }
+        // Era lo único: no queda un separador suelto ("Tos." → "").
+        if (antes.isBlank()) despues = despues.replaceFirst(Regex("""^[\s.,;:/)-]+"""), "")
+        r = (antes + despues).trim()
+        if (!porLinea && antes.isBlank()) r = enMayuscula(r)
     }
     return r
 }
+
+private val CIERRA_PARENTESIS = Regex("""^[ \t]*\)""")
+private val ABRE_PARENTESIS_AL_FINAL = Regex("""\([ \t]*$""")
+private val RESTO_DE_LINEA_VACIO = Regex("""^[ \t.]*$""")

@@ -33,6 +33,8 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -66,6 +68,12 @@ import pe.saniape.app.data.staff.formatearNumeroReceta
 import pe.saniape.app.data.staff.hoyClinicaIso
 import pe.saniape.app.data.staff.isoAMillisUtc
 import pe.saniape.app.data.staff.sumarDiasIso
+import pe.saniape.app.data.staff.ATAJOS_CONTROL_DIAS
+import pe.saniape.app.data.staff.DIAS_CONTROL_POR_DEFECTO
+import pe.saniape.app.data.staff.HorarioControl
+import pe.saniape.app.data.staff.HorarioControlRepo
+import pe.saniape.app.data.staff.SedeActiva
+import pe.saniape.app.data.staff.fechaControlConHorario
 import pe.saniape.app.ui.AccionesNativas
 import pe.saniape.app.ui.ArchivoSeleccionado
 import pe.saniape.app.ui.Toaster
@@ -129,7 +137,7 @@ internal fun PasoPlan(
             CampoTextoClinico(
                 label = "Indicaciones para el ${LocalTerminologiaPaciente.current.paciente}",
                 valor = vm.borrador.textos["tratamiento"].orEmpty(), onChange = { vm.texto("tratamiento", it) },
-                frases = frasesDe(d, "indicaciones", vm.pediatria), soloLectura = soloLectura, minLineas = 3,
+                frases = frasesDe(d, "indicaciones", vm.pediatria, vm.derma), soloLectura = soloLectura, minLineas = 3,
                 placeholder = "Medidas generales: reposo, dieta, signos de alarma… (los medicamentos van en la receta)",
                 porLinea = true,
             )
@@ -498,8 +506,24 @@ private fun BloqueProcedimiento(vm: AtencionViewModel, d: DatosConsultaApp, solo
 private fun BloqueControl(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura: Boolean) {
     val c = Sania.colors
     val hoy = remember { hoyClinicaIso() }
-    var fecha by remember { mutableStateOf(sumarDiasIso(hoy, 7)) }
+    // Los atajos cuentan desde la FECHA DE LA CITA (como la web), no desde hoy.
+    val diaCita = d.cita.fecha.take(10).ifBlank { hoy }
     var hora by remember { mutableStateOf(horaPorDefecto(d)) }
+    // El horario de quien atiende (2026-10-16): "en 30 días" se corre al primer
+    // día (y hora) que atiende, para no proponer un sábado que la agenda rechaza
+    // con "sin cupo". Mientras llega (o si falla), la fecha de siempre.
+    val profControl = d.cita.terapeuta_id
+    var horarioProf by remember(profControl) { mutableStateOf<HorarioControl?>(null) }
+    LaunchedEffect(profControl) { if (profControl != null) horarioProf = HorarioControlRepo.cargar(profControl) }
+    val principalId = SedeActiva.estado.collectAsState().value.principalId
+    // Los días del atajo elegido; la fecha elegida a mano manda sobre el atajo.
+    var ctrlDias by remember { mutableStateOf(DIAS_CONTROL_POR_DEFECTO) }
+    var fechaManual by remember { mutableStateOf<String?>(null) }
+    fun fechaAtajo(n: Int) = fechaControlConHorario(
+        diaCita, n, hora, horarioProf?.filas, flexible = horarioProf?.flexible == true,
+        sedeId = d.cita.sede_id, principalId = principalId,
+    )
+    val fecha = fechaManual ?: fechaAtajo(ctrlDias)
     var motivo by remember { mutableStateOf("") }
     val control = d.atencion?.control
     val servicioControl = remember(d.servicios, d.cita) { servicioControlDe(d) }
@@ -527,13 +551,12 @@ private fun BloqueControl(vm: AtencionViewModel, d: DatosConsultaApp, soloLectur
             soloLectura -> Texto("Sin control programado.")
             else -> {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf(3, 7, 15, 30).forEach { n ->
-                        val f = sumarDiasIso(hoy, n)
-                        ChipAgregar("en $n días", activo = fecha == f) { fecha = f }
+                    ATAJOS_CONTROL_DIAS.forEach { n ->
+                        ChipAgregar("en $n días", activo = fechaManual == null && ctrlDias == n) { ctrlDias = n; fechaManual = null }
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                SelectorFechaHora(fecha = fecha, hora = hora, minimo = hoy, onFecha = { fecha = it }, onHora = { hora = it })
+                SelectorFechaHora(fecha = fecha, hora = hora, minimo = diaCita, onFecha = { fechaManual = it }, onHora = { hora = it })
                 Spacer(Modifier.height(8.dp))
                 EtqForm("Motivo (opcional)")
                 OutlinedTextField(

@@ -102,6 +102,8 @@ class AtencionViewModel(
      */
     var derma by mutableStateOf(false); private set
     var pediatria by mutableStateOf(false); private set
+    /** GINECOLOGÍA: solo cambia el ejemplo del buscador CIE-10 (ejemploCie10). */
+    var gineco by mutableStateOf(false); private set
     /** Definiciones de las escalas (PHQ-9, GAD-7…). null = cargando o no disponibles. */
     var instrumentos by mutableStateOf<List<InstrumentoPsico>?>(null); private set
     /** Pidiendo las definiciones (la pantalla muestra "Cargando…", no un error). */
@@ -161,6 +163,7 @@ class AtencionViewModel(
                     val variantes = pe.saniape.app.data.staff.variantesAtencion(esps, d.flags, psiq)
                     derma = variantes.derma
                     pediatria = variantes.pediatria
+                    gineco = variantes.gineco
                     borrador = borradorDesde(d, miTerapeutaId, psiq)
                     if (psiq && instrumentos == null) cargarInstrumentos()
                     if (psiq && certificadoDisponible != true) {

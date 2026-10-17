@@ -52,7 +52,7 @@ class AtencionVariantesTest {
         )
         assertEquals(VariantesAtencion(derma = true), variantesAtencion(esps, FlagsConsulta(especialidadId = "d"), psiq = false))
         assertEquals(VariantesAtencion(pediatria = true), variantesAtencion(esps, FlagsConsulta(especialidadId = "p"), psiq = false))
-        assertEquals(VariantesAtencion(), variantesAtencion(esps, FlagsConsulta(especialidadId = "g"), psiq = false))
+        assertEquals(VariantesAtencion(gineco = true), variantesAtencion(esps, FlagsConsulta(especialidadId = "g"), psiq = false))
         assertEquals(VariantesAtencion(), variantesAtencion(esps, FlagsConsulta(especialidadId = "d", dental = true), psiq = false))
         assertEquals(VariantesAtencion(), variantesAtencion(esps, FlagsConsulta(especialidadId = "d"), psiq = true))
     }
@@ -94,5 +94,14 @@ class AtencionVariantesTest {
                 "B02.9", "B86.X", "L81.1", "L80.X", "L82.X", "L57.0", "D22.9", "D23.9", "L72.1", "C44.9", "L63.9", "L64.9", "L60.0", "L91.0"),
             FRECUENTES_DERMATOLOGIA.map { it.first },
         )
+    }
+
+    // Gemelo de lib/__tests__/cie10-ejemplo.test.ts (web, 2026-10-16).
+    @Test fun ejemploCie10PorAtencion() {
+        assertEquals("F41.1" to "ansiedad generalizada", ejemploCie10(psiq = true))
+        assertEquals("J06.9" to "faringitis aguda", ejemploCie10())
+        assertTrue(ejemploCie10(dental = true, psiq = true).first.startsWith("K"))
+        assertTrue(ejemploCie10(gineco = true, psiq = true).first.startsWith("N"))
+        assertTrue(ejemploCie10(derma = true).first.startsWith("L"))
     }
 }

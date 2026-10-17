@@ -44,6 +44,7 @@ import kotlinx.coroutines.delay
 import pe.saniape.app.data.staff.AtencionRepo
 import pe.saniape.app.data.staff.DatosConsultaApp
 import pe.saniape.app.data.staff.DiagnosticoCie
+import pe.saniape.app.data.staff.ejemploCie10
 import pe.saniape.app.ui.clinica.pacientes.coloresCampoForm
 import pe.saniape.app.ui.theme.Sania
 
@@ -73,6 +74,7 @@ internal fun PasoDiagnostico(vm: AtencionViewModel, d: DatosConsultaApp, soloLec
         dental = d.flags.dental,
         psiq = vm.psiq,
         derma = vm.derma,
+        gineco = vm.gineco,
     )
 }
 
@@ -92,6 +94,8 @@ internal fun EditorDiagnosticosCie(
     psiq: Boolean = false,
     /** Dermatología: los frecuentes del capítulo L (viajan en la app: frecuentesCie10Locales). */
     derma: Boolean = false,
+    /** Ginecología: solo cambia el ejemplo del buscador (ejemploCie10). */
+    gineco: Boolean = false,
     /** La nota de arriba (la de la consulta cita la NTS 139). */
     nota: String = "CIE-10 con tipo: Presuntivo, Definitivo o Repetido (NTS 139, 4.2.9). Sin siglas.",
 ) {
@@ -163,7 +167,7 @@ internal fun EditorDiagnosticosCie(
                 placeholder = {
                     Text(
                         if (lista.isNotEmpty()) "Agregar otro diagnóstico (código o palabras)…"
-                        else "Busca por código (J06.9) o por palabras (faringitis aguda)…",
+                        else ejemploCie10(dental, gineco, psiq, derma).let { (cod, pal) -> "Busca por código ($cod) o por palabras ($pal)…" },
                         fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 },

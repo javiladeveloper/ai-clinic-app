@@ -56,8 +56,11 @@ fun atencionEsGineco(esps: List<EspecialidadNombre>, especialidadId: String?): B
     return activas.isNotEmpty() && activas.all { it.rubro == "ginecologia" }
 }
 
-/** Dermatología y pediatría de una atención (gineco y psiquiatría mandan antes). */
-data class VariantesAtencion(val derma: Boolean = false, val pediatria: Boolean = false)
+/**
+ * Dermatología y pediatría de una atención (gineco y psiquiatría mandan antes).
+ * [gineco]: la atención es de ginecología (solo para el ejemplo del CIE-10).
+ */
+data class VariantesAtencion(val derma: Boolean = false, val pediatria: Boolean = false, val gineco: Boolean = false)
 
 /**
  * Como ConsultaGuiada.tsx: `derma = !dental && !gineco && !psiq && atencionEsDermatologia`,
@@ -67,7 +70,7 @@ data class VariantesAtencion(val derma: Boolean = false, val pediatria: Boolean 
 fun variantesAtencion(esps: List<EspecialidadNombre>, flags: FlagsConsulta, psiq: Boolean): VariantesAtencion {
     if (flags.dental || psiq) return VariantesAtencion()
     if (esps.isEmpty()) return VariantesAtencion(derma = flags.derma == true, pediatria = flags.pediatria == true)
-    if (atencionEsGineco(esps, flags.especialidadId)) return VariantesAtencion()
+    if (atencionEsGineco(esps, flags.especialidadId)) return VariantesAtencion(gineco = true)
     return VariantesAtencion(
         derma = atencionEsDermatologia(esps, flags.especialidadId),
         pediatria = atencionEsPediatria(esps, flags.especialidadId),
@@ -115,3 +118,17 @@ val FRECUENTES_DERMATOLOGIA: List<Pair<String, String>> = listOf(
  */
 fun frecuentesCie10Locales(dental: Boolean, psiq: Boolean, derma: Boolean): List<DiagnosticoCie>? =
     if (!dental && !psiq && derma) FRECUENTES_DERMATOLOGIA.map { (c, d) -> DiagnosticoCie(codigo = c, descripcion = d) } else null
+
+/**
+ * Ejemplo del buscador CIE-10 según la atención (gemelo de `ejemploCie10` de
+ * lib/cie10.ts, 2026-10-16): en la consulta psicológica salía "J06.9 /
+ * faringitis aguda". Gana el primero que aplica, como los frecuentes.
+ * Devuelve (código, palabras).
+ */
+fun ejemploCie10(dental: Boolean = false, gineco: Boolean = false, psiq: Boolean = false, derma: Boolean = false): Pair<String, String> = when {
+    dental -> "K02.1" to "caries de la dentina"
+    gineco -> "N76.0" to "vaginitis aguda"
+    psiq -> "F41.1" to "ansiedad generalizada"
+    derma -> "L70.0" to "acné vulgar"
+    else -> "J06.9" to "faringitis aguda"
+}
