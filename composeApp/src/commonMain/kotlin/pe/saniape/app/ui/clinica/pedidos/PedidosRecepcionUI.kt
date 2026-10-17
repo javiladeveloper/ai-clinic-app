@@ -93,15 +93,44 @@ fun DialogoPedidoRecepcion(
         })
     }
     var notas by remember { mutableStateOf(pedido?.notas.orEmpty()) }
+    // El pedido que se edita: el que llegó o, si esta cita ya tiene uno Pendiente
+    // (p. ej. el envío anterior llegó aunque la respuesta se perdió), ese.
+    var actual by remember { mutableStateOf(pedido) }
+    // Antes de crear uno nuevo para una cita, se mira si ya tiene uno: hasta saberlo, no se envía.
+    var verificando by remember { mutableStateOf(pedido == null && citaId != null) }
+    fun adoptar(p: PedidoRecepcion) {
+        actual = p
+        notas = p.notas.orEmpty()
+        lineas = p.items.map { i ->
+            LineaPedidoForm(
+                clave = i.clave, tipo = i.tipo, refId = i.refId, nombre = i.nombre, cantidad = i.cantidad,
+                precio = if (i.precioLista != null && i.precioUnit == i.precioLista) "" else montoTexto(i.precioUnit),
+                lista = i.precioLista, notas = i.notas.orEmpty(),
+            )
+        }
+    }
+    /** El pedido Pendiente que ya tiene esta cita (null = ninguno o no se pudo leer). */
+    suspend fun pendienteDeLaCita(): PedidoRecepcion? =
+        citaId?.let { cid -> PedidosRepo.pendientes()?.pedidos?.firstOrNull { it.citaId == cid } }
+    LaunchedEffect(Unit) {
+        if (verificando) {
+            pendienteDeLaCita()?.let { p ->
+                adoptar(p)
+                Toaster.info("Esta cita ya tiene un pedido pendiente: lo abrimos para que lo revises.")
+            }
+            verificando = false
+        }
+    }
     var pestana by remember { mutableStateOf("productos") }
     var busca by remember { mutableStateOf("") }
     var guardando by remember { mutableStateOf(false) }
     var anulando by remember { mutableStateOf(false) }
     var confirmarAnular by remember { mutableStateOf(false) }
-    // Un intento = una clave (reintentar tras un corte no crea dos pedidos).
-    var idem by remember { mutableStateOf<String?>(null) }
+    // Un intento = una clave (reintentar tras un corte no crea dos pedidos). La clave
+    // vale para ESE contenido: si cambian las líneas o la nota, es otro envío (clave nueva).
+    var idem by remember { mutableStateOf<Pair<String, String>?>(null) }
     val citaDelPedido = pedido?.citaId ?: citaId
-    val moneda = pedido?.moneda ?: cat?.moneda ?: "PEN"
+    val moneda = actual?.moneda ?: cat?.moneda ?: "PEN"
 
     LaunchedEffect(citaDelPedido) {
         val r = PedidosRepo.catalogo(citaDelPedido)
@@ -146,15 +175,26 @@ fun DialogoPedidoRecepcion(
     fun din(n: Double) = formatearDinero(n, moneda)
 
     fun guardar() {
-        if (guardando || !listo) return
+        if (guardando || !listo || verificando) return
         guardando = true
-        val clave = idem ?: nuevaIdemKey().also { idem = it }
+        val cuerpo = cuerpoGuardarPedido(actual?.id, citaId, pacienteId, lineas, notas)
+        val huella = cuerpo.toString()
+        val clave = idem?.takeIf { it.second == huella }?.first ?: nuevaIdemKey().also { idem = it to huella }
         scope.launch {
-            val r = PedidosRepo.guardar(cuerpoGuardarPedido(pedido?.id, citaId, pacienteId, lineas, notas), clave)
+            val r = PedidosRepo.guardar(cuerpo, clave)
             guardando = false
             if (!r.ok) {
                 if (!r.sinRed) idem = null
-                Toaster.error(if (r.sinRed) "Sin conexión: el pedido no se guardó. Vuelve a intentarlo." else r.rechazo?.error ?: "No se pudo guardar el pedido")
+                if (r.sinRed) {
+                    // La respuesta pudo perderse con el pedido YA creado: se mira antes de
+                    // dejar repetir (repetir con la misma clave tampoco duplica).
+                    Toaster.error("Sin conexión: puede haber llegado. Revisa antes de repetir.")
+                    if (actual == null) pendienteDeLaCita()?.let { p ->
+                        adoptar(p)
+                        idem = null
+                        Toaster.info("El pedido sí llegó a recepción: ahora lo estás editando.")
+                    }
+                } else Toaster.error(r.rechazo?.error ?: "No se pudo guardar el pedido")
                 return@launch
             }
             val creado = (r.cuerpo?.get("creado") as? kotlinx.serialization.json.JsonPrimitive)?.content == "true"
@@ -163,7 +203,7 @@ fun DialogoPedidoRecepcion(
         }
     }
     fun anular() {
-        val p = pedido ?: return
+        val p = actual ?: return
         if (anulando) return
         anulando = true
         scope.launch {
@@ -174,17 +214,18 @@ fun DialogoPedidoRecepcion(
         }
     }
 
-    val nombrePac = pedido?.pacienteNombre ?: pacienteNombre
+    val nombrePac = actual?.pacienteNombre ?: pacienteNombre
     DialogoForm(
-        titulo = if (pedido != null) "🧾 Editar pedido" else "🧾 Pedido para recepción",
+        titulo = if (actual != null) "🧾 Editar pedido" else "🧾 Pedido para recepción",
         subtitulo = nombrePac,
         textoAccion = when {
             guardando -> "Guardando…"
-            pedido != null -> "Guardar cambios"
+            verificando -> "Revisando…"
+            actual != null -> "Guardar cambios"
             lineas.isNotEmpty() -> "Enviar · ${din(totales.total)}"
             else -> "Enviar a recepción"
         },
-        accionHabilitada = listo && !guardando,
+        accionHabilitada = listo && !guardando && !verificando,
         onCancelar = { if (!guardando) onCerrar() },
         onAccion = ::guardar,
     ) {
@@ -302,7 +343,7 @@ fun DialogoPedidoRecepcion(
                 }
             }
 
-            if (pedido != null) {
+            if (actual != null) {
                 Text(
                     if (anulando) "Anulando…" else if (confirmarAnular) "¿Anular el pedido? Toca de nuevo para confirmar" else "Anular pedido",
                     color = c.error, fontSize = 13.sp, fontWeight = FontWeight.Bold,
@@ -329,6 +370,8 @@ fun DialogoCobrarPedido(
     onCerrar: () -> Unit,
     onEditar: ((PedidoRecepcion) -> Unit)?,
     onCobrado: (conCita: Boolean) -> Unit,
+    /** sesiones / citas / agendar: hace falta para cobrar servicios (nacen como tratamiento). */
+    puedeCrearTratamiento: Boolean = true,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -351,18 +394,31 @@ fun DialogoCobrarPedido(
     val tot = totalesPedidoDe(pedido.items, m)
     val total = kotlin.math.round((tot.total + (if (incluirCita) citaMonto else 0.0)) * 100) / 100
 
-    /** true si el pedido cambió (o ya no se cobra) y hay que avisar en vez de cobrar. */
+    /**
+     * Relee el pedido (con su cita) justo antes de mover dinero y lo deja como el
+     * que se muestra. true si cambió algo de lo que se cobra (ítems, o la cita:
+     * ya pagada / otro costo) o ya no se cobra: se avisa y NO se cobra nada.
+     */
     suspend fun cambioAntesDeCobrar(): Boolean {
-        val fresco = PedidosRepo.porId(pedido.id) ?: return false   // sin lectura: decide el servidor con la huella
+        val visto = pedido
+        val fresco = PedidosRepo.porId(visto.id) ?: return false   // sin lectura: decide el servidor con la huella
+        pedido = fresco
         if (fresco.estado != "Pendiente") {
             Toaster.info(if (fresco.estado == "Cobrado") "Este pedido ya se cobró." else "Este pedido fue anulado.")
             onCobrado(false)
             return true
         }
-        if (huellaPedido(fresco.items) != huellaPedido(pedido.items)) {
-            pedido = fresco
+        if (huellaPedido(fresco.items) != huellaPedido(visto.items)) {
             idemPedido = null
             Toaster.error("El pedido cambió mientras lo tenías abierto: ahora suma ${formatearDinero(fresco.total, fresco.moneda)}. No se cobró nada.")
+            return true
+        }
+        if (!citaCobrada && citaCobrableConPedido(fresco) != citaCobrableConPedido(visto)) {
+            idemCita = null
+            Toaster.error(
+                if (citaCobrableConPedido(fresco) == 0.0) "La cita ya se cobró (o cambió) mientras lo tenías abierto: revisa el total. No se cobró nada."
+                else "El precio de la cita cambió: ahora es ${formatearDinero(citaCobrableConPedido(fresco), fresco.moneda)}. No se cobró nada.",
+            )
             return true
         }
         return false
@@ -370,41 +426,55 @@ fun DialogoCobrarPedido(
 
     fun cobrar() {
         if (cobrando || metodo.isBlank()) return
+        // Servicios del pedido = tratamientos: sin permiso de crearlos, no se empieza
+        // (ni siquiera la cita), como el 403 SIN_PERMISO_TRATAMIENTO del servidor.
+        if (pedido.items.any { it.tipo == "servicio" } && !puedeCrearTratamiento) {
+            Toaster.error("Este pedido tiene servicios: para cobrarlo hace falta también permiso de agenda o de atención (se registran como tratamiento).")
+            return
+        }
         cobrando = true
         scope.launch {
             try {
                 if (cambioAntesDeCobrar()) return@launch
-                val cita = pedido.cita
-                if (incluirCita && cita != null) {
+                // Desde aquí, todo con lo RECIÉN leído (nunca con lo que se pintó antes).
+                val p = pedido
+                val montoCita = if (citaCobrada) 0.0 else citaCobrableConPedido(p)
+                val conLaCita = montoCita > 0 && conCita
+                var citaSumada = false
+                val cita = p.cita
+                if (conLaCita && cita != null) {
                     val clave = idemCita ?: nuevaIdemKey().also { idemCita = it }
                     val r = PedidosRepo.cobrarCita(cita.id, metodo, clave)
                     if (!r.ok) {
-                        Toaster.error("No se cobró nada: " + (if (r.sinRed) "sin conexión." else r.rechazo?.error ?: "la cita no se pudo cobrar"))
+                        Toaster.error("No se cobró nada: " + (if (r.sinRed) "sin conexión (revisa si la cita quedó cobrada antes de repetir)." else textoRechazo(r, "la cita no se pudo cobrar")))
                         return@launch
                     }
                     citaCobrada = true
+                    // `yaEstaba`: la cita ya estaba cobrada (otro cobro): no se suma aquí.
+                    citaSumada = (r.cuerpo?.get("yaEstaba") as? kotlinx.serialization.json.JsonPrimitive)?.content != "true"
                 }
-                val yaLaCita = if (incluirCita) "La cita SÍ quedó cobrada. " else ""
+                val yaLaCita = if (citaSumada) "La cita SÍ quedó cobrada. " else ""
                 val clave = idemPedido ?: nuevaIdemKey().also { idemPedido = it }
-                val r = PedidosRepo.cobrar(pedido.id, metodo, huellaPedido(pedido.items), clave)
+                val r = PedidosRepo.cobrar(p.id, metodo, huellaPedido(p.items), clave)
                 if (!r.ok && r.rechazo?.codigo == "PEDIDO_CAMBIO") {
                     idemPedido = null
-                    PedidosRepo.porId(pedido.id)?.let { pedido = it }
+                    PedidosRepo.porId(p.id)?.let { pedido = it }
                     Toaster.error("${yaLaCita}El pedido cambió: revisa el nuevo total antes de cobrarlo.")
                     return@launch
                 }
                 if (!r.ok) {
                     // Rechazo limpio: clave nueva para reintentar. Sin red: misma clave (no duplica).
                     if (!r.sinRed) idemPedido = null
-                    Toaster.error(yaLaCita + (if (r.sinRed) "Sin conexión: revisa si el cobro entró antes de repetirlo (no se duplica)." else r.rechazo?.error ?: "No se pudo cobrar el pedido"))
+                    Toaster.error(yaLaCita + (if (r.sinRed) "Sin conexión: revisa si el cobro entró antes de repetirlo (no se duplica)." else textoRechazo(r, "No se pudo cobrar el pedido")))
                     return@launch
                 }
-                MetodoPagoPreferido.recordar(pedido.pacienteId, metodo)
+                MetodoPagoPreferido.recordar(p.pacienteId, metodo)
                 val yaEstaba = (r.cuerpo?.get("yaEstaba") as? kotlinx.serialization.json.JsonPrimitive)?.content == "true"
                 val aviso = (r.cuerpo?.get("aviso") as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it.isNotBlank() && it != "null" }
-                Toaster.exito(if (yaEstaba) "Este pedido ya estaba cobrado" else "✓ Cobrado ${din(total)} ($metodo)")
+                val cobradoTotal = kotlin.math.round((totalesPedidoDe(p.items, p.moneda).total + (if (citaSumada) montoCita else 0.0)) * 100) / 100
+                Toaster.exito(if (yaEstaba) "Este pedido ya estaba cobrado" else "✓ Cobrado ${formatearDinero(cobradoTotal, p.moneda)} ($metodo)")
                 aviso?.let { Toaster.info(it) }
-                onCobrado(incluirCita)
+                onCobrado(citaSumada || conLaCita)
             } finally { cobrando = false }
         }
     }
@@ -580,6 +650,14 @@ private fun FilaTotal(t: String, v: String, fuerte: Boolean = false) {
             fontWeight = if (fuerte) FontWeight.ExtraBold else FontWeight.Normal)
     }
 }
+
+/**
+ * El texto de un rechazo: la `causa` original si el servidor la manda (un 409 de
+ * un cobro a medias, conRespaldoIdempotente), si no el `error` (como la web).
+ */
+private fun textoRechazo(r: PedidosRepo.Envio, porDefecto: String): String =
+    (r.rechazo?.datos?.get("causa") as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it.isNotBlank() && it != "null" }
+        ?: r.rechazo?.error?.takeIf { it.isNotBlank() } ?: porDefecto
 
 /** 12.0 → "12", 12.5 → "12.5" (para el campo de precio). */
 private fun montoTexto(n: Double): String = if (n % 1.0 == 0.0) n.toLong().toString() else n.toString()

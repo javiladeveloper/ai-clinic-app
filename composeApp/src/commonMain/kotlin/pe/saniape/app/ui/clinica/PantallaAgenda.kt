@@ -1208,7 +1208,7 @@ fun PantallaAgenda(
     pedidoEditar?.let { (cita, pedido) ->
         pe.saniape.app.ui.clinica.pedidos.DialogoPedidoRecepcion(
             citaId = cita?.id, pacienteId = null, pacienteNombre = cita?.pacienteNombre, pedido = pedido,
-            onCerrar = { pedidoEditar = null },
+            onCerrar = { pedidoEditar = null; vm.recargarPedidos() },
             onGuardado = { pedidoEditar = null; vm.recargarPedidos() },
         )
     }
@@ -1216,9 +1216,10 @@ fun PantallaAgenda(
         androidx.compose.runtime.key(p.id) {
             pe.saniape.app.ui.clinica.pedidos.DialogoCobrarPedido(
                 pedidoInicial = p,
-                onCerrar = { pedidoCobrar = null },
+                onCerrar = { pedidoCobrar = null; vm.recargarPedidos() },
                 onEditar = { x -> pedidoCobrar = null; pedidoEditar = null to x },
                 onCobrado = { conCita -> pedidoCobrar = null; vm.recargarPedidos(); if (conCita) vm.refrescar() },
+                puedeCrearTratamiento = ctx.puede("sesiones") || ctx.puede("citas") || ctx.puede("agendar"),
             )
         }
     }

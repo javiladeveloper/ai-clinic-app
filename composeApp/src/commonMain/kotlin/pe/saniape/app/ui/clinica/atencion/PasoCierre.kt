@@ -511,7 +511,7 @@ private fun BloquePedidoRecepcion(d: DatosConsultaApp) {
     if (abierto) {
         pe.saniape.app.ui.clinica.pedidos.DialogoPedidoRecepcion(
             citaId = d.cita.id, pacienteId = null, pacienteNombre = d.cita.paciente?.nombre, pedido = delaCita,
-            onCerrar = { abierto = false },
+            onCerrar = { abierto = false; recarga++ },
             onGuardado = { abierto = false; recarga++ },
         )
     }
