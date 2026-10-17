@@ -153,6 +153,11 @@ internal fun PasoCierre(
         // ── 💰 Cobro ──
         BloqueCobro(vm, d, ctx, onVerFicha)
 
+        // ── 🧾 Pedido para recepción (productos que se lleva o un servicio extra) ──
+        if (!soloLectura && f.puedeAtender && (ctx.puede("sesiones") || ctx.puede("citas") || ctx.puede("pagos"))) {
+            BloquePedidoRecepcion(d)
+        }
+
         // ── Imprimibles ──
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             BotonChico(
@@ -477,6 +482,37 @@ private fun BotonAncho(texto: String, primario: Boolean, habilitado: Boolean = t
         Text(
             texto, color = if (primario) (if (habilitado) c.sobreNavy else c.textoSuave) else c.navy,
             fontWeight = FontWeight.Bold, fontSize = 15.sp,
+        )
+    }
+}
+
+/**
+ * 🧾 "¿Se lleva algo más? Pedido a recepción" (gemelo del botón de ConsultaGuiada
+ * web): productos / kits o un servicio extra hecho en esta misma atención; a
+ * recepción le llega pendiente de cobro. Solo si la base ya tiene los pedidos
+ * (`disponible`); si esta cita ya tiene uno pendiente, se abre ese.
+ */
+@Composable
+private fun BloquePedidoRecepcion(d: DatosConsultaApp) {
+    val c = Sania.colors
+    var pendientes by remember { mutableStateOf<pe.saniape.app.data.staff.PedidosPendientes?>(null) }
+    var recarga by remember { mutableStateOf(0) }
+    var abierto by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(recarga) {
+        pe.saniape.app.data.staff.PedidosRepo.pendientes()?.let { pendientes = it }
+    }
+    val pp = pendientes ?: return
+    if (!pp.disponible) return
+    val delaCita = pp.porCita[d.cita.id]?.firstOrNull()
+    BotonChico(
+        if (delaCita != null) "🧾 Ver pedido a recepción" else "🧾 ¿Se lleva algo más? Pedido a recepción",
+        c.teal, c.superficie, borde = c.teal,
+    ) { abierto = true }
+    if (abierto) {
+        pe.saniape.app.ui.clinica.pedidos.DialogoPedidoRecepcion(
+            citaId = d.cita.id, pacienteId = null, pacienteNombre = d.cita.paciente?.nombre, pedido = delaCita,
+            onCerrar = { abierto = false },
+            onGuardado = { abierto = false; recarga++ },
         )
     }
 }

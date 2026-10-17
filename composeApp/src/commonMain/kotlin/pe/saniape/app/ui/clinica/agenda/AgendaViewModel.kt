@@ -444,6 +444,28 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         }
     }
 
+    // ── 🧾 Pedidos para recepción (productos + servicios extra que pidió el profesional) ──
+    /** Quien puede pedir o cobrar (como la web: sesiones, citas, agendar o pagos). */
+    val puedePedir: Boolean get() = ctx.puede("sesiones") || ctx.puede("citas") || ctx.puede("agendar") || ctx.puede("pagos")
+    /** Pendientes de la clínica (null = aún no se sabe; `disponible=false` = base sin la migración). */
+    var pedidos by mutableStateOf<pe.saniape.app.data.staff.PedidosPendientes?>(null); private set
+    /** Por cita: el chip "🧾 Pedido pendiente" de cada tarjeta. */
+    var pedidosPorCita by mutableStateOf<Map<String, List<pe.saniape.app.data.staff.PedidoRecepcion>>>(emptyMap()); private set
+    /** ¿La base tiene los pedidos? Hasta saberlo, false: no se muestran botones. */
+    val pedidosDisponibles: Boolean get() = pedidos?.disponible == true
+
+    /** Relee los pendientes (tras guardar / cobrar / anular, y cada minuto). */
+    fun recargarPedidos() {
+        if (!puedePedir) return
+        viewModelScope.launch { leerPedidos() }
+    }
+
+    private suspend fun leerPedidos() {
+        val r = pe.saniape.app.data.staff.PedidosRepo.pendientes() ?: return   // sin red: se queda lo que había
+        pedidos = r
+        pedidosPorCita = r.porCita
+    }
+
     // Suscripción Realtime a la tabla `citas`: mantiene la agenda al día sin recargar.
     private var realtimeJob: kotlinx.coroutines.Job? = null
 
@@ -484,6 +506,17 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                     kotlinx.coroutines.delay(45_000)
                     // Mirando otro día no hay nada de hoy que pintar: no se consulta.
                     if (fechaSel == hoy || verHistorial) recargarLlegadas()
+                }
+            }
+        }
+        // 🧾 Pedidos: recepción ve el que el profesional acaba de mandar sin recargar
+        // (cada minuto, como la web). Base sin la migración: se deja de preguntar.
+        if (puedePedir) {
+            viewModelScope.launch {
+                while (true) {
+                    leerPedidos()
+                    if (pe.saniape.app.data.staff.PedidosRepo.noDisponible) break
+                    kotlinx.coroutines.delay(60_000)
                 }
             }
         }
@@ -1460,6 +1493,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     /** Recarga las citas (modo actual) y los banners (tras crear cita). */
     fun refrescar() {
         viewModelScope.launch { recargarCitas(); recargarBanners() }
+        recargarPedidos()
     }
 }
 

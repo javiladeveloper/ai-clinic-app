@@ -131,6 +131,14 @@ fun TarjetaCita(
     nutricion: Boolean = false,
     /** Cita de GINECO-OBSTETRICIA y quien mira puede escribir en la ficha: "🤰 Embarazo". Lo decide la pantalla. */
     embarazo: Boolean = false,
+    /** 🧾 Pedidos para recepción pendientes de ESTA cita (chip "🧾 Pedido pendiente"). */
+    pedidos: List<pe.saniape.app.data.staff.PedidoRecepcion>? = null,
+    /**
+     * Texto de la acción "🧾 Pedido para recepción" / "🧾 Cobrar pedido" / "🧾 Ver
+     * pedido", o null = no aplica (sin permiso, base sin pedidos). Lo decide la pantalla.
+     */
+    textoPedido: String? = null,
+    onPedido: (pe.saniape.app.data.staff.PedidoRecepcion) -> Unit = {},
 ) {
     // Multipaís: el costo va en la moneda de la sede de la cita ("todas las sedes").
     val moneda = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)
@@ -269,10 +277,11 @@ fun TarjetaCita(
                     add(Triple("$icono $conteoFranja en esta hora", solape.fg, solape.bg))
                 }
             }
-            if (chips.isNotEmpty() || conBadgePago) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 8.dp)) {
+            if (chips.isNotEmpty() || conBadgePago || !pedidos.isNullOrEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 8.dp)) {
                     if (conBadgePago) BadgeEstadoPago(estadoPago, cita.estado)
                     chips.forEach { (t, fg, bg) -> Chip(t, fg, bg) }
+                    pe.saniape.app.ui.clinica.pedidos.ChipPedido(pedidos, onPedido)
                 }
             }
 
@@ -300,7 +309,8 @@ fun TarjetaCita(
                 anularCobro = anularCobro && pagada,
                 receta = textoReceta?.takeIf { cita.pacienteId != null },
                 nutricion = nutricion && cita.pacienteId != null,
-                embarazo = embarazo && cita.pacienteId != null)
+                embarazo = embarazo && cita.pacienteId != null,
+                pedido = textoPedido?.takeIf { cita.pacienteId != null && cita.estado != "Cancelada" })
             if (acc.isNotEmpty()) {
                 Spacer(Modifier.height(Sania.dim.md))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
@@ -348,6 +358,8 @@ enum class AccionTarjeta {
     Medidas, PlanAlimentario,
     /** Gineco-obstetricia: la ficha en la pestaña 🤰 Embarazo. */
     Embarazo,
+    /** 🧾 Pedido para recepción: armarlo (profesional) o cobrarlo (quien cobra). */
+    Pedido,
 }
 
 /**
@@ -415,6 +427,8 @@ private fun accionesPara(
     nutricion: Boolean = false,
     /** Gineco-obstetricia: "🤰 Embarazo" (la pestaña del carné perinatal). */
     embarazo: Boolean = false,
+    /** Texto de "🧾 Pedido para recepción" (null = no aplica). */
+    pedido: String? = null,
 ): List<Triple<String, AccionTarjeta, Color>> {
     val c = Sania.colors
     val lista = mutableListOf<Triple<String, AccionTarjeta, Color>>()
@@ -471,6 +485,8 @@ private fun accionesPara(
     }
     // Gineco-obstetricia: el carné perinatal de la paciente (no en la cancelada).
     if (embarazo && estado != "Cancelada") lista.add(Triple("🤰 Embarazo", AccionTarjeta.Embarazo, c.teal))
+    // 🧾 Productos que se lleva o un servicio extra de esta atención (o cobrarlo).
+    if (pedido != null) lista.add(Triple(pedido, AccionTarjeta.Pedido, c.teal))
     // Crear el plan desde la cita que evalúa (no cancelada), como la web.
     if (crearTratamiento && estado != "Cancelada") lista.add(Triple("🩺 Crear tratamiento", AccionTarjeta.CrearTratamiento, c.purple))
     // Corregir un cobro dividido es anularlo y volver a cobrar (como la web, solo Admin).

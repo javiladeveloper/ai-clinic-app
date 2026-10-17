@@ -150,6 +150,13 @@ fun PantallaAgenda(
     var anularCobroCita by remember { mutableStateOf<CitaStaff?>(null) }
     // "💲 Poner precio" de una cita sin costo.
     var ponerPrecioCita by remember { mutableStateOf<CitaStaff?>(null) }
+    // 🧾 Pedido para recepción: armarlo / corregirlo (cita, pedido) y cobrarlo.
+    var pedidoEditar by remember { mutableStateOf<Pair<CitaStaff?, pe.saniape.app.data.staff.PedidoRecepcion?>?>(null) }
+    var pedidoCobrar by remember { mutableStateOf<pe.saniape.app.data.staff.PedidoRecepcion?>(null) }
+    // Quien cobra lo abre para cobrar; el profesional, para revisarlo o corregirlo.
+    fun abrirPedido(p: pe.saniape.app.data.staff.PedidoRecepcion) {
+        if (ctx.puede("pagos")) pedidoCobrar = p else pedidoEditar = null to p
+    }
     // "✗ No vino" de una vencida: confirmación con motivo + "📅 Reponer".
     var noVino by remember { mutableStateOf<CitaStaff?>(null) }
     // Derivación cuya evaluación se está agendando: se marca procesada SOLO si la
@@ -589,6 +596,14 @@ fun PantallaAgenda(
                         )
                     }
                 }
+                // 🧾 Pedidos por cobrar: lo que mandaron los profesionales (solo quien cobra).
+                if (ctx.puede("pagos")) vm.pedidos?.takeIf { it.disponible && it.pedidos.isNotEmpty() }?.let { pp ->
+                    item {
+                        Box(Modifier.padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm / 2)) {
+                            pe.saniape.app.ui.clinica.pedidos.BannerPedidosPorCobrar(pp.pedidos, pp.total) { pedidoCobrar = it }
+                        }
+                    }
+                }
                 // Banners (mañana / vencidas / derivaciones)
                 // Con el filtro de especialidad aplicado (sin filtro: los de siempre).
                 vm.bannersVisibles?.let { b ->
@@ -737,6 +752,8 @@ fun PantallaAgenda(
                                         AccionTarjeta.EvaluacionPsico -> evalPsico = cita to kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
                                         AccionTarjeta.AnularCobro -> anularCobroCita = cita
                                         AccionTarjeta.PonerPrecio -> ponerPrecioCita = cita
+                                        AccionTarjeta.Pedido -> vm.pedidosPorCita[cita.id]?.firstOrNull()?.let { abrirPedido(it) }
+                                            ?: run { pedidoEditar = cita to null }
                                         // 📝 Ya tiene receta → verla/imprimirla; si no → darla, prellenada.
                                         // Primero se confirma si ya tiene (aunque el indicador no haya
                                         // cargado): si tiene, el aviso 🖨 Ver / reimprimir · Emitir otra.
@@ -775,6 +792,12 @@ fun PantallaAgenda(
                                 },
                                 nutricion = vm.nutricionEnTarjeta(cita),
                                 embarazo = vm.embarazoEnTarjeta(cita),
+                                pedidos = vm.pedidosPorCita[cita.id],
+                                textoPedido = if (vm.puedePedir && vm.pedidosDisponibles) {
+                                    if (vm.pedidosPorCita.containsKey(cita.id)) (if (ctx.puede("pagos")) "🧾 Cobrar pedido" else "🧾 Ver pedido")
+                                    else "🧾 Pedido para recepción"
+                                } else null,
+                                onPedido = { abrirPedido(it) },
                                 // Gemelo de evalPsicoDe (/citas web): servicio de evaluación + Admin o
                                 // quien atiende la cita. La base decide al abrir.
                                 evaluacionPsico = cita.procedimientoId != null && cita.procedimientoId in procsEvalPsico &&
@@ -1164,6 +1187,23 @@ fun PantallaAgenda(
             onCancelar = { vm.cerrarPedidoProfesional() },
             onElegir = { vm.completarConProfesional(it) },
         )
+    }
+    pedidoEditar?.let { (cita, pedido) ->
+        pe.saniape.app.ui.clinica.pedidos.DialogoPedidoRecepcion(
+            citaId = cita?.id, pacienteId = null, pacienteNombre = cita?.pacienteNombre, pedido = pedido,
+            onCerrar = { pedidoEditar = null },
+            onGuardado = { pedidoEditar = null; vm.recargarPedidos() },
+        )
+    }
+    pedidoCobrar?.let { p ->
+        androidx.compose.runtime.key(p.id) {
+            pe.saniape.app.ui.clinica.pedidos.DialogoCobrarPedido(
+                pedidoInicial = p,
+                onCerrar = { pedidoCobrar = null },
+                onEditar = { x -> pedidoCobrar = null; pedidoEditar = null to x },
+                onCobrado = { conCita -> pedidoCobrar = null; vm.recargarPedidos(); if (conCita) vm.refrescar() },
+            )
+        }
     }
     ponerPrecioCita?.let { cita ->
         pe.saniape.app.ui.clinica.agenda.modales.DialogoPonerPrecio(
