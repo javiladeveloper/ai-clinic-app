@@ -80,6 +80,9 @@ fun PantallaProfesionales(ctx: ContextoStaff, onSalir: () -> Unit, onAbrir: (Pro
         } catch (_: Exception) { if (lista == null) fallo = true }
     }
     val titulo = pluralPersonal(ctx.terminologiaProfesional)
+    // La foto de cada uno (terapeutas.foto_url): una lectura chica aparte; sin ella, iniciales.
+    var fotos by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    LaunchedEffect(ctx.clinicaId, recarga) { fotos = pe.saniape.app.data.staff.FotoProfesionalRepo.mapa(forzar = recarga > 0) }
     var corrigiendo by remember { mutableStateOf<ProfesionalItem?>(null) }
     corrigiendo?.let { p ->
         DialogoEspecialidadesProfesional(p, onCerrar = { corrigiendo = null }, onGuardado = { corrigiendo = null; recarga++ })
@@ -105,9 +108,7 @@ fun PantallaProfesionales(ctx: ContextoStaff, onSalir: () -> Unit, onAbrir: (Pro
                                 .clickable { onAbrir(p) }.padding(Sania.dim.lg),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Box(Modifier.size(40.dp).clip(CircleShape).background(c.chipBg), contentAlignment = Alignment.Center) {
-                                Text(p.nombre.take(1).uppercase(), color = c.navy, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            }
+                            pe.saniape.app.ui.AvatarProfesional(p.nombre, fotos[p.id], tam = 40, fondo = c.chipBg, texto = c.navy)
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(p.nombre, color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
@@ -155,6 +156,39 @@ fun PantallaHorarioProfesional(
     var confirmarVaciar by remember { mutableStateOf(false) }
     // Bloque a quitar con vaciar:true (el servidor dijo que era el último); null = PUT vaciar.
     var vaciarConBloque by remember { mutableStateOf<String?>(null) }
+
+    // 📷 Foto del profesional (terapeutas.foto_url): se ve con respaldo a las
+    // iniciales; quien edita al profesional (permiso equipo, puedeEditar del
+    // servidor) la sube, cambia o quita, comprimida a 1200 px como la web.
+    var foto by remember(terapeutaId) { mutableStateOf<String?>(null) }
+    var subiendoFoto by remember { mutableStateOf(false) }
+    LaunchedEffect(terapeutaId) { foto = pe.saniape.app.data.staff.FotoProfesionalRepo.de(terapeutaId, forzar = true) }
+    val elegirFoto = pe.saniape.app.ui.recordarSelectorArchivo(mime = "image/*") { archivo ->
+        if (archivo.mime?.startsWith("image/") != true) { Toaster.error("Elige una imagen (JPG o PNG)"); return@recordarSelectorArchivo }
+        scope.launch {
+            subiendoFoto = true
+            try {
+                val listo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    runCatching { pe.saniape.app.ui.comprimirImagen(archivo, maxLado = 1200, calidad = 82) }.getOrDefault(archivo)
+                }
+                if (listo.bytes.size > 15 * 1024 * 1024) { Toaster.error("La foto pesa demasiado. Elige una más liviana."); return@launch }
+                val url = pe.saniape.app.data.staff.FotoProfesionalRepo.subir(listo.nombre, listo.bytes, listo.mime)
+                when {
+                    url == null -> Toaster.error("No se pudo subir la foto. Revisa tu conexión e inténtalo de nuevo.")
+                    pe.saniape.app.data.staff.FotoProfesionalRepo.guardar(terapeutaId, url) -> { foto = url; Toaster.exito("Foto guardada") }
+                    else -> Toaster.error("La foto se subió pero no se pudo guardar en su ficha.")
+                }
+            } finally { subiendoFoto = false }
+        }
+    }
+    fun quitarFoto() {
+        scope.launch {
+            subiendoFoto = true
+            if (pe.saniape.app.data.staff.FotoProfesionalRepo.guardar(terapeutaId, null)) { foto = null; Toaster.exito("Foto quitada") }
+            else Toaster.error("No se pudo quitar la foto.")
+            subiendoFoto = false
+        }
+    }
 
     LaunchedEffect(terapeutaId, recarga) {
         when (val r = HorarioProfesionalRepo.cargar(terapeutaId)) {
@@ -213,6 +247,37 @@ fun PantallaHorarioProfesional(
                     Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Sania.dim.lg),
                     verticalArrangement = Arrangement.spacedBy(Sania.dim.sm),
                 ) {
+                    // 📷 Foto (se muestra en su página pública y en la app).
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
+                            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        pe.saniape.app.ui.AvatarProfesional(h.terapeuta.nombre.ifBlank { nombre }, foto, tam = 56)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Foto", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                if (h.puedeEditar) "Se muestra en tu página pública y en la app." else if (foto == null) "Sin foto: se ven sus iniciales." else "La cambia el administrador de la clínica.",
+                                color = c.textoSuave, fontSize = 11.sp,
+                            )
+                            if (h.puedeEditar) {
+                                Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text(
+                                        if (subiendoFoto) "Guardando…" else if (foto == null) "📷 Subir foto" else "📷 Cambiar foto",
+                                        color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                            .clickable(enabled = !subiendoFoto) { elegirFoto() }.padding(vertical = 4.dp),
+                                    )
+                                    if (foto != null && !subiendoFoto) Text(
+                                        "Quitar", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                            .clickable { quitarFoto() }.padding(vertical = 4.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("🕒 Horario semanal", color = c.texto, fontSize = Sania.txt.seccion, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                         h.terapeuta.turno?.let {

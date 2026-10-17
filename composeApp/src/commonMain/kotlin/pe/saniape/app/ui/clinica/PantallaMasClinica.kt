@@ -111,11 +111,24 @@ fun PantallaMasClinica(
                         .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp))
                         .padding(Sania.dim.lg),
                 ) {
-                    Text(ctx.clinicaNombre, color = c.texto, fontSize = Sania.txt.seccion, fontWeight = FontWeight.Bold)
-                    Text(
-                        listOfNotNull(ctx.nombre, ctx.rol).joinToString(" · ").ifBlank { "Staff" },
-                        color = c.textoSuave, fontSize = Sania.txt.pequeno,
-                    )
+                    // Vinculado a su registro de personal con foto → la foto; si no, iniciales (como la web).
+                    var miFoto by remember(ctx.miTerapeutaId) { mutableStateOf<String?>(null) }
+                    androidx.compose.runtime.LaunchedEffect(ctx.miTerapeutaId) {
+                        miFoto = pe.saniape.app.data.staff.FotoProfesionalRepo.de(ctx.miTerapeutaId)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (ctx.miTerapeutaId != null) {
+                            pe.saniape.app.ui.AvatarProfesional(ctx.nombre, miFoto, tam = 44)
+                            Spacer(Modifier.width(12.dp))
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text(ctx.clinicaNombre, color = c.texto, fontSize = Sania.txt.seccion, fontWeight = FontWeight.Bold)
+                            Text(
+                                listOfNotNull(ctx.nombre, ctx.rol).joinToString(" · ").ifBlank { "Staff" },
+                                color = c.textoSuave, fontSize = Sania.txt.pequeno,
+                            )
+                        }
+                    }
                     Spacer(Modifier.height(6.dp))
                     val plan = ctx.planEstado
                     val planTxt = "Plan ${ctx.plan ?: plan.efectivo}" +

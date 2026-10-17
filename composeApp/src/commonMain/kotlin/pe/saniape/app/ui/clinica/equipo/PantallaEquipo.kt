@@ -78,6 +78,9 @@ fun PantallaEquipo(ctx: ContextoStaff, onSalir: () -> Unit) = pe.saniape.app.tut
         if (d != null) { datos = d; error = null } else if (datos == null) error = e
         else Toaster.error(e ?: "No se pudo actualizar el equipo")
     }
+    // Foto de cada registro de personal (terapeutas.foto_url): lectura chica aparte.
+    var fotos by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    LaunchedEffect(ctx.clinicaId, recarga) { fotos = pe.saniape.app.data.staff.FotoProfesionalRepo.mapa(forzar = recarga > 0) }
 
     val d = datos
     if (d != null && invitando) DialogoInvitar(d, onCerrar = { invitando = false }, onHecho = { invitando = false; recarga++ })
@@ -123,7 +126,7 @@ fun PantallaEquipo(ctx: ContextoStaff, onSalir: () -> Unit) = pe.saniape.app.tut
                     Text("MIEMBROS DEL EQUIPO", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
                     Text("Personas con acceso al sistema de la clínica.", color = c.textoSuave, fontSize = 12.sp)
                     Spacer(Modifier.height(Sania.dim.sm))
-                    d.miembros.forEach { m -> FilaMiembro(m, d, ctx.multiSede) { detalleId = m.id } }
+                    d.miembros.forEach { m -> FilaMiembro(m, d, ctx.multiSede, fotoUrl = m.terapeuta?.id?.let { fotos[it] }) { detalleId = m.id } }
 
                     Spacer(Modifier.height(Sania.dim.xl))
                     Text("ROLES DE LA CLÍNICA", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
@@ -195,7 +198,7 @@ private fun BadgesMiembro(m: MiembroEquipo, d: EquipoDatos, multiSede: Boolean) 
 }
 
 @Composable
-private fun FilaMiembro(m: MiembroEquipo, d: EquipoDatos, multiSede: Boolean, onClick: () -> Unit) {
+private fun FilaMiembro(m: MiembroEquipo, d: EquipoDatos, multiSede: Boolean, fotoUrl: String? = null, onClick: () -> Unit) {
     val c = Sania.colors
     val forma = RoundedCornerShape(Sania.shape.md.dp)
     Row(
@@ -203,7 +206,8 @@ private fun FilaMiembro(m: MiembroEquipo, d: EquipoDatos, multiSede: Boolean, on
             .border(1.dp, c.borde, forma).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Inicial(m.nombre)
+        // Vinculado a su registro de personal → su foto (también el Admin que atiende).
+        pe.saniape.app.ui.AvatarProfesional(m.nombre, fotoUrl, tam = 40)
         Spacer(Modifier.width(Sania.dim.md))
         Column(Modifier.weight(1f)) {
             Text(m.nombre + if (m.esYo) " (tú)" else "", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold, maxLines = 1)
@@ -332,7 +336,9 @@ private fun FichaMiembro(
                     Modifier.fillMaxWidth().clip(forma).background(c.superficie).border(1.dp, c.borde, forma).padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Inicial(m.nombre, tam = 48)
+                    var fotoDetalle by remember(m.terapeuta?.id) { mutableStateOf<String?>(null) }
+                    LaunchedEffect(m.terapeuta?.id) { fotoDetalle = pe.saniape.app.data.staff.FotoProfesionalRepo.de(m.terapeuta?.id) }
+                    pe.saniape.app.ui.AvatarProfesional(m.nombre, fotoDetalle, tam = 48)
                     Spacer(Modifier.width(Sania.dim.md))
                     Column(Modifier.weight(1f)) {
                         Text(m.nombre + if (m.esYo) " (tú)" else "", color = c.texto, fontSize = Sania.txt.seccion, fontWeight = FontWeight.Bold)
