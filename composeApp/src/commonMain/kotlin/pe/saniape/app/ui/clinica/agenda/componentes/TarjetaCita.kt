@@ -293,6 +293,10 @@ fun TarjetaCita(
                 medica = medica && cita.pacienteId != null,
                 evaluacionPsico = evaluacionPsico && cita.tratamientoId != null,
                 cobrar = cobrable && puedeCobrar && !pagada,
+                // Cita SIN precio (las importadas de Google Calendar entran sin
+                // servicio ni costo): sin precio no hay 💰, así que se le pone aquí.
+                ponerPrecio = puedeCobrar && cita.tipo != "Sesión" && (cita.costo ?: 0.0) <= 0 &&
+                    cita.estado != "Cancelada" && !pagada,
                 anularCobro = anularCobro && pagada,
                 receta = textoReceta?.takeIf { cita.pacienteId != null },
                 nutricion = nutricion && cita.pacienteId != null,
@@ -332,6 +336,8 @@ enum class AccionTarjeta {
     Atender,
     /** "💰 Cobrar": registrar el cobro de una Consulta/Evaluación (método + fecha del pago). */
     Cobrar,
+    /** "💲 Poner precio": la cita no tiene costo (importada de Google Calendar); con precio aparece el 💰. */
+    PonerPrecio,
     /** "🧠 Evaluación": el espacio de trabajo de la evaluación psicológica de su tratamiento. */
     EvaluacionPsico,
     /** "↺ Anular cobro": borra el cobro dividido de caja y la cita vuelve a "por cobrar" (solo Admin). */
@@ -398,6 +404,8 @@ private fun accionesPara(
     pasarA: String? = null,
     /** Consulta/Evaluación con costo, sin cobrar, y quien mira tiene permiso 'pagos'. */
     cobrar: Boolean = false,
+    /** Cita sin costo (no Sesión, no cancelada, no pagada) y quien mira tiene 'pagos'. */
+    ponerPrecio: Boolean = false,
     evaluacionPsico: Boolean = false,
     /** Cobro dividido ya hecho y quien mira es Admin con 'pagos'. */
     anularCobro: Boolean = false,
@@ -413,6 +421,7 @@ private fun accionesPara(
     // El dinero va primero, como la moneda de la web: el paciente llega al
     // mostrador y paga antes de pasar (o paga hoy la evaluación de mañana).
     if (cobrar) lista.add(Triple("💰 Cobrar", AccionTarjeta.Cobrar, c.ok))
+    if (ponerPrecio) lista.add(Triple("💲 Poner precio", AccionTarjeta.PonerPrecio, c.teal))
     val activa = estado == "Pendiente" || estado == "Confirmada"
     // SALA DE ESPERA (gemelo de `principalSala` de /citas): la acción del MOMENTO
     // reemplaza a Confirmar/Completar mientras el paciente recorre la sala:

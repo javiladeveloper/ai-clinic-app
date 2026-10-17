@@ -165,6 +165,35 @@ object CobroRepo {
         }
     }
 
+    /**
+     * "💲 Poner precio" a una cita SIN costo (las importadas de Google Calendar
+     * entran sin servicio ni costo): POST /api/staff/cita/ajustar-monto
+     * {citaId, monto}. Sin cobro previo el servidor solo toca `citas.costo`, y
+     * luego aparece el 💰. DIRECTO, sin cola: es dinero y quien lo pone tiene
+     * que ver el resultado. Devuelve null si se guardó; si no, el texto a mostrar.
+     */
+    suspend fun ponerPrecio(citaId: String, monto: Double): String? {
+        val cuerpo = buildJsonObject { put("citaId", citaId); put("monto", monto) }
+        val (res, rechazo, _) = runCatching {
+            pe.saniape.app.data.offline.Sincronizador.enviarAhoraCompleto(
+                "/api/staff/cita/ajustar-monto", cuerpo, pe.saniape.app.data.offline.nuevaIdemKey(),
+            )
+        }.getOrElse {
+            if (it is kotlin.coroutines.cancellation.CancellationException) throw it
+            Triple(pe.saniape.app.data.offline.ResultadoEnvio.SIN_RED, null, null)
+        }
+        return when (res) {
+            pe.saniape.app.data.offline.ResultadoEnvio.OK -> null
+            pe.saniape.app.data.offline.ResultadoEnvio.SIN_RED -> "Sin conexión: no se pudo guardar el precio. Inténtalo con señal."
+            pe.saniape.app.data.offline.ResultadoEnvio.RECHAZADO -> when (rechazo?.status) {
+                401 -> "Tu sesión expiró. Vuelve a entrar."
+                403 -> rechazo.error.takeIf { it.isNotBlank() } ?: "No tienes permiso para poner precios."
+                404 -> "No se encontró la cita (puede que la hayan borrado). Recarga la agenda."
+                else -> rechazo?.error?.takeIf { it.isNotBlank() } ?: "No se pudo guardar el precio."
+            }
+        }
+    }
+
     /** Atajo para una sola cita (consulta guiada, completar sesión). */
     suspend fun estadoPago(citaId: String?): EstadoPagoCita? =
         citaId?.takeIf { it.isNotBlank() }?.let { estadosPago(listOf(it))[it] }

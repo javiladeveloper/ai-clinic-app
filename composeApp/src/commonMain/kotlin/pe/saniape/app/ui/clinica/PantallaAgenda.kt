@@ -148,6 +148,8 @@ fun PantallaAgenda(
     var cobrar by remember { mutableStateOf<CitaStaff?>(null) }
     // "↺ Anular cobro" (cobro dividido, solo Admin): se confirma antes de borrar de caja.
     var anularCobroCita by remember { mutableStateOf<CitaStaff?>(null) }
+    // "💲 Poner precio" de una cita sin costo.
+    var ponerPrecioCita by remember { mutableStateOf<CitaStaff?>(null) }
     // "✗ No vino" de una vencida: confirmación con motivo + "📅 Reponer".
     var noVino by remember { mutableStateOf<CitaStaff?>(null) }
     // Derivación cuya evaluación se está agendando: se marca procesada SOLO si la
@@ -734,6 +736,7 @@ fun PantallaAgenda(
                                         AccionTarjeta.Atender -> atendiendo = Atendiendo(cita.id)
                                         AccionTarjeta.EvaluacionPsico -> evalPsico = cita to kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
                                         AccionTarjeta.AnularCobro -> anularCobroCita = cita
+                                        AccionTarjeta.PonerPrecio -> ponerPrecioCita = cita
                                         // 📝 Ya tiene receta → verla/imprimirla; si no → darla, prellenada.
                                         // Primero se confirma si ya tiene (aunque el indicador no haya
                                         // cargado): si tiene, el aviso 🖨 Ver / reimprimir · Emitir otra.
@@ -1160,6 +1163,14 @@ fun PantallaAgenda(
             profesionales = vm.terapeutas,
             onCancelar = { vm.cerrarPedidoProfesional() },
             onElegir = { vm.completarConProfesional(it) },
+        )
+    }
+    ponerPrecioCita?.let { cita ->
+        pe.saniape.app.ui.clinica.agenda.modales.DialogoPonerPrecio(
+            cita = cita,
+            guardando = vm.accionando,
+            onCancelar = { if (!vm.accionando) ponerPrecioCita = null },
+            onGuardar = { monto -> vm.ponerPrecio(cita, monto) { ok -> if (ok) ponerPrecioCita = null } },
         )
     }
     anularCobroCita?.let { cita ->

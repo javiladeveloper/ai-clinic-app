@@ -887,6 +887,28 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
      * borra todas sus partes de caja y la cita vuelve a "por cobrar". La atención
      * no se toca. Tras el sí del servidor se recarga la agenda (pagada_at = null).
      */
+    /**
+     * "💲 Poner precio" a una cita sin costo (gemelo de `confirmarAjuste` de
+     * /citas cuando la cita no tiene precio). Al guardar se recarga y aparece el 💰.
+     */
+    fun ponerPrecio(cita: CitaStaff, monto: Double, onFin: (Boolean) -> Unit = {}) {
+        if (accionando) return
+        viewModelScope.launch {
+            accionando = true
+            val error = pe.saniape.app.ui.conIndicador { pe.saniape.app.data.staff.CobroRepo.ponerPrecio(cita.id, monto) }
+            if (error == null) {
+                pe.saniape.app.ui.Toaster.exito(
+                    "Precio guardado: ${pe.saniape.app.ui.clinica.agenda.modales.textoSoles(monto, pe.saniape.app.data.staff.monedaDeFila(cita.sedeId))}. Ya puedes cobrarla con 💰",
+                )
+                recargarCitas()
+            } else {
+                pe.saniape.app.ui.Toaster.error(error)
+            }
+            accionando = false
+            onFin(error == null)
+        }
+    }
+
     fun anularCobro(cita: CitaStaff, onFin: (Boolean) -> Unit = {}) {
         if (accionando) return
         viewModelScope.launch {
