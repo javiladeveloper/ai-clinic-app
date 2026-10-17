@@ -1,0 +1,7 @@
+# Novedades de la 2.62.0 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+"✓ Ya pagó" en la agenda y reimprime el comprobante de cualquier pago.
+---
+Clínicas:
+• ✓ Ya pagó: la agenda y el Inicio dicen en texto qué pacientes ya pasaron por caja, también en las sesiones de tratamiento.
+• 🧾 Comprobante: vuelve a imprimir o compartir el recibo de un pago ya hecho (A4 o ticket de 80 mm) desde la cita cobrada, los pagos de la ficha y la caja. Es el mismo recibo, marcado como reimpresión.
