@@ -245,6 +245,10 @@ fun TarjetaCita(
             val pagada = cita.pagadaAt != null
             // El badge del servidor manda: con él, no se repiten los chips locales de pago.
             val conBadgePago = estadoPago?.mostrable == true && cita.estado != "Cancelada"
+            // "✓ Ya pagó" en texto sin el badge del servidor (no llegó): la misma regla
+            // (citaYaPago, gemelo web) con la cita sola. Lo ve todo el que atiende.
+            val yaPagoLocal = !conBadgePago && pe.saniape.app.data.staff.citaYaPago(
+                cita.tipo, cita.estado, cita.costo, cita.pagadaAt, cita.tratamientoId)
 
             // Chips: costo, Web, Asignar (discretos, en una línea)
             val chips = buildList {
@@ -277,9 +281,11 @@ fun TarjetaCita(
                     add(Triple("$icono $conteoFranja en esta hora", solape.fg, solape.bg))
                 }
             }
-            if (chips.isNotEmpty() || conBadgePago || !pedidos.isNullOrEmpty()) {
+            if (chips.isNotEmpty() || conBadgePago || yaPagoLocal || !pedidos.isNullOrEmpty()) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 8.dp)) {
                     if (conBadgePago) BadgeEstadoPago(estadoPago, cita.estado)
+                    // Junto al 💰 (que se queda: es el botón para cobrar / ver).
+                    else if (yaPagoLocal) EtiquetaYaPago()
                     chips.forEach { (t, fg, bg) -> Chip(t, fg, bg) }
                     pe.saniape.app.ui.clinica.pedidos.ChipPedido(pedidos, onPedido)
                 }
@@ -307,6 +313,9 @@ fun TarjetaCita(
                 ponerPrecio = puedeCobrar && cita.tipo != "Sesión" && (cita.costo ?: 0.0) <= 0 &&
                     cita.estado != "Cancelada" && !pagada,
                 anularCobro = anularCobro && pagada,
+                // 🧾 Comprobante: el recibo del cobro YA hecho, otra vez (gemelo de /citas web).
+                comprobante = pe.saniape.app.data.staff.ofreceComprobanteCita(
+                    cita.tipo, cita.costo, cita.pagadaAt, cita.estado, puedeCobrar),
                 receta = textoReceta?.takeIf { cita.pacienteId != null },
                 nutricion = nutricion && cita.pacienteId != null,
                 embarazo = embarazo && cita.pacienteId != null,
@@ -352,6 +361,8 @@ enum class AccionTarjeta {
     EvaluacionPsico,
     /** "↺ Anular cobro": borra el cobro dividido de caja y la cita vuelve a "por cobrar" (solo Admin). */
     AnularCobro,
+    /** "🧾 Comprobante": reimprimir el recibo del cobro ya hecho (A4 o ticket 80 mm). */
+    Comprobante,
     /** "📝 Dar receta / indicaciones" de la cita atendida (o "🖨 Ver" la que ya tiene). */
     Receta,
     /** Nutrición: la ficha en ⚖️ Medidas (formulario abierto, vinculado a la cita) o en 🥗 Plan alimentario. */
@@ -421,6 +432,8 @@ private fun accionesPara(
     evaluacionPsico: Boolean = false,
     /** Cobro dividido ya hecho y quien mira es Admin con 'pagos'. */
     anularCobro: Boolean = false,
+    /** Cita cobrada (no Sesión, con costo, no cancelada) y quien mira tiene 'pagos'. */
+    comprobante: Boolean = false,
     /** Texto de "📝 Dar receta / indicaciones" (solo en la cita completada); null = no aplica. */
     receta: String? = null,
     /** Nutrición: "⚖️ Medidas" y "🥗 Plan alimentario" de la atención. */
@@ -489,6 +502,8 @@ private fun accionesPara(
     if (pedido != null) lista.add(Triple(pedido, AccionTarjeta.Pedido, c.teal))
     // Crear el plan desde la cita que evalúa (no cancelada), como la web.
     if (crearTratamiento && estado != "Cancelada") lista.add(Triple("🩺 Crear tratamiento", AccionTarjeta.CrearTratamiento, c.purple))
+    // 🧾 El recibo del cobro ya hecho, junto al dinero (como el menú de /citas web).
+    if (comprobante) lista.add(Triple("🧾 Comprobante", AccionTarjeta.Comprobante, c.navy))
     // Corregir un cobro dividido es anularlo y volver a cobrar (como la web, solo Admin).
     if (anularCobro && estado != "Cancelada") lista.add(Triple("↺ Anular cobro", AccionTarjeta.AnularCobro, c.error))
     if (estado != "Cancelada" && estado != "Completada") {

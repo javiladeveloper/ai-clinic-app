@@ -295,6 +295,9 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
                     FilaMovimiento(
                         m = m,
                         esAdmin = ctx.esAdmin,
+                        // 🧾 Comprobante: reimprimir el recibo del cobro (cita, pago o venta), con 'pagos'.
+                        recibo = if (ctx.puede("pagos")) pe.saniape.app.data.staff.reciboDeMovimiento(
+                            m.id, m.tipo, m.categoria, m.comprobante, m.monto) else null,
                         onEditar = { formulario = m; registrando = true },
                         onBorrar = { borrarDe = m },
                         onMetodo = { metodoDe = m },
@@ -365,7 +368,11 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
 }
 
 @Composable
-private fun FilaMovimiento(m: MovimientoKardex, esAdmin: Boolean, onEditar: () -> Unit, onBorrar: () -> Unit, onMetodo: () -> Unit) {
+private fun FilaMovimiento(
+    m: MovimientoKardex, esAdmin: Boolean, onEditar: () -> Unit, onBorrar: () -> Unit, onMetodo: () -> Unit,
+    /** Recibo reimprimible de este ingreso (reciboDeMovimiento) o null. */
+    recibo: pe.saniape.app.data.staff.ReciboRef? = null,
+) {
     val c = Sania.colors
     val esIn = m.esIngreso
     Row(
@@ -388,15 +395,19 @@ private fun FilaMovimiento(m: MovimientoKardex, esAdmin: Boolean, onEditar: () -
         Column(horizontalAlignment = Alignment.End) {
             Text((if (esIn) "+ " else "− ") + dineroDeFila(m.monto, m.sedeId), color = if (esIn) c.ok else c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             // Corregir: solo Admin. Manuales → ✏️ 🗑; los del sistema → solo el método (💳) y 🔒 dice dónde se corrigen.
-            if (esAdmin) Row {
-                if (Finanzas.esManual(m)) {
-                    // El método también se corrige solo, sin abrir la edición completa.
-                    AccionFila("💳", onMetodo)
-                    AccionFila("✏️", onEditar)
-                    AccionFila("🗑", onBorrar)
-                } else {
-                    AccionFila("💳", onMetodo)
-                    AccionFila("🔒") { Toaster.info(Finanzas.dondeSeCorrige(m) ?: "") }
+            if (esAdmin || recibo != null) Row {
+                // 🧾 Comprobante: quien tiene 'pagos' (no solo el Admin), como /finanzas web.
+                recibo?.let { pe.saniape.app.ui.clinica.comprobante.BotonComprobante(it.tipo, it.id) }
+                if (esAdmin) {
+                    if (Finanzas.esManual(m)) {
+                        // El método también se corrige solo, sin abrir la edición completa.
+                        AccionFila("💳", onMetodo)
+                        AccionFila("✏️", onEditar)
+                        AccionFila("🗑", onBorrar)
+                    } else {
+                        AccionFila("💳", onMetodo)
+                        AccionFila("🔒") { Toaster.info(Finanzas.dondeSeCorrige(m) ?: "") }
+                    }
                 }
             }
         }

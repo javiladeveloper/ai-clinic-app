@@ -55,6 +55,7 @@ fun PantallaCajaHoy(ctx: ContextoStaff) {
     var movs by remember { mutableStateOf<List<MovimientoCaja>?>(null) }
     var fallo by remember { mutableStateOf(false) }
     var registrando by remember { mutableStateOf(false) }
+    val puedePagos = ctx.puede("pagos")
 
     suspend fun cargar() {
         runCatching { CajaRepo.movimientosDeHoy() }
@@ -185,6 +186,9 @@ fun PantallaCajaHoy(ctx: ContextoStaff) {
                                     (if (esIn) "+" else "−") + " ${simboloMoneda(moneda)} ${formatoCaja(m.monto)}",
                                     color = if (esIn) c.ok else c.error, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                                 )
+                                // 🧾 Comprobante: reimprimir el recibo de este cobro (cita, pago o venta).
+                                if (puedePagos) pe.saniape.app.data.staff.reciboDeMovimiento(m.id, m.tipo, m.categoria, m.comprobante, m.monto)
+                                    ?.let { pe.saniape.app.ui.clinica.comprobante.BotonComprobante(it.tipo, it.id, Modifier.padding(start = 4.dp)) }
                             }
                         }
                         item {

@@ -16,6 +16,8 @@ data class MovimientoCaja(
     val monto: Double,
     val metodoPago: String?,     // Efectivo / Yape / … (null en egresos o datos viejos)
     val pacienteNombre: String?,
+    /** `cita:<id>`, `pago:<id>`, `pedido:<id>`…: de dónde salió (para el 🧾 Comprobante). */
+    val comprobante: String? = null,
 )
 
 /**
@@ -51,7 +53,7 @@ object CajaRepo {
 
     suspend fun movimientosDeHoy(): List<MovimientoCaja> {
         val filas = Supabase.client.postgrest["movimientos"]
-            .select(Columns.raw("id, tipo, categoria, descripcion, monto, metodo_pago, fecha, created_at, paciente:pacientes(nombre)")) {
+            .select(Columns.raw("id, tipo, categoria, descripcion, monto, metodo_pago, comprobante, fecha, created_at, paciente:pacientes(nombre)")) {
                 filter {
                     eq("fecha", hoyISO())
                     // Multisede: los movimientos de la sede activa (la principal
@@ -70,6 +72,7 @@ object CajaRepo {
                 monto = o.dbl("monto") ?: 0.0,
                 metodoPago = o.str("metodo_pago"),
                 pacienteNombre = (o["paciente"] as? JsonObject)?.str("nombre"),
+                comprobante = o.str("comprobante"),
             )
         }
     }

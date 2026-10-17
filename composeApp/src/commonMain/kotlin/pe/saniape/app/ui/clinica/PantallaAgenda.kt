@@ -166,6 +166,8 @@ fun PantallaAgenda(
     var resumenPacienteId by remember { mutableStateOf<String?>(null) }
     // Detalle de la cita (tocar la tarjeta): observaciones + lo clínico para quien atiende.
     var detalleCita by remember { mutableStateOf<pe.saniape.app.data.staff.CitaStaff?>(null) }
+    // 🧾 Comprobante: la cita cobrada cuyo recibo se reimprime (A4 / ticket).
+    var comprobanteCita by remember { mutableStateOf<pe.saniape.app.data.staff.CitaStaff?>(null) }
     var fichaPaciente by remember { mutableStateOf<PacienteStaff?>(null) }
     // La ficha se abre en la pestaña 🏠 Ejercicios (se cerró una sesión de fisio con "dejarle ejercicios").
     var fichaEjercicios by remember { mutableStateOf<pe.saniape.app.ui.clinica.fisio.IndicarEjercicios?>(null) }
@@ -768,6 +770,7 @@ fun PantallaAgenda(
                                         AccionTarjeta.Atender -> atendiendo = Atendiendo(cita.id)
                                         AccionTarjeta.EvaluacionPsico -> evalPsico = cita to kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
                                         AccionTarjeta.AnularCobro -> anularCobroCita = cita
+                                        AccionTarjeta.Comprobante -> comprobanteCita = cita
                                         AccionTarjeta.PonerPrecio -> ponerPrecioCita = cita
                                         AccionTarjeta.Pedido -> vm.pedidosPorCita[cita.id]?.firstOrNull()?.let { abrirPedido(it) }
                                             ?: run { pedidoEditar = cita to null }
@@ -1291,6 +1294,9 @@ fun PantallaAgenda(
 
     // Detalle de la cita (tocar la tarjeta): las observaciones (dirección del
     // domicilio con Maps) y, para quien atiende, diagnóstico y notas de la sesión.
+    comprobanteCita?.let { cita ->
+        pe.saniape.app.ui.clinica.comprobante.DialogoComprobante("cita", cita.id) { comprobanteCita = null }
+    }
     detalleCita?.let { cita ->
         pe.saniape.app.ui.clinica.agenda.modales.DetalleCitaSheet(
             cita = cita,
