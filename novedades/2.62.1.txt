@@ -1,0 +1,6 @@
+# Novedades de la 2.62.1 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+Los procedimientos de la sesión guardan la dosis que escribes.
+---
+Clínicas:
+• 💉 Procedimientos realizados: si escribes "TENS 170-35", la sesión lo guarda así, con su dosis. Antes quedaba solo "TENS" y se perdía el dato.

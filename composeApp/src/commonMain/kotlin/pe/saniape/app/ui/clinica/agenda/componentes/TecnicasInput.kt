@@ -70,7 +70,9 @@ fun TecnicasInput(value: String, onChange: (String) -> Unit, especialidadId: Str
         // un texto pegado con saltos de línea): se parte acá. Antes entraba
         // como UNA técnica llamada "TENS+COMPRESA" y así se llenó el catálogo
         // de DALU de frases enteras (Jonathan, 2026-09-11).
-        val nuevas = TecnicasNormalizar.partir(nombre)
+        // La dosis escrita ("TENS 170-35") se queda en la sesión; el catálogo la
+        // aprende sin ella (ChipsRepo registra con TecnicasNormalizar.partir).
+        val nuevas = TecnicasNormalizar.partirParaSesion(nombre)
         if (nuevas.isEmpty()) return
         val suma = chips.toMutableList()
         for (n in nuevas) {

@@ -156,6 +156,36 @@ object TecnicasNormalizar {
     }
 
     /**
+     * Como [partir], pero para lo que se GUARDA EN LA SESIÓN: conserva la dosis
+     * que escribió el profesional detrás del nombre limpio.
+     * "tens 170-35" → ["TENS 170-35"]. El catálogo sigue aprendiendo SIN dosis
+     * ([partir] → "TENS"). Antes la dosis se borraba también de la sesión y se
+     * perdía el dato (DALU, 19/10/2026). Gemela de `partirParaSesion` (web).
+     */
+    fun partirParaSesion(texto: String): List<String> {
+        if (texto.isBlank()) return emptyList()
+        val sinDosis = Regex("""\s*\d+[\d.,]*\s*/\s*(?=[A-Za-zÁÉÍÓÚÑáéíóúñ])""").replace(texto, " ")
+        val vistas = mutableSetOf<String>()
+        val salida = mutableListOf<String>()
+        for (parte in sinDosis.split(SEPARADORES)) {
+            val bruto = parte.replace(Regex("""\s+"""), " ").trim()
+            val limpia = limpiar(bruto)
+            if (limpia.isEmpty()) continue
+            // Lo que el limpiador recorta al final (paréntesis, "por N min",
+            // dosis) es un sufijo del texto original: se conserva tal cual.
+            val base = quitarDosis(
+                bruto.replace(Regex("""\s*\([^)]*\)\s*$"""), "")
+                    .replace(Regex("""\s*por\s+\d+\s*min\.?$""", RegexOption.IGNORE_CASE), "").trim()
+            )
+            val dosis = if (bruto.startsWith(base)) bruto.substring(base.length).trim() else ""
+            val t = if (dosis.isNotEmpty()) "$limpia $dosis" else limpia
+            if (!vistas.add(clave(t))) continue
+            salida.add(t)
+        }
+        return salida
+    }
+
+    /**
      * Parte un texto en las técnicas que contiene, ya limpias y sin repetidos.
      * "TENS+COMPRESA" → ["TENS", "Compresa"]
      */
