@@ -13,10 +13,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -29,6 +27,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -154,19 +154,25 @@ fun TarjetaCita(
     // Solo tinta las citas ACTIVAS (las cerradas ya se atenúan y no deben "gritar").
     val solape = EstadosColor.solape(conteoFranja).takeUnless { cerrada }
 
+    // Barra de color lateral: el solapamiento manda (ámbar/rojo); si no, el tipo.
+    val colorBarra = when { cerrada -> c.borde; solape != null -> solape.fg; else -> tipoColor.fg }
     Row(
-        Modifier.fillMaxWidth().height(IntrinsicSize.Min)
+        // SIN height(IntrinsicSize.Min): con 3 filas de botones (💰 Cobrar ·
+        // ▶ Atender / 🧾 Pedido / ✏ Editar · ✕ Cancelar) la medida intrínseca del
+        // FlowRow se quedaba corta y el clip CORTABA la última fila — OMER no
+        // encontraba "Editar" para reprogramar (19/10/2026). La barra lateral se
+        // dibuja detrás, a la altura real de la tarjeta.
+        Modifier.fillMaxWidth()
             // Sombra corta: da el relieve que hace que la tarjeta se lea como un
             // objeto sobre el fondo y no como un rectángulo dibujado. Va antes
             // del clip para que se proyecte fuera de la forma.
             .shadow(2.dp, RoundedCornerShape(Sania.shape.md.dp))
             .clip(RoundedCornerShape(Sania.shape.md.dp)).background(solape?.bg ?: c.superficie)
             .border(1.dp, solape?.fg ?: c.borde, RoundedCornerShape(Sania.shape.md.dp))
+            .drawBehind { drawRect(colorBarra, size = Size(Sania.dim.acento.toPx(), size.height)) }
             .then(if (onAbrirDetalle != null) Modifier.clickable { onAbrirDetalle() } else Modifier),
     ) {
-        // Barra de color lateral: el solapamiento manda (ámbar/rojo); si no, el tipo.
-        Box(Modifier.width(Sania.dim.acento).fillMaxHeight()
-            .background(when { cerrada -> c.borde; solape != null -> solape.fg; else -> tipoColor.fg }))
+        Spacer(Modifier.width(Sania.dim.acento))
 
         Column(Modifier.fillMaxWidth().padding(Sania.dim.tarjeta)) {
             // Línea 1: CHIP de tipo prominente ····· badge de estado

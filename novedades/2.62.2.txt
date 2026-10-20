@@ -1,0 +1,6 @@
+# Novedades de la 2.62.2 (Play Store + diálogo "Novedades" dentro de la app).
+# Formato: ver docs/ci-cd-despliegue.md → "Novedades de cada versión".
+En la agenda vuelven a verse "Editar" y "Cancelar" en todas las citas.
+---
+Clínicas:
+• ✏ Agenda: cuando una cita tenía muchos botones (Cobrar, Atender, Pedido…), la última fila quedaba cortada y no se veían "Editar" ni "Cancelar". Ya se ven siempre, para reprogramar la cita.
