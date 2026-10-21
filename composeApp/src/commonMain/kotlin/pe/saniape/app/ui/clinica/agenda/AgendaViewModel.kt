@@ -196,6 +196,17 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         cita.terapeutaId?.let { espsPorTerapeuta[it] },
     )
 
+    /** La especialidad explícita prevalece sobre las del profesional. */
+    fun esPsicologia(cita: CitaStaff): Boolean {
+        val espId = cita.especialidadId ?: cita.especialidadServicioId
+        val idsProfesional = cita.terapeutaId?.let { espsPorTerapeuta[it] }.orEmpty()
+        val candidatas = if (espId == null && idsProfesional.isNotEmpty())
+            especialidades.filter { it.id in idsProfesional } else especialidades
+        return pe.saniape.app.data.staff.esCierrePsicologia(
+            esFisio(cita), esDental(cita), espId, candidatas.map { Triple(it.id, it.rubro, it.nombre) },
+        )
+    }
+
     /** Ya se resolvió: completada o no asistió (baja al final del día). */
     fun citaYaAtendida(c: CitaStaff): Boolean = c.estado == "Completada" || c.estado == "No asistió"
 
@@ -1340,7 +1351,8 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                     }
                 }
                 // Evaluación completada → el siguiente paso natural es el plan (como la web).
-                if (accion == AccionCita.Completar && cita.tipo == "Evaluación" && ofrecerPlan &&
+                val evaluaParaPlan = cita.tipo == "Evaluación" || (esPsicologia(cita) && flujoDe(cita).esCitaQueEvalua(cita.tipo))
+                if (accion == AccionCita.Completar && evaluaParaPlan && ofrecerPlan &&
                     ctx.puede("sesiones") && cita.pacienteId != null) {
                     ofrecerTratamiento = OfertaTratamiento(
                         cita.copy(terapeutaId = terapeutaId ?: cita.terapeutaId, estado = "Completada"),
@@ -1374,7 +1386,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                 // entrega en este cierre la calla: la receta, los ejercicios de apoyo, las
                 // medidas (nutrición) o el plan de tratamiento tras una evaluación.
                 if (accion == AccionCita.Completar) {
-                    val planOfrecido = cita.tipo == "Evaluación" &&
+                    val planOfrecido = evaluaParaPlan &&
                         (!ofrecerPlan || (ctx.puede("sesiones") && cita.pacienteId != null))
                     val candidata = pe.saniape.app.data.staff.candidataIndicacionesTrasCompletar(
                         pacienteId = cita.pacienteId,

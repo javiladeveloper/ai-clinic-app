@@ -474,11 +474,14 @@ fun PantallaAgenda(
         }
     }
 
+    var ofertaPlanPsico by remember { mutableStateOf<AgendaViewModel.OfertaTratamiento?>(null) }
+
     // Evaluación recién completada → se ofrece el plan (como la web).
     LaunchedEffect(vm.ofrecerTratamiento) {
         vm.ofrecerTratamiento?.let { o ->
             vm.cerrarOfertaTratamiento()
-            abrirTratamientoDeCita(o.cita, o.diagnostico)
+            if (vm.esPsicologia(o.cita)) ofertaPlanPsico = o
+            else abrirTratamientoDeCita(o.cita, o.diagnostico)
         }
     }
 
@@ -528,6 +531,26 @@ fun PantallaAgenda(
                             .clickable { creandoCita = true }
                             .padding(horizontal = 14.dp, vertical = 7.dp),
                     ) { Text("+ Nueva", color = c.sobreNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                }
+            }
+
+            ofertaPlanPsico?.let { oferta ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Sania.dim.lg, vertical = 6.dp),
+                    color = c.purpleBg, shape = RoundedCornerShape(Sania.shape.sm.dp),
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text("Evaluación completada", color = c.texto, fontWeight = FontWeight.SemiBold)
+                        Text("Puedes crear un tratamiento si lo necesitas. Las evoluciones también se registran directamente en la historia clínica.",
+                            color = c.textoSuave, fontSize = 12.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            androidx.compose.material3.TextButton(onClick = {
+                                ofertaPlanPsico = null
+                                abrirTratamientoDeCita(oferta.cita, oferta.diagnostico)
+                            }) { Text("Crear tratamiento") }
+                            androidx.compose.material3.TextButton(onClick = { ofertaPlanPsico = null }) { Text("Ahora no") }
+                        }
+                    }
                 }
             }
 

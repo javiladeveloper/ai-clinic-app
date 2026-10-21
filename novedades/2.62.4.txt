@@ -1,0 +1,7 @@
+Psicología: al completar una evaluación puedes elegir si crear un tratamiento o continuar sin él. La opción sigue disponible en la tarjeta de la cita y las evoluciones se registran directamente en la historia clínica.
+---
+Psicología:
+• Al terminar una evaluación, elige Crear tratamiento o Ahora no.
+• El formulario ya no se abre automáticamente.
+• Puedes volver a Crear tratamiento desde la tarjeta de la cita.
+• Registrar evoluciones sigue sin exigir tratamientos ni paquetes.
