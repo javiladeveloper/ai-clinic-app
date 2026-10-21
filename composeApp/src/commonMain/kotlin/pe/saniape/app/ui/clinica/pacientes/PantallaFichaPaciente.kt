@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -1943,7 +1944,7 @@ private fun PantallaFichaPacienteContenido(
                     val r = PacientesRepo.cambiarEstadoSesionDetalle(
                         ses.id, "Completada",
                         notas = tecnicas,
-                        mejorias = if (ses.numero > 1) mejorias.orEmpty() else null,
+                        mejorias = if (ses.numero > 1 || mejorias != null) mejorias.orEmpty() else null,
                         rxPendiente = dejoRx,
                         piezas = piezas,
                         eva = eva,
@@ -2171,15 +2172,25 @@ internal fun ModalCompletarSesion(
     }
     var mejorias by remember { mutableStateOf(ses.mejorias.orEmpty()) }
     var dejoRx by remember { mutableStateOf(AvisoRx.dejoRx(ses)) }
-    val muestraMejorias = ses.numero > 1
     // Sugerencias de evolución del rubro de ESTA sesión (psicoterapia ≠ fisio). Fisio
     // y dental no necesitan nada más; el resto mira la especialidad (una lectura).
-    val especialidadesRubro by androidx.compose.runtime.produceState<List<Triple<String, String?, String?>>>(emptyList(), especialidadId) {
-        if (!muestraMejorias || esFisio || esDental) return@produceState
-        value = runCatching { pe.saniape.app.data.staff.AgendaRepo.especialidades() }.getOrDefault(emptyList())
-            .map { Triple(it.id, it.rubro, it.nombre) }
+    var rubroListo by remember(especialidadId) { mutableStateOf(esFisio || esDental) }
+    var errorRubro by remember(especialidadId) { mutableStateOf(false) }
+    var intentoRubro by remember { mutableStateOf(0) }
+    val especialidadesRubro by androidx.compose.runtime.produceState<List<Triple<String, String?, String?>>>(emptyList(), especialidadId, intentoRubro) {
+        if (esFisio || esDental) return@produceState
+        errorRubro = false
+        rubroListo = false
+        runCatching {
+            val cache = pe.saniape.app.data.staff.InformesMedicosRepo.especialidadesSesion()
+                .filter { (it.estado ?: "Activa") == "Activa" }
+                .map { Triple(it.id, it.rubro, it.nombre) }
+            if (cache.isNotEmpty()) cache else pe.saniape.app.data.staff.AgendaRepo.especialidades().map { Triple(it.id, it.rubro, it.nombre) }
+        }.onSuccess { value = it; rubroListo = true }.onFailure { errorRubro = true }
     }
     val rubroCierre = pe.saniape.app.data.staff.rubroCierreSesion(esFisio, esDental, especialidadId, especialidadesRubro)
+    val esPsico = pe.saniape.app.data.staff.esCierrePsicologia(esFisio, esDental, especialidadId, especialidadesRubro)
+    val muestraMejorias = ses.numero > 1 || esPsico
     var piezas by remember { mutableStateOf<List<String>>(emptyList()) }
     // Odontología: null = cargando la lista de piezas; false = falló la carga.
     // Solo con la lista a la vista (true) se mandan `piezas`: mandar [] antes de
@@ -2205,10 +2216,10 @@ internal fun ModalCompletarSesion(
     }
 
     DialogoForm(
-        titulo = "Completar sesión #${ses.numero}",
-        subtitulo = "Registra lo realizado en la sesión",
-        textoAccion = if (cobrar) "✓ Completar y cobrar" else "✓ Completar",
-        accionHabilitada = (!cobrar || (pagoMonto.toDoubleOrNull() ?: 0.0) > 0) &&
+        titulo = if (esPsico) "Evolución de la sesión #${ses.numero}" else "Completar sesión #${ses.numero}",
+        subtitulo = if (esPsico) "Registro clínico de psicología" else "Registra lo realizado en la sesión",
+        textoAccion = if (esPsico) "Guardar evolución y completar" else if (cobrar) "✓ Completar y cobrar" else "✓ Completar",
+        accionHabilitada = rubroListo && (!cobrar || (pagoMonto.toDoubleOrNull() ?: 0.0) > 0) &&
             // Fotos comprimiéndose: se espera (un instante) para no perderlas.
             (fotosSesion?.preparando ?: 0) == 0 &&
             // Dental: se espera a que cargue "¿Qué se le hizo hoy?" (un instante).
@@ -2216,11 +2227,16 @@ internal fun ModalCompletarSesion(
         onCancelar = onCancelar,
         onAccion = {
             val pago = if (cobrar) pagoMonto.toDoubleOrNull()?.takeIf { it > 0 }?.let { it to pagoMetodo } else null
-            onConfirmar(tecnicas.trim().ifBlank { null }, mejorias.trim().ifBlank { null }, dejoRx, pago,
+            onConfirmar(if (esPsico) ses.notas else tecnicas.trim().ifBlank { null }, if (esPsico) mejorias.trim() else mejorias.trim().ifBlank { null }, dejoRx, pago,
                 if (esDental && piezasListas == true) piezas else null,
                 if (esFisio) dolorInicio to dolorFin else null)
         },
     ) {
+        if (!rubroListo) {
+            Text(if (errorRubro) "No se pudo identificar la especialidad. Reintenta para abrir el formulario correcto." else "Cargando formulario de la sesión…", color = c.textoSuave)
+            if (errorRubro) TextButton(onClick = { intentoRubro++ }) { Text("Reintentar") }
+            return@DialogoForm
+        }
         // Informativo: nunca bloquea completar.
         if (estadoPago?.mostrable == true) {
             pe.saniape.app.ui.clinica.agenda.componentes.BadgeEstadoPago(estadoPago)
@@ -2287,6 +2303,9 @@ internal fun ModalCompletarSesion(
             Spacer(Modifier.height(12.dp))
         }
 
+        if (esPsico) {
+            pe.saniape.app.ui.clinica.psico.EvolucionSesionCampos(mejorias) { mejorias = it }
+        } else {
         TarjetaForm(titulo = "Procedimientos realizados", icono = "🩹") {
             pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
                 value = tecnicas, onChange = { tecnicas = it }, especialidadId = especialidadId,
@@ -2321,7 +2340,9 @@ internal fun ModalCompletarSesion(
             }
         }
 
-        if (muestraMejorias) {
+        }
+
+        if (muestraMejorias && !esPsico) {
             Spacer(Modifier.height(12.dp))
             TarjetaForm(titulo = "Mejorías / evolución", icono = "↗") {
                 androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(), 
@@ -2352,6 +2373,7 @@ internal fun ModalCompletarSesion(
             }
         }
 
+        if (!esPsico) {
         // Toggle "El paciente dejó RX": marca que quedó con una RX pendiente, para
         // avisarlo al abrir su próxima sesión. Disponible en cualquier sesión (incl. #1).
         Spacer(Modifier.height(12.dp))
@@ -2378,8 +2400,10 @@ internal fun ModalCompletarSesion(
             Text("⚕️", fontSize = 16.sp)
         }
 
+        }
+
         // 📷 Fotos de la sesión (como la web): se suben al completar.
-        if (fotosSesion != null) {
+        if (fotosSesion != null && !esPsico) {
             Spacer(Modifier.height(12.dp))
             BloqueFotosSesion(fotosSesion)
         }

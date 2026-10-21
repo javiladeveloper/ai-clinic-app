@@ -393,7 +393,7 @@ fun PantallaSesiones(
                     val r = PacientesRepo.cambiarEstadoSesionDetalle(
                         sg.id, "Completada",
                         notas = tecnicas,
-                        mejorias = if (cc.ses.numero > 1) mejorias.orEmpty() else null,
+                        mejorias = if (cc.ses.numero > 1 || mejorias != null) mejorias.orEmpty() else null,
                         rxPendiente = dejoRx,
                         piezas = piezas,
                         eva = eva,

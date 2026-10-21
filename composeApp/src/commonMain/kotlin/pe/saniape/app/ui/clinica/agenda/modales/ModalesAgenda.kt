@@ -144,6 +144,7 @@ fun ModalCompletar(
     val conPiezas = esDental && !esEvaluacion && cita.tipo == "Sesión" && cita.pacienteId != null
     // Fisioterapia: solo en citas de Sesión (no en la evaluación) y con su callback.
     val fisioSesion = esFisio && !esEvaluacion && cita.tipo == "Sesión" && onConfirmarFisio != null
+    val psicoSesion = !esEvaluacion && cita.tipo == "Sesión" && pe.saniape.app.data.staff.esCierrePsicologia(esFisio, esDental, especialidadId, especialidades.map { Triple(it.id, it.rubro, it.nombre) })
     // Sesión de un tratamiento: se trae la sesión anterior (referencia + "↩ Repetir"),
     // el plan de técnicas y cuántas van completadas — igual que /citas web. Antes el
     // cierre desde la agenda no tenía ninguno de esos atajos y las mejorías dependían
@@ -156,7 +157,7 @@ fun ModalCompletar(
             cierre = pe.saniape.app.data.staff.contextoCierreCita(tId, cita.fecha, cita.hora, cita.numeroSesion)
         }
     }
-    val pideMejorias = fisioSesion &&
+    val pideMejorias = psicoSesion || fisioSesion &&
         (cierre?.pideMejorias(cita.numeroSesion) ?: ((cita.numeroSesion ?: 0) > 1))
     var dolorInicio by remember { mutableStateOf<Int?>(null) }
     var dolorFin by remember { mutableStateOf<Int?>(null) }
@@ -171,7 +172,7 @@ fun ModalCompletar(
         onDismissRequest = onCancelar,
         title = {
             Column {
-                Text(if (esEvaluacion) "🔍 Completar ${flujo.nombreTipo(cita.tipo).lowercase()}" else "🏃 Completar sesión",
+                Text(if (psicoSesion) "Evolución de la sesión" else if (esEvaluacion) "🔍 Completar ${flujo.nombreTipo(cita.tipo).lowercase()}" else "🏃 Completar sesión",
                     fontWeight = FontWeight.Bold)
                 cita.pacienteNombre?.let {
                     Text(it, color = c.textoSuave, fontSize = Sania.txt.pequeno,
@@ -242,6 +243,8 @@ fun ModalCompletar(
                         Spacer(Modifier.height(Sania.dim.md))
                         bloque(texto)
                     }
+                } else if (psicoSesion) {
+                    pe.saniape.app.ui.clinica.psico.EvolucionSesionCampos(mejorias) { mejorias = it }
                 } else {
                     // Odontología: de todo lo pendiente del paciente, qué se le hizo
                     // hoy. Lo marcado suma su procedimiento a lo realizado.
@@ -315,7 +318,7 @@ fun ModalCompletar(
                             color = c.pend, fontSize = 11.sp)
                     }
                 }
-                if (fotosSesion != null && !esEvaluacion && cita.tipo == "Sesión") {
+                if (fotosSesion != null && !esEvaluacion && !psicoSesion && cita.tipo == "Sesión") {
                     Spacer(Modifier.height(Sania.dim.lg))
                     pe.saniape.app.ui.clinica.pacientes.BloqueFotosSesion(fotosSesion)
                 }
@@ -398,14 +401,14 @@ fun ModalCompletar(
                         val pz = if (conPiezas && piezasListas) piezas else null
                         val conProf = onConfirmarConProfesional
                         val fisio = onConfirmarFisio
-                        when (rutaCompletar(fisioSesion && fisio != null, esEvaluacion && profesionales != null, conProf != null)) {
+                        when (rutaCompletar((fisioSesion || psicoSesion) && fisio != null, esEvaluacion && profesionales != null, conProf != null)) {
                             RutaCompletar.Fisio -> fisio!!(obs, pz, if (pideMejorias) mejorias.trim().ifBlank { null } else null, dolorInicio to dolorFin)
                             RutaCompletar.ConProfesional -> conProf!!(obs, diag, esp, pz, terapeutaElegido)
                             RutaCompletar.Normal -> onConfirmar(obs, diag, esp, pz)
                         }
                     }.padding(horizontal = 20.dp, vertical = 11.dp),
             ) {
-                Text(if (cobro?.cobrar == true && !esEvaluacion) "✓ Completar y cobrar" else "✓ Guardar y completar",
+                Text(if (psicoSesion) "Guardar evolución y completar" else if (cobro?.cobrar == true && !esEvaluacion) "✓ Completar y cobrar" else "✓ Guardar y completar",
                     color = c.sobreNavy, fontWeight = FontWeight.Bold)
             }
         },
