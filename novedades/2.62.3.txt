@@ -1,0 +1,6 @@
+Psicología: registra la evolución desde la primera sesión al completar la cita. Incluye temas trabajados, estado emocional, tareas y próximo plan, con la información integrada en la historia clínica.
+---
+Psicología:
+• Al completar una sesión, encuentras el formulario de evolución.
+• Puedes registrar temas trabajados, estado emocional, tareas y el plan de la próxima sesión desde la primera atención.
+• La evolución queda disponible en la historia clínica compartida con la web.
