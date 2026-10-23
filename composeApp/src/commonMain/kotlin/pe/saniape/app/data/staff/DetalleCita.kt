@@ -113,8 +113,11 @@ fun bloquesDetalleCita(
     return buildList {
         add(bloqueObservaciones(datos.notas))
         if (!verClinico) return@buildList
+        // El del tratamiento también en la SESIÓN: es el motivo / diagnóstico del
+        // caso, lo que el profesional necesita para atender sin volver a
+        // preguntarle al paciente por qué viene (DALU, 23/10/2026).
         val diag = datos.diagnosticoCita?.trim()?.takeIf { it.isNotEmpty() }
-            ?: datos.diagnosticoTratamiento?.trim()?.takeIf { citaEvalua && it.isNotEmpty() }
+            ?: datos.diagnosticoTratamiento?.trim()?.takeIf { (citaEvalua || tipo == "Sesión") && it.isNotEmpty() }
         diag?.let { add(BloqueDetalleCita.Diagnostico(it)) }
         if (tipo == "Sesión") {
             val tec = datos.sesionNotas?.let { breve(it) }

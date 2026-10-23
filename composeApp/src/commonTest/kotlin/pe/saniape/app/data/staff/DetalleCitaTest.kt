@@ -192,10 +192,11 @@ class DetalleCitaTest {
     }
 
     @Test
-    fun sesionMuestraSusNotasYNoElDiagnosticoDelTratamiento() {
+    fun sesionMuestraElDiagnosticoDelTratamientoYSusNotas() {
         val b = bloquesDetalleCita("Sesión", false, completo, verClinico = true)
-        assertEquals(2, b.size)
-        val n = assertIs<BloqueDetalleCita.NotasSesion>(b[1])
+        assertEquals(listOf("Observaciones", "Diagnostico", "NotasSesion"), b.map { it::class.simpleName })
+        assertEquals("Lumbalgia mecánica", (b[1] as BloqueDetalleCita.Diagnostico).texto)
+        val n = assertIs<BloqueDetalleCita.NotasSesion>(b[2])
         assertEquals(4, n.numero)
         assertEquals("Movilización lumbar", n.tecnicas)
         assertEquals("Menos dolor al sentarse", n.evolucion)
