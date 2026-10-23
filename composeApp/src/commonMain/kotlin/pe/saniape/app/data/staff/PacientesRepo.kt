@@ -1042,8 +1042,12 @@ object PacientesRepo {
         if (rxPendiente != null) put("rxPendiente", rxPendiente)
         // Solo sesiones DENTALES lo mandan (una lista vacía también: deja la sesión sin piezas).
         if (piezas != null) put("piezas", kotlinx.serialization.json.JsonArray(piezas.map { JsonPrimitive(it) }))
-        // Fisioterapia (M1): EVA 0–10. Solo sesiones de fisio lo mandan (null = limpiar).
-        if (eva != null) { put("dolorInicio", eva.first); put("dolorFin", eva.second) }
+        // Fisioterapia (M1): EVA 0–10. Solo sesiones de fisio lo mandan. Un lado
+        // vacío va como "" (limpiar): el servidor toma null como "no tocar".
+        if (eva != null) {
+            put("dolorInicio", eva.first?.let { JsonPrimitive(it) } ?: JsonPrimitive(""))
+            put("dolorFin", eva.second?.let { JsonPrimitive(it) } ?: JsonPrimitive(""))
+        }
     }
 
     /** Pagos registrados de un tratamiento (para la PagoCard de la ficha). */

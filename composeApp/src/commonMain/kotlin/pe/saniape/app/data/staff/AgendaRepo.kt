@@ -398,7 +398,11 @@ object AgendaRepo {
             if (congelarOdontograma) put("odontograma", true)
             if (!terapeutaId.isNullOrBlank()) put("terapeutaId", terapeutaId)
             if (mejorias != null) put("mejorias", mejorias)
-            if (eva != null) { put("dolorInicio", eva.first); put("dolorFin", eva.second) }
+            // Un lado vacío va como "": el servidor toma null como "no tocar".
+            if (eva != null) {
+                put("dolorInicio", eva.first?.let { JsonPrimitive(it) } ?: JsonPrimitive(""))
+                put("dolorFin", eva.second?.let { JsonPrimitive(it) } ?: JsonPrimitive(""))
+            }
         }
     }
 
