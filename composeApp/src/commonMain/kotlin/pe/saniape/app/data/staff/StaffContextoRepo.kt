@@ -55,6 +55,8 @@ object StaffContextoRepo {
         reportes = o?.bool("reportes") ?: false,
         marketing = o?.bool("marketing") ?: false,
         datosPersonales = o?.bool("datos_personales") ?: false,
+        // Ausente → true: un backend viejo no le quita lo clínico a nadie.
+        historiaClinica = o?.boolOrNull("historia_clinica") ?: true,
     )
 
     private fun features(o: JsonObject?, plan: JsonObject?): PlanFeatures = PlanFeatures(

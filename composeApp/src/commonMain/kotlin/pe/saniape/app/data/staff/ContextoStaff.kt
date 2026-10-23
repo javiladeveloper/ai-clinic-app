@@ -250,6 +250,7 @@ data class ContextoStaff(
         "reportes" -> permisos.reportes
         "marketing" -> permisos.marketing
         "datos_personales" -> permisos.datosPersonales
+        "historia_clinica" -> permisos.historiaClinica
         else -> false
     }
 
@@ -323,6 +324,15 @@ data class Permisos(
      * clave y `puede("datos_personales")` era siempre false).
      */
     val datosPersonales: Boolean = false,
+    /**
+     * Historia clínica: leer y escribir lo clínico (diagnóstico, notas/técnicas,
+     * mejorías, observaciones, exámenes, recetas, evaluaciones, Resumen IA, PDF…).
+     * Sin él (típicamente recepción de psicología) igual agenda, cobra y completa
+     * sesión, pero sin ver lo clínico. Default TRUE: un backend sin la clave no le
+     * quita nada a nadie (las clínicas de siempre siguen igual). El servidor
+     * protege igual (403 en lecturas, ignora los campos clínicos al escribir).
+     */
+    val historiaClinica: Boolean = true,
 )
 
 data class PlanEstado(
@@ -392,3 +402,15 @@ data class SedeRef(
  * `!accesoClinico` de la web: solo con el permiso 'datos_personales'.
  */
 fun verDatosPersonalesFicha(ctx: ContextoStaff): Boolean = ctx.puede("datos_personales")
+
+/**
+ * ¿Esta persona ve la historia clínica (diagnóstico, notas de sesión, exámenes,
+ * recetas, evaluaciones, Resumen IA, PDF…)? Permiso 'historia_clinica'. Sin él,
+ * la app oculta lo clínico y deja lo operativo: agendar, tratamientos y su
+ * progreso, pagos, presupuestos y consentimientos.
+ */
+fun verHistoriaClinica(ctx: ContextoStaff): Boolean = ctx.puede("historia_clinica")
+
+/** Aviso sobrio que reemplaza lo clínico oculto (una sola vez por pantalla). */
+const val AVISO_HISTORIA_CLINICA_OCULTA =
+    "🔒 La historia clínica solo la ven los profesionales y quien autorice el administrador."
