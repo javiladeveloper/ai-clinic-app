@@ -3,6 +3,7 @@ package pe.saniape.app.data.staff
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
@@ -634,6 +635,9 @@ object PacientesRepo {
      * y el tratamiento tiene UN solo responsable. Sin esto el segundo lo tenía
      * en su agenda pero no en Pacientes (caso DALU: Jorge Olivera, de
      * Katherine, atendido por Rodas — 2026-09-03).
+     *
+     * Camino VIEJO (una fila por sesión y por cita, hasta 3000 cada una): queda solo
+     * de respaldo de [idsQueAtiende], cuando el servidor no responde como se espera.
      */
     private suspend fun pacientesQueAtiende(terapeutaId: String): Set<String> = try {
         val ids = mutableSetOf<String>()
@@ -654,6 +658,8 @@ object PacientesRepo {
             .decodeList<JsonObject>()
             .forEach { o -> o.str("paciente_id")?.let { ids.add(it) } }
         ids
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
     } catch (_: Exception) {
         // Sin red o si falla: no se cae la lista, solo se queda con el criterio
         // viejo (los tratamientos a su nombre).
@@ -661,9 +667,79 @@ object PacientesRepo {
     }
 
     /**
+     * Ids de los pacientes que [yo] atiende —responsable de un tratamiento, o con una
+     * cita o una sesión a su nombre— pedidos al SERVIDOR con UNA fila por paciente
+     * (no una por sesión/cita, como [pacientesQueAtiende]). Tres lecturas chicas en
+     * paralelo. null = alguna respuesta no es confiable (ver [idsVerificados]): el
+     * llamador cae al camino de siempre.
+     */
+    private suspend fun idsQueAtiende(yo: String): Set<String>? = coroutineScope {
+        // Una fila por paciente con UNO de sus tratamientos / citas a mi nombre
+        // (`!inner` + filtro embebido + `limit 1` embebido). Se trae el terapeuta_id
+        // embebido para verificar que el filtro se aplicó.
+        suspend fun porRelacion(embebido: String, ruta: String): Set<String>? {
+            val filas = Supabase.client.postgrest["pacientes"]
+                .select(Columns.raw("id, $embebido(terapeuta_id)")) {
+                    filter { eq("$ruta.terapeuta_id", yo) }
+                    limit(1, referencedTable = ruta)
+                }
+                .decodeList<JsonObject>()
+            return idsVerificados(
+                filas.map { o ->
+                    FilaAtiende(o.str("id"), (o[ruta] as? JsonArray).orEmpty().map { (it as? JsonObject)?.str("terapeuta_id") })
+                },
+                yo,
+            )
+        }
+        val responsable = async { porRelacion("tratamientos!inner", "tratamientos") }
+        // `citas` llega por varias tablas que la referencian junto al paciente: el FK
+        // explícito evita que el servidor la vea ambigua.
+        val citas = async { porRelacion("citas!citas_paciente_id_fkey!inner", "citas") }
+        // Sesiones: no tienen paciente_id, salen por su tratamiento (mismo FK que la ficha).
+        val sesiones = async {
+            val filas = Supabase.client.postgrest["pacientes"]
+                .select(Columns.raw("id, tratamientos!inner(sesiones!sesiones_tratamiento_id_fkey!inner(terapeuta_id))")) {
+                    filter { eq("tratamientos.sesiones.terapeuta_id", yo) }
+                    limit(1, referencedTable = "tratamientos.sesiones")
+                }
+                .decodeList<JsonObject>()
+            idsVerificados(
+                filas.map { o ->
+                    FilaAtiende(
+                        o.str("id"),
+                        (o["tratamientos"] as? JsonArray).orEmpty().flatMap { t ->
+                            ((t as? JsonObject)?.get("sesiones") as? JsonArray).orEmpty().map { (it as? JsonObject)?.str("terapeuta_id") }
+                        },
+                    )
+                },
+                yo,
+            )
+        }
+        val partes = listOf(responsable.await(), citas.await(), sesiones.await())
+        if (partes.any { it == null }) null else partes.flatMap { it.orEmpty() }.toSet()
+    }
+
+    /** SELECT de la lista; sin teléfono ni correo para quien no los ve en ella. */
+    private fun selectLista(conContacto: Boolean): String =
+        if (conContacto) SELECT_LISTA else SELECT_LISTA.replace("telefono, email, ", "")
+
+    /**
+     * Ámbito propio para la lista: la petición sigue aunque quien la pidió se vaya (la
+     * espera el siguiente, ver [PeticionesEnVuelo]), y el JSON se decodifica FUERA del
+     * hilo de la pantalla — en un Android de gama baja, parsear cientos de pacientes en
+     * el hilo principal era parte del "se congela".
+     */
+    private val listasEnVuelo = PeticionesEnVuelo<List<PacienteStaff>>(
+        CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default),
+    )
+
+    /**
      * Lista de pacientes. [soloTerapeutaId] (scope del profesional vinculado): si no es
      * null, devuelve los pacientes que ATIENDE — responsable del tratamiento o con
-     * sesiones/citas suyas. El filtrado por scope se hace en memoria (igual que la web).
+     * sesiones/citas suyas. Se piden al servidor SOLO esos (antes bajaba toda la clínica
+     * y filtraba en el teléfono: 609 pacientes en DALU para quedarse con los suyos).
+     * [conContacto] = false no trae teléfono ni correo (la lista no se los muestra).
+     * Dos pedidos iguales a la vez comparten la respuesta (ver [PeticionesEnVuelo]).
      */
     suspend fun listar(
         soloTerapeutaId: String? = null,
@@ -672,9 +748,26 @@ object PacientesRepo {
          * elegida). Por defecto, la regla vigente de [SedeActiva]; null = todos.
          */
         sedeId: String? = SedeActiva.estado.value.sedePacientes,
+        conContacto: Boolean = true,
+        /** false = no sumarse a una petición en camino (se acaba de crear un paciente). */
+        compartir: Boolean = true,
     ): List<PacienteStaff> {
+        val clave = claveLista(soloTerapeutaId, sedeId)
+        return listasEnVuelo.obtener("$clave|contacto=$conContacto", reutilizar = compartir) {
+            medirEnDepuracion(
+                if (soloTerapeutaId == null) "listar pacientes (clínica)" else "listar pacientes (profesional)",
+                { "${it.size} pacientes" },
+            ) {
+                if (soloTerapeutaId == null) listarClinica(sedeId, conContacto, clave)
+                else listarDelProfesional(soloTerapeutaId, sedeId, conContacto, clave)
+            }
+        }
+    }
+
+    /** Toda la clínica (quien gestiona pacientes): 1 consulta. */
+    private suspend fun listarClinica(sedeId: String?, conContacto: Boolean, clave: String): List<PacienteStaff> {
         val filas = Supabase.client.postgrest["pacientes"]
-            .select(Columns.raw(SELECT_LISTA)) {
+            .select(Columns.raw(selectLista(conContacto))) {
                 // En el SERVIDOR (no en memoria): la lista y la búsqueda solo ven esa sede.
                 if (sedeId != null) filter { eq("sede_id", sedeId) }
                 order("created_at", Order.DESCENDING)
@@ -682,24 +775,95 @@ object PacientesRepo {
             .decodeList<JsonObject>()
         // Se guarda para pintar al instante la próxima vez (ver `listarDeCache`).
         // Cada sede en su propia clave: nunca se pinta la lista de otra sede.
-        val clave = claveLista(soloTerapeutaId, sedeId)
         runCatching {
             CacheLectura.guardar(clave, Json.encodeToString(JsonArray.serializer(), JsonArray(filas)))
         }
-        val pacientes = filas.map { mapear(it) }
-        if (soloTerapeutaId == null) return pacientes
-        val atiende = pacientesQueAtiende(soloTerapeutaId)
-        // Los ids que atiende se guardan junto a la lista: `listarDeCache` los
-        // necesita para filtrar igual cuando pinta sin red.
+        return filas.map { mapear(it) }
+    }
+
+    /**
+     * Los del profesional: 3 lecturas chicas en paralelo para saber QUÉ pacientes
+     * atiende ([idsQueAtiende]) y luego solo esos, por tandas en paralelo
+     * ([partirEnTandas]). Si las lecturas de ids no son confiables, el camino de
+     * siempre ([listarDelProfesionalEnTelefono]): nunca se ve ni más ni menos.
+     */
+    private suspend fun listarDelProfesional(
+        yo: String, sedeId: String?, conContacto: Boolean, clave: String,
+    ): List<PacienteStaff> {
+        val ids = try {
+            idsQueAtiende(yo)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        } ?: return listarDelProfesionalEnTelefono(yo, sedeId, conContacto, clave)
+        val filas = coroutineScope {
+            partirEnTandas(ids).map { tanda ->
+                async {
+                    Supabase.client.postgrest["pacientes"]
+                        // created_at: el orden de la lista (más nuevos arriba) se rehace al juntar las tandas.
+                        .select(Columns.raw("created_at, " + selectLista(conContacto))) {
+                            filter {
+                                isIn("id", tanda)
+                                if (sedeId != null) eq("sede_id", sedeId)
+                            }
+                        }
+                        .decodeList<JsonObject>()
+                }
+            }.awaitAll().flatten()
+        }.sortedByDescending { it.str("created_at").orEmpty() }
+        guardarListaDelProfesional(clave, filas, ids)
+        return filas.map { mapear(it) }
+    }
+
+    /** Camino de siempre del profesional: toda la clínica + filtro en el teléfono. */
+    private suspend fun listarDelProfesionalEnTelefono(
+        yo: String, sedeId: String?, conContacto: Boolean, clave: String,
+    ): List<PacienteStaff> {
+        val filas = Supabase.client.postgrest["pacientes"]
+            .select(Columns.raw(selectLista(conContacto))) {
+                if (sedeId != null) filter { eq("sede_id", sedeId) }
+                order("created_at", Order.DESCENDING)
+            }
+            .decodeList<JsonObject>()
+        val atiende = pacientesQueAtiende(yo)
+        guardarListaDelProfesional(clave, filas, atiende)
+        return filas.map { mapear(it) }.filter { p ->
+            p.id in atiende || p.tratamientos.any { it.terapeutaId == yo }
+        }
+    }
+
+    /**
+     * La lista del profesional en caché, con los ids que atiende al lado: `listarDeCache`
+     * los necesita para filtrar igual cuando pinta sin red.
+     */
+    private fun guardarListaDelProfesional(clave: String, filas: List<JsonObject>, atiende: Set<String>) {
         runCatching {
+            CacheLectura.guardar(clave, Json.encodeToString(JsonArray.serializer(), JsonArray(filas)))
             CacheLectura.guardar(
                 "$clave:atiende",
                 Json.encodeToString(JsonArray.serializer(), JsonArray(atiende.map { JsonPrimitive(it) })),
             )
         }
-        return pacientes.filter { p ->
-            p.id in atiende || p.tratamientos.any { it.terapeutaId == soloTerapeutaId }
-        }
+    }
+
+    /**
+     * La fila de LISTA de un paciente (al volver de su ficha con un cambio: basta con
+     * releer esa, no la lista entera). null si ya no se ve (de baja en otra sede, fusionado…).
+     */
+    suspend fun filaLista(
+        id: String,
+        sedeId: String? = SedeActiva.estado.value.sedePacientes,
+        conContacto: Boolean = true,
+    ): PacienteStaff? = kotlinx.coroutines.withContext(Dispatchers.Default) {
+        Supabase.client.postgrest["pacientes"]
+            .select(Columns.raw(selectLista(conContacto))) {
+                filter {
+                    eq("id", id)
+                    if (sedeId != null) eq("sede_id", sedeId)
+                }
+            }
+            .decodeList<JsonObject>().firstOrNull()?.let { mapear(it) }
     }
 
     /**
@@ -1637,6 +1801,15 @@ object PacientesRepo {
         }
     }
 
+    private val especialidadesClinicaFicha = CacheCorta<List<EspecialidadClinica>>()
+
+    /** [especialidadesClinica] recordadas unos minutos por clínica (la ficha las pedía en cada apertura). */
+    suspend fun especialidadesClinicaRecientes(): List<EspecialidadClinica> {
+        val clinica = StaffContextoRepo.actual?.clinicaId.orEmpty()
+        especialidadesClinicaFicha.leer(clinica, relojMonotonoMs())?.let { return it }
+        return especialidadesClinica().also { if (it.isNotEmpty()) especialidadesClinicaFicha.guardar(clinica, relojMonotonoMs(), it) }
+    }
+
     /** Evaluaciones completadas del paciente (para "¿Nació de una evaluación?"). */
     suspend fun evaluacionesDe(pacienteId: String): List<EvaluacionRef> {
         val filas = Supabase.client.postgrest["citas"]
@@ -1661,10 +1834,8 @@ object PacientesRepo {
      * Regla idéntica a la web: acordado/pagado totales y saldo = Σ max(acordado − pagado, 0).
      */
     suspend fun resumenPagosDe(tratamientos: List<TratamientoPaciente>): ResumenPagos {
-        // Facturables: fuera Cancelado y Eliminado (como la web).
-        val facturables = tratamientos.filter { it.estado != "Cancelado" && it.estado != "Eliminado" }
         // El saldo a favor DISPONIBLE mira también los cancelados (los que un Admin
-        // liberó): sus pagos se leen en la MISMA consulta.
+        // liberó): sus pagos se leen en la MISMA consulta. (Facturables: en resumenPagosCon.)
         val conSaldo = tratamientos.filter { it.estado != "Eliminado" }
         if (conSaldo.isEmpty()) return ResumenPagos(0.0, 0.0, 0.0)
         val ids = conSaldo.map { it.id }
@@ -1675,6 +1846,29 @@ object PacientesRepo {
                 }
                 .decodeList<JsonObject>()
         }.getOrDefault(emptyList())
+        return resumenPagosCon(tratamientos, pagados)
+    }
+
+    /**
+     * Los pagos de TODOS los tratamientos del paciente, por su `paciente_id` (sin
+     * esperar a tener los tratamientos): así la ficha los pide EN PARALELO con el
+     * paciente en vez de después. Mismas filas que [resumenPagosDe] (que se queda con
+     * las de los tratamientos no eliminados en [resumenPagosCon]).
+     */
+    suspend fun pagosDelPaciente(pacienteId: String): List<JsonObject> =
+        Supabase.client.postgrest["pagos_tratamiento"]
+            .select(Columns.raw("tratamiento_id, monto, tratamiento:tratamientos!inner(paciente_id)")) {
+                filter { eq("tratamiento.paciente_id", pacienteId) }
+            }
+            .decodeList<JsonObject>()
+
+    /** [resumenPagosDe] con las filas de pagos ya leídas (`tratamiento_id`, `monto`). */
+    fun resumenPagosCon(tratamientos: List<TratamientoPaciente>, filasPagos: List<JsonObject>): ResumenPagos {
+        val facturables = tratamientos.filter { it.estado != "Cancelado" && it.estado != "Eliminado" }
+        val conSaldo = tratamientos.filter { it.estado != "Eliminado" }
+        if (conSaldo.isEmpty()) return ResumenPagos(0.0, 0.0, 0.0)
+        val ids = conSaldo.map { it.id }.toSet()
+        val pagados = filasPagos.filter { it.str("tratamiento_id") in ids }
         val pagadoPorTrat = pagados.groupBy { it.str("tratamiento_id") }
             // En céntimos: con las filas de saldo (+uso / -consumo) la suma en coma
             // flotante dejaba restos de 0.0000001 que pintaban "debe S/ 0.00".

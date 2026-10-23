@@ -124,6 +124,12 @@ fun PantallaFichaPaciente(
      * ese tratamiento, una vez cargada. Gemelo de `?tratamiento=&accion=` (web).
      */
     accionTratamientoAlAbrir: pe.saniape.app.data.staff.AperturaAccionTratamiento? = null,
+    /**
+     * Se llama cuando en la ficha se CAMBIÓ algo (completar, cobrar, editar…). La
+     * lista de Pacientes lo usa para releer solo ese paciente al volver, en vez de
+     * bajar la lista entera cada vez (DALU, 23/10/2026).
+     */
+    onHuboCambios: () -> Unit = {},
 ) {
     // Multipaís: el dinero de la ficha va en la moneda de la sede del paciente
     // (solo con "pacientes por sede"; si no, la de la sede activa). Una clínica de
@@ -137,7 +143,7 @@ fun PantallaFichaPaciente(
     androidx.compose.runtime.CompositionLocalProvider(
         pe.saniape.app.ui.LocalMoneda provides pe.saniape.app.data.staff.monedaDeFila(sedePaciente),
     ) {
-        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir, sedePaciente, embarazoAlAbrir, embarazoCitaId, presupuestosAlAbrir || presupuestoNuevo, presupuestoNuevoCitaId, presupuestoNuevo, pieAlAbrir, accionTratamientoAlAbrir)
+        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir, sedePaciente, embarazoAlAbrir, embarazoCitaId, presupuestosAlAbrir || presupuestoNuevo, presupuestoNuevoCitaId, presupuestoNuevo, pieAlAbrir, accionTratamientoAlAbrir, onHuboCambios)
     }
 }
 
@@ -157,6 +163,7 @@ private fun PantallaFichaPacienteContenido(
     presupuestoNuevo: Boolean = false,
     pieAlAbrir: pe.saniape.app.ui.clinica.podologia.AperturaPie? = null,
     accionTratamientoAlAbrir: pe.saniape.app.data.staff.AperturaAccionTratamiento? = null,
+    onHuboCambios: () -> Unit = {},
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val tpl = LocalTerminologiaPaciente.current
@@ -251,7 +258,8 @@ private fun PantallaFichaPacienteContenido(
     var crearCita by remember { mutableStateOf<pe.saniape.app.ui.clinica.PrefillCita?>(null) }
     var especialidadesClinica by remember { mutableStateOf<List<pe.saniape.app.data.staff.EspecialidadClinica>>(emptyList()) }
     LaunchedEffect(Unit) {
-        especialidadesClinica = runCatching { PacientesRepo.especialidadesClinica() }.getOrDefault(emptyList())
+        // Recordadas unos minutos: en una tanda de cierres la ficha se abre decenas de veces.
+        especialidadesClinica = runCatching { PacientesRepo.especialidadesClinicaRecientes() }.getOrDefault(emptyList())
     }
     // ── 🧠 Salud mental (certificado), por el RUBRO guardado de cada especialidad
     // (mapaSaludMental de la web; nunca por preset). Las especialidades con rubro
@@ -573,7 +581,12 @@ private fun PantallaFichaPacienteContenido(
     // 📂 Historia clínica nativa (por especialidad) a pantalla completa.
     var historiaAbierta by remember { mutableStateOf(false) }
     var planPsico by remember { mutableStateOf<Pair<String, pe.saniape.app.data.staff.PrefillPlanPsico>?>(null) }
+    // Cuándo empezó la última carga (reloj monótono) y la ráfaga de Realtime que
+    // quedó esperando mientras estaba abierto el cierre de sesión. Sin estado de
+    // Compose: no se pintan, solo deciden si recargar (ver accionRealtime).
+    val relojCarga = remember { RelojCargaFicha() }
     LaunchedEffect(pacienteInicial.id, recargarToken) {
+        relojCarga.iniciada = pe.saniape.app.data.staff.relojMonotonoMs()
         actualizando = true
         // conIndicador solo en las RECARGAS (token > 0), no en la carga inicial: al abrir
         // la ficha ya hay un spinner propio, y mostrar "Guardando…" ahí confundiría. Tras
@@ -584,25 +597,42 @@ private fun PantallaFichaPacienteContenido(
         // porId (paciente + sus tratamientos) e hitosDe son INDEPENDIENTES entre sí, así
         // que se piden EN PARALELO (async) en vez de una tras otra. Antes, tras cada
         // acción (crear sesión, etc.) la recarga encadenaba porId → hitos → saldo, y la
-        // ficha se sentía congelada hasta terminar. El saldo SÍ depende del paciente
-        // (usa sus tratamientos ya cargados), por lo que va después.
-        coroutineScope {
-            val pacienteD = async { runCatching { PacientesRepo.porId(pacienteInicial.id) }.getOrNull() }
-            val hitosD = async { runCatching { PacientesRepo.hitosDe(pacienteInicial.id) }.getOrNull() }
-            paciente = pacienteD.await() ?: pacienteInicial
-            hitos = hitosD.await()
+        // ficha se sentía congelada hasta terminar.
+        //
+        // Los PAGOS también van en paralelo (por paciente_id, sin esperar sus
+        // tratamientos: el saldo se calcula al final con los dos), y solo con el
+        // permiso 'pagos': el saldo y el "a favor" solo
+        // se muestran con él (DALU, 23/10/2026: la ficha del fisio esperaba una ronda
+        // más por un dato que no pinta).
+        val verPagosFicha = ctx.puede("pagos")
+        pe.saniape.app.data.staff.medirEnDepuracion<Unit>(if (recarga) "recargar ficha" else "abrir ficha") {
+            coroutineScope {
+                val pacienteD = async { runCatching { PacientesRepo.porId(pacienteInicial.id) }.getOrNull() }
+                val hitosD = async { runCatching { PacientesRepo.hitosDe(pacienteInicial.id) }.getOrNull() }
+                val pagosD = if (verPagosFicha) async { runCatching { PacientesRepo.pagosDelPaciente(pacienteInicial.id) }.getOrNull() } else null
+                paciente = pacienteD.await() ?: pacienteInicial
+                hitos = hitosD.await()
+                // Saldo general (todos los tratamientos del paciente): acordado − pagado.
+                val resumenPagos = when {
+                    pagosD == null -> null
+                    else -> pagosD.await()?.let { PacientesRepo.resumenPagosCon(paciente.tratamientos, it) }
+                        // Si la lectura por paciente falló, la de siempre (por los ids de sus tratamientos).
+                        ?: runCatching { PacientesRepo.resumenPagosDe(paciente.tratamientos) }.getOrNull()
+                }
+                saldoPendiente = resumenPagos?.saldo
+                saldoAFavor = resumenPagos?.aFavor ?: 0.0
+            }
         }
-        // Saldo general (todos los tratamientos del paciente): acordado − pagado.
-        val resumenPagos = runCatching { PacientesRepo.resumenPagosDe(paciente.tratamientos) }.getOrNull()
-        saldoPendiente = resumenPagos?.saldo
-        saldoAFavor = resumenPagos?.aFavor ?: 0.0
         cargando = false
         actualizando = false
         } finally {
             if (recarga) pe.saniape.app.ui.EstadoGuardando.fin(pe.saniape.app.ui.Gestion.CARGANDO)
         }
     }
-    fun recargar() { recargarToken++ }
+    // Recarga tras una gestión PROPIA (completar, cobrar, editar…): avisa a la lista.
+    fun recargar() { recargarToken++; onHuboCambios() }
+    // Recarga por un aviso de afuera (volvió la red, Realtime): no es un cambio propio.
+    fun recargarPorAviso() { recargarToken++ }
 
     /**
      * Nutrición: "📅 Agendar siguiente control" tras guardar el plan (sin una
@@ -673,15 +703,38 @@ private fun PantallaFichaPacienteContenido(
     // Al volver la señal, repoblar la ficha: si se abrió (o se recargó) sin red, quedó
     // con datos a medias y no se arreglaba sola hasta salir y entrar.
     val tokenRed by pe.saniape.app.data.offline.EstadoRed.token.collectAsState()
-    LaunchedEffect(tokenRed) { if (tokenRed > 0) recargar() }
+    LaunchedEffect(tokenRed) { if (tokenRed > 0) recargarPorAviso() }
 
     // Realtime: si el fisio crea/completa sesiones (o cambia un tratamiento) desde la web
     // u otro dispositivo, la ficha ABIERTA se refresca sola — antes el cambio solo se veía
     // saliendo y volviendo a entrar. Best-effort (si Realtime no conecta, no pasa nada);
     // se corta al cerrar la ficha.
+    // Solo lo de ESTE paciente y una recarga por ráfaga (RealtimeFicha). Si la ráfaga
+    // ya está incluida en una carga que empezó después (el propio completar), no se
+    // recarga otra vez; con el cierre de sesión abierto se espera a que se cierre,
+    // para no rehacer la ficha debajo del diálogo mientras se escribe.
+    fun alAvisoRealtime(ultimoEvento: Long) {
+        when (pe.saniape.app.data.staff.accionRealtime(ultimoEvento, relojCarga.iniciada, dialogoAbierto = completarSesion != null)) {
+            pe.saniape.app.data.staff.AccionRealtime.RECARGAR -> recargarPorAviso()
+            pe.saniape.app.data.staff.AccionRealtime.POSPONER -> relojCarga.pendienteRealtime = ultimoEvento
+            pe.saniape.app.data.staff.AccionRealtime.YA_INCLUIDO -> Unit
+        }
+    }
     DisposableEffect(pacienteInicial.id) {
-        val job = pe.saniape.app.data.staff.RealtimeFicha.suscribir(scope) { recargar() }
+        val job = pe.saniape.app.data.staff.RealtimeFicha.suscribir(
+            scope, pacienteInicial.id,
+            tratamientosDelPaciente = { paciente.tratamientos.map { it.id }.toSet() },
+        ) { alAvisoRealtime(it) }
         onDispose { job.cancel() }
+    }
+    // Se cerró el cierre de sesión con una ráfaga esperando: se decide ahora (si se
+    // completó, la recarga propia ya la incluye y no se recarga otra vez).
+    val cierreAbierto = completarSesion != null
+    LaunchedEffect(cierreAbierto) {
+        if (!cierreAbierto) relojCarga.pendienteRealtime?.let { p ->
+            relojCarga.pendienteRealtime = null
+            alAvisoRealtime(p)
+        }
     }
 
     // 🧠 Evaluación psicológica a pantalla completa (encima de la ficha). Es clínica.
@@ -3154,7 +3207,7 @@ private fun ContenidoAtenciones(
     // es el caso de casi todas y no cambia nada.
     var especialidades by remember { mutableStateOf<List<EspecialidadRef>>(emptyList()) }
     LaunchedEffect(Unit) {
-        especialidades = runCatching { AgendaRepo.especialidades() }.getOrDefault(emptyList())
+        especialidades = runCatching { AgendaRepo.especialidadesRecientes() }.getOrDefault(emptyList())
     }
     val flujoDe = { t: TratamientoPaciente ->
         especialidades.find { it.id == t.especialidadId }.let { e -> ctx.flujo.paraEspecialidad(e?.flujoPreset, e?.nombre) }
@@ -3825,3 +3878,10 @@ private fun ModalDatosClinicos(
     }
 }
 
+/** Marcas de la carga de la ficha (no se pintan: deciden si Realtime recarga). */
+private class RelojCargaFicha {
+    /** Cuándo empezó la última carga ([pe.saniape.app.data.staff.relojMonotonoMs]). */
+    var iniciada: Long? = null
+    /** Último evento de una ráfaga que llegó con el cierre de sesión abierto. */
+    var pendienteRealtime: Long? = null
+}

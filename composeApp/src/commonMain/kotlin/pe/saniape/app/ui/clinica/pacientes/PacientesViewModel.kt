@@ -6,12 +6,20 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import pe.saniape.app.data.offline.EstadoRed
 import pe.saniape.app.data.staff.ContextoStaff
+import pe.saniape.app.data.staff.RecargaLista
+import pe.saniape.app.data.staff.listaFresca
+import pe.saniape.app.data.staff.medirEnDepuracion
+import pe.saniape.app.data.staff.recargaAlVolverDeFicha
+import pe.saniape.app.data.staff.relojMonotonoMs
 import pe.saniape.app.data.staff.PacienteStaff
 import pe.saniape.app.data.staff.PacientesRepo
 import pe.saniape.app.data.staff.SedeActiva
@@ -43,6 +51,17 @@ class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
 
     private var trabajo: Job? = null
 
+    // Frescura (DALU, 23/10/2026): cada vuelta a la pestaña bajaba la lista entera, a
+    // veces dos veces seguidas. Se recuerda cuándo terminó la última carga buena (y de
+    // qué sede) y qué aviso de "volvió la red" ya se atendió.
+    private var ultimaCargaOkMs: Long? = null
+    private var sedeUltimaCarga: String? = null
+    private var tokenRedVisto: Int = EstadoRed.token.value
+
+    /** La lista en pantalla tiene menos de un minuto y es de la sede vigente. */
+    private fun listaEsFresca(): Boolean =
+        sedeUltimaCarga == SedeActiva.estado.value.sedePacientes && listaFresca(ultimaCargaOkMs, relojMonotonoMs())
+
     init {
         cargar()
         // Al cambiar la sede activa (o la regla), la lista es OTRA: se vacía y se
@@ -59,7 +78,8 @@ class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
     fun cambiarBusqueda(v: String) { busqueda = v }
     fun cambiarFiltroEstado(v: String?) { filtroEstado = v }
 
-    fun cargar() {
+    /** [trasCambio] = recién se creó/registró un paciente: no sumarse a una carga en camino. */
+    fun cargar(trasCambio: Boolean = false) {
         // Una carga a la vez: si cambió la sede a mitad de camino, la vieja no pisa a la nueva.
         trabajo?.cancel()
         trabajo = viewModelScope.launch {
@@ -72,7 +92,8 @@ class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
             // detrás. Sin esto la pantalla arranca en blanco y el fisio espera
             // a la red, que en una clínica es lo peor que se siente.
             if (pacientes.isEmpty()) {
-                val deCache = PacientesRepo.listarDeCache(ctx.scopePacientes, sede)
+                // Leer y decodificar la caché fuera del hilo de la pantalla.
+                val deCache = withContext(Dispatchers.Default) { PacientesRepo.listarDeCache(ctx.scopePacientes, sede) }
                 if (deCache.isNotEmpty()) { pacientes = deCache; recargando = true }
                 else cargando = true
             } else recargando = true
@@ -80,13 +101,70 @@ class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
             // Scope: gestor (permiso pacientes) ve toda la clínica; en modo clínico,
             // solo los suyos. Ver ContextoStaff.scopePacientes.
             try {
-                pacientes = PacientesRepo.listar(ctx.scopePacientes, sede)
+                // Sin teléfono ni correo si la lista no los muestra (modo clínico).
+                pacientes = PacientesRepo.listar(ctx.scopePacientes, sede, conContacto = verContacto, compartir = !trasCambio)
+                ultimaCargaOkMs = relojMonotonoMs()
+                sedeUltimaCarga = sede
             } catch (e: CancellationException) {
                 throw e   // la reemplazó otra carga: no tocar el estado
             } catch (_: Exception) {
                 cargaFallo = true
             }
             cargando = false; recargando = false
+        }
+    }
+
+    /**
+     * Se volvió a mostrar la lista (otra pestaña → Pacientes): solo se pide si ya no es
+     * fresca y no hay una carga en camino.
+     */
+    fun alMostrar() {
+        if (trabajo?.isActive == true) return
+        if (!listaEsFresca()) cargar()
+    }
+
+    /**
+     * Vuelta de la ficha. Si se cambió algo, basta con releer ESE paciente (es lo único
+     * que pudo cambiar); si la lista ya es vieja, entera. Antes: siempre entera.
+     */
+    fun alVolverDeFicha(pacienteId: String?, huboCambios: Boolean) {
+        if (trabajo?.isActive == true) return   // una carga en camino ya lo trae
+        when (recargaAlVolverDeFicha(huboCambios, listaEsFresca(), pacienteId)) {
+            RecargaLista.NADA -> Unit
+            RecargaLista.COMPLETA -> cargar()
+            RecargaLista.SOLO_PACIENTE -> pacienteId?.let { refrescarPaciente(it) }
+        }
+    }
+
+    /**
+     * Volvió la red: se recarga solo si el aviso es NUEVO para la lista. Al volver a la
+     * pestaña el `LaunchedEffect` vuelve a correr con el mismo token, y antes eso
+     * disparaba una segunda carga encima de la de la vuelta (la doble carga del 19/10).
+     */
+    fun alVolverLaRed(token: Int) {
+        if (token <= tokenRedVisto) return
+        tokenRedVisto = token
+        cargar()
+    }
+
+    /** Relee la fila de UN paciente y la reemplaza en la lista (no toca la frescura del resto). */
+    private fun refrescarPaciente(id: String) {
+        trabajo = viewModelScope.launch {
+            val sede = SedeActiva.estado.value.sedePacientes
+            recargando = true
+            try {
+                val fila = medirEnDepuracion<pe.saniape.app.data.staff.PacienteStaff?>("releer un paciente de la lista") {
+                    PacientesRepo.filaLista(id, sede, conContacto = verContacto)
+                }
+                // Ya no se ve (fusionado, de otra sede…): sale de la lista.
+                pacientes = if (fila == null) pacientes.filterNot { it.id == id }
+                    else pacientes.map { if (it.id == id) fila else it }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Sin red: se queda lo que había (la próxima carga completa lo corrige).
+            }
+            recargando = false
         }
     }
 

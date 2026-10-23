@@ -14,4 +14,10 @@ expect object VersionApp {
 
     /** "android" | "ios" — para elegir qué comparar y a qué tienda mandar. */
     val plataforma: String
+
+    /**
+     * true solo en la build de DEPURACIÓN (Android debug / binario debug de iOS). Para
+     * medir tiempos en el logcat sin que la build de la tienda escriba nada.
+     */
+    val depuracion: Boolean
 }

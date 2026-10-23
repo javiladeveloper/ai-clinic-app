@@ -468,6 +468,19 @@ object AgendaRepo {
         }
     }
 
+    private val especialidadesFicha = CacheCorta<List<EspecialidadRef>>()
+
+    /**
+     * [especialidades] recordadas unos minutos por clínica: la ficha las pedía en CADA
+     * apertura (el flujo de cada tarjeta de tratamiento), y en una tanda de cierres
+     * desde la ficha eso es una consulta por paciente. Lo vacío no se recuerda.
+     */
+    suspend fun especialidadesRecientes(): List<EspecialidadRef> {
+        val clinica = StaffContextoRepo.actual?.clinicaId.orEmpty()
+        especialidadesFicha.leer(clinica, relojMonotonoMs())?.let { return it }
+        return especialidades().also { if (it.isNotEmpty()) especialidadesFicha.guardar(clinica, relojMonotonoMs(), it) }
+    }
+
     /** Un text[] de la base ("chips_tipos") → lista, o null si no hay. */
     private fun listaTextos(e: kotlinx.serialization.json.JsonElement?): List<String>? =
         (e as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p !is kotlinx.serialization.json.JsonNull }?.content?.trim()?.takeIf { s -> s.isNotEmpty() } }

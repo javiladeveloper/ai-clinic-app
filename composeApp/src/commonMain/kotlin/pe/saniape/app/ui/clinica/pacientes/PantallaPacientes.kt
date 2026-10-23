@@ -60,9 +60,9 @@ private val ESTADOS = listOf("Nuevo", "Consultado", "Evaluado", "En tratamiento"
 fun PantallaPacientes(
     ctx: ContextoStaff,
     onAbrirFicha: (PacienteStaff) -> Unit,
-    // Cambia este valor para forzar una recarga de la lista (ej. al volver de la ficha,
-    // para que el progreso de sesiones se actualice sin pull-to-refresh).
-    recargarTick: Int = 0,
+    // Cambia en cada vuelta de la ficha: la lista se pone al día (el progreso de
+    // sesiones cambió) sin pull-to-refresh — solo lo que hace falta (ver alVolverDeFicha).
+    vueltaDeFicha: VueltaDeFicha? = null,
 ) {
     val c = Sania.colors
     val vm: PacientesViewModel = viewModel(key = ctx.clinicaId) { PacientesViewModel(ctx) }
@@ -70,17 +70,21 @@ fun PantallaPacientes(
     // QR de admisión: el paciente nuevo llena su ficha desde su celular (como la web).
     var qrAdmisionAbierto by remember { mutableStateOf(false) }
 
-    // Recargar cuando el contenedor pide (recargarTick > 0 = venimos de la ficha).
-    androidx.compose.runtime.LaunchedEffect(recargarTick) {
-        if (recargarTick > 0) vm.cargar()
+    // Venimos de la ficha: releer lo necesario (nada / ese paciente / la lista entera).
+    // Sin vuelta (se llegó desde otra pestaña), solo si la lista ya no es fresca.
+    androidx.compose.runtime.LaunchedEffect(vueltaDeFicha?.tick) {
+        val v = vueltaDeFicha
+        if (v != null) vm.alVolverDeFicha(v.pacienteId, v.huboCambios) else vm.alMostrar()
     }
 
     // …y también al VOLVER LA SEÑAL: si la lista se quedó vacía porque las lecturas
     // fallaron sin red, se repuebla sola. Sin esto el usuario ve "no hay pacientes"
     // y cree que se perdieron, cuando están intactos en el servidor.
     val tokenRed by pe.saniape.app.data.offline.EstadoRed.token.collectAsState()
+    // Solo si la red volvió DESPUÉS de lo último que vio la lista: al volver a la
+    // pestaña el token es el mismo de antes y no hay que recargar (era la doble carga).
     androidx.compose.runtime.LaunchedEffect(tokenRed) {
-        if (tokenRed > 0) vm.cargar()
+        vm.alVolverLaRed(tokenRed)
     }
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
@@ -246,7 +250,7 @@ fun PantallaPacientes(
         DialogoQrAdmision(
             clinicaNombre = ctx.clinicaNombre,
             // Al cerrar se recarga: quien se registró con el QR ya aparece.
-            onCerrar = { qrAdmisionAbierto = false; vm.cargar() },
+            onCerrar = { qrAdmisionAbierto = false; vm.cargar(trasCambio = true) },
         )
     }
 
@@ -257,7 +261,7 @@ fun PantallaPacientes(
             onCancelar = { nuevoAbierto = false },
             onCreado = { p ->
                 nuevoAbierto = false
-                vm.cargar()
+                vm.cargar(trasCambio = true)
                 // Si se creó SIN señal, su id es temporal: la ficha no podría leer
                 // nada del servidor con ese id. Se queda en la lista (ya aparece) y
                 // el aviso de "se registrará al volver la señal" ya se mostró.

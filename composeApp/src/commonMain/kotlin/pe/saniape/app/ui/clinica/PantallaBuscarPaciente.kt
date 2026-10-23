@@ -62,7 +62,11 @@ fun PantallaBuscarPaciente(
         // Lo último visto (caché local) al instante; la red lo refresca detrás.
         // Sin red y sin caché, lista vacía como antes.
         PacientesRepo.listarDeCache(ctx.scopePacientes).takeIf { it.isNotEmpty() }?.let { pacientes = it }
-        pacientes = runCatching { PacientesRepo.listar(ctx.scopePacientes) }.getOrNull() ?: pacientes ?: emptyList()
+        // Mismas columnas que la lista (sin teléfono ni correo en modo clínico): así
+        // comparte la petición si la lista la tiene en camino.
+        pacientes = runCatching {
+            PacientesRepo.listar(ctx.scopePacientes, conContacto = ctx.esGestor && !ctx.modoClinico)
+        }.getOrNull() ?: pacientes ?: emptyList()
     }
 
     val filtrados = remember(query, pacientes) {
