@@ -860,8 +860,9 @@ fun PantallaCrearCita(
                 )
 
                 // Costo (si tiene permiso pagos)
-                // Diagnóstico (Evaluación) — opcional al agendar.
-                if (tipo == "Evaluación") {
+                // Diagnóstico (Evaluación) — opcional al agendar. Es clínico: sin el
+                // permiso 'historia_clinica' no se pide (lo escribe quien evalúa).
+                if (tipo == "Evaluación" && pe.saniape.app.data.staff.verHistoriaClinica(ctx)) {
                     Spacer(Modifier.height(Sania.dim.md))
                     Etiqueta("Diagnóstico / Motivo (opcional)")
                     OutlinedTextField(
