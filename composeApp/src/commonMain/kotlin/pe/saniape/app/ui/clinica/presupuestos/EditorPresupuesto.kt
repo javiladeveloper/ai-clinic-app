@@ -144,7 +144,8 @@ internal fun EditorPresupuesto(
     val errDescVivo = errorDescuento(modoDesc, valorDesc, t.subtotal, moneda)
     val activos = remember(servicios) { servicios.filter { (it.estado ?: "Activo") == "Activo" } }
     val q = busqueda.trim().lowercase()
-    val resultados = if (q.isEmpty()) emptyList() else activos.filter { it.nombre.lowercase().contains(q) }.take(8)
+    // Sin tildes y con las palabras en cualquier orden (la regla de la web, BuscarOpciones).
+    val resultados = if (q.isEmpty()) emptyList() else pe.saniape.app.data.staff.filtrarOpciones(activos, q) { it.nombre }.take(8)
     fun servicioDe(it: ItemPresupuesto) = it.procedimientoId?.let { id -> servicios.firstOrNull { s -> s.id == id } }
 
     fun agregar(it: ItemPresupuesto) {
@@ -331,7 +332,7 @@ internal fun EditorPresupuesto(
                                     .padding(horizontal = 12.dp, vertical = 11.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text(s.nombre, color = c.texto, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                                pe.saniape.app.ui.clinica.TextoResaltado(s.nombre, busqueda, Modifier.weight(1f), fontSize = 13.sp)
                                 Spacer(Modifier.width(8.dp))
                                 Text(it.precioLista?.let { p -> "${din(p)}$sufijo" } ?: "sin precio", color = c.textoSuave, fontSize = 12.sp)
                             }

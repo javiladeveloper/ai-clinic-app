@@ -216,10 +216,13 @@ internal fun AceptarPresupuesto(
         )
     }
     eligiendoServicioDe?.let { clave ->
-        DialogoOpciones(
+        // Con buscador (el catálogo puede ser largo), como el selector de la web.
+        pe.saniape.app.ui.clinica.DialogoElegirBuscable(
             titulo = "Servicio",
-            opciones = listOf<Pair<String?, String>>(null to "Crear sin servicio (con su nombre)") + activos.map { it.id to it.nombre },
-            onElegir = { id -> servLibre = if (id == null) servLibre - clave else servLibre + (clave to id); eligiendoServicioDe = null },
+            opciones = activos, etiqueta = { it.nombre },
+            detalle = { s -> s.precio?.takeIf { it > 0 }?.let { pe.saniape.app.data.staff.dineroActivo(it) } },
+            opcionVacia = "Crear sin servicio (con su nombre)",
+            onElegir = { s -> servLibre = if (s == null) servLibre - clave else servLibre + (clave to s.id); eligiendoServicioDe = null },
             onCerrar = { eligiendoServicioDe = null },
         )
     }

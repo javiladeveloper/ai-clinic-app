@@ -19,8 +19,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -301,13 +299,15 @@ private fun FilaServicio(f: FilaPuntual, servicios: List<ProcedimientoRef>, onSe
                 val nombre = servicios.find { it.id == f.procedimientoId }?.nombre
                 Text(nombre ?: "Elige el servicio…", color = if (nombre != null) c.texto else c.textoSuave, fontSize = 13.sp, maxLines = 1)
             }
-            DropdownMenu(expanded = abierto, onDismissRequest = { abierto = false }) {
-                servicios.forEach { s ->
-                    DropdownMenuItem(
-                        text = { Text(s.nombre + (if (s.precio > 0) " · ${dineroActivo(s.precio)}" else ""), fontSize = 14.sp) },
-                        onClick = { abierto = false; onServicio(s.id) },
-                    )
-                }
+            // Con buscador y el precio en gris (como el selector de servicio de la web).
+            if (abierto) {
+                pe.saniape.app.ui.clinica.DialogoElegirBuscable(
+                    titulo = "Servicio · ${etiquetaPieza(f.diente)}",
+                    opciones = servicios, etiqueta = { it.nombre },
+                    detalle = { s -> s.precio.takeIf { it > 0 }?.let { dineroActivo(it) } },
+                    onElegir = { s -> abierto = false; s?.let { onServicio(it.id) } },
+                    onCerrar = { abierto = false },
+                )
             }
         }
         Spacer(Modifier.width(6.dp))

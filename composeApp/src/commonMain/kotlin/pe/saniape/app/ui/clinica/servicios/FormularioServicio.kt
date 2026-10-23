@@ -638,7 +638,8 @@ private fun SelectorServicio(servicios: List<ServicioApp>, onElegir: (ServicioAp
                 )
                 Spacer(Modifier.height(8.dp))
                 Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
-                    val lista = servicios.filter { q.isBlank() || it.nombre.contains(q.trim(), ignoreCase = true) }
+                    // Sin tildes y con las palabras en cualquier orden (la regla de la web).
+                    val lista = pe.saniape.app.data.staff.filtrarOpciones(servicios, q) { it.nombre }
                     if (lista.isEmpty()) Text("No hay otros servicios activos.", color = c.textoSuave, fontSize = 13.sp)
                     lista.forEach { s ->
                         Row(
@@ -646,7 +647,7 @@ private fun SelectorServicio(servicios: List<ServicioApp>, onElegir: (ServicioAp
                                 .clickable { onElegir(s) }.padding(vertical = 10.dp, horizontal = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(s.nombre, color = c.texto, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            pe.saniape.app.ui.clinica.TextoResaltado(s.nombre, q, Modifier.weight(1f), fontSize = 14.sp)
                             Text(dineroActivo(s.precio), color = c.textoSuave, fontSize = 12.sp)
                         }
                     }

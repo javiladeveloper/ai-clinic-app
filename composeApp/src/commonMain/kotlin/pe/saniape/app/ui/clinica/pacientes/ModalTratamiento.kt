@@ -740,8 +740,18 @@ fun ModalCrearTratamiento(
 
                     Etq("Servicio")
                     Column(Modifier.tourAncla("tratamiento_form.servicio", valor = proc?.nombre ?: "")) {
-                        SelectorLista(procsVisibles, proc, { it.nombre },
-                            if (especialidad == null && terId == null) "Elige especialidad o profesional" else "Seleccionar…") { proc = it }
+                        // Con buscador (sin tildes, palabras en cualquier orden) y el precio de
+                        // lista en gris: con decenas de servicios ya no se recorre a ojo (web 24/10).
+                        pe.saniape.app.ui.clinica.SelectorBuscable(
+                            items = procsVisibles, elegido = proc, etiqueta = { it.nombre },
+                            placeholder = if (especialidad == null && terId == null) "Elige especialidad o profesional" else "Seleccionar…",
+                            onElegir = { proc = it },
+                            // La sede que cobra en otra moneda: su precio propio; si no, el del catálogo.
+                            detalle = { p ->
+                                val precio = precioSedeDe(p.id) ?: p.precio.takeIf { mismaMonedaSede }
+                                precio?.takeIf { it > 0 }?.let { pe.saniape.app.data.staff.formatearDinero(it, monedaSede) }
+                            },
+                        )
                     }
                 }
 
