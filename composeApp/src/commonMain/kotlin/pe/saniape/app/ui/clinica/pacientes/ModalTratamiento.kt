@@ -869,13 +869,20 @@ fun ModalCrearTratamiento(
                         SelectorBox(precioBaseONull?.let { "${simboloMoneda(moneda)} $it" } ?: "— (sin precio en esta sede)", bloqueado = true) {}
                         Spacer(Modifier.height(10.dp))
                         Etq(if (precioBaseONull == null) "Precio acordado (${simboloMoneda(moneda)})" else "Precio acordado (${simboloMoneda(moneda)}) — opcional")
-                        CampoNum(precioAcordado, ayuda = precioBaseONull?.let { "${simboloMoneda(moneda)} ${formatoNum(it)} (precio de lista)" }) { precioAcordado = it }
+                        // Vacío = se cobra la lista: se ve el precio como valor (web e2b218b7).
+                        CampoNum(
+                            precioAcordado, ayuda = precioBaseONull?.let { "${simboloMoneda(moneda)} ${formatoNum(it)}" },
+                            ayudaComoValor = precioBaseONull != null,
+                        ) { precioAcordado = it }
                         if (faltaPrecioMoneda) {
                             Text(avisoMoneda, color = c.error, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(top = 4.dp))
                         }
-                        Text("Vacío = se cobra el precio de lista; escríbelo solo si se negoció otro. " +
-                            "El servicio se registra al realizarse (paso “Por hacer”).",
+                        if (precioBaseONull != null && precioAcordado.isBlank()) {
+                            Text("Se cobra el precio de lista. Escribe otro si lo negocian.",
+                                color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                        }
+                        Text("El servicio se registra al realizarse (paso “Por hacer”).",
                             color = c.textoSuave, fontSize = 10.sp)
                     }
                 } else if (usaSesiones) {
@@ -1711,11 +1718,19 @@ private fun Etq(t: String) {
 }
 
 @Composable
-private fun CampoNum(value: String, ayuda: String? = null, onChange: (String) -> Unit) {
+private fun CampoNum(
+    value: String, ayuda: String? = null,
+    /**
+     * Vacío VALE la [ayuda] (el precio de lista): se pinta como un valor, no en gris
+     * (OMER, 24/10/2026: en gris parecía que «no jaló el precio»). No se guarda igual.
+     */
+    ayudaComoValor: Boolean = false,
+    onChange: (String) -> Unit,
+) {
     OutlinedTextField(colors = coloresCampoForm(),
         value = value, onValueChange = { onChange(it.filter { ch -> ch.isDigit() || ch == '.' }) },
         // Ayuda gris (placeholder): se ve mientras el campo está vacío y NUNCA se guarda.
-        placeholder = ayuda?.let { a -> { Text(a, color = Sania.colors.textoSuave) } },
+        placeholder = ayuda?.let { a -> { Text(a, color = if (ayudaComoValor) Sania.colors.texto else Sania.colors.textoSuave) } },
         singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth(),
     )
