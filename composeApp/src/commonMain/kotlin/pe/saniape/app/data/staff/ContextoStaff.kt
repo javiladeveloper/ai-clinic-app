@@ -412,6 +412,12 @@ fun verDatosPersonalesFicha(ctx: ContextoStaff): Boolean = ctx.puede("datos_pers
 fun verHistoriaClinica(ctx: ContextoStaff): Boolean = ctx.puede("historia_clinica")
 
 /**
+ * [verHistoriaClinica] del contexto cargado, para los repos que arman listas sin
+ * recibir el contexto (retención). Sin contexto todavía → true, como siempre.
+ */
+fun verHistoriaClinicaActual(): Boolean = StaffContextoRepo.actual?.let(::verHistoriaClinica) ?: true
+
+/**
  * `verHistoriaClinica(ctx)` para los composables del panel de clínica (se provee
  * en `ClinicaConTabs`, junto a la terminología). Lo usan las piezas hondas
  * (filas de sesión, modales de completar) que no reciben el contexto. Default

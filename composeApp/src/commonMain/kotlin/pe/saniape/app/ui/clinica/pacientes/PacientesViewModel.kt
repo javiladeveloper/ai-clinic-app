@@ -93,7 +93,8 @@ class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
     /** Lista tras búsqueda + filtro de estado (default: oculta Inactivos). */
     val filtrados: List<PacienteStaff>
         get() = pacientes.filter { p ->
-            coincideBusqueda(p.nombre, p.dni.takeIf { verContacto }, p.diagnostico, busqueda) &&
+            coincideBusqueda(p.nombre, p.dni.takeIf { verContacto },
+                p.diagnostico.takeIf { pe.saniape.app.data.staff.verHistoriaClinica(ctx) }, busqueda) &&
                 when (filtroEstado) {
                     // Por defecto, sin inactivos — EXCEPTO al buscar: a quien vuelve
                     // tras la baja hay que poder encontrarlo (si no, "no existe" y se

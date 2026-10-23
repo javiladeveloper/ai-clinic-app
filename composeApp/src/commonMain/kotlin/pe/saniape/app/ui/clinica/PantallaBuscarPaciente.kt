@@ -127,7 +127,7 @@ fun PantallaBuscarPaciente(
                                 Text(p.nombre, color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold, maxLines = 1)
                                 val sub = listOfNotNull(
                                     p.dni?.let { "DNI $it" },
-                                    p.diagnostico?.takeIf { it.isNotBlank() },
+                                    p.diagnostico?.takeIf { it.isNotBlank() && pe.saniape.app.data.staff.LocalVerHistoriaClinica.current },
                                 ).joinToString(" · ")
                                 if (sub.isNotBlank()) Text(sub, color = c.textoSuave, fontSize = Sania.txt.mini, maxLines = 1)
                             }

@@ -85,6 +85,9 @@ object RetencionRepo {
         val o = json.parseToJsonElement(r.data).jsonObject
         val total = o.s("total")?.toDoubleOrNull()?.toInt() ?: 0
         val filas = (o["filas"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.let(::filaRetencionDesde) }
+        // Sin 'historia_clinica' la lista de llamadas (y lo que se exporta de ella)
+        // va sin motivo ni diagnóstico: para llamar no hace falta lo clínico.
+        if (!verHistoriaClinicaActual()) return total to filas.map { it.copy(diagnostico = null, motivo = null) }
         return total to filas
     }
 
@@ -138,13 +141,15 @@ object RetencionRepo {
         val conTrat = idsConAlgo("tratamientos", ids)
         val conCitas = idsConAlgo("citas", ids.filter { it !in conTrat })
         val h = LocalDate.parse(hoy.take(10))
+        val verHc = verHistoriaClinicaActual()
         return pacs.mapNotNull { p ->
             val id = p.s("id") ?: return@mapNotNull null
             if (id in conTrat) return@mapNotNull null
             val ingreso = p.s("fecha_ingreso")
             val dias = runCatching { LocalDate.parse(ingreso!!.take(10)).daysUntil(h) }.getOrDefault(0)
             NuncaEmpezo(
-                id = id, nombre = p.s("nombre").orEmpty(), telefono = p.s("telefono"), diagnostico = p.s("diagnostico"),
+                id = id, nombre = p.s("nombre").orEmpty(), telefono = p.s("telefono"),
+                diagnostico = p.s("diagnostico")?.takeIf { verHc },
                 fechaIngreso = ingreso, diasDesdeIngreso = dias, hizoCita = id in conCitas,
                 descartado = p.s("descartado_at") != null, descartadoMotivo = p.s("descartado_motivo"),
             )

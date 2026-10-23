@@ -2855,6 +2855,9 @@ private fun ModalEditarPaciente(
             if (!sexoTocado) sexo = leido
         }
     }
+    // Sin 'historia_clinica': ni talla/peso, ni motivo/diagnóstico, ni síntomas (sus
+    // valores se guardan como estaban). Contacto, apoderado, notas y semáforo, sí.
+    val verHcEd = pe.saniape.app.data.staff.LocalVerHistoriaClinica.current
     var talla by remember { mutableStateOf(paciente.talla?.toString() ?: "") }
     var peso by remember { mutableStateOf(paciente.peso?.toString() ?: "") }
     var observaciones by remember { mutableStateOf(paciente.observaciones ?: "") }
@@ -2914,17 +2917,21 @@ private fun ModalEditarPaciente(
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) { CampoFicha("Edad", edad, soloNumero = true) { edad = it.take(3) } }
-                Column(Modifier.weight(1f)) { CampoFicha("Talla (cm)", talla, soloNumero = true) { talla = it.take(3) } }
-                Column(Modifier.weight(1f)) {
-                    CampoFicha("Peso (kg)", peso) { peso = it.filter { ch -> ch.isDigit() || ch == '.' }.take(6) }
+                if (verHcEd) {
+                    Column(Modifier.weight(1f)) { CampoFicha("Talla (cm)", talla, soloNumero = true) { talla = it.take(3) } }
+                    Column(Modifier.weight(1f)) {
+                        CampoFicha("Peso (kg)", peso) { peso = it.filter { ch -> ch.isDigit() || ch == '.' }.take(6) }
+                    }
                 }
             }
             Spacer(Modifier.height(8.dp))
             EtqForm("Sexo — opcional")
             SelectorSexo(sexo) { sexo = it; sexoTocado = true }
             Spacer(Modifier.height(8.dp))
-            CampoFicha("Motivo / Diagnóstico", diagnostico, multilinea = true) { diagnostico = it }
-            Spacer(Modifier.height(8.dp))
+            if (verHcEd) {
+                CampoFicha("Motivo / Diagnóstico", diagnostico, multilinea = true) { diagnostico = it }
+                Spacer(Modifier.height(8.dp))
+            }
             CampoFicha("Observaciones (notas libres)", observaciones, multilinea = true) { observaciones = it }
             Spacer(Modifier.height(10.dp))
             EtqForm("Comportamiento (semáforo)")
@@ -2948,6 +2955,7 @@ private fun ModalEditarPaciente(
             datos = apoderado,
             onChange = { apoderado = it },
         )
+        if (verHcEd) {
         Spacer(Modifier.height(12.dp))
         TarjetaForm(titulo = "Síntomas / patologías", icono = "🩹") {
             // Chips: los de las especialidades activas (los personalizados mandan) +
@@ -2968,6 +2976,7 @@ private fun ModalEditarPaciente(
                     tipoPatologia = if (pe.saniape.app.data.staff.claveChip(t) == pe.saniape.app.data.staff.claveChip(tipoPatologia)) "" else t
                 },
             )
+        }
         }
     }
 }

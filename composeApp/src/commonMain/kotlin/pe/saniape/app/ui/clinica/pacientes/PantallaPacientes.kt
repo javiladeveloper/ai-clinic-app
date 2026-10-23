@@ -312,8 +312,10 @@ private fun TarjetaPaciente(p: PacienteStaff, verContacto: Boolean, onClick: () 
                     BadgeEjemplo()
                 }
             }
-            // Línea: motivo / procedimiento del tratamiento activo
-            val sub = p.diagnostico ?: activo?.procedimiento
+            // Línea: motivo / procedimiento del tratamiento activo (el motivo es
+            // clínico: sin 'historia_clinica', solo el servicio).
+            val sub = p.diagnostico?.takeIf { pe.saniape.app.data.staff.LocalVerHistoriaClinica.current }
+                ?: activo?.procedimiento
             if (!sub.isNullOrBlank()) {
                 Text(sub, color = c.textoSuave, fontSize = 12.sp, maxLines = 1)
             }
