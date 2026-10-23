@@ -1127,7 +1127,8 @@ object PacientesRepo {
         put("fecha", fecha); put("duracion", duracion)
         if (!hora.isNullOrBlank()) put("hora", hora)
         if (costo != null) put("costo", costo)
-        if (!notas.isNullOrBlank()) put("notas", notas)
+        // null = no se tocan (sin 'historia_clinica' no se ven ni se mandan); "" las borra.
+        if (notas != null) put("notas", notas.trim())
     })
 
     /**
@@ -1149,8 +1150,9 @@ object PacientesRepo {
         if (notas != null) put("notas", notas)
         if (mejorias != null) put("mejorias", mejorias)
         if (conEva) {
-            put("dolorInicio", dolorInicio?.let { JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
-            put("dolorFin", dolorFin?.let { JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
+            // El servidor toma null como "no tocar": para vaciar la EVA se manda "".
+            put("dolorInicio", dolorInicio?.let { JsonPrimitive(it) } ?: JsonPrimitive(""))
+            put("dolorFin", dolorFin?.let { JsonPrimitive(it) } ?: JsonPrimitive(""))
         }
         if (!terapeutaId.isNullOrBlank()) put("terapeutaId", terapeutaId)
     })

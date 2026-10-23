@@ -759,7 +759,7 @@ fun TarjetaTratamiento(
             editarSesion = null
             scope.launch {
                 pe.saniape.app.ui.conIndicador(pe.saniape.app.ui.Gestion.ACTUALIZANDO) {
-                    PacientesRepo.editarSesion(ses.id, fecha, hora, dur, costo, notas)
+                    PacientesRepo.editarSesion(ses.id, fecha, hora, dur, costo, if (verClinico) notas.orEmpty() else null)
                 }
                 recargarSesiones()
             }
