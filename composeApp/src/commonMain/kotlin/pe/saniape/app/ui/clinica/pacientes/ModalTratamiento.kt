@@ -164,6 +164,11 @@ fun ModalCrearTratamiento(
      */
     desdeCita: Boolean = false,
     /**
+     * Fecha de inicio al crear (p. ej. la de la cita desde la que se crea: el
+     * tratamiento empieza ese día, OMER 24/10/2026); null = hoy.
+     */
+    fechaInicioInicial: String? = null,
+    /**
      * 🧾 "¿Lo está pensando o son varios servicios? Arma un presupuesto": al crear,
      * quien llama lo ofrece para cambiar el plan único por un presupuesto con varios
      * servicios y precio de paquete (gemelo de `onArmarPresupuesto` de TratamientoForm).
@@ -231,7 +236,7 @@ fun ModalCrearTratamiento(
     // Auditoría de descuentos: si el acordado queda por DEBAJO de la referencia, se pide el porqué.
     var motivoPrecio by remember { mutableStateOf("") }
     // Cuándo empieza (pasada si ya venía atendiéndose, futura si está programado). Default hoy.
-    var fechaInicio by remember { mutableStateOf(pe.saniape.app.ui.clinica.agenda.hoyIso()) }
+    var fechaInicio by remember { mutableStateOf(fechaInicioInicial ?: pe.saniape.app.ui.clinica.agenda.hoyIso()) }
     var mostrarFechaInicio by remember { mutableStateOf(false) }
     // Primera sesión en el mismo paso: arranca DESMARCADA (decisión del dueño,
     // 2026-10-09): nunca se crea una cita sin que alguien elija fecha y hora. Al

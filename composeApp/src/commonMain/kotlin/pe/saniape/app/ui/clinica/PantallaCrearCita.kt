@@ -464,6 +464,8 @@ fun PantallaCrearCita(
             terapeutaInicialId = terapeuta?.id,
             especialidadInicialId = especialidad?.id ?: terapeuta?.especialidadIds?.singleOrNull(),
             desdeCita = true,
+            // El tratamiento empieza el día de la cita (OMER, 24/10/2026: antes caía en hoy).
+            fechaInicioInicial = fecha,
             onCancelar = { crearTratamiento = false },
             onGuardar = guardarTrat@{ nuevo ->
                 // Un segundo toque mientras se crea no manda otra petición.
@@ -507,6 +509,9 @@ fun PantallaCrearCita(
                                 nuevo.modalidad, nuevo.precioPorSesion, nuevo.precioAcordado,
                             )
                         }
+                        // Si en el tratamiento se eligió otro día de inicio, la cita (su primera
+                        // atención) va ese día; la hora elegida se conserva (como la web).
+                        nuevo.fechaInicio?.takeIf { it != fecha }?.let { fecha = it }
                         mensaje = null
                     } finally {
                         creandoTratamiento = false
