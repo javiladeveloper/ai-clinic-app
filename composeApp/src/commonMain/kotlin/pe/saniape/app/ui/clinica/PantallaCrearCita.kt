@@ -147,7 +147,7 @@ fun PantallaCrearCita(
     // Creándolo: el botón queda desactivado (con progreso) hasta que vuelva la
     // petición y se recargue la lista. Sin esto, un doble toque creaba dos.
     var creandoTratamiento by remember { mutableStateOf(false) }
-    // El tratamiento creado aquí y el costo de su Sesión #1 (sesión suelta → su precio).
+    // El tratamiento creado aquí y el costo de su primera atención (costoPrimeraSesion).
     var creadoAqui by remember { mutableStateOf<Pair<String, Double?>?>(null) }
     var precioConsulta by remember { mutableStateOf(0.0) }
     var precioEvaluacion by remember { mutableStateOf(40.0) }
@@ -358,7 +358,7 @@ fun PantallaCrearCita(
         val p = paciente
         tratamientosDe = null
         tratamientos = if (p != null) try {
-            AgendaRepo.tratamientosActivos(p.id).also { tratamientosDe = p.id }
+            AgendaRepo.tratamientosAgendables(p.id).also { tratamientosDe = p.id }
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (_: Exception) { emptyList() } else emptyList()
@@ -473,7 +473,11 @@ fun PantallaCrearCita(
                 scope.launch {
                     try {
                         // Toast, plantilla y diagnóstico van adentro (el mismo camino de la ficha).
-                        val r = pe.saniape.app.ui.clinica.pacientes.guardarTratamientoNuevo(pacTrat.id, nuevo, pacTrat.nombre)
+                        val r = pe.saniape.app.ui.clinica.pacientes.guardarTratamientoNuevo(
+                            pacTrat.id, nuevo, pacTrat.nombre,
+                            textoExito = "Tratamiento creado: esta cita será " +
+                                pe.saniape.app.data.staff.nombreCitaDelTratamiento(nuevo.modalidad),
+                        )
                         if (!r.creado || paciente?.id != pacTrat.id) return@launch
                         if (r.encolada) {
                             // Sin id todavía: la cita no se puede atar a él.
@@ -481,7 +485,7 @@ fun PantallaCrearCita(
                             return@launch
                         }
                         val id = r.tratamientoId
-                        val lista = runCatching { AgendaRepo.tratamientosActivos(pacTrat.id) }.getOrNull()
+                        val lista = runCatching { AgendaRepo.tratamientosAgendables(pacTrat.id) }.getOrNull()
                             ?.takeIf { l -> id == null || l.any { it.id == id } }
                             // No se pudo recargar (o aún no se ve): se agrega el creado tal cual.
                             ?: (tratamientos + listOfNotNull(id?.let {
@@ -496,8 +500,12 @@ fun PantallaCrearCita(
                         // Queda elegido en la cita: se agenda como su Sesión #1.
                         val elegido = pe.saniape.app.data.staff.tratamientoCreadoEnLista(lista, id)
                         tratamiento = elegido
+                        // Su costo según el modo: suelta → precio por sesión; pago único → el
+                        // precio acordado (lo lleva esta primera atención); paquete/unidades → 0.
                         creadoAqui = elegido?.let {
-                            it.id to pe.saniape.app.data.staff.costoPrimeraSesion(nuevo.modalidad, nuevo.precioPorSesion)
+                            it.id to pe.saniape.app.data.staff.costoPrimeraSesion(
+                                nuevo.modalidad, nuevo.precioPorSesion, nuevo.precioAcordado,
+                            )
                         }
                         mensaje = null
                     } finally {
@@ -585,8 +593,9 @@ fun PantallaCrearCita(
             val r = AgendaRepo.crearCitaDetalle(
                 pacienteId = p.id, tipo = tipo, fecha = fecha, hora = hora,
                 terapeutaId = terId, tratamientoId = tratamiento?.id,
-                // Sesión #1 de un tratamiento creado aquí: su costo como lo pondría el
-                // tratamiento (paquete → 0; sesión suelta → su precio por sesión).
+                // Primera atención de un tratamiento creado aquí: su costo como lo pondría
+                // el tratamiento (paquete/unidades → 0; suelta → precio por sesión; pago
+                // único → precio acordado). Otra atención de un pago único: sin costo.
                 costo = creadoAqui?.takeIf { tipo == "Sesión" && it.first == tratamiento?.id }
                     ?.let { it.second ?: 0.0 }
                     ?: costo.toDoubleOrNull() ?: 0.0,

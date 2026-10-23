@@ -87,24 +87,59 @@ fun modoCobroServicio(p: ProcedimientoRef): String =
         ?: if (p.usaSesiones) "sesiones" else "simple"
 
 /**
- * Servicios que se ofrecen al crear el tratamiento DESDE una cita de Sesión: solo
- * los que van por sesiones (un pago único o por unidades no se agenda como
- * "Sesión #1") y de la especialidad de la cita si eligió una (los servicios sin
- * especialidad sirven siempre). `serviciosParaSesion` de la web.
+ * Servicios que se ofrecen al crear el tratamiento DESDE una cita de Sesión:
+ * TODOS los activos —por sesiones, pago único y por unidades— (dueño, 24/10/2026,
+ * Centro OMER: «si yo vengo específicamente por un tratamiento, el que quiero, no
+ * necesito evaluación»; antes solo salían los de sesiones). De la especialidad de
+ * la cita si eligió una (los servicios sin especialidad sirven siempre). La lista
+ * que llega ya es de servicios activos (`PacientesRepo.procedimientos`).
+ * `serviciosParaCita` de la web; cómo queda la cita en cada modo: [costoPrimeraSesion].
  */
-fun serviciosParaSesion(servicios: List<ProcedimientoRef>, especialidadId: String?): List<ProcedimientoRef> =
+fun serviciosParaCita(servicios: List<ProcedimientoRef>, especialidadId: String?): List<ProcedimientoRef> =
     servicios.filter { s ->
-        modoCobroServicio(s) == "sesiones" &&
-            (especialidadId.isNullOrBlank() || s.especialidadId == null || s.especialidadId == especialidadId)
+        especialidadId.isNullOrBlank() || s.especialidadId == null || s.especialidadId == especialidadId
     }
 
 /**
- * Costo de la Sesión #1 de un tratamiento recién creado (`costoPrimeraSesion` de
- * la web): en un paquete la sesión no se cobra suelta (null); en "Sesión suelta",
- * su precio por sesión.
+ * Costo de la PRIMERA atención de un tratamiento recién creado desde la cita (la
+ * cita, tipo Sesión, es esa atención). `costoPrimeraSesion` de la web. El dinero
+ * vive en el tratamiento; el costo de la cita solo dice qué vale ESA atención:
+ *
+ * - Paquete → null: la sesión no se cobra suelta.
+ * - Sesión suelta → su precio por sesión.
+ * - Pago único (modalidad "Consulta") → el precio acordado: es UN cobro por el
+ *   tratamiento y lo lleva esta primera atención. Las siguientes del mismo
+ *   tratamiento se agendan sin costo (solo la del creado aquí lleva precio).
+ * - Unidades → null: como la intervención agendada desde la ficha; se cobra el
+ *   acordado del tratamiento.
  */
-fun costoPrimeraSesion(modalidad: String?, precioPorSesion: Double?): Double? =
-    if (modalidad == "Sesión suelta") precioPorSesion else null
+fun costoPrimeraSesion(modalidad: String?, precioPorSesion: Double?, precioAcordado: Double? = null): Double? = when (modalidad) {
+    "Sesión suelta" -> precioPorSesion
+    "Consulta" -> precioAcordado?.takeIf { it > 0 }
+    else -> null
+}
+
+/**
+ * Cómo se nombra la cita del tratamiento recién creado (el aviso al guardarlo).
+ * En un pago único o por unidades no hay "Sesión #1": es su atención.
+ * `nombreCitaDelTratamiento` de la web.
+ */
+fun nombreCitaDelTratamiento(modalidad: String?): String = when (modalidad) {
+    "Consulta" -> "su primera atención"
+    "Unidades" -> "su intervención"
+    else -> "su Sesión #1"
+}
+
+/**
+ * ¿Se le puede agendar una Sesión a este tratamiento? Los activos, y además el
+ * PAGO ÚNICO ya realizado y sin alta (modalidad "Consulta" en "Completado"):
+ * «quizás necesite 2 o con 1 basta, es dinámico» (dueño, 24/10/2026). Completar
+ * su primera atención lo deja "Realizado" pero NO cerrado —se cierra con «Dar de
+ * alta»—, y la otra atención va sin volver a cobrar. Un paquete completado no:
+ * ese se amplía. `tratamientoAgendableEnSesion` de la web.
+ */
+fun tratamientoAgendableEnSesion(estado: String?, modalidad: String?): Boolean =
+    estado == "Activo" || (estado == "Completado" && modalidad == "Consulta")
 
 /**
  * Tras crear el tratamiento desde la cita: cuál queda elegido. El del id que

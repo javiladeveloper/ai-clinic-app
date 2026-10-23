@@ -73,26 +73,64 @@ class SesionSinTratamientoTest {
         ProcedimientoRef(id, id, 50.0, null, esp, usaSesiones, emptyList(), modoCobro = modo)
 
     @Test
-    fun soloServiciosPorSesionesDeLaEspecialidad() {
+    fun todosLosServiciosDeLaEspecialidad() {
+        // Desde la cita se ofrecen TODOS (sesiones, pago único, unidades): dueño, 24/10/2026.
         val l = listOf(
             servicio("terapia", "psico"),
-            servicio("evaluacion", "psico", modo = "sesiones"),
             servicio("informe", "psico", modo = "simple"),
-            servicio("consulta", "psico", usaSesiones = false),      // especialidad sin sesiones
+            servicio("consulta", "psico", usaSesiones = false),
             servicio("taller", null),                                 // sin especialidad: sirve siempre
             servicio("fisio", "fisio"),
             servicio("botox", "psico", modo = "unidades"),
-            servicio("raro", "psico", modo = "otro"),                 // modo inválido → el de la especialidad
         )
-        assertEquals(listOf("terapia", "evaluacion", "taller", "raro"), serviciosParaSesion(l, "psico").map { it.id })
-        assertEquals(listOf("terapia", "evaluacion", "taller", "fisio", "raro"), serviciosParaSesion(l, null).map { it.id })
+        assertEquals(listOf("terapia", "informe", "consulta", "taller", "botox"), serviciosParaCita(l, "psico").map { it.id })
+        assertEquals(l.map { it.id }, serviciosParaCita(l, null).map { it.id })
+        assertEquals(l.map { it.id }, serviciosParaCita(l, " ").map { it.id })
     }
 
     @Test
-    fun costoDeLaPrimeraSesion() {
-        assertNull(costoPrimeraSesion("Paquete", 80.0))
+    fun costoDeLaPrimeraAtencionPorModo() {
+        // Paquete: la sesión no se cobra suelta.
+        assertNull(costoPrimeraSesion("Paquete", 80.0, 800.0))
+        // Sesión suelta: su precio por sesión.
         assertEquals(60.0, costoPrimeraSesion("Sesión suelta", 60.0))
         assertNull(costoPrimeraSesion("Sesión suelta", null))
+        // Pago único: el precio acordado lo lleva la primera atención.
+        assertEquals(500.0, costoPrimeraSesion("Consulta", null, 500.0))
+        assertNull(costoPrimeraSesion("Consulta", null, 0.0))     // consulta gratis
+        assertNull(costoPrimeraSesion("Consulta", null, null))
+        // Unidades: se cobra el acordado del tratamiento, no la cita.
+        assertNull(costoPrimeraSesion("Unidades", null, 1200.0))
+    }
+
+    @Test
+    fun nombreDeLaCitaDelTratamiento() {
+        assertEquals("su Sesión #1", nombreCitaDelTratamiento("Paquete"))
+        assertEquals("su Sesión #1", nombreCitaDelTratamiento("Sesión suelta"))
+        assertEquals("su primera atención", nombreCitaDelTratamiento("Consulta"))
+        assertEquals("su intervención", nombreCitaDelTratamiento("Unidades"))
+        assertEquals("su Sesión #1", nombreCitaDelTratamiento(null))
+    }
+
+    @Test
+    fun agendableEnSesionIncluyeElPagoUnicoRealizado() {
+        assertTrue(tratamientoAgendableEnSesion("Activo", "Paquete"))
+        assertTrue(tratamientoAgendableEnSesion("Activo", "Consulta"))
+        // Pago único realizado y sin alta: otra atención.
+        assertTrue(tratamientoAgendableEnSesion("Completado", "Consulta"))
+        // Un paquete completado se amplía, no se agenda; alta / cancelado, nunca.
+        assertFalse(tratamientoAgendableEnSesion("Completado", "Paquete"))
+        assertFalse(tratamientoAgendableEnSesion("Completado", "Unidades"))
+        assertFalse(tratamientoAgendableEnSesion("Alta", "Consulta"))
+        assertFalse(tratamientoAgendableEnSesion(null, "Consulta"))
+    }
+
+    @Test
+    fun etiquetaDelPagoUnicoRealizado() {
+        val activo = TratamientoRef("t1", "Piel Renovada", "Consulta", null)
+        assertFalse("realizado" in activo.etiqueta())
+        val hecho = activo.copy(estado = "Completado")
+        assertEquals("Piel Renovada · realizado (otra atención)", hecho.etiqueta())
     }
 
     @Test

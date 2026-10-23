@@ -692,15 +692,21 @@ object AgendaRepo {
         }
     }
 
-    /** Tratamientos activos de un paciente (para tipo Sesión). */
-    suspend fun tratamientosActivos(pacienteId: String): List<TratamientoRef> {
+    /**
+     * Tratamientos a los que se les puede agendar una Sesión: los activos y el
+     * pago único ya realizado sin alta ([tratamientoAgendableEnSesion], gemelo de
+     * `tratamientosParaSesion` del CitaForm web). También el control vinculado.
+     */
+    suspend fun tratamientosAgendables(pacienteId: String): List<TratamientoRef> {
         // El servicio trae su modalidad (cita virtual): la cita la hereda en el formulario.
-        val base = "id, modalidad, terapeuta_id, diagnostico, fecha_inicio, total_sesiones, sesiones_completadas, procedimiento:procedimientos(nombre, especialidad_id"
+        val base = "id, estado, modalidad, terapeuta_id, diagnostico, fecha_inicio, total_sesiones, sesiones_completadas, procedimiento:procedimientos(nombre, especialidad_id"
         suspend fun traer(cols: String) = Supabase.client.postgrest["tratamientos"]
             .select(Columns.raw(cols)) {
-                filter { eq("paciente_id", pacienteId); eq("estado", "Activo") }
+                filter { eq("paciente_id", pacienteId); isIn("estado", listOf("Activo", "Completado")) }
             }
             .decodeList<JsonObject>()
+                // Un paquete Completado no: ese se amplía.
+                .filter { tratamientoAgendableEnSesion(it.str("estado"), it.str("modalidad")) }
         val filas = if (!virtualesEnBase) traer("$base)") else try {
             traer("$base, modalidad, enlace_modo, enlace_fijo)")
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
@@ -725,6 +731,7 @@ object AgendaRepo {
                 servicio = it.nested("procedimiento")?.let { p ->
                     ServicioModalidad(p.str("modalidad"), p.str("enlace_modo"), p.str("enlace_fijo"))
                 },
+                estado = it.str("estado") ?: "Activo",
             )
         }
     }
@@ -969,6 +976,8 @@ data class TratamientoRef(
     val sesionesCompletadas: Int? = null,
     /** Modalidad del servicio (cita virtual): la cita de este tratamiento nace como él. */
     val servicio: ServicioModalidad? = null,
+    /** "Activo", o "Completado" en un pago único realizado sin alta ([tratamientoAgendableEnSesion]). */
+    val estado: String = "Activo",
 ) {
     /**
      * Cómo se nombra en una lista para elegir. Con dos tratamientos del mismo
@@ -985,6 +994,8 @@ data class TratamientoRef(
             val meses = listOf("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "set", "oct", "nov", "dic")
             partes += "desde ${m.groupValues[3].toInt()} ${meses[m.groupValues[2].toInt() - 1]}"
         }
+        // Pago único ya realizado (sin alta): se le agenda otra atención (como la web).
+        if (estado != "Activo") partes += "realizado (otra atención)"
         return partes.joinToString(" · ")
     }
 }

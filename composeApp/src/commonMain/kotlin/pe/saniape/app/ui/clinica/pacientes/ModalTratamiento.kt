@@ -370,9 +370,9 @@ fun ModalCrearTratamiento(
     val espId = especialidad?.id
     val terId = if (miTerapeutaId != null) miTerapeutaId else terapeuta?.id
     val espsDelProf = terapeutas.find { it.id == terId }?.especialidadIds ?: emptyList()
-    // Desde una cita de Sesión: solo servicios por sesiones y de la especialidad de
-    // la cita (un pago único o por unidades no se agenda como "Sesión #1").
-    val procsPermitidos = if (desdeCita) pe.saniape.app.data.staff.serviciosParaSesion(procedimientos, especialidadInicialId)
+    // Desde una cita de Sesión: TODOS los servicios (sesiones, pago único, unidades)
+    // de la especialidad de la cita; la cita es su primera atención (costoPrimeraSesion).
+    val procsPermitidos = if (desdeCita) pe.saniape.app.data.staff.serviciosParaCita(procedimientos, especialidadInicialId)
         else procedimientos
     val procsVisibles = procsPermitidos.filter { p ->
         when {
@@ -989,9 +989,13 @@ fun ModalCrearTratamiento(
 
                 // PRIMERA SESIÓN en el mismo paso: sin esto había que crear el
                 // tratamiento y después buscarlo para agendar (28/09/2026).
-                if (usaSesiones && desdeCita) {
+                if (tipoTrat != null && desdeCita) {
+                    // Desde la cita: esa cita es su Sesión #1 / su primera atención / su intervención.
+                    val nombreCita = pe.saniape.app.data.staff.nombreCitaDelTratamiento(
+                        pe.saniape.app.data.staff.modalidadAGuardar(tipoTrat, modalidad),
+                    ).replaceFirstChar { it.uppercase() }
                     Spacer(Modifier.height(8.dp))
-                    Text("La sesión #1 es la cita que estás agendando: al crear, queda elegido en ella.",
+                    Text("$nombreCita es la cita que estás agendando: al crear, queda elegido en ella.",
                         color = c.textoSuave, fontSize = 11.sp)
                 } else if (usaSesiones) {
                     Spacer(Modifier.height(12.dp))
@@ -1166,7 +1170,11 @@ suspend fun ofertaPrimeraCitaDe(
  * que lo crean: ficha, agenda, nuevo paquete). Avisa con su toast, cuenta el uso
  * de la plantilla y devuelve la oferta de agendar la primera cita si no se agendó.
  */
-suspend fun guardarTratamientoNuevo(pacienteId: String, nuevo: TratamientoNuevo, nombrePaciente: String? = null): ResultadoCrearTratamiento {
+suspend fun guardarTratamientoNuevo(
+    pacienteId: String, nuevo: TratamientoNuevo, nombrePaciente: String? = null,
+    /** El aviso de éxito si no es el de siempre (desde la cita: "esta cita será su Sesión #1"). */
+    textoExito: String? = null,
+): ResultadoCrearTratamiento {
     val r = PacientesRepo.crearTratamientoDetalle(cuerpoDe(pacienteId, nuevo))
     val id = idCreado(r)
     if (!r.registrada && id == null) {
@@ -1178,7 +1186,7 @@ suspend fun guardarTratamientoNuevo(pacienteId: String, nuevo: TratamientoNuevo,
         !r.registrada -> pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "El tratamiento se creó, pero no todo se guardó")
         r.encolada -> Unit   // la cola ya avisó ("se registrará al volver la señal")
         nuevo.primeraFecha != null -> pe.saniape.app.ui.Toaster.exito("Tratamiento creado con su primera sesión")
-        else -> pe.saniape.app.ui.Toaster.exito("Tratamiento creado")
+        else -> pe.saniape.app.ui.Toaster.exito(textoExito ?: "Tratamiento creado")
     }
     // Campaña con «incluye la evaluación»: si no se pudo descontar (o se descontará al
     // cobrarla), el servidor lo dice en `avisoEntrada`.
