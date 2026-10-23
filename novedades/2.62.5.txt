@@ -1,0 +1,7 @@
+Nuevo permiso «Historia clínica»: el administrador puede quitárselo a quien no deba leer lo clínico (por ejemplo, recepción). Esa persona sigue agendando, viendo los tratamientos y cobrando, sin ver notas, diagnóstico ni evaluaciones.
+---
+Equipo y privacidad:
+• Permiso nuevo «Historia clínica», por persona, desde Equipo en la web.
+• Sin él: agenda, tratamientos, cobros y completar sesión funcionan igual.
+• Se ocultan notas de sesión, diagnóstico, exámenes, informes, recetas, evaluaciones e historia clínica.
+• Al editar una sesión, borrar las notas o la EVA ahora se guarda bien.
