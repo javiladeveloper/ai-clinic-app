@@ -176,6 +176,9 @@ fun ModalCrearTratamiento(
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
+    // Sin 'historia_clinica' se crea el plan (servicio, profesional, precio) sin ver
+    // el diagnóstico ni las indicaciones; lo precargado viaja igual, sin tocarlo.
+    val verHc = pe.saniape.app.data.staff.LocalVerHistoriaClinica.current
     var procedimientos by remember { mutableStateOf<List<ProcedimientoRef>>(emptyList()) }
     var terapeutas by remember { mutableStateOf<List<TerapeutaConEsp>>(emptyList()) }
     var especialidades by remember { mutableStateOf<List<EspecialidadClinica>>(emptyList()) }
@@ -682,6 +685,7 @@ fun ModalCrearTratamiento(
                         Spacer(Modifier.height(10.dp))
                     }
 
+                    if (verHc) {
                     Etq("Diagnóstico")
                     // Typeahead + chips como la web (TratamientoForm): las patologías de la
                     // especialidad del servicio (las personalizadas mandan) y lo aprendido
@@ -706,6 +710,7 @@ fun ModalCrearTratamiento(
                             modifier = Modifier.padding(top = 2.dp))
                     }
                     Spacer(Modifier.height(10.dp))
+                    }
 
                     if (especialidades.size > 1 && miTerapeutaId == null) {
                         Etq("Especialidad")
@@ -939,7 +944,7 @@ fun ModalCrearTratamiento(
 
                 // Indicaciones y control que trajo la plantilla (editables; se guardan al crear
                 // como medicación y próximo control, en cualquier tipo de tratamiento).
-                if (proc != null && (verIndicaciones || medicacion.isNotBlank() || proximoControl != null)) {
+                if (verHc && proc != null && (verIndicaciones || medicacion.isNotBlank() || proximoControl != null)) {
                     Spacer(Modifier.height(12.dp))
                     Tarjeta(titulo = "Indicaciones de la plantilla", icono = "💊") {
                         Etq("Medicación / cuidados")
@@ -1344,6 +1349,7 @@ fun ModalEditarTratamiento(
     val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val correccion = onCorregir != null
+    val verHcC = pe.saniape.app.data.staff.LocalVerHistoriaClinica.current
     var diagnosticoC by remember { mutableStateOf(t.diagnostico ?: "") }
     var terapeutaC by remember { mutableStateOf(t.terapeutaId) }
     var terapeutasC by remember { mutableStateOf<List<pe.saniape.app.data.staff.RefNombre>?>(null) }
@@ -1385,11 +1391,14 @@ fun ModalEditarTratamiento(
                         Text(pe.saniape.app.data.staff.DETALLE_CORRECCION, color = c.pend, fontSize = 11.sp)
                     }
                     Spacer(Modifier.height(12.dp))
-                    Tarjeta(titulo = "Datos clínicos", icono = "🩺") {
-                        Etq("Diagnóstico")
-                        OutlinedTextField(colors = coloresCampoForm(), value = diagnosticoC, onValueChange = { diagnosticoC = it },
-                            minLines = 2, modifier = Modifier.fillMaxWidth())
-                        Spacer(Modifier.height(10.dp))
+                    Tarjeta(titulo = if (verHcC) "Datos clínicos" else "Profesional", icono = "🩺") {
+                        // Sin 'historia_clinica' el diagnóstico no se ve (viaja el de siempre).
+                        if (verHcC) {
+                            Etq("Diagnóstico")
+                            OutlinedTextField(colors = coloresCampoForm(), value = diagnosticoC, onValueChange = { diagnosticoC = it },
+                                minLines = 2, modifier = Modifier.fillMaxWidth())
+                            Spacer(Modifier.height(10.dp))
+                        }
                         Etq("Profesional")
                         val lista = terapeutasC
                         if (lista == null) Text("Cargando…", color = c.textoSuave, fontSize = 12.sp)
@@ -1524,6 +1533,7 @@ fun ModalEditarConsulta(
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
+    val verHc = pe.saniape.app.data.staff.LocalVerHistoriaClinica.current
     var fecha by remember { mutableStateOf(cita?.fecha ?: "") }
     var hora by remember { mutableStateOf(cita?.hora ?: "09:00") }
     var diagnostico by remember { mutableStateOf(t.diagnostico ?: "") }
@@ -1619,6 +1629,9 @@ fun ModalEditarConsulta(
         }
 
         Tarjeta(titulo = "Atención", icono = "📝") {
+            // Diagnóstico y medicación son clínicos: sin 'historia_clinica' no se ven
+            // (se guardan los de siempre, sin tocarlos). Fecha, control y costo, sí.
+            if (verHc) {
             Etq("Diagnóstico")
             OutlinedTextField(colors = coloresCampoForm(), value = diagnostico, onValueChange = { diagnostico = it },
                 placeholder = { Text("Hallazgos / diagnóstico", color = c.textoSuave) },
@@ -1632,6 +1645,7 @@ fun ModalEditarConsulta(
                 campo = pe.saniape.app.data.staff.ClaveFrase.TRATAMIENTO_INDICACIONES,
             )
             Spacer(Modifier.height(10.dp))
+            }
             Etq("Próximo control (opcional)")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) { SelectorCajita(proximoControl.ifBlank { "📅 Elegir fecha…" }, vacio = proximoControl.isBlank()) { mostrarProxControl = true } }

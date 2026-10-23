@@ -89,6 +89,8 @@ fun BarraRecorrido(
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
+    // Sin 'historia_clinica' la nube de cada paso no muestra diagnóstico ni medicación.
+    val verClinico = pe.saniape.app.data.staff.LocalVerHistoriaClinica.current
     val esServUnico = trat.esServicioUnico
     // Con controles pendientes sigue 'Activo' pero el servicio YA se hizo.
     val servRealizado = pe.saniape.app.data.staff.realizadoParaRecorrido(trat, citasTrat)
@@ -258,8 +260,9 @@ fun BarraRecorrido(
             // Paso Control: próxima cita aprox + decisión del profesional (aunque no haya cita).
             if (esControlAbierto) {
                 if (citaAbierta == null) Text("🗓 Control", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                // Lo registrado por el profesional al atender (diagnóstico/medicación).
-                trat.medicacion?.takeIf { it.isNotBlank() }?.let { FilaRef("Medicación", it) }
+                // Lo registrado por el profesional al atender (diagnóstico/medicación):
+                // clínico, solo con 'historia_clinica'.
+                if (verClinico) trat.medicacion?.takeIf { it.isNotBlank() }?.let { FilaRef("Medicación", it) }
                 FilaRef("Próx. control", trat.proximoControl?.takeIf { it.isNotBlank() } ?: "Sin agendar")
                 if (!altaTrat) {
                     Spacer(Modifier.height(8.dp))
@@ -269,7 +272,8 @@ fun BarraRecorrido(
                             Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.navy)
                                 .clickable { onRegistrarAtencion() }.padding(vertical = 9.dp),
                             contentAlignment = Alignment.Center,
-                        ) { Text("📝 Registrar atención (medicación/receta)", color = c.sobreNavy, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        ) { Text(if (verClinico) "📝 Registrar atención (medicación/receta)" else "📝 Registrar atención",
+                            color = c.sobreNavy, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                         Spacer(Modifier.height(8.dp))
                     }
                     Text("¿El ${LocalTerminologiaPaciente.current.paciente} necesita volver?", color = c.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -299,7 +303,7 @@ fun BarraRecorrido(
                     color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                 )
                 Spacer(Modifier.height(4.dp))
-                trat.diagnostico?.takeIf { it.isNotBlank() }?.let { FilaRef("Diagnóstico", it) }
+                if (verClinico) trat.diagnostico?.takeIf { it.isNotBlank() }?.let { FilaRef("Diagnóstico", it) }
                 if (puedePagos) {
                     val precio = trat.precioAcordado ?: trat.precioBase ?: 0.0
                     FilaRef("Precio", "${simboloMoneda(moneda)} ${if (precio % 1.0 == 0.0) precio.toInt() else precio}")

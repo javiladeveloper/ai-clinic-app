@@ -156,6 +156,11 @@ private fun PantallaFichaPacienteContenido(
     val c = Sania.colors
     val acciones = recordarAcciones()
     ManejarAtras(activo = true, onAtras = onCerrar)
+    // Permiso 'historia_clinica': sin él (recepción de salud mental, p. ej.) la ficha
+    // queda operativa —tratamientos, progreso, citas, pagos, presupuestos— y lo
+    // clínico (notas de sesión, diagnóstico, exámenes, evaluaciones, recetas, IA,
+    // historia/PDF…) no se muestra. El servidor lo protege igual (403 / ignora campos).
+    val verHc = pe.saniape.app.data.staff.verHistoriaClinica(ctx)
 
     val scope = rememberCoroutineScope()
     // Recarga fresca por id (el inicial viene de la lista; aquí traemos lo último).
@@ -195,6 +200,9 @@ private fun PantallaFichaPacienteContenido(
             else nutricionAlAbrir?.tab ?: "atenciones",
         )
     }
+    // Sin 'historia_clinica', una apertura hacia una pestaña clínica (desde la
+    // agenda: 🏠, 📝, 😁, 🦶…) cae en Atenciones en vez de montar lo clínico.
+    val tabVisible = if (verHc || tab in PESTANAS_SIN_HISTORIA) tab else "atenciones"
     // 📝 Indicaciones: la cita de la agenda y "abrir de una" (vale una vez; la cita
     // se olvida al guardar la primera hoja).
     var flujoInd by remember {
@@ -497,8 +505,9 @@ private fun PantallaFichaPacienteContenido(
         if (esPacienteReceta) pe.saniape.app.data.staff.RecetaAtencionRepo.atadasDelPaciente(paciente.id)?.let { recetasVinc = it }
     }
     // ¿Este tratamiento puede llevar receta / indicaciones? (módulo + permiso + especialidad).
+    // Sin 'historia_clinica' no se dan ni se ofrecen (la receta es clínica).
     val recetaAplicaTrat = { t: TratamientoPaciente ->
-        esPacienteReceta && !pe.saniape.app.data.staff.fichaInactiva(paciente.estado) &&
+        verHc && esPacienteReceta && !pe.saniape.app.data.staff.fichaInactiva(paciente.estado) &&
             pe.saniape.app.data.staff.recetaAplicaAtencion(
                 ctx.modulosClinicos, ctx.puede("sesiones"),
                 especialidadServicioId = t.especialidadId
@@ -664,8 +673,8 @@ private fun PantallaFichaPacienteContenido(
         onDispose { job.cancel() }
     }
 
-    // 🧠 Evaluación psicológica a pantalla completa (encima de la ficha).
-    evalPsicoAbierta?.let { (tId, apertura) ->
+    // 🧠 Evaluación psicológica a pantalla completa (encima de la ficha). Es clínica.
+    evalPsicoAbierta?.takeIf { verHc }?.let { (tId, apertura) ->
         pe.saniape.app.tutoriales.PantallaTutorial("EvaluacionPsico") { pe.saniape.app.ui.clinica.psico.PantallaEvaluacionPsico(
             ctx = ctx, tratamientoId = tId, apertura = apertura, acciones = acciones,
             onSalir = { evalPsicoAbierta = null; recargar() },
@@ -679,7 +688,7 @@ private fun PantallaFichaPacienteContenido(
     }
 
     // 📂 Historia clínica nativa a pantalla completa (encima de la ficha).
-    if (historiaAbierta) {
+    if (historiaAbierta && verHc) {
         pe.saniape.app.ui.clinica.historia.PantallaHistoriaClinica(
             pacienteId = pacienteInicial.id, pacienteNombre = pacienteInicial.nombre,
             acciones = acciones, onSalir = { historiaAbierta = false },
@@ -1024,11 +1033,15 @@ private fun PantallaFichaPacienteContenido(
                     if (pe.saniape.app.data.staff.puedeVerPresupuestos { ctx.puede(it) }) add("presupuestos" to "🧾 Presupuestos")
                     if (ctx.puede("pagos")) add("pagos" to "💰 Pagos")
                     add("resumen" to "📋 Resumen")
+                }.let { todas ->
+                    // Sin 'historia_clinica' quedan solo las pestañas operativas: las
+                    // clínicas (🔬, 🦷, 📏, recetas, evaluaciones…) no se ofrecen vacías.
+                    if (verHc) todas else todas.filter { (k, _) -> k in PESTANAS_SIN_HISTORIA }
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     tabs.forEach { (key, label) ->
-                        val activo = tab == key
+                        val activo = tabVisible == key
                         val anclaTab = when (key) {
                             "odontograma" -> "ficha.tab_odontograma"
                             "evaluacion" -> "ficha.tab_evaluacion"
@@ -1053,6 +1066,12 @@ private fun PantallaFichaPacienteContenido(
                 }
                 Spacer(Modifier.height(Sania.dim.md))
 
+                // Lo clínico oculto se avisa UNA vez, aquí, y no en cada tarjeta.
+                if (!verHc) {
+                    pe.saniape.app.ui.clinica.AvisoHistoriaClinicaOculta()
+                    Spacer(Modifier.height(Sania.dim.md))
+                }
+
                 // Aviso discreto mientras se re-carga tras una acción: el contenido sigue
                 // visible (no se vacía la ficha), solo señalamos que hay algo en curso para
                 // que no dé la impresión de que la app se quedó pegada.
@@ -1070,7 +1089,7 @@ private fun PantallaFichaPacienteContenido(
                     // espera es la que más se nota.
                     CargandoFicha()
                 } else AnimatedContent(
-                    targetState = tab,
+                    targetState = tabVisible,
                     // Cambiar de pestaña con desvanecido: el contenido de una ficha
                     // clínica es denso, y el corte seco hace perder el punto donde
                     // uno estaba mirando.
@@ -1911,11 +1930,12 @@ private fun PantallaFichaPacienteContenido(
         val anterior = req.anterior
         // 📷 Fotos de la sesión (como la web): plan con fotos + la clínica no las apagó.
         val fotosSesion = remember(ses.id) { FotosSesionPendientes() }
-        val conFotos = recordarFotosActivas(ctx.can("fotosEvolutivas")) == true
+        // Las fotos de la sesión son clínicas: sin 'historia_clinica' no se ofrecen.
+        val conFotos = verHc && recordarFotosActivas(ctx.can("fotosEvolutivas")) == true
         // 🏠 "¿Le dejas ejercicios de apoyo?" (como el cierre de la web): solo en una
-        // sesión de fisioterapia y con permiso de sesiones.
+        // sesión de fisioterapia y con permiso de sesiones (y de historia clínica).
         val dejarEjercicios = remember(ses.id) { mutableStateOf(false) }
-        val ofreceEjercicios = esPacienteFisio && tratEsFisio(req.trat) && ctx.puede("sesiones")
+        val ofreceEjercicios = verHc && esPacienteFisio && tratEsFisio(req.trat) && ctx.puede("sesiones")
         ModalCompletarSesion(
             ses = ses,
             anterior = anterior,
@@ -1941,11 +1961,12 @@ private fun PantallaFichaPacienteContenido(
                 scope.launch {
                     // Evolución: solo desde la sesión #2 ("" limpia, null = no tocar),
                     // igual que la web. El aviso de RX viaja aparte, en su propia columna.
+                    // Sin 'historia_clinica' no se manda nada clínico (null = no tocar).
                     val r = PacientesRepo.cambiarEstadoSesionDetalle(
                         ses.id, "Completada",
                         notas = tecnicas,
-                        mejorias = if (ses.numero > 1 || mejorias != null) mejorias.orEmpty() else null,
-                        rxPendiente = dejoRx,
+                        mejorias = if (!verHc) null else if (ses.numero > 1 || mejorias != null) mejorias.orEmpty() else null,
+                        rxPendiente = dejoRx.takeIf { verHc },
                         piezas = piezas,
                         eva = eva,
                     )
@@ -2079,6 +2100,13 @@ private fun PantallaFichaPacienteContenido(
     }
 }
 
+/**
+ * Pestañas de la ficha que quedan sin el permiso 'historia_clinica': lo que
+ * recepción necesita para agendar y cobrar. Resumen se queda con los datos del
+ * paciente (lo clínico de adentro se oculta).
+ */
+private val PESTANAS_SIN_HISTORIA = setOf("atenciones", "presupuestos", "pagos", "resumen")
+
 /** "Agendar siguiente" pendiente de confirmar: la oferta + la hora y el profesional de la sesión atendida. */
 private data class OfertaProximaFicha(
     val tr: TratamientoPaciente,
@@ -2143,6 +2171,12 @@ internal fun ModalCompletarSesion(
     dejarEjercicios: androidx.compose.runtime.MutableState<Boolean>? = null,
     /** Especialidad del tratamiento: filtra las técnicas sugeridas (+ las del rubro). */
     especialidadId: String? = null,
+    /**
+     * Permiso 'historia_clinica'. Sin él (recepción) la sesión se completa igual —
+     * asistencia y cobro— pero sin técnicas, evolución, EVA, odontograma, fotos ni
+     * la referencia de la sesión anterior: [onConfirmar] devuelve null en todo eso.
+     */
+    verClinico: Boolean = pe.saniape.app.data.staff.LocalVerHistoriaClinica.current,
     onCancelar: () -> Unit,
     // pago = (monto, método) si activó "¿pagó esta sesión?" — el cobro sale en el
     // MISMO paso que el completar, como la web (antes eran 2 viajes: ✓ y luego 💳).
@@ -2174,11 +2208,12 @@ internal fun ModalCompletarSesion(
     var dejoRx by remember { mutableStateOf(AvisoRx.dejoRx(ses)) }
     // Sugerencias de evolución del rubro de ESTA sesión (psicoterapia ≠ fisio). Fisio
     // y dental no necesitan nada más; el resto mira la especialidad (una lectura).
-    var rubroListo by remember(especialidadId) { mutableStateOf(esFisio || esDental) }
+    // Sin lo clínico no hay formulario por rubro que esperar.
+    var rubroListo by remember(especialidadId) { mutableStateOf(esFisio || esDental || !verClinico) }
     var errorRubro by remember(especialidadId) { mutableStateOf(false) }
     var intentoRubro by remember { mutableStateOf(0) }
     val especialidadesRubro by androidx.compose.runtime.produceState<List<Triple<String, String?, String?>>>(emptyList(), especialidadId, intentoRubro) {
-        if (esFisio || esDental) return@produceState
+        if (esFisio || esDental || !verClinico) return@produceState
         errorRubro = false
         rubroListo = false
         runCatching {
@@ -2189,7 +2224,7 @@ internal fun ModalCompletarSesion(
         }.onSuccess { value = it; rubroListo = true }.onFailure { errorRubro = true }
     }
     val rubroCierre = pe.saniape.app.data.staff.rubroCierreSesion(esFisio, esDental, especialidadId, especialidadesRubro)
-    val esPsico = pe.saniape.app.data.staff.esCierrePsicologia(esFisio, esDental, especialidadId, especialidadesRubro)
+    val esPsico = verClinico && pe.saniape.app.data.staff.esCierrePsicologia(esFisio, esDental, especialidadId, especialidadesRubro)
     val muestraMejorias = ses.numero > 1 || esPsico
     var piezas by remember { mutableStateOf<List<String>>(emptyList()) }
     // Odontología: null = cargando la lista de piezas; false = falló la carga.
@@ -2200,14 +2235,14 @@ internal fun ModalCompletarSesion(
     // Fisioterapia: EVA (opcional) + dictado a técnicas / mejorías.
     var dolorInicio by remember { mutableStateOf(ses.dolorInicio) }
     var dolorFin by remember { mutableStateOf(ses.dolorFin) }
-    val dictado = if (esFisio) pe.saniape.app.ui.clinica.fisio.recordarDictadoCampos { campo, texto ->
+    val dictado = if (esFisio && verClinico) pe.saniape.app.ui.clinica.fisio.recordarDictadoCampos { campo, texto ->
         if (campo == "tecnicas") tecnicas = pe.saniape.app.data.staff.sumarTecnicasDictadas(tecnicas, texto)
         else mejorias = pe.saniape.app.data.staff.unirDictado(mejorias, texto)
     } else null
 
-    // Referencia de lo registrado en la sesión anterior.
-    val notasPrev = anterior?.notas?.takeIf { it.isNotBlank() }
-    val mejoriasPrev = anterior?.mejorias?.takeIf { it.isNotBlank() }
+    // Referencia de lo registrado en la sesión anterior (clínica: solo con el permiso).
+    val notasPrev = anterior?.notas?.takeIf { it.isNotBlank() && verClinico }
+    val mejoriasPrev = anterior?.mejorias?.takeIf { it.isNotBlank() && verClinico }
 
     // ¿Ya pagó? Una lectura al abrir; si falla, simplemente no aparece.
     var estadoPago by remember(citaId) { mutableStateOf<pe.saniape.app.data.staff.EstadoPagoCita?>(null) }
@@ -2217,17 +2252,19 @@ internal fun ModalCompletarSesion(
 
     DialogoForm(
         titulo = if (esPsico) "Evolución de la sesión #${ses.numero}" else "Completar sesión #${ses.numero}",
-        subtitulo = if (esPsico) "Registro clínico de psicología" else "Registra lo realizado en la sesión",
+        subtitulo = if (esPsico) "Registro clínico de psicología" else if (!verClinico) "Asistencia y cobro de la sesión" else "Registra lo realizado en la sesión",
         textoAccion = if (esPsico) "Guardar evolución y completar" else if (cobrar) "✓ Completar y cobrar" else "✓ Completar",
         accionHabilitada = rubroListo && (!cobrar || (pagoMonto.toDoubleOrNull() ?: 0.0) > 0) &&
             // Fotos comprimiéndose: se espera (un instante) para no perderlas.
             (fotosSesion?.preparando ?: 0) == 0 &&
             // Dental: se espera a que cargue "¿Qué se le hizo hoy?" (un instante).
-            !(esDental && pacienteId.isNotBlank() && piezasListas == null),
+            !(verClinico && esDental && pacienteId.isNotBlank() && piezasListas == null),
         onCancelar = onCancelar,
         onAccion = {
             val pago = if (cobrar) pagoMonto.toDoubleOrNull()?.takeIf { it > 0 }?.let { it to pagoMetodo } else null
-            onConfirmar(if (esPsico) ses.notas else tecnicas.trim().ifBlank { null }, if (esPsico) mejorias.trim() else mejorias.trim().ifBlank { null }, dejoRx, pago,
+            // Sin el permiso, solo asistencia y cobro: nada clínico viaja (null = no tocar).
+            if (!verClinico) onConfirmar(null, null, dejoRx, pago, null, null)
+            else onConfirmar(if (esPsico) ses.notas else tecnicas.trim().ifBlank { null }, if (esPsico) mejorias.trim() else mejorias.trim().ifBlank { null }, dejoRx, pago,
                 if (esDental && piezasListas == true) piezas else null,
                 if (esFisio) dolorInicio to dolorFin else null)
         },
@@ -2240,6 +2277,11 @@ internal fun ModalCompletarSesion(
         // Informativo: nunca bloquea completar.
         if (estadoPago?.mostrable == true) {
             pe.saniape.app.ui.clinica.agenda.componentes.BadgeEstadoPago(estadoPago)
+            Spacer(Modifier.height(12.dp))
+        }
+        // Sin 'historia_clinica': se completa sin lo clínico, y se dice una vez por qué.
+        if (!verClinico) {
+            pe.saniape.app.ui.clinica.AvisoHistoriaClinicaOculta()
             Spacer(Modifier.height(12.dp))
         }
         // Aviso: el paciente dejó RX pendiente en la sesión anterior (se recuerda aquí).
@@ -2283,7 +2325,7 @@ internal fun ModalCompletarSesion(
 
         // Odontología: de TODO lo pendiente del paciente, qué se le hizo hoy.
         // Lo marcado suma su procedimiento a lo realizado (sumarTecnica).
-        if (esDental && pacienteId.isNotBlank()) {
+        if (verClinico && esDental && pacienteId.isNotBlank()) {
             TarjetaForm(titulo = "Odontograma", icono = "🦷") {
                 pe.saniape.app.ui.clinica.odontologia.PiezasTratadas(
                     pacienteId = pacienteId, tratamientoId = tratamientoId, sesionId = ses.id,
@@ -2296,7 +2338,7 @@ internal fun ModalCompletarSesion(
         }
 
         // Fisioterapia: dolor al entrar / al salir (opcional).
-        if (esFisio) {
+        if (esFisio && verClinico) {
             pe.saniape.app.ui.clinica.fisio.BloqueEva(
                 dolorInicio, dolorFin, onInicio = { dolorInicio = it }, onFin = { dolorFin = it },
             )
@@ -2305,7 +2347,7 @@ internal fun ModalCompletarSesion(
 
         if (esPsico) {
             pe.saniape.app.ui.clinica.psico.EvolucionSesionCampos(mejorias) { mejorias = it }
-        } else {
+        } else if (verClinico) {
         TarjetaForm(titulo = "Procedimientos realizados", icono = "🩹") {
             pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
                 value = tecnicas, onChange = { tecnicas = it }, especialidadId = especialidadId,
@@ -2342,7 +2384,7 @@ internal fun ModalCompletarSesion(
 
         }
 
-        if (muestraMejorias && !esPsico) {
+        if (muestraMejorias && !esPsico && verClinico) {
             Spacer(Modifier.height(12.dp))
             TarjetaForm(titulo = "Mejorías / evolución", icono = "↗") {
                 androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(), 
@@ -2373,7 +2415,7 @@ internal fun ModalCompletarSesion(
             }
         }
 
-        if (!esPsico) {
+        if (!esPsico && verClinico) {
         // Toggle "El paciente dejó RX": marca que quedó con una RX pendiente, para
         // avisarlo al abrir su próxima sesión. Disponible en cualquier sesión (incl. #1).
         Spacer(Modifier.height(12.dp))
@@ -2403,7 +2445,7 @@ internal fun ModalCompletarSesion(
         }
 
         // 📷 Fotos de la sesión (como la web): se suben al completar.
-        if (fotosSesion != null && !esPsico) {
+        if (fotosSesion != null && !esPsico && verClinico) {
             Spacer(Modifier.height(12.dp))
             BloqueFotosSesion(fotosSesion)
         }
@@ -2411,7 +2453,7 @@ internal fun ModalCompletarSesion(
         // Fisioterapia: dejarle ejercicios de apoyo para casa. Aquí solo se pregunta;
         // se eligen después de completar, en la pestaña 🏠 de la ficha.
         // (El mismo interruptor que el cierre desde la agenda.)
-        if (esFisio && dejarEjercicios != null) {
+        if (esFisio && dejarEjercicios != null && verClinico) {
             Spacer(Modifier.height(12.dp))
             pe.saniape.app.ui.clinica.fisio.BloqueDejarEjercicios(dejarEjercicios)
         }
@@ -2598,9 +2640,12 @@ private fun ModalCrearSesion(
                     CampoFicha("", costo, soloNumero = true) { costo = it }
                 }
             }
-            Spacer(Modifier.height(10.dp))
-            EtqForm("Notas clínicas")
-            CampoFicha("", notas, multilinea = true) { notas = it }
+            // Notas clínicas: solo con 'historia_clinica' (sin él se agenda sin notas).
+            if (pe.saniape.app.data.staff.LocalVerHistoriaClinica.current) {
+                Spacer(Modifier.height(10.dp))
+                EtqForm("Notas clínicas")
+                CampoFicha("", notas, multilinea = true) { notas = it }
+            }
         }
 
         // Pago anticipado (momento 1 del cobro, como el "¿pagó esta sesión?" web).
@@ -3031,6 +3076,8 @@ private fun ContenidoAtenciones(
     onAltaHecha: (TratamientoPaciente) -> Unit = {},
 ) {
     val c = Sania.colors
+    // Sin 'historia_clinica': la evaluación psicológica (su espacio de trabajo) no se ofrece.
+    val verHc = pe.saniape.app.data.staff.verHistoriaClinica(ctx)
     // Profesional vinculado en modo "lo mío": separa SUS tratamientos (con acciones) de los
     // de otros profesionales (solo lectura, para contexto clínico) — igual que la web.
     val filtrarMio = ctx.modoClinico && ctx.miTerapeutaId != null
@@ -3101,7 +3148,7 @@ private fun ContenidoAtenciones(
             soloLectura = soloLectura,
             onAltaHecha = onAltaHecha,
             esEvaluacionPsico = t.procedimientoId != null && t.procedimientoId in procsEvalPsico,
-            bloqueEvaluacionPsico = if (t.procedimientoId != null && t.procedimientoId in procsEvalPsico) {
+            bloqueEvaluacionPsico = if (verHc && t.procedimientoId != null && t.procedimientoId in procsEvalPsico) {
                 {
                     pe.saniape.app.ui.clinica.psico.AccionesEvaluacionPsico(
                         tratamientoId = t.id, terapeutaId = t.terapeutaId, estado = t.estado,
@@ -3157,8 +3204,8 @@ private fun ContenidoAtenciones(
         // Otros tratamientos en la clínica (a cargo de otro profesional) — solo lectura.
         if (otros.isNotEmpty()) {
             Spacer(Modifier.height(Sania.dim.md))
-            OtrosTratamientos(otros, alPie = { t ->
-                if (t.procedimientoId != null && t.procedimientoId in procsEvalPsico) {
+            OtrosTratamientos(otros, verClinico = verHc, alPie = { t ->
+                if (verHc && t.procedimientoId != null && t.procedimientoId in procsEvalPsico) {
                     pe.saniape.app.ui.clinica.psico.AccionesEvaluacionPsico(
                         tratamientoId = t.id, terapeutaId = t.terapeutaId, estado = t.estado,
                         rol = ctx.rol, miTerapeutaId = ctx.miTerapeutaId,
@@ -3181,6 +3228,8 @@ private fun ContenidoAtenciones(
 @Composable
 private fun OtrosTratamientos(
     otros: List<TratamientoPaciente>,
+    /** Sin 'historia_clinica': sin diagnóstico ni notas de sesión (solo nombre, progreso, estado). */
+    verClinico: Boolean = true,
     /** Algo más bajo cada tratamiento (la evaluación psicológica que atendió). */
     alPie: @Composable (TratamientoPaciente) -> Unit = {},
 ) {
@@ -3191,7 +3240,8 @@ private fun OtrosTratamientos(
     ) {
         Text("📋 OTROS TRATAMIENTOS EN ESTA CLÍNICA", color = c.textoSuave, fontSize = 10.sp,
             fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
-        Text("A cargo de otro profesional · solo lectura, para tu contexto clínico",
+        Text(if (verClinico) "A cargo de otro profesional · solo lectura, para tu contexto clínico"
+            else "A cargo de otro profesional · solo lectura",
             color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 1.dp, bottom = 8.dp))
         otros.forEach { t ->
             var abierto by remember(t.id) { mutableStateOf(false) }
@@ -3216,7 +3266,7 @@ private fun OtrosTratamientos(
                 }
                 Text(listOfNotNull(t.terapeutaNombre, t.estado).joinToString(" · "),
                     color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(start = 15.dp, top = 1.dp))
-                t.diagnostico?.takeIf { it.isNotBlank() }?.let {
+                if (verClinico) t.diagnostico?.takeIf { it.isNotBlank() }?.let {
                     Text("Dx: $it", color = c.texto, fontSize = 11.sp, modifier = Modifier.padding(start = 15.dp, top = 2.dp))
                 }
                 if (abierto) {
@@ -3229,10 +3279,10 @@ private fun OtrosTratamientos(
                             Column(Modifier.fillMaxWidth().padding(start = 15.dp, top = 3.dp)) {
                                 Text("Sesión #${ses.numero} · ${ses.fecha}", color = c.texto, fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold)
-                                ses.notas?.takeIf { it.isNotBlank() }?.let {
+                                if (verClinico) ses.notas?.takeIf { it.isNotBlank() }?.let {
                                     Text(it, color = c.textoSuave, fontSize = 11.sp)
                                 }
-                                ses.mejorias?.takeIf { it.isNotBlank() }?.let {
+                                if (verClinico) ses.mejorias?.takeIf { it.isNotBlank() }?.let {
                                     Text("↗ $it", color = c.ok, fontSize = 11.sp)
                                 }
                             }
@@ -3381,6 +3431,9 @@ private fun ContenidoResumen(
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
+    // Sin 'historia_clinica' el Resumen queda con los datos del paciente: lo clínico
+    // (talla/peso/IMC, campos clínicos, alergias, vitales, síntomas, IA, historia) no.
+    val verHc = pe.saniape.app.data.staff.verHistoriaClinica(ctx)
     // Resumen IA persistido: estado inicial desde el paciente (se generó antes y quedó guardado).
     var aiTexto by remember(paciente.id) { mutableStateOf(paciente.resumenIa) }
     var aiFecha by remember(paciente.id) { mutableStateOf(paciente.resumenIaFecha) }
@@ -3425,9 +3478,9 @@ private fun ContenidoResumen(
                 paciente.dni?.let { pe.saniape.app.data.staff.etiquetaDocumentoPaciente(docPac.tipo, paisDoc, it, docPac.tipoHc) to it },
                 paciente.edad?.let { "Edad" to "$it años" },
                 paciente.ocupacion?.let { "Ocupación" to it },
-                paciente.talla?.let { "Talla" to "$it cm" },
-                paciente.peso?.let { "Peso" to "${formatoMonto(it)} kg" },
-                imcTxt?.let { "IMC" to it },
+                paciente.talla?.takeIf { verHc }?.let { "Talla" to "$it cm" },
+                paciente.peso?.takeIf { verHc }?.let { "Peso" to "${formatoMonto(it)} kg" },
+                imcTxt?.takeIf { verHc }?.let { "IMC" to it },
                 paciente.fechaIngreso?.let { "Ingreso" to it },
                 paciente.apoderadoNombre?.takeIf { it.isNotBlank() }?.let { n ->
                     "Apoderado" to (n + (paciente.apoderadoParentesco?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: ""))
@@ -3443,6 +3496,10 @@ private fun ContenidoResumen(
                 }
             }
         }
+
+        // Lo de abajo es clínico: sin 'historia_clinica' la pestaña termina aquí
+        // (el aviso del candado ya está arriba de las pestañas).
+        if (!verHc) return@Column
 
         // Campos personalizados de la clínica (capilar: densidad; estética: fototipo…) —
         // solo aparece si la clínica definió campos en su configuración.

@@ -143,6 +143,12 @@ fun TarjetaTratamiento(
     hitosCargados: Boolean = true,
 ) {
     val tpl = LocalTerminologiaPaciente.current
+    // Permiso 'historia_clinica': sin él la tarjeta queda operativa (servicio,
+    // profesional, progreso, sesiones con su estado, pagos, alta) y sin lo clínico:
+    // diagnóstico, medicación, notas, EVA, piezas, fotos, sugerencia IA.
+    val verClinico = pe.saniape.app.data.staff.LocalVerHistoriaClinica.current
+    val puedeFotosEf = puedeFotos && verClinico
+    val puedeIAEf = puedeIA && verClinico
     // Permisos EFECTIVOS: el rol decide (puede()), y la baja del paciente los apaga.
     val puedeSesionesEf = puedeSesiones && !soloLectura
     val puedeCobrarEf = verPagos && !soloLectura
@@ -280,7 +286,7 @@ fun TarjetaTratamiento(
                     // El diagnóstico bajo el nombre: con dos tratamientos del mismo
                     // servicio es lo que dice cuál es cuál (28/09/2026). Las consultas
                     // ya lo muestran abajo, con su medicación.
-                    if (!t.esConsulta && !t.esServicioUnico) t.diagnostico?.takeIf { it.isNotBlank() }?.let {
+                    if (verClinico && !t.esConsulta && !t.esServicioUnico) t.diagnostico?.takeIf { it.isNotBlank() }?.let {
                         Text("📋 $it", color = c.info, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
                             maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             modifier = Modifier.padding(top = 2.dp))
@@ -312,11 +318,11 @@ fun TarjetaTratamiento(
             // CONSULTA (medicina/nutrición): diagnóstico + medicación + próximo control.
             // SERVICIO ÚNICO (blanqueamiento): solo diagnóstico (medicación/control no aplican).
             if (t.esConsulta || t.esServicioUnico) {
-                t.diagnostico?.takeIf { it.isNotBlank() }?.let {
+                if (verClinico) t.diagnostico?.takeIf { it.isNotBlank() }?.let {
                     Spacer(Modifier.height(6.dp)); ChipInfo("📋", it, c.info, c.infoBg)
                 }
                 if (!t.esServicioUnico) {
-                    t.medicacion?.takeIf { it.isNotBlank() }?.let {
+                    if (verClinico) t.medicacion?.takeIf { it.isNotBlank() }?.let {
                         Spacer(Modifier.height(4.dp)); ChipInfo("💊", it, c.purple, c.purpleBg)
                     }
                     t.proximoControl?.takeIf { it.isNotBlank() }?.let {
@@ -502,7 +508,7 @@ fun TarjetaTratamiento(
                     color = c.textoSuave, fontSize = 12.sp,
                 )
                 // Odontología (servicio único dental: profilaxis…): sus piezas también.
-                if (esDental && pacienteId.isNotBlank()) {
+                if (verClinico && esDental && pacienteId.isNotBlank()) {
                     Spacer(Modifier.height(8.dp))
                     pe.saniape.app.ui.clinica.odontologia.PlanPiezas(
                         pacienteId = pacienteId, tratamientoId = t.id, sesiones = emptyList(),
@@ -511,7 +517,7 @@ fun TarjetaTratamiento(
                 }
                 // Fotos evolutivas ARRIBA de pagos (el antes/después es parte de la atención,
                 // no del cobro) — también en consultas/servicios (documentan resultados).
-                if (puedeFotos && pacienteId.isNotBlank()) {
+                if (puedeFotosEf && pacienteId.isNotBlank()) {
                     GaleriaFotos(pacienteId = pacienteId, tratamientoId = t.id, sesiones = emptyList())
                 }
                 if (verPagos) {
@@ -537,7 +543,7 @@ fun TarjetaTratamiento(
                 }
                 else -> {
                     // Fisioterapia (M1): curva del dolor EVA por sesión, solo si hay datos.
-                    if (esFisio) {
+                    if (esFisio && verClinico) {
                         val puntos = pe.saniape.app.data.staff.curvaDolor(s)
                         if (puntos.isNotEmpty()) {
                             pe.saniape.app.ui.clinica.fisio.CurvaDolor(puntos)
@@ -546,7 +552,7 @@ fun TarjetaTratamiento(
                     }
                     // Odontología: arriba de las sesiones, qué piezas cubre el plan y
                     // cuáles ya se hicieron (y en qué sesión). Otros rubros: nada.
-                    if (esDental && pacienteId.isNotBlank()) {
+                    if (verClinico && esDental && pacienteId.isNotBlank()) {
                         pe.saniape.app.ui.clinica.odontologia.PlanPiezas(
                             pacienteId = pacienteId, tratamientoId = t.id, sesiones = s,
                             recargaToken = recargaToken + cambioToken,
@@ -638,13 +644,13 @@ fun TarjetaTratamiento(
                     }
 
                     // Sugerencia IA para la próxima sesión (Plus) — solo en tratamientos activos.
-                    if (puedeIA && !terminado) {
+                    if (puedeIAEf && !terminado) {
                         Spacer(Modifier.height(Sania.dim.sm))
                         SugerenciaSesionIA(tratamientoId = t.id)
                     }
 
                     // Fotos evolutivas (antes/durante/después) ARRIBA de pagos — feature Premium.
-                    if (puedeFotos && pacienteId.isNotBlank()) {
+                    if (puedeFotosEf && pacienteId.isNotBlank()) {
                         GaleriaFotos(pacienteId = pacienteId, tratamientoId = t.id, sesiones = s)
                     }
 
@@ -749,7 +755,7 @@ fun TarjetaTratamiento(
         )
     }
     editarSesion?.let { ses ->
-        ModalEditarSesion(ses, onCancelar = { editarSesion = null }, onGuardar = { fecha, hora, dur, costo, notas ->
+        ModalEditarSesion(ses, verClinico = verClinico, onCancelar = { editarSesion = null }, onGuardar = { fecha, hora, dur, costo, notas ->
             editarSesion = null
             scope.launch {
                 pe.saniape.app.ui.conIndicador(pe.saniape.app.ui.Gestion.ACTUALIZANDO) {
@@ -761,7 +767,7 @@ fun TarjetaTratamiento(
     }
     corregirSesion?.let { ses ->
         ModalCorregirSesion(
-            ses = ses, esFisio = esFisio, guardando = accionando,
+            ses = ses, esFisio = esFisio, verClinico = verClinico, guardando = accionando,
             onCancelar = { if (!accionando) corregirSesion = null },
             onGuardar = { f ->
                 if (accionando) return@ModalCorregirSesion
@@ -770,9 +776,9 @@ fun TarjetaTratamiento(
                     val completada = ses.estado == "Completada"
                     val r = pe.saniape.app.ui.conIndicador(pe.saniape.app.ui.Gestion.ACTUALIZANDO) {
                         PacientesRepo.corregirSesion(
-                            ses.id, f.fecha, f.hora, f.duracion, f.costo, f.notas,
-                            mejorias = if (completada) f.mejorias else null,
-                            dolorInicio = f.dolorInicio, dolorFin = f.dolorFin, conEva = completada && esFisio,
+                            ses.id, f.fecha, f.hora, f.duracion, f.costo, f.notas.takeIf { verClinico },
+                            mejorias = if (completada && verClinico) f.mejorias else null,
+                            dolorInicio = f.dolorInicio, dolorFin = f.dolorFin, conEva = completada && esFisio && verClinico,
                             terapeutaId = f.terapeutaId,
                         )
                     }
@@ -834,6 +840,7 @@ fun TarjetaTratamiento(
     if (registrarServicioAbierto) {
         ModalRegistrarServicio(
             t = t,
+            verClinico = verClinico,
             puedePagos = verPagos,
             pacienteId = pacienteId,
             onCancelar = { registrarServicioAbierto = false },
@@ -886,6 +893,8 @@ fun TarjetaTratamiento(
 @Composable
 private fun ModalRegistrarServicio(
     t: TratamientoPaciente,
+    /** Sin 'historia_clinica': se registra (y cobra) sin la nota de qué se hizo. */
+    verClinico: Boolean = true,
     puedePagos: Boolean,
     pacienteId: String? = null,
     onCancelar: () -> Unit,
@@ -902,11 +911,15 @@ private fun ModalRegistrarServicio(
         title = { Text("✨ Registrar servicio", fontWeight = FontWeight.Bold) },
         text = {
             Column {
-                Text("Qué se hizo / receta (opcional)", color = c.textoSuave, fontSize = Sania.txt.mini,
-                    fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
-                pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
-                    value = nota, onChange = { nota = it }, especialidadId = t.especialidadId,
-                )
+                if (verClinico) {
+                    Text("Qué se hizo / receta (opcional)", color = c.textoSuave, fontSize = Sania.txt.mini,
+                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
+                    pe.saniape.app.ui.clinica.agenda.componentes.TecnicasInput(
+                        value = nota, onChange = { nota = it }, especialidadId = t.especialidadId,
+                    )
+                } else {
+                    pe.saniape.app.ui.clinica.AvisoHistoriaClinicaOculta()
+                }
                 // Cobro en el mismo paso (opcional) — SOLO con permiso de pagos.
                 if (puedePagos) {
                     Spacer(Modifier.height(10.dp))
@@ -933,7 +946,7 @@ private fun ModalRegistrarServicio(
         },
         confirmButton = {
             BotonModalP("✓ Registrar") {
-                onConfirmar(nota.trim().ifBlank { null }, cobrar, monto.toDoubleOrNull(), metodo)
+                onConfirmar(nota.trim().ifBlank { null }.takeIf { verClinico }, cobrar, monto.toDoubleOrNull(), metodo)
             }
         },
         dismissButton = { androidx.compose.material3.TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) } },
@@ -1027,8 +1040,11 @@ private fun FilaSesion(
                 if (verCosto) DetalleSesion("Pago sesión",
                     if ((ses.costo ?: 0.0) > 0) "${simboloMoneda(moneda)} ${formato2(ses.costo!!)}" else "Sin costo registrado", c.texto)
                 ses.motivoEstado?.takeIf { it.isNotBlank() }?.let { DetalleSesion("Motivo", it, c.pend) }
-                DetalleSesion("Procedimientos", ses.notas?.takeIf { it.isNotBlank() } ?: "Sin observaciones", c.texto)
-                ses.mejorias?.takeIf { it.isNotBlank() }?.let { DetalleSesion("Mejorías", it, c.ok) }
+                // Lo realizado y la evolución son clínicos: solo con 'historia_clinica'.
+                if (pe.saniape.app.data.staff.LocalVerHistoriaClinica.current) {
+                    DetalleSesion("Procedimientos", ses.notas?.takeIf { it.isNotBlank() } ?: "Sin observaciones", c.texto)
+                    ses.mejorias?.takeIf { it.isNotBlank() }?.let { DetalleSesion("Mejorías", it, c.ok) }
+                }
             }
         }
 
@@ -1560,6 +1576,8 @@ private fun formato2(n: Double): String {
 @Composable
 private fun ModalEditarSesion(
     ses: SesionFicha,
+    /** Sin 'historia_clinica': sin las notas (van en null = no se tocan). */
+    verClinico: Boolean = true,
     onCancelar: () -> Unit,
     onGuardar: (fecha: String, hora: String?, duracion: Int, costo: Double?, notas: String?) -> Unit,
 ) {
@@ -1584,7 +1602,8 @@ private fun ModalEditarSesion(
         accionHabilitada = fecha.isNotBlank(),
         onCancelar = onCancelar,
         onAccion = {
-            onGuardar(fecha.trim(), hora.trim().ifBlank { null }, duracion, costo.toDoubleOrNull(), notas.trim().ifBlank { null })
+            onGuardar(fecha.trim(), hora.trim().ifBlank { null }, duracion, costo.toDoubleOrNull(),
+                notas.trim().ifBlank { null }.takeIf { verClinico })
         },
     ) {
         TarjetaForm(titulo = "Programación", icono = "📅") {
@@ -1600,8 +1619,10 @@ private fun ModalEditarSesion(
             ChipsDuracion(duracion, onChange = { duracion = it })
             Spacer(Modifier.height(10.dp))
             CampoTexto("Costo (${simboloMoneda(moneda)}) — vacío si no aplica", costo, soloNumero = true) { costo = it }
-            Spacer(Modifier.height(10.dp))
-            CampoTexto("Notas / procedimientos", notas, multilinea = true) { notas = it }
+            if (verClinico) {
+                Spacer(Modifier.height(10.dp))
+                CampoTexto("Notas / procedimientos", notas, multilinea = true) { notas = it }
+            }
         }
     }
 }
@@ -1621,6 +1642,8 @@ private data class CorreccionSesion(
 private fun ModalCorregirSesion(
     ses: SesionFicha,
     esFisio: Boolean,
+    /** Sin 'historia_clinica': sin técnicas, mejorías ni EVA (no se mandan). */
+    verClinico: Boolean = true,
     guardando: Boolean,
     onCancelar: () -> Unit,
     onGuardar: (CorreccionSesion) -> Unit,
@@ -1679,15 +1702,17 @@ private fun ModalCorregirSesion(
             Spacer(Modifier.height(10.dp))
             CampoTexto("Costo (${simboloMoneda(moneda)}) — vacío si no aplica", costo, soloNumero = true) { costo = it }
         }
-        Spacer(Modifier.height(10.dp))
-        TarjetaForm(titulo = "Atención", icono = "🩺") {
-            CampoTexto("Técnicas / procedimientos", notas, multilinea = true) { notas = it }
-            if (completada) {
-                Spacer(Modifier.height(10.dp))
-                CampoTexto("Mejorías", mejorias, multilinea = true) { mejorias = it }
+        if (verClinico) {
+            Spacer(Modifier.height(10.dp))
+            TarjetaForm(titulo = "Atención", icono = "🩺") {
+                CampoTexto("Técnicas / procedimientos", notas, multilinea = true) { notas = it }
+                if (completada) {
+                    Spacer(Modifier.height(10.dp))
+                    CampoTexto("Mejorías", mejorias, multilinea = true) { mejorias = it }
+                }
             }
         }
-        if (completada && esFisio) {
+        if (completada && esFisio && verClinico) {
             Spacer(Modifier.height(10.dp))
             pe.saniape.app.ui.clinica.fisio.BloqueEva(dolorInicio, dolorFin, onInicio = { dolorInicio = it }, onFin = { dolorFin = it })
         }

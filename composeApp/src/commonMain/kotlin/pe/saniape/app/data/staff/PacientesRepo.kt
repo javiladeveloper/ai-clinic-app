@@ -1134,18 +1134,19 @@ object PacientesRepo {
      * Corrección del ADMIN sobre una sesión del historial (completada / tratamiento
      * cerrado / ficha de baja). El servidor valida el rol; no cambia estados ni pagos
      * (el costo es solo el de la sesión, sin tocar el cobro ni la caja). Lo que va en
-     * null no se toca, salvo notas/mejorías ("" = limpiar).
+     * null no se toca ("" = limpiar notas/mejorías). Sin 'historia_clinica' las notas
+     * van en null: no se ven, así que no se mandan.
      */
     suspend fun corregirSesion(
         sesionId: String, fecha: String, hora: String?, duracion: Int, costo: Double?,
-        notas: String, mejorias: String?, dolorInicio: Int?, dolorFin: Int?, conEva: Boolean,
+        notas: String?, mejorias: String?, dolorInicio: Int?, dolorFin: Int?, conEva: Boolean,
         terapeutaId: String?,
     ): pe.saniape.app.data.offline.ResultadoEscritura = postStaffDetalle("/api/staff/sesion/accion", buildJsonObject {
         put("accion", "corregir"); put("sesionId", sesionId)
         put("fecha", fecha); put("duracion", duracion)
         if (!hora.isNullOrBlank()) put("hora", hora)
         if (costo != null) put("costo", costo) else put("costo", kotlinx.serialization.json.JsonNull)
-        put("notas", notas)
+        if (notas != null) put("notas", notas)
         if (mejorias != null) put("mejorias", mejorias)
         if (conEva) {
             put("dolorInicio", dolorInicio?.let { JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)

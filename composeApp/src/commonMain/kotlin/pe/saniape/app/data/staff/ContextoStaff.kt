@@ -411,6 +411,14 @@ fun verDatosPersonalesFicha(ctx: ContextoStaff): Boolean = ctx.puede("datos_pers
  */
 fun verHistoriaClinica(ctx: ContextoStaff): Boolean = ctx.puede("historia_clinica")
 
+/**
+ * `verHistoriaClinica(ctx)` para los composables del panel de clínica (se provee
+ * en `ClinicaConTabs`, junto a la terminología). Lo usan las piezas hondas
+ * (filas de sesión, modales de completar) que no reciben el contexto. Default
+ * true: fuera del panel, o en un test, todo se ve como siempre.
+ */
+val LocalVerHistoriaClinica = androidx.compose.runtime.staticCompositionLocalOf { true }
+
 /** Aviso sobrio que reemplaza lo clínico oculto (una sola vez por pantalla). */
 const val AVISO_HISTORIA_CLINICA_OCULTA =
     "🔒 La historia clínica solo la ven los profesionales y quien autorice el administrador."

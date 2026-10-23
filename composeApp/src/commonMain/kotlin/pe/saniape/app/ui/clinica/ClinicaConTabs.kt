@@ -250,7 +250,11 @@ fun ClinicaConTabs(
     }
 
     // La palabra de la clínica para "paciente" llega a todos los diálogos y pantallas de abajo.
-    androidx.compose.runtime.CompositionLocalProvider(pe.saniape.app.data.staff.LocalTerminologiaPaciente provides contexto.terminologiaPaciente) {
+    // Y si ve la historia clínica (permiso 'historia_clinica'): sin él, lo clínico se oculta.
+    androidx.compose.runtime.CompositionLocalProvider(
+        pe.saniape.app.data.staff.LocalTerminologiaPaciente provides contexto.terminologiaPaciente,
+        pe.saniape.app.data.staff.LocalVerHistoriaClinica provides pe.saniape.app.data.staff.verHistoriaClinica(contexto),
+    ) {
     // Tabs visibles según permisos (Inicio y Más siempre).
     val verAgenda = contexto.puede("citas")
     val verPacientes = contexto.puede("pacientes") || contexto.modoClinico

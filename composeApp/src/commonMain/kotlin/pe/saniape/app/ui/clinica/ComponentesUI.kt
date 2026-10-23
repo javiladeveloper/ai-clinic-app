@@ -118,3 +118,25 @@ fun BarraProgreso(
         )
     }
 }
+
+/**
+ * Aviso sobrio en lugar de lo clínico que se ocultó a quien no tiene el permiso
+ * 'historia_clinica' (típicamente recepción de salud mental). Va UNA vez por
+ * pantalla, no en cada tarjeta.
+ */
+@Composable
+fun AvisoHistoriaClinicaOculta(modifier: Modifier = Modifier) {
+    val c = Sania.colors
+    Box(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Sania.shape.sm.dp))
+            .background(c.chipBg)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text(
+            pe.saniape.app.data.staff.AVISO_HISTORIA_CLINICA_OCULTA,
+            color = c.textoSuave, fontSize = 11.sp,
+        )
+    }
+}
