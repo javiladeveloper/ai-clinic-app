@@ -1,0 +1,8 @@
+La app va más rápida en la lista de pacientes y en la ficha. Al atender una sesión ves el motivo y el contexto del caso; además, nuevo tratamiento con todos los servicios, buscador de servicios y Ampliar o Dar de alta al terminar el plan.
+---
+Más rápida y más clara:
+• La lista de pacientes y la ficha cargan más rápido, sobre todo para profesionales.
+• En la sesión se ve el motivo del paciente y el «Contexto del caso» al cerrarla.
+• Nuevo tratamiento desde la cita con todos los servicios (pago único y por unidades).
+• Buscador en los servicios: escribe y filtra al instante.
+• Al terminar el plan: «Ampliar» o «Dar de alta», y cobro del paquete desde la agenda.
