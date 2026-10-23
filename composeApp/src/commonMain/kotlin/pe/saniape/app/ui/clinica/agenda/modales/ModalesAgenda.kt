@@ -163,6 +163,12 @@ fun ModalCompletar(
             cierre = pe.saniape.app.data.staff.contextoCierreCita(tId, cita.fecha, cita.hora, cita.numeroSesion)
         }
     }
+    // «📋 Contexto del caso» (lo anotado en la consulta / evaluación): en el cierre de
+    // una Sesión, con «Historia clínica» (el servidor lo exige igual). Gemelo de la web.
+    val caso = pe.saniape.app.ui.clinica.recordarContextoCaso(
+        activo = verClinico && !esEvaluacion && cita.tipo == "Sesión",
+        pacienteId = cita.pacienteId, tratamientoId = cita.tratamientoId, especialidadId = especialidadId,
+    )
     val pideMejorias = psicoSesion || fisioSesion &&
         (cierre?.pideMejorias(cita.numeroSesion) ?: ((cita.numeroSesion ?: 0) > 1))
     var dolorInicio by remember { mutableStateOf<Int?>(null) }
@@ -199,29 +205,24 @@ fun ModalCompletar(
                     pe.saniape.app.ui.clinica.AvisoHistoriaClinicaOculta()
                     Spacer(Modifier.height(Sania.dim.lg))
                 }
-                // Referencia: qué se hizo la sesión anterior (como la web).
-                cierre?.anterior?.let { ant ->
-                    Column(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                            .background(c.chipBg).padding(10.dp),
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("📋 Sesión anterior (#${ant.numero} — ${fechaCortaCierre(ant.fecha)})",
-                                color = c.navy, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                            val eva = pe.saniape.app.data.staff.textoEva(ant.dolorInicio, ant.dolorFin)
-                            if (fisioSesion && eva.isNotBlank()) Text(eva, color = c.textoSuave, fontSize = 11.sp)
-                        }
-                        ant.notas?.takeIf { it.isNotBlank() }?.let {
-                            Text(it, color = c.texto, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp))
-                        }
-                        ant.mejorias?.takeIf { it.isNotBlank() }?.let {
-                            Text("↗ $it", color = c.ok, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
-                        }
-                        if (ant.notas.isNullOrBlank() && ant.mejorias.isNullOrBlank()) {
-                            Text("Sin observaciones registradas", color = c.textoSuave, fontSize = 11.sp,
-                                modifier = Modifier.padding(top = 2.dp))
-                        }
-                    }
+                // Lo que se LEE mientras se escribe: contexto del caso y sesión anterior,
+                // arriba y plegables (el contexto abierto en la #1; la anterior, en fisio).
+                val previa = cierre?.anterior
+                if (caso.cargando || caso.contexto?.tieneDatos == true) {
+                    pe.saniape.app.ui.clinica.BloqueContextoCaso(
+                        caso, pe.saniape.app.data.staff.contextoAbiertoInicial(
+                            cierre?.sesion?.numero ?: cita.numeroSesion, previa != null,
+                        ),
+                    )
+                    Spacer(Modifier.height(Sania.dim.md))
+                }
+                if (previa != null) {
+                    pe.saniape.app.ui.clinica.BloqueSesionAnterior(
+                        numero = previa.numero, fecha = previa.fecha, notas = previa.notas, mejorias = previa.mejorias,
+                        psicologia = psicoSesion,
+                        eva = if (fisioSesion) pe.saniape.app.data.staff.textoEva(previa.dolorInicio, previa.dolorFin) else null,
+                        abiertoInicial = pe.saniape.app.data.staff.anteriorAbiertaInicial(fisioSesion),
+                    )
                     Spacer(Modifier.height(Sania.dim.lg))
                 }
                 if (fisioSesion) {
@@ -830,11 +831,6 @@ private fun millisISO(millis: Long): String {
     return "${d.year}-${d.monthNumber.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}"
 }
 /** "2026-09-18" → "18/09" (día/mes, como la referencia corta de la web). */
-private fun fechaCortaCierre(iso: String): String {
-    val p = iso.take(10).split("-")
-    return if (p.size == 3) "${p[2]}/${p[1]}" else iso
-}
-
 /**
  * Nutrición: "⚖️ Registrar medidas" tras completar un control (gemelo del aviso
  * de /citas web). Barra abajo que NO bloquea: la agenda sigue usable y "📅

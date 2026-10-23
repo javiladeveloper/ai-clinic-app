@@ -2244,6 +2244,13 @@ internal fun ModalCompletarSesion(
     val notasPrev = anterior?.notas?.takeIf { it.isNotBlank() && verClinico }
     val mejoriasPrev = anterior?.mejorias?.takeIf { it.isNotBlank() && verClinico }
 
+    // «📋 Contexto del caso» (lo anotado en la consulta / evaluación): con «Historia
+    // clínica», una lectura al abrir. Gemelo de la web (PanelCasoCierre).
+    val caso = pe.saniape.app.ui.clinica.recordarContextoCaso(
+        activo = verClinico, pacienteId = pacienteId.ifBlank { null },
+        tratamientoId = tratamientoId, especialidadId = especialidadId,
+    )
+
     // ¿Ya pagó? Una lectura al abrir; si falla, simplemente no aparece.
     var estadoPago by remember(citaId) { mutableStateOf<pe.saniape.app.data.staff.EstadoPagoCita?>(null) }
     androidx.compose.runtime.LaunchedEffect(citaId) {
@@ -2303,23 +2310,23 @@ internal fun ModalCompletarSesion(
             Spacer(Modifier.height(12.dp))
         }
 
-        // Referencia: qué se hizo la sesión anterior (evolución).
+        // Lo que se LEE mientras se escribe: contexto del caso y sesión anterior,
+        // arriba y plegables (el contexto abierto en la #1; la anterior, en fisio).
+        if (caso.cargando || caso.contexto?.tieneDatos == true) {
+            pe.saniape.app.ui.clinica.BloqueContextoCaso(
+                caso, pe.saniape.app.data.staff.contextoAbiertoInicial(ses.numero, anterior != null),
+            )
+            Spacer(Modifier.height(12.dp))
+        }
         // Referencia de la sesión anterior: se muestra SIEMPRE que exista (antes se
         // ataba a `muestraMejorias` y desaparecía en casos donde igual era útil).
-        if (notasPrev != null || mejoriasPrev != null) {
-            Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                    .background(c.chipBg).padding(10.dp),
-            ) {
-                Text("Sesión anterior (#${anterior?.numero})", color = c.textoSuave,
-                    fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                notasPrev?.let {
-                    Text(it, color = c.texto, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp))
-                }
-                mejoriasPrev?.let {
-                    Text("↗ $it", color = c.ok, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
-                }
-            }
+        if (anterior != null && (notasPrev != null || mejoriasPrev != null)) {
+            pe.saniape.app.ui.clinica.BloqueSesionAnterior(
+                numero = anterior.numero, fecha = anterior.fecha, notas = notasPrev, mejorias = mejoriasPrev,
+                psicologia = esPsico,
+                eva = if (esFisio) pe.saniape.app.data.staff.textoEva(anterior.dolorInicio, anterior.dolorFin) else null,
+                abiertoInicial = pe.saniape.app.data.staff.anteriorAbiertaInicial(esFisio),
+            )
             Spacer(Modifier.height(12.dp))
         }
 
