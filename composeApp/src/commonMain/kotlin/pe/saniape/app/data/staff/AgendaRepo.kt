@@ -78,8 +78,23 @@ data class CitaStaff(
     val enlaceVirtual: String? = null,
     /** 'meet_auto' | 'manual' | 'servicio' | null: quién puso el enlace. */
     val enlaceOrigen: String? = null,
+    /**
+     * El tratamiento de la sesión (estado, modalidad, avance): decide «＋ Ampliar» /
+     * «✓ Dar de alta» y el 💰 del paquete en la sesión ya atendida
+     * ([accionesSesionTerminada], [paqueteCobrableEnAgenda]). null = no vino.
+     */
+    val tratamientoEstado: String? = null,
+    val tratamientoModalidad: String? = null,
+    val tratamientoTotalSesiones: Int? = null,
+    val tratamientoCompletadas: Int? = null,
+    /** "Activo" / "Inactivo" (ficha dada de baja: no admite cambios). */
+    val pacienteEstado: String? = null,
 ) {
     val esVirtual: Boolean get() = esCitaVirtual(modalidad)
+
+    /** El tratamiento de la cita para [accionesSesionTerminada] (null sin tratamiento). */
+    val tratamientoParaTerminar: TratamientoParaTerminar?
+        get() = tratamientoId?.let { TratamientoParaTerminar(tratamientoEstado, tratamientoTotalSesiones, tratamientoCompletadas) }
 }
 
 /**
@@ -199,8 +214,9 @@ object AgendaRepo {
     const val SELECT_CITA =
         "id, fecha, hora, estado, tipo, costo, pagada_at, duracion, origen, confirmada_por_paciente, " +
             "terapeuta_id, paciente_id, tratamiento_id, especialidad_id, procedimiento_id, sede_id, sesion_id, confirmacion_token, created_at, " +
-            "paciente:pacientes(nombre, telefono, edad, fecha_nacimiento, requiere_apoderado), terapeuta:terapeutas(nombre), " +
-            "tratamiento:tratamientos!citas_tratamiento_id_fkey(nota_recepcion, procedimiento:procedimientos(id, nombre, especialidad_id)), " +
+            "paciente:pacientes(nombre, telefono, edad, fecha_nacimiento, requiere_apoderado, estado), terapeuta:terapeutas(nombre), " +
+            "tratamiento:tratamientos!citas_tratamiento_id_fkey(nota_recepcion, estado, modalidad, total_sesiones, sesiones_completadas, " +
+            "procedimiento:procedimientos(id, nombre, especialidad_id)), " +
             "sesion:sesiones!citas_sesion_id_fkey(numero)"
 
     /** Columnas de la cita virtual (2026-10-16). Nullable: una cita de antes las trae en null. */
@@ -276,6 +292,11 @@ object AgendaRepo {
                 modalidad = s("modalidad")?.takeIf { it.isNotBlank() },
                 enlaceVirtual = s("enlace_virtual")?.takeIf { it.isNotBlank() },
                 enlaceOrigen = s("enlace_origen")?.takeIf { it.isNotBlank() },
+                tratamientoEstado = obj("tratamiento")?.let { t -> (t["estado"] as? JsonPrimitive)?.content?.takeIf { it != "null" } },
+                tratamientoModalidad = obj("tratamiento")?.let { t -> (t["modalidad"] as? JsonPrimitive)?.content?.takeIf { it != "null" } },
+                tratamientoTotalSesiones = obj("tratamiento")?.let { t -> (t["total_sesiones"] as? JsonPrimitive)?.content?.toDoubleOrNull()?.toInt() },
+                tratamientoCompletadas = obj("tratamiento")?.let { t -> (t["sesiones_completadas"] as? JsonPrimitive)?.content?.toDoubleOrNull()?.toInt() },
+                pacienteEstado = (obj("paciente")?.get("estado") as? JsonPrimitive)?.content?.takeIf { it != "null" },
             )
     }
 

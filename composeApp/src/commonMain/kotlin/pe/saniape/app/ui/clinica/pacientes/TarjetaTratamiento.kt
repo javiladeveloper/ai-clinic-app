@@ -131,6 +131,12 @@ fun TarjetaTratamiento(
     /** Tras un alta correcta: la ficha ofrece la encuesta de satisfacción. */
     onAltaHecha: (TratamientoPaciente) -> Unit = {},
     /**
+     * «✓ Dar de alta» pedido desde la agenda / sesiones (la sesión que cerró el
+     * plan): al cambiar (> 0) abre ESTA misma confirmación de alta, con su saldo
+     * y sus avisos. 0 = nada que abrir.
+     */
+    pedirAltaToken: Int = 0,
+    /**
      * Evaluación psicológica (servicio con `tipo_clinico`): sus botones van en
      * [bloqueEvaluacionPsico] y no se ofrece "➕ Ampliar" (las citas se suman sin
      * cobrar más, con su botón propio). En false la tarjeta queda como siempre.
@@ -204,6 +210,11 @@ fun TarjetaTratamiento(
 
     val estado = EstadosColor.cita(t.estado)
     val terminado = t.estado == "Alta" || t.estado == "Cancelado" || t.estado == "Suspendido"
+    // Alta pedida desde la agenda: la misma confirmación que el botón de abajo (y la
+    // tarjeta se abre, para contar las sesiones pendientes en el aviso).
+    LaunchedEffect(pedirAltaToken) {
+        if (pedirAltaToken > 0 && !terminado && puedeSesionesEf) { expandido = true; confirmarAlta = true }
+    }
 
     // Cargar sesiones al expandir (una vez). cargaFallo distingue "error de red" de "vacío real".
     var cargaFallo by remember { mutableStateOf(false) }

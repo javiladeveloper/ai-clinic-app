@@ -118,6 +118,12 @@ fun PantallaFichaPaciente(
     presupuestoNuevo: Boolean = false,
     /** 🦶 Desde la agenda ("🦶 Evaluar el pie"): la pestaña del pie con una evaluación nueva vinculada a la cita. */
     pieAlAbrir: pe.saniape.app.ui.clinica.podologia.AperturaPie? = null,
+    /**
+     * «＋ Ampliar» / «✓ Dar de alta» desde la agenda (la sesión que cerró el plan):
+     * la ficha abre el MISMO modal de ampliar o la MISMA confirmación de alta de
+     * ese tratamiento, una vez cargada. Gemelo de `?tratamiento=&accion=` (web).
+     */
+    accionTratamientoAlAbrir: pe.saniape.app.data.staff.AperturaAccionTratamiento? = null,
 ) {
     // Multipaís: el dinero de la ficha va en la moneda de la sede del paciente
     // (solo con "pacientes por sede"; si no, la de la sede activa). Una clínica de
@@ -131,7 +137,7 @@ fun PantallaFichaPaciente(
     androidx.compose.runtime.CompositionLocalProvider(
         pe.saniape.app.ui.LocalMoneda provides pe.saniape.app.data.staff.monedaDeFila(sedePaciente),
     ) {
-        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir, sedePaciente, embarazoAlAbrir, embarazoCitaId, presupuestosAlAbrir || presupuestoNuevo, presupuestoNuevoCitaId, presupuestoNuevo, pieAlAbrir)
+        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir, sedePaciente, embarazoAlAbrir, embarazoCitaId, presupuestosAlAbrir || presupuestoNuevo, presupuestoNuevoCitaId, presupuestoNuevo, pieAlAbrir, accionTratamientoAlAbrir)
     }
 }
 
@@ -150,6 +156,7 @@ private fun PantallaFichaPacienteContenido(
     presupuestoNuevoCitaId: String? = null,
     presupuestoNuevo: Boolean = false,
     pieAlAbrir: pe.saniape.app.ui.clinica.podologia.AperturaPie? = null,
+    accionTratamientoAlAbrir: pe.saniape.app.data.staff.AperturaAccionTratamiento? = null,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val tpl = LocalTerminologiaPaciente.current
@@ -186,6 +193,10 @@ private fun PantallaFichaPacienteContenido(
     var ofertaPrimera by remember { mutableStateOf<OfertaPrimeraCita?>(null) }
     var creandoTratamiento by remember { mutableStateOf(false) }
     var ampliarTratamiento by remember { mutableStateOf<TratamientoPaciente?>(null) }
+    // «✓ Dar de alta» pedido desde la agenda: (tratamiento, señal) para su tarjeta.
+    var altaPedida by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    // La acción de la agenda se abre UNA vez, con la ficha ya cargada.
+    var accionPendiente by remember { mutableStateOf(accionTratamientoAlAbrir) }
     var editarTratamiento by remember { mutableStateOf<TratamientoPaciente?>(null) }
     var registrarAtencion by remember { mutableStateOf<TratamientoPaciente?>(null) }
     var recargarToken by remember { mutableStateOf(0) }   // fuerza recarga de las tarjetas
@@ -1083,6 +1094,24 @@ private fun PantallaFichaPacienteContenido(
                     }
                 }
 
+                // «＋ Ampliar» / «✓ Dar de alta» desde la agenda: se vuelve a comprobar
+                // aquí (permiso, ficha activa, tratamiento sin alta), como la web.
+                LaunchedEffect(cargando, accionPendiente) {
+                    val ap = accionPendiente ?: return@LaunchedEffect
+                    if (cargando) return@LaunchedEffect
+                    accionPendiente = null
+                    val t = paciente.tratamientos.find { it.id == ap.tratamientoId }
+                    if (t == null || !pe.saniape.app.data.staff.puedeAbrirAccionTratamiento(
+                            t.estado, ctx.puede("sesiones"), pe.saniape.app.data.staff.fichaInactiva(paciente.estado))
+                    ) {
+                        pe.saniape.app.ui.Toaster.info("Ese tratamiento ya no admite este cambio: revísalo en la ficha.")
+                        return@LaunchedEffect
+                    }
+                    when (ap.accion) {
+                        pe.saniape.app.data.staff.AccionTratamientoFicha.AMPLIAR -> ampliarTratamiento = t
+                        pe.saniape.app.data.staff.AccionTratamientoFicha.ALTA -> altaPedida = t.id to ((altaPedida?.second ?: 0) + 1)
+                    }
+                }
                 if (cargando) {
                     // Andamio de la ficha (encabezado + las 4 tarjetas + contenido)
                     // en vez de un aro: la ficha es la pantalla más pesada y su
@@ -1139,6 +1168,7 @@ private fun PantallaFichaPacienteContenido(
                         // Registrar atención (clínico): diagnóstico/medicación/próximo control.
                         onRegistrarAtencion = { registrarAtencion = it },
                         soloLectura = pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
+                        altaPedida = altaPedida,
                         // Alta hecha → ofrecer la encuesta (solo con teléfono y enlace, como la web).
                         onAltaHecha = { t ->
                             scope.launch {
@@ -3090,6 +3120,8 @@ private fun ContenidoAtenciones(
     /** Paciente dado de baja: se consulta, no se registra (ni tratamientos, ni sesiones, ni pagos). */
     soloLectura: Boolean = false,
     onAltaHecha: (TratamientoPaciente) -> Unit = {},
+    /** «✓ Dar de alta» pedido desde la agenda: (tratamiento, señal) → la confirmación de su tarjeta. */
+    altaPedida: Pair<String, Int>? = null,
 ) {
     val c = Sania.colors
     // Sin 'historia_clinica': la evaluación psicológica (su espacio de trabajo) no se ofrece.
@@ -3109,6 +3141,10 @@ private fun ContenidoAtenciones(
         it.estado == "Alta" || it.estado == "Cancelado" || it.estado == "Suspendido" || it.estado == "Completado"
     }
     var verHistorial by remember(paciente.id) { mutableStateOf(false) }
+    // El alta pedida puede ser de un tratamiento ya Completado (va al historial): se abre.
+    LaunchedEffect(altaPedida) {
+        if (altaPedida != null && cerrados.any { it.id == altaPedida.first }) verHistorial = true
+    }
 
     // Flujo POR TRATAMIENTO: cada uno sigue las etapas de la especialidad de su
     // servicio. En una clínica con fisioterapia y odontología, un paciente puede
@@ -3163,6 +3199,7 @@ private fun ContenidoAtenciones(
             onRegistrarAtencion = onRegistrarAtencion,
             soloLectura = soloLectura,
             onAltaHecha = onAltaHecha,
+            pedirAltaToken = altaPedida?.takeIf { it.first == t.id }?.second ?: 0,
             esEvaluacionPsico = t.procedimientoId != null && t.procedimientoId in procsEvalPsico,
             bloqueEvaluacionPsico = if (verHc && t.procedimientoId != null && t.procedimientoId in procsEvalPsico) {
                 {

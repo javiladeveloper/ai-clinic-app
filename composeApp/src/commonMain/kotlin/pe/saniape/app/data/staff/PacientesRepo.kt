@@ -1105,6 +1105,16 @@ object PacientesRepo {
         if (recordar) put("recordar", true)
     })
 
+    /** Como [registrarPago], con el detalle del rechazo (p. ej. «más de lo que se debe»): la pantalla lo muestra. */
+    suspend fun registrarPagoDetalle(
+        tratamientoId: String, monto: Double, metodo: String, notas: String? = null,
+    ): pe.saniape.app.data.offline.ResultadoEscritura = postStaffDetalle("/api/staff/pago/registrar", buildJsonObject {
+        put("tratamientoId", tratamientoId)
+        put("monto", monto)
+        put("metodo", metodo)
+        if (!notas.isNullOrBlank()) put("notas", notas)
+    })
+
     /** Edita un pago (solo Admin): ajusta pago + movimiento + recalcula. */
     suspend fun editarPago(
         pagoId: String, monto: Double, metodo: String, notas: String? = null, fecha: String? = null,

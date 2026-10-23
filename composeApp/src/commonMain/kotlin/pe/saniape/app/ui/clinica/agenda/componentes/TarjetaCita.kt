@@ -139,6 +139,16 @@ fun TarjetaCita(
      */
     textoPedido: String? = null,
     onPedido: (pe.saniape.app.data.staff.PedidoRecepcion) -> Unit = {},
+    /**
+     * Sesión completada con el plan ya terminado: «＋ Ampliar» / «✓ Dar de alta»
+     * (accionesSesionTerminada, gemelo de /citas web). Lo decide la pantalla.
+     */
+    terminado: pe.saniape.app.data.staff.AccionesTerminado? = null,
+    /**
+     * 💰 del saldo del PAQUETE en la sesión ya atendida (paqueteCobrableEnAgenda):
+     * abona al tratamiento como «Registrar pago» de la ficha. Lo decide la pantalla.
+     */
+    abonarPaquete: Boolean = false,
 ) {
     // Multipaís: el costo va en la moneda de la sede de la cita ("todas las sedes").
     val moneda = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)
@@ -331,7 +341,9 @@ fun TarjetaCita(
                 receta = textoReceta?.takeIf { verClinico && cita.pacienteId != null },
                 nutricion = verClinico && nutricion && cita.pacienteId != null,
                 embarazo = verClinico && embarazo && cita.pacienteId != null,
-                pedido = textoPedido?.takeIf { cita.pacienteId != null && cita.estado != "Cancelada" })
+                pedido = textoPedido?.takeIf { cita.pacienteId != null && cita.estado != "Cancelada" },
+                abonarPaquete = abonarPaquete && puedeCobrar,
+                terminado = terminado?.takeIf { cita.pacienteId != null && cita.tratamientoId != null })
             if (acc.isNotEmpty()) {
                 Spacer(Modifier.height(Sania.dim.md))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
@@ -383,6 +395,10 @@ enum class AccionTarjeta {
     Embarazo,
     /** 🧾 Pedido para recepción: armarlo (profesional) o cobrarlo (quien cobra). */
     Pedido,
+    /** 💰 Saldo del paquete en la sesión ya atendida: abono al tratamiento. */
+    AbonarPaquete,
+    /** Sesión que cerró el plan: «＋ Ampliar» / «✓ Dar de alta» (en la ficha del paciente). */
+    Ampliar, DarAlta,
 }
 
 /**
@@ -458,12 +474,20 @@ private fun accionesPara(
     embarazo: Boolean = false,
     /** Texto de "🧾 Pedido para recepción" (null = no aplica). */
     pedido: String? = null,
+    /** Sesión ya atendida de un paquete con deuda: 💰 abona al paquete. */
+    abonarPaquete: Boolean = false,
+    /** Sesión que cerró el plan: ＋ Ampliar / ✓ Dar de alta. */
+    terminado: pe.saniape.app.data.staff.AccionesTerminado? = null,
 ): List<Triple<String, AccionTarjeta, Color>> {
     val c = Sania.colors
     val lista = mutableListOf<Triple<String, AccionTarjeta, Color>>()
     // El dinero va primero, como la moneda de la web: el paciente llega al
     // mostrador y paga antes de pasar (o paga hoy la evaluación de mañana).
     if (cobrar) lista.add(Triple("💰 Cobrar", AccionTarjeta.Cobrar, c.ok))
+    if (abonarPaquete) lista.add(Triple("💰 Cobrar paquete", AccionTarjeta.AbonarPaquete, c.ok))
+    // La última sesión del plan ya se atendió: ¿más sesiones o alta? (los flujos de la ficha).
+    if (terminado?.ampliar == true) lista.add(Triple("＋ Ampliar", AccionTarjeta.Ampliar, c.info))
+    if (terminado?.alta == true) lista.add(Triple("✓ Dar de alta", AccionTarjeta.DarAlta, c.ok))
     if (ponerPrecio) lista.add(Triple("💲 Poner precio", AccionTarjeta.PonerPrecio, c.teal))
     val activa = estado == "Pendiente" || estado == "Confirmada"
     // SALA DE ESPERA (gemelo de `principalSala` de /citas): la acción del MOMENTO

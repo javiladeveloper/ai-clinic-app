@@ -130,6 +130,30 @@ fun PantallaSesiones(
     var fichaEjercicios by remember {
         mutableStateOf<Pair<pe.saniape.app.data.staff.PacienteStaff, pe.saniape.app.ui.clinica.fisio.IndicarEjercicios>?>(null)
     }
+    // «＋ Ampliar» / «✓ Dar de alta» de la sesión que cerró el plan: la ficha con ese flujo abierto.
+    var fichaAccion by remember {
+        mutableStateOf<Pair<pe.saniape.app.data.staff.PacienteStaff, pe.saniape.app.data.staff.AperturaAccionTratamiento>?>(null)
+    }
+    // Servicios de evaluación psicológica: esa no se amplía así (sí se da de alta).
+    var procsEvalPsico by remember { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(Unit) {
+        procsEvalPsico = runCatching { pe.saniape.app.data.staff.EvaluacionPsicoRepo.procedimientosEvaluacion() }.getOrDefault(emptySet())
+    }
+    var abriendoFicha by remember { mutableStateOf(false) }
+    fun abrirFichaAccion(s: SesionGlobal, accion: pe.saniape.app.data.staff.AccionTratamientoFicha) {
+        val pacId = s.pacienteId?.takeIf { it.isNotBlank() } ?: return
+        val tId = s.tratamientoId ?: return
+        if (abriendoFicha) return
+        abriendoFicha = true
+        scope.launch {
+            val pac = pe.saniape.app.ui.conIndicador(pe.saniape.app.ui.Gestion.CARGANDO) {
+                runCatching { PacientesRepo.porId(pacId) }.getOrNull()
+            }
+            abriendoFicha = false
+            if (pac == null) pe.saniape.app.ui.Toaster.error("No se pudo abrir la ficha. Revisa tu conexión.")
+            else fichaAccion = pac to pe.saniape.app.data.staff.AperturaAccionTratamiento(tId, accion)
+        }
+    }
 
     /**
      * Cierre con "dejarle ejercicios de apoyo" (fisio): a la ficha del paciente, pestaña
@@ -333,6 +357,19 @@ fun PantallaSesiones(
                             onReactivar = {
                                 accion("Sesión reactivada") { PacientesRepo.cambiarEstadoSesion(s.id, "Planificada", motivo = "") }
                             },
+                            // La última sesión del plan ya se atendió (gemelo de /sesiones web).
+                            terminado = pe.saniape.app.data.staff.accionesSesionTerminada(
+                                tipo = null, estado = s.estado,
+                                tratamiento = s.tratamientoId?.let {
+                                    pe.saniape.app.data.staff.TratamientoParaTerminar(s.tratamientoEstado, s.tratamientoTotalSesiones, s.tratamientoCompletadas)
+                                },
+                                puedeSesiones = ctx.puede("sesiones"),
+                                pacienteInactivo = pe.saniape.app.data.staff.fichaInactiva(s.pacienteEstado),
+                                esEvaluacionPsico = s.procedimientoId != null && s.procedimientoId in procsEvalPsico,
+                                numero = s.numero,
+                            ).takeIf { it.alguna && s.pacienteId != null },
+                            onAmpliar = { abrirFichaAccion(s, pe.saniape.app.data.staff.AccionTratamientoFicha.AMPLIAR) },
+                            onDarAlta = { abrirFichaAccion(s, pe.saniape.app.data.staff.AccionTratamientoFicha.ALTA) },
                             textoReceta = if (s.estado == "Completada" && recetaAplica(s))
                                 pe.saniape.app.data.staff.textoDarReceta(ctx.modulosClinicos) else null,
                             recetaVinculada = recetasPorSesion[s.id],
@@ -486,6 +523,15 @@ fun PantallaSesiones(
 
     // ── Ficha del paciente en la pestaña 🏠 (tras "dejarle ejercicios de apoyo") ──
     // Encima de la lista, como la ficha que abre la agenda; al cerrarla se vuelve a Sesiones.
+    fichaAccion?.let { (pac, ap) ->
+        Box(Modifier.fillMaxSize().background(c.fondo)) {
+            pe.saniape.app.tutoriales.PantallaTutorial("Ficha") { pe.saniape.app.ui.clinica.pacientes.PantallaFichaPaciente(
+                ctx = ctx, pacienteInicial = pac,
+                onCerrar = { fichaAccion = null; recargar() },
+                accionTratamientoAlAbrir = ap,
+            ) }
+        }
+    }
     fichaEjercicios?.let { (pac, indicar) ->
         Box(Modifier.fillMaxSize().background(c.fondo)) {
             pe.saniape.app.tutoriales.PantallaTutorial("Ficha") { pe.saniape.app.ui.clinica.pacientes.PantallaFichaPaciente(
@@ -601,6 +647,10 @@ private fun TarjetaSesion(
     recetaVinculada: pe.saniape.app.data.staff.RecetaVinculada? = null,
     onReceta: () -> Unit = {},
     onVerReceta: (pe.saniape.app.data.staff.RecetaVinculada) -> Unit = {},
+    /** Sesión que cerró el plan: ＋ Ampliar / ✓ Dar de alta (null = no aplica). */
+    terminado: pe.saniape.app.data.staff.AccionesTerminado? = null,
+    onAmpliar: () -> Unit = {},
+    onDarAlta: () -> Unit = {},
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
@@ -709,6 +759,14 @@ private fun TarjetaSesion(
                 }
                 if (s.estado == "Cancelada" || s.estado == "No asistió" || s.estado == "Otro") {
                     BotonAccion("↩ Reactivar", c.superficie, c.texto, borde = true, onClick = onReactivar)
+                }
+            }
+            // ¿Más sesiones o alta? En su propia fila (con Revertir y la receta no entran).
+            if (terminado != null) {
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (terminado.ampliar) BotonAccion("＋ Ampliar", c.infoBg, c.info, onClick = onAmpliar)
+                    if (terminado.alta) BotonAccion("✓ Dar de alta", c.okBg, c.ok, onClick = onDarAlta)
                 }
             }
         }

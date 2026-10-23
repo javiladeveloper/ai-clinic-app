@@ -50,6 +50,7 @@ import pe.saniape.app.ui.clinica.agenda.componentes.TiraDias
 import pe.saniape.app.ui.clinica.agenda.componentes.CalendarioMes
 import pe.saniape.app.ui.clinica.agenda.componentes.EncabezadoMesAgenda
 import pe.saniape.app.ui.clinica.agenda.modales.ConfirmacionAccion
+import pe.saniape.app.ui.clinica.agenda.modales.DialogoAbonarPaquete
 import pe.saniape.app.ui.clinica.agenda.modales.ModalCobrarCita
 import pe.saniape.app.ui.clinica.agenda.modales.ModalCompletar
 import pe.saniape.app.ui.clinica.agenda.modales.ModalEditarCita
@@ -153,6 +154,8 @@ fun PantallaAgenda(
     var anularCobroCita by remember { mutableStateOf<CitaStaff?>(null) }
     // "💲 Poner precio" de una cita sin costo.
     var ponerPrecioCita by remember { mutableStateOf<CitaStaff?>(null) }
+    // 💰 del saldo del paquete en una sesión ya atendida (abono al tratamiento).
+    var abonarPaqueteCita by remember { mutableStateOf<CitaStaff?>(null) }
     // 🧾 Pedido para recepción: armarlo / corregirlo (cita, pedido) y cobrarlo.
     var pedidoEditar by remember { mutableStateOf<Pair<CitaStaff?, pe.saniape.app.data.staff.PedidoRecepcion?>?>(null) }
     var pedidoCobrar by remember { mutableStateOf<pe.saniape.app.data.staff.PedidoRecepcion?>(null) }
@@ -189,6 +192,8 @@ fun PantallaAgenda(
     var fichaOrtodoncia by remember { mutableStateOf<pe.saniape.app.ui.clinica.ortodoncia.AperturaOrtodoncia?>(null) }
     // 🦶 "Evaluar el pie": la ficha en la pestaña del pie con una evaluación nueva vinculada a la cita.
     var fichaPie by remember { mutableStateOf<pe.saniape.app.ui.clinica.podologia.AperturaPie?>(null) }
+    // «＋ Ampliar» / «✓ Dar de alta» desde la sesión que cerró el plan.
+    var fichaAccionTratamiento by remember { mutableStateOf<pe.saniape.app.data.staff.AperturaAccionTratamiento?>(null) }
     var cargandoFicha by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val acciones = pe.saniape.app.ui.recordarAcciones()
@@ -322,6 +327,26 @@ fun PantallaAgenda(
                 return@launch
             }
             fichaPie = pe.saniape.app.ui.clinica.podologia.AperturaPie(cita.id)
+            fichaPaciente = pac
+        }
+    }
+    /**
+     * «＋ Ampliar» / «✓ Dar de alta» de la sesión que cerró el plan: a la ficha con
+     * el flujo de ESE tratamiento abierto (gemelo de rutaAccionTratamiento de la web).
+     */
+    fun abrirFichaAccionTratamiento(cita: CitaStaff, accion: pe.saniape.app.data.staff.AccionTratamientoFicha) {
+        val pid = cita.pacienteId ?: return
+        val tid = cita.tratamientoId ?: return
+        if (cargandoFicha) return
+        cargandoFicha = true
+        scope.launch {
+            val pac = runCatching { PacientesRepo.porId(pid) }.getOrNull()
+            cargandoFicha = false
+            if (pac == null) {
+                pe.saniape.app.ui.Toaster.error("No se pudo abrir la ficha. Revisa tu conexión.")
+                return@launch
+            }
+            fichaAccionTratamiento = pe.saniape.app.data.staff.AperturaAccionTratamiento(tid, accion)
             fichaPaciente = pac
         }
     }
@@ -798,6 +823,9 @@ fun PantallaAgenda(
                                         AccionTarjeta.AnularCobro -> anularCobroCita = cita
                                         AccionTarjeta.Comprobante -> comprobanteCita = cita
                                         AccionTarjeta.PonerPrecio -> ponerPrecioCita = cita
+                                        AccionTarjeta.AbonarPaquete -> abonarPaqueteCita = cita
+                                        AccionTarjeta.Ampliar -> abrirFichaAccionTratamiento(cita, pe.saniape.app.data.staff.AccionTratamientoFicha.AMPLIAR)
+                                        AccionTarjeta.DarAlta -> abrirFichaAccionTratamiento(cita, pe.saniape.app.data.staff.AccionTratamientoFicha.ALTA)
                                         AccionTarjeta.Pedido -> vm.pedidosPorCita[cita.id]?.firstOrNull()?.let { abrirPedido(it) }
                                             ?: run { pedidoEditar = cita to null }
                                         // 📝 Ya tiene receta → verla/imprimirla; si no → darla, prellenada.
@@ -844,6 +872,19 @@ fun PantallaAgenda(
                                     else "🧾 Pedido para recepción"
                                 } else null,
                                 onPedido = { abrirPedido(it) },
+                                // La última sesión del plan ya se atendió: ＋ Ampliar / ✓ Dar de alta
+                                // (gemelo de accionesSesionTerminada de /citas web).
+                                terminado = pe.saniape.app.data.staff.accionesSesionTerminada(
+                                    tipo = cita.tipo, estado = cita.estado, tratamiento = cita.tratamientoParaTerminar,
+                                    puedeSesiones = ctx.puede("sesiones"),
+                                    pacienteInactivo = pe.saniape.app.data.staff.fichaInactiva(cita.pacienteEstado),
+                                    esEvaluacionPsico = cita.procedimientoId != null && cita.procedimientoId in procsEvalPsico,
+                                    numero = cita.numeroSesion,
+                                ).takeIf { it.alguna },
+                                // 💰 del paquete: solo en la sesión YA atendida con deuda (las pendientes, no).
+                                abonarPaquete = pe.saniape.app.data.staff.paqueteCobrableEnAgenda(
+                                    cita.tipo, cita.tratamientoId, cita.estado, cita.tratamientoModalidad, vm.estadosPago[cita.id],
+                                ),
                                 // Gemelo de evalPsicoDe (/citas web): servicio de evaluación + Admin o
                                 // quien atiende la cita. La base decide al abrir.
                                 evaluacionPsico = cita.procedimientoId != null && cita.procedimientoId in procsEvalPsico &&
@@ -1253,6 +1294,15 @@ fun PantallaAgenda(
             )
         }
     }
+    abonarPaqueteCita?.let { cita ->
+        DialogoAbonarPaquete(
+            cita = cita,
+            deuda = vm.estadosPago[cita.id]?.deuda ?: 0.0,
+            guardando = vm.accionando,
+            onCancelar = { if (!vm.accionando) abonarPaqueteCita = null },
+            onConfirmar = { monto, metodo -> vm.abonarPaquete(cita, monto, metodo) { ok -> if (ok) abonarPaqueteCita = null } },
+        )
+    }
     ponerPrecioCita?.let { cita ->
         pe.saniape.app.ui.clinica.agenda.modales.DialogoPonerPrecio(
             cita = cita,
@@ -1565,7 +1615,7 @@ fun PantallaAgenda(
         Box(Modifier.fillMaxSize().background(c.fondo)) {
             pe.saniape.app.tutoriales.PantallaTutorial("Ficha") { PantallaFichaPaciente(
                 ctx = ctx, pacienteInicial = pac,
-                onCerrar = { fichaPaciente = null; fichaEjercicios = null; fichaNutricion = null; fichaEmbarazo = false; fichaEmbarazoCita = null; fichaIndicaciones = null; fichaOrtodoncia = null; fichaPresupuesto = false; fichaPresupuestoCita = null; fichaPie = null },
+                onCerrar = { fichaPaciente = null; fichaEjercicios = null; fichaNutricion = null; fichaEmbarazo = false; fichaEmbarazoCita = null; fichaIndicaciones = null; fichaOrtodoncia = null; fichaPresupuesto = false; fichaPresupuestoCita = null; fichaPie = null; fichaAccionTratamiento = null },
                 ejerciciosAlAbrir = fichaEjercicios,
                 nutricionAlAbrir = fichaNutricion,
                 embarazoAlAbrir = fichaEmbarazo,
@@ -1573,6 +1623,7 @@ fun PantallaAgenda(
                 indicacionesAlAbrir = fichaIndicaciones,
                 ortodonciaAlAbrir = fichaOrtodoncia,
                 pieAlAbrir = fichaPie,
+                accionTratamientoAlAbrir = fichaAccionTratamiento,
                 presupuestoNuevoCitaId = fichaPresupuestoCita,
                 presupuestoNuevo = fichaPresupuesto,
             ) }

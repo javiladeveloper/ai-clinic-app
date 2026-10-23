@@ -955,6 +955,35 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         }
     }
 
+    /**
+     * 💰 del saldo del PAQUETE en una sesión ya atendida (gemelo de /citas web): un
+     * ABONO al tratamiento, el mismo «Registrar pago» de la ficha (POST
+     * /api/staff/pago/registrar sin ligarlo a la sesión). El tope (lo que se debe)
+     * lo valida el diálogo con [pe.saniape.app.data.staff.montoAbonoPaquete].
+     */
+    fun abonarPaquete(cita: CitaStaff, monto: Double, metodo: String, onFin: (Boolean) -> Unit = {}) {
+        val tId = cita.tratamientoId ?: return
+        if (accionando) return
+        viewModelScope.launch {
+            accionando = true
+            val r = pe.saniape.app.ui.conIndicador {
+                pe.saniape.app.data.staff.PacientesRepo.registrarPagoDetalle(tId, monto, metodo, "Pago del paquete desde la agenda")
+            }
+            if (r.registrada) {
+                pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(cita.pacienteId, metodo)
+                if (!r.encolada) pe.saniape.app.ui.Toaster.exito(
+                    "${pe.saniape.app.ui.clinica.agenda.modales.textoSoles(monto, pe.saniape.app.data.staff.monedaDeFila(cita.sedeId))} abonados al paquete",
+                )
+                // El badge "¿ya pagó?" de esa cita cambia.
+                recargarCitas()
+            } else {
+                pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo registrar el pago")
+            }
+            accionando = false
+            onFin(r.registrada)
+        }
+    }
+
     fun anularCobro(cita: CitaStaff, onFin: (Boolean) -> Unit = {}) {
         if (accionando) return
         viewModelScope.launch {

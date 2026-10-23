@@ -39,6 +39,14 @@ data class SesionGlobal(
     val diagnostico: String? = null,
     /** Profesional a cargo del tratamiento (prescriptor sugerido si la sesión no tiene). */
     val terapeutaTratamientoId: String? = null,
+    /** El tratamiento (estado y avance): «＋ Ampliar» / «✓ Dar de alta» en la sesión que cerró el plan. */
+    val tratamientoEstado: String? = null,
+    val tratamientoTotalSesiones: Int? = null,
+    val tratamientoCompletadas: Int? = null,
+    /** Servicio del tratamiento (¿es una evaluación psicológica?). */
+    val procedimientoId: String? = null,
+    /** "Inactivo" = ficha dada de baja. */
+    val pacienteEstado: String? = null,
 ) {
     val pendiente: Boolean
         get() = estado == "Planificada" || estado == "En progreso" || estado == "Reprogramada"
@@ -70,9 +78,10 @@ object SesionesRepo {
         id, numero, fecha, hora, estado, costo, notas, mejorias, duracion, motivo_estado, terapeuta_id,
         terapeuta:terapeutas(nombre),
         tratamiento:tratamientos(
-            id, modalidad, precio_por_sesion, precio_acordado, diagnostico, terapeuta_id,
-            paciente:pacientes(id, nombre),
-            procedimiento:procedimientos(nombre, especialidad_id)
+            id, estado, modalidad, precio_por_sesion, precio_acordado, diagnostico, terapeuta_id,
+            total_sesiones, sesiones_completadas,
+            paciente:pacientes(id, nombre, estado),
+            procedimiento:procedimientos(id, nombre, especialidad_id)
         )
     """
 
@@ -134,6 +143,11 @@ object SesionesRepo {
             especialidadId = proc?.str("especialidad_id"),
             diagnostico = trat?.str("diagnostico")?.takeIf { it.isNotBlank() },
             terapeutaTratamientoId = trat?.str("terapeuta_id"),
+            tratamientoEstado = trat?.str("estado"),
+            tratamientoTotalSesiones = trat?.dbl("total_sesiones")?.toInt(),
+            tratamientoCompletadas = trat?.dbl("sesiones_completadas")?.toInt(),
+            procedimientoId = proc?.str("id"),
+            pacienteEstado = paciente?.str("estado"),
         )
     }
 
