@@ -58,10 +58,12 @@ sealed class BloqueDetalleCita {
 
 /**
  * ¿Quien mira ve lo clínico (diagnóstico, notas de la sesión) en el detalle?
- * Misma regla que el popup de la web (`PopupCita`): el permiso `sesiones`. Quien no
- * lo tiene ve solo las observaciones de la cita, que es lo que necesita para coordinar.
+ * Misma regla que el popup de la web (`PopupCita`): el permiso `sesiones`, y además
+ * 'historia_clinica' (recepción puede gestionar sesiones sin leer lo clínico). Quien
+ * no lo tiene ve solo las observaciones de la cita, que es lo que necesita para coordinar.
  */
-fun veClinicoEnDetalleCita(puedeSesiones: Boolean): Boolean = puedeSesiones
+fun veClinicoEnDetalleCita(puedeSesiones: Boolean, historiaClinica: Boolean = true): Boolean =
+    puedeSesiones && historiaClinica
 
 /**
  * ¿Quien mira puede editar las observaciones desde el detalle? Igual que la web

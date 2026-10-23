@@ -326,6 +326,8 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     // clínica; solo con el flujo médico, las de atención médica. Sin interruptores
     // (DALU, RENOVA) todo esto queda en null/vacío y NO se consulta nada más.
     private val modulos get() = ctx.modulosClinicos
+    /** Permiso 'historia_clinica': sin él no se ofrece nada clínico tras completar (receta, medidas, pie, indicaciones). */
+    private val verHc: Boolean get() = pe.saniape.app.data.staff.verHistoriaClinica(ctx)
     val triajeOn: Boolean get() = modulos.triaje
     val salaEsperaOn: Boolean get() = modulos.salaEspera
     /** Campos que mide la clínica en su triaje. */
@@ -813,7 +815,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
      * todas). Una clínica sin el módulo (RENOVA) nunca ve nada.
      */
     fun recetaAplica(cita: CitaStaff, terapeutaId: String? = null): Boolean =
-        cita.pacienteId != null && pe.saniape.app.data.staff.recetaAplicaAtencion(
+        verHc && cita.pacienteId != null && pe.saniape.app.data.staff.recetaAplicaAtencion(
             ctx.modulosClinicos, ctx.puede("sesiones"),
             especialidadCitaId = cita.especialidadId,
             especialidadServicioId = cita.especialidadServicioId,
@@ -1318,7 +1320,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                 }
                 pe.saniape.app.ui.Toaster.exito(textoExito ?: txt)
                 // Nutrición: "⚖️ Registrar medidas" (aviso aparte; no toca lo que sigue).
-                if (accion == AccionCita.Completar && pe.saniape.app.ui.clinica.nutricion.ofrecerMedidasTrasCompletar(
+                if (accion == AccionCita.Completar && verHc && pe.saniape.app.ui.clinica.nutricion.ofrecerMedidasTrasCompletar(
                         esNutricion = esNutricion(cita), pacienteId = cita.pacienteId,
                         puedePacientes = ctx.puede("pacientes"), puedeSesiones = ctx.puede("sesiones"),
                         encolada = completadaEncolada,
@@ -1326,7 +1328,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                     ofrecerMedidas = cita.copy(estado = "Completada")
                 }
                 // Podología: "🦶 Evaluar el pie" si el diagnóstico es de pie diabético.
-                if (accion == AccionCita.Completar && !completadaEncolada && cita.pacienteId != null &&
+                if (accion == AccionCita.Completar && !completadaEncolada && cita.pacienteId != null && verHc &&
                     (ctx.puede("pacientes") || ctx.puede("sesiones")) &&
                     pe.saniape.app.data.staff.diagnosticoPideEvaluacionPie(diagnostico) &&
                     pe.saniape.app.data.staff.citaEsPodologia(
@@ -1385,7 +1387,8 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                 // 📝 "Dejar indicaciones": la regla menos ruidosa (Indicaciones.kt). Otra
                 // entrega en este cierre la calla: la receta, los ejercicios de apoyo, las
                 // medidas (nutrición) o el plan de tratamiento tras una evaluación.
-                if (accion == AccionCita.Completar) {
+                // Sin 'historia_clinica' no: las indicaciones (y la ortodoncia) son clínicas.
+                if (accion == AccionCita.Completar && verHc) {
                     val planOfrecido = evaluaParaPlan &&
                         (!ofrecerPlan || (ctx.puede("sesiones") && cita.pacienteId != null))
                     val candidata = pe.saniape.app.data.staff.candidataIndicacionesTrasCompletar(

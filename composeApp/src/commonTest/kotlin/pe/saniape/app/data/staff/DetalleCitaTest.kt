@@ -220,6 +220,14 @@ class DetalleCitaTest {
         assertFalse(veClinicoEnDetalleCita(puedeSesiones = false))
     }
 
+    @Test
+    fun sinHistoriaClinicaNoVeLoClinicoAunqueGestioneSesiones() {
+        // Recepción de salud mental: completa y cobra sesiones, pero no lee lo clínico.
+        assertFalse(veClinicoEnDetalleCita(puedeSesiones = true, historiaClinica = false))
+        assertFalse(veClinicoEnDetalleCita(puedeSesiones = false, historiaClinica = true))
+        assertTrue(veClinicoEnDetalleCita(puedeSesiones = true, historiaClinica = true))
+    }
+
     // ── Lectura ──
 
     @Test

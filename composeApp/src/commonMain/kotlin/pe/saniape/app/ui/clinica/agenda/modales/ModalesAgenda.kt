@@ -124,6 +124,12 @@ fun ModalCompletar(
      * sugeridos a esa especialidad + su rubro. null = la de la cita, si tiene.
      */
     especialidadId: String? = cita.especialidadId,
+    /**
+     * Permiso 'historia_clinica'. Sin él (recepción) la cita se completa —quién
+     * atendió y el cobro— sin diagnóstico, técnicas, evolución, EVA, piezas, fotos,
+     * derivación ni la referencia de la sesión anterior: todo eso viaja en null.
+     */
+    verClinico: Boolean = pe.saniape.app.data.staff.LocalVerHistoriaClinica.current,
 ) {
     val c = Sania.colors
     var terapeutaElegido by remember { mutableStateOf<String?>(null) }
@@ -141,15 +147,15 @@ fun ModalCompletar(
     var piezas by remember { mutableStateOf<List<String>>(emptyList()) }
     // true = la lista de piezas cargó; solo entonces se mandan (ver PiezasTratadas).
     var piezasListas by remember { mutableStateOf(false) }
-    val conPiezas = esDental && !esEvaluacion && cita.tipo == "Sesión" && cita.pacienteId != null
+    val conPiezas = verClinico && esDental && !esEvaluacion && cita.tipo == "Sesión" && cita.pacienteId != null
     // Fisioterapia: solo en citas de Sesión (no en la evaluación) y con su callback.
-    val fisioSesion = esFisio && !esEvaluacion && cita.tipo == "Sesión" && onConfirmarFisio != null
-    val psicoSesion = !esEvaluacion && cita.tipo == "Sesión" && pe.saniape.app.data.staff.esCierrePsicologia(esFisio, esDental, especialidadId, especialidades.map { Triple(it.id, it.rubro, it.nombre) })
+    val fisioSesion = verClinico && esFisio && !esEvaluacion && cita.tipo == "Sesión" && onConfirmarFisio != null
+    val psicoSesion = verClinico && !esEvaluacion && cita.tipo == "Sesión" && pe.saniape.app.data.staff.esCierrePsicologia(esFisio, esDental, especialidadId, especialidades.map { Triple(it.id, it.rubro, it.nombre) })
     // Sesión de un tratamiento: se trae la sesión anterior (referencia + "↩ Repetir"),
     // el plan de técnicas y cuántas van completadas — igual que /citas web. Antes el
     // cierre desde la agenda no tenía ninguno de esos atajos y las mejorías dependían
     // de que la cita trajera el número de sesión.
-    val sesionDeTratamiento = !esEvaluacion && cita.tipo == "Sesión" && cita.tratamientoId != null
+    val sesionDeTratamiento = verClinico && !esEvaluacion && cita.tipo == "Sesión" && cita.tratamientoId != null
     var cierre by remember { mutableStateOf<pe.saniape.app.data.staff.ContextoCierreCita?>(null) }
     androidx.compose.runtime.LaunchedEffect(cita.id) {
         val tId = cita.tratamientoId
@@ -188,6 +194,11 @@ fun ModalCompletar(
         text = {
             // El cuerpo se desplaza siempre: con el teclado abierto se achica.
             Column(Modifier.tourAncla("cierre_sesion").verticalScroll(rememberScrollState())) {
+                // Sin 'historia_clinica': se dice una vez por qué no hay campos clínicos.
+                if (!verClinico) {
+                    pe.saniape.app.ui.clinica.AvisoHistoriaClinicaOculta()
+                    Spacer(Modifier.height(Sania.dim.lg))
+                }
                 // Referencia: qué se hizo la sesión anterior (como la web).
                 cierre?.anterior?.let { ant ->
                     Column(
@@ -219,7 +230,9 @@ fun ModalCompletar(
                     )
                     Spacer(Modifier.height(Sania.dim.lg))
                 }
-                if (esEvaluacion) {
+                if (!verClinico) {
+                    // Nada clínico que escribir: solo quién atendió y el cobro (abajo).
+                } else if (esEvaluacion) {
                     Text("Diagnóstico / Motivo", color = c.textoSuave, fontSize = Sania.txt.mini,
                         fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
                     // Campo con TYPEAHEAD + chips, igual que la web: al escribir sugiere las
@@ -310,7 +323,7 @@ fun ModalCompletar(
                         fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
                     SelectorProfesional(profesionales, terapeutaElegido) { terapeutaElegido = it }
                 }
-                if (esEvaluacion && avisoSinDiagnostico && texto.isBlank()) {
+                if (verClinico && esEvaluacion && avisoSinDiagnostico && texto.isBlank()) {
                     Spacer(Modifier.height(Sania.dim.sm))
                     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
                         .background(c.pendBg).padding(horizontal = 10.dp, vertical = 8.dp)) {
@@ -318,7 +331,7 @@ fun ModalCompletar(
                             color = c.pend, fontSize = 11.sp)
                     }
                 }
-                if (fotosSesion != null && !esEvaluacion && !psicoSesion && cita.tipo == "Sesión") {
+                if (verClinico && fotosSesion != null && !esEvaluacion && !psicoSesion && cita.tipo == "Sesión") {
                     Spacer(Modifier.height(Sania.dim.lg))
                     pe.saniape.app.ui.clinica.pacientes.BloqueFotosSesion(fotosSesion)
                 }
@@ -337,7 +350,8 @@ fun ModalCompletar(
                         )
                     }
                 }
-                if (esEvaluacion && especialidades.size > 1) {
+                // Derivar es una decisión clínica: solo con 'historia_clinica'.
+                if (verClinico && esEvaluacion && especialidades.size > 1) {
                     Spacer(Modifier.height(Sania.dim.lg))
                     // Tarjeta de derivación (más clara que el checkbox suelto).
                     Column(
@@ -391,13 +405,14 @@ fun ModalCompletar(
                 Modifier.tourAncla("cierre_sesion.guardar").clip(RoundedCornerShape(Sania.shape.md.dp))
                     .background(if (bloqueado) c.borde else c.navy)
                     .clickable(enabled = !bloqueado) {
-                        if (esEvaluacion && texto.isBlank() && !avisoSinDiagnostico) {
+                        if (verClinico && esEvaluacion && texto.isBlank() && !avisoSinDiagnostico) {
                             avisoSinDiagnostico = true
                             return@clickable
                         }
-                        val obs = texto.trim().ifBlank { null }
-                        val diag = if (esEvaluacion) texto.trim().ifBlank { null } else null
-                        val esp = if (esEvaluacion && derivar) espElegida?.id else null
+                        // Sin 'historia_clinica' no viaja nada clínico (null = no tocar).
+                        val obs = texto.trim().ifBlank { null }?.takeIf { verClinico }
+                        val diag = if (esEvaluacion && verClinico) texto.trim().ifBlank { null } else null
+                        val esp = if (esEvaluacion && derivar && verClinico) espElegida?.id else null
                         val pz = if (conPiezas && piezasListas) piezas else null
                         val conProf = onConfirmarConProfesional
                         val fisio = onConfirmarFisio

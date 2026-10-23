@@ -87,9 +87,11 @@ fun PantallaSesiones(
     var accionando by remember { mutableStateOf(false) }
 
     // ── 📝 Receta / indicaciones de las sesiones atendidas ──
+    // Permiso 'historia_clinica': sin él se completa (asistencia y cobro) sin nada clínico.
+    val verHc = pe.saniape.app.data.staff.verHistoriaClinica(ctx)
     // ¿Esta sesión puede llevar receta? (módulo + permiso + especialidad del servicio).
     val recetaAplica = { s: SesionGlobal ->
-        !s.pacienteId.isNullOrBlank() && pe.saniape.app.data.staff.recetaAplicaAtencion(
+        verHc && !s.pacienteId.isNullOrBlank() && pe.saniape.app.data.staff.recetaAplicaAtencion(
             ctx.modulosClinicos, ctx.puede("sesiones"), especialidadServicioId = s.especialidadId,
         )
     }
@@ -358,13 +360,13 @@ fun PantallaSesiones(
     completar?.let { (sg, cc) ->
         // esServicioDental da true cuando la clínica NO tiene odontología (DALU): sin
         // este chequeo, completar desde Sesiones mostraba "¿Qué se le hizo hoy?" en fisio.
-        val esDental = ctx.haceOdontologia && pe.saniape.app.data.staff.esServicioDental(cc.especialidadId, ctx.mapaDental)
+        val esDental = verHc && ctx.haceOdontologia && pe.saniape.app.data.staff.esServicioDental(cc.especialidadId, ctx.mapaDental)
         // 📷 Fotos de la sesión (mismo bloque que la ficha), si el tratamiento se conoce.
         val fotosSesion = remember(sg.id) { pe.saniape.app.ui.clinica.pacientes.FotosSesionPendientes() }
-        val conFotos = sg.tratamientoId != null && !sg.pacienteId.isNullOrBlank() &&
+        val conFotos = verHc && sg.tratamientoId != null && !sg.pacienteId.isNullOrBlank() &&
             pe.saniape.app.ui.clinica.pacientes.recordarFotosActivas(ctx.can("fotosEvolutivas")) == true
         // Fisioterapia (EVA, chips, dictado): por el servicio del tratamiento, como la web.
-        val esFisio = pe.saniape.app.data.staff.citaEsFisio(ctx.mapaFisio, especialidadServicioId = cc.especialidadId)
+        val esFisio = verHc && pe.saniape.app.data.staff.citaEsFisio(ctx.mapaFisio, especialidadServicioId = cc.especialidadId)
         // 🏠 "¿Le dejas ejercicios de apoyo?" (como la web y la ficha): solo en una sesión de
         // fisio, con permiso de sesiones y con paciente al que abrirle la ficha.
         val dejarEjercicios = remember(sg.id) { mutableStateOf(false) }
@@ -393,8 +395,9 @@ fun PantallaSesiones(
                     val r = PacientesRepo.cambiarEstadoSesionDetalle(
                         sg.id, "Completada",
                         notas = tecnicas,
-                        mejorias = if (cc.ses.numero > 1 || mejorias != null) mejorias.orEmpty() else null,
-                        rxPendiente = dejoRx,
+                        // Sin 'historia_clinica' no se manda nada clínico (null = no tocar).
+                        mejorias = if (!verHc) null else if (cc.ses.numero > 1 || mejorias != null) mejorias.orEmpty() else null,
+                        rxPendiente = dejoRx.takeIf { verHc },
                         piezas = piezas,
                         eva = eva,
                     )

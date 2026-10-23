@@ -104,6 +104,9 @@ fun PantallaAgenda(
 ) {
     val c = Sania.colors
     val vm: AgendaViewModel = viewModel(key = ctx.clinicaId) { AgendaViewModel(ctx) }
+    // Permiso 'historia_clinica': sin él la agenda agenda, completa y cobra, pero no
+    // abre lo clínico (consulta guiada, triaje, odontograma, evaluaciones, diagnóstico).
+    val verHc = pe.saniape.app.data.staff.verHistoriaClinica(ctx)
 
     // El profesional tocó "Nueva cita agendada": la agenda abre en el día de ESA
     // cita, no en hoy. Sin esto, una cita de la semana que viene no se ve.
@@ -883,7 +886,7 @@ fun PantallaAgenda(
     // con return como crear cita): así el resumen/ficha del paciente y el
     // odontograma que abre desde adentro se dibujan sobre ella con los mismos
     // modales de la agenda.
-    atendiendo?.let { a ->
+    atendiendo?.takeIf { verHc }?.let { a ->
         pe.saniape.app.tutoriales.PantallaTutorial("Consulta") { pe.saniape.app.ui.clinica.atencion.PantallaAtencion(
             ctx = ctx, citaId = a.citaId, apertura = a.apertura, acciones = acciones,
             onSalir = { atendiendo = null; vm.refrescar() },
@@ -893,7 +896,7 @@ fun PantallaAgenda(
     }
 
     // 🧠 Evaluación psicológica de la cita (su tratamiento), a pantalla completa.
-    evalPsico?.let { (cita, apertura) ->
+    evalPsico?.takeIf { verHc }?.let { (cita, apertura) ->
         // Por la CITA (GET ?citaId=): quien la atiende puede no ver el tratamiento.
         run {
             pe.saniape.app.tutoriales.PantallaTutorial("EvaluacionPsico") { pe.saniape.app.ui.clinica.psico.PantallaEvaluacionPsico(
@@ -934,7 +937,7 @@ fun PantallaAgenda(
     // ── Modales ──
     // "🩺 Triaje": solo las mediciones que toma la clínica. Se cierra al quedar
     // registrado (servidor o cola); el "no" del servidor se muestra adentro.
-    triajeCita?.let { cita ->
+    triajeCita?.takeIf { verHc }?.let { cita ->
         pe.saniape.app.ui.clinica.agenda.modales.ModalTriaje(
             cita = cita,
             campos = vm.camposTriaje,
@@ -958,7 +961,8 @@ fun PantallaAgenda(
         // SOLO la cita dental que evalúa: primero el odontograma. Se decide por
         // CITA: en una clínica con fisio y odontología, la evaluación de fisio
         // va directo al modal de siempre.
-        if (vm.esDental(cita) && evalua && pac != null && revisada?.citaId != cita.id) {
+        // Sin 'historia_clinica' la evaluación dental no pasa por el odontograma: el modal de siempre.
+        if (verHc && vm.esDental(cita) && evalua && pac != null && revisada?.citaId != cita.id) {
             // Revisión completa o ATENCIÓN PUNTUAL (vino por algo concreto): dos
             // pestañas de la misma ventana; las dos escriben el mismo odontograma.
             var puntual by remember(cita.id) { mutableStateOf(false) }
@@ -1003,7 +1007,7 @@ fun PantallaAgenda(
             // Fisioterapia (M5): la evaluación estructurada de ESTA cita. Holder sin
             // estado: escribir en él no recompone la agenda. Nunca en una cita dental.
             val evalFisio = remember(cita.id) { pe.saniape.app.ui.clinica.fisio.RefBorradorFisio() }
-            val conEvalFisio = evalua && vm.esFisio(cita) && !vm.esDental(cita) && cita.pacienteId != null
+            val conEvalFisio = verHc && evalua && vm.esFisio(cita) && !vm.esDental(cita) && cita.pacienteId != null
             // Cobro en el mismo cierre de una SESIÓN (como la ficha), solo con permiso de pagos.
             val metodoCobro = pe.saniape.app.ui.clinica.pacientes.rememberMetodoPagoInicial(cita.pacienteId)
             val cobro = remember(cita.id) {
@@ -1018,7 +1022,7 @@ fun PantallaAgenda(
                 vm.estadosPago[cita.id]?.estado != "pagado"
             // 📷 Fotos de la sesión: Sesión de un tratamiento + plan con fotos + clínica sin apagarlas.
             val fotosSesion = remember(cita.id) { pe.saniape.app.ui.clinica.pacientes.FotosSesionPendientes() }
-            val conFotos = !evalua && cita.tipo == "Sesión" && cita.tratamientoId != null && cita.pacienteId != null &&
+            val conFotos = verHc && !evalua && cita.tipo == "Sesión" && cita.tratamientoId != null && cita.pacienteId != null &&
                 pe.saniape.app.ui.clinica.pacientes.recordarFotosActivas(ctx.can("fotosEvolutivas")) == true
             // Tras completar: subir las fotos ligadas a la sesión que quedó vinculada a la cita.
             // Sin señal (encolada) o sin completar: se avisa en vez de perderlas.
@@ -1038,14 +1042,14 @@ fun PantallaAgenda(
             // 🏠 "¿Le dejas ejercicios de apoyo?" (como la web y la ficha): solo en una sesión
             // de fisio, con permiso de sesiones y con paciente al que abrirle la ficha.
             val dejarEjercicios = remember(cita.id) { mutableStateOf(false) }
-            val ofreceEjercicios = vm.esFisio(cita) && ctx.puede("sesiones") && cita.pacienteId != null
+            val ofreceEjercicios = verHc && vm.esFisio(cita) && ctx.puede("sesiones") && cita.pacienteId != null
             ModalCompletar(
                 fotosSesion = if (conFotos) fotosSesion else null,
                 dejarEjercicios = if (ofreceEjercicios) dejarEjercicios else null,
                 cita = cita, especialidades = vm.especialidades, flujo = flujoCita,
                 especialidadId = vm.especialidadDeCita(cita),
-                esDental = vm.esDental(cita),
-                esFisio = vm.esFisio(cita),
+                esDental = verHc && vm.esDental(cita),
+                esFisio = verHc && vm.esFisio(cita),
                 bloqueEvaluacionFisio = if (conEvalFisio) { diag ->
                     pe.saniape.app.ui.clinica.fisio.EvaluacionFisioForm(
                         citaId = cita.id,
@@ -1076,7 +1080,7 @@ fun PantallaAgenda(
                     vm.ejecutar(
                         AccionCita.Completar, cita, obs, diag, espId, piezas = piezas,
                         // Evaluación dental: foto fija del odontograma del día (como la web).
-                        congelarOdontograma = vm.esDental(cita) && evalua,
+                        congelarOdontograma = verHc && vm.esDental(cita) && evalua,
                         evaluacionFisio = if (conEvalFisio) evalFisio.valor else null,
                         pago = if (conCobro) cobro.pago() else null,
                         ofrecerPlan = !planResuelto,
@@ -1092,7 +1096,7 @@ fun PantallaAgenda(
                     revisada = null
                     vm.ejecutar(
                         AccionCita.Completar, cita, obs, diag, espId, piezas = piezas,
-                        congelarOdontograma = vm.esDental(cita) && evalua,
+                        congelarOdontograma = verHc && vm.esDental(cita) && evalua,
                         terapeutaId = terId,
                         evaluacionFisio = if (conEvalFisio) evalFisio.valor else null,
                         // Lo mismo que onConfirmar: si algún día este camino cierra
@@ -1108,7 +1112,7 @@ fun PantallaAgenda(
     }
     // Odontograma abierto desde una cita dental: lo que se marque
     // queda atado a esa atención.
-    odontogramaCita?.takeIf { vm.esDental(it) }?.let { cita ->
+    odontogramaCita?.takeIf { verHc && vm.esDental(it) }?.let { cita ->
         val pac = cita.pacienteId ?: return@let
         // La cita que EVALÚA y sigue abierta: desde aquí mismo se completa la
         // evaluación en un paso (29/09/2026, como la web). Solo a quien puede
@@ -1325,7 +1329,7 @@ fun PantallaAgenda(
             cita = cita,
             flujo = vm.flujoDe(cita),
             puedeVerCosto = ctx.puede("pagos"),
-            verClinico = pe.saniape.app.data.staff.veClinicoEnDetalleCita(ctx.puede("sesiones")),
+            verClinico = pe.saniape.app.data.staff.veClinicoEnDetalleCita(ctx.puede("sesiones"), verHc),
             onCerrar = { detalleCita = null },
             onVerResumen = { pid -> detalleCita = null; resumenPacienteId = pid },
             // Como la web: permiso `citas`. La app no recibe el flag de solo
@@ -1340,7 +1344,20 @@ fun PantallaAgenda(
 
     // Popup de resumen clínico (tocar el nombre en una tarjeta). "Ver ficha" carga el
     // paciente por id y abre la ficha completa como overlay (misma pantalla que la web).
-    resumenPacienteId?.let { pid ->
+    // Sin 'historia_clinica' el resumen clínico no se muestra (el servidor lo niega):
+    // tocar el nombre lleva directo a la ficha, que ya oculta lo clínico.
+    resumenPacienteId?.takeIf { !verHc }?.let { pid ->
+        LaunchedEffect(pid) {
+            resumenPacienteId = null
+            cargandoFicha = true
+            // En el scope de la pantalla: este efecto sale de la composición al soltar el id.
+            scope.launch {
+                fichaPaciente = PacientesRepo.porId(pid)
+                cargandoFicha = false
+            }
+        }
+    }
+    resumenPacienteId?.takeIf { verHc }?.let { pid ->
         ResumenClinicoSheet(
             pacienteId = pid,
             onCerrar = { resumenPacienteId = null },

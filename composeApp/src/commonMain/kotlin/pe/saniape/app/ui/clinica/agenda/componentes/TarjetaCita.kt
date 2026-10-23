@@ -144,6 +144,11 @@ fun TarjetaCita(
     val moneda = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)
     val c = Sania.colors
     val acciones = recordarAcciones()
+    // Permiso 'historia_clinica': sin él la tarjeta deja lo operativo (llegó,
+    // completar, cobrar, editar, pedido) y no ofrece lo clínico: consulta guiada,
+    // triaje, evaluación psicológica, receta, odontograma, medidas, embarazo.
+    val verClinico = pe.saniape.app.data.staff.LocalVerHistoriaClinica.current
+    val salaEf = if (verClinico) sala else sala?.copy(triajeOn = false, medica = false)
     // Color del tipo desde la config global (reutilizable en toda la app).
     val tipoColor = EstadosColor.tipo(cita.tipo)
 
@@ -231,7 +236,7 @@ fun TarjetaCita(
             }
 
             // Sala de espera: ○ Por llegar · 🔔 Llegó · 12 min · 🩺 Triaje ✓ PA 120/80 · ▶ En consulta.
-            sala?.let { IndicadorLlegada(it) }
+            salaEf?.let { IndicadorLlegada(it, verValores = verClinico) }
 
             // Cita virtual con enlace y viva: "🎥 Unirse · Google Meet" (abre la app de
             // Meet / Zoom o el navegador). Las presenciales no cambian en nada.
@@ -276,7 +281,7 @@ fun TarjetaCita(
                 if (!conBadgePago && cobrable && !puedeCobrar && !pagada && cita.estado == "Completada") {
                     add(Triple("⚠ Debe ${textoSoles(cita.costo ?: 0.0, moneda)}", c.error, c.errorBg))
                 }
-                recetaVinculada?.let { add(Triple(it, c.purple, c.purpleBg)) }
+                recetaVinculada?.takeIf { verClinico }?.let { add(Triple(it, c.purple, c.purpleBg)) }
                 // Cita por videollamada (sin enlace todavía: el detalle dice qué falta).
                 if (cita.esVirtual) add(Triple(if (cita.enlaceVirtual == null && !cerrada) "🎥 Virtual · sin enlace" else "🎥 Virtual", c.purple, c.purpleBg))
                 if (cita.origen == "online") add(Triple("🌐 Web", c.purple, c.purpleBg))
@@ -307,12 +312,13 @@ fun TarjetaCita(
             }
 
             // Acciones según estado (separadas por un divisor sutil)
-            val acc = accionesPara(cita.estado, cita.tipo, odontologia && cita.pacienteId != null,
+            val acc = accionesPara(cita.estado, cita.tipo, verClinico && odontologia && cita.pacienteId != null,
                 pasarA = flujo.labelEvaluacion.takeIf { flujo.pasaAEvaluacion(cita.tipo) },
                 crearTratamiento = crearTratamiento && cita.pacienteId != null,
-                sala = sala?.takeIf { cita.pacienteId != null },
-                medica = medica && cita.pacienteId != null,
-                evaluacionPsico = evaluacionPsico && cita.tratamientoId != null,
+                sala = salaEf?.takeIf { cita.pacienteId != null },
+                // Sin el permiso, la cita médica se cierra con "✓ Completar" (sin la consulta guiada).
+                medica = verClinico && medica && cita.pacienteId != null,
+                evaluacionPsico = verClinico && evaluacionPsico && cita.tratamientoId != null,
                 cobrar = cobrable && puedeCobrar && !pagada,
                 // Cita SIN precio (las importadas de Google Calendar entran sin
                 // servicio ni costo): sin precio no hay 💰, así que se le pone aquí.
@@ -322,9 +328,9 @@ fun TarjetaCita(
                 // 🧾 Comprobante: el recibo del cobro YA hecho, otra vez (gemelo de /citas web).
                 comprobante = pe.saniape.app.data.staff.ofreceComprobanteCita(
                     cita.tipo, cita.costo, cita.pagadaAt, cita.estado, puedeCobrar),
-                receta = textoReceta?.takeIf { cita.pacienteId != null },
-                nutricion = nutricion && cita.pacienteId != null,
-                embarazo = embarazo && cita.pacienteId != null,
+                receta = textoReceta?.takeIf { verClinico && cita.pacienteId != null },
+                nutricion = verClinico && nutricion && cita.pacienteId != null,
+                embarazo = verClinico && embarazo && cita.pacienteId != null,
                 pedido = textoPedido?.takeIf { cita.pacienteId != null && cita.estado != "Cancelada" })
             if (acc.isNotEmpty()) {
                 Spacer(Modifier.height(Sania.dim.md))
@@ -398,7 +404,11 @@ data class SalaTarjeta(
  * "Atendido" no se repite: ya lo dice el badge "Completada".
  */
 @Composable
-private fun IndicadorLlegada(s: SalaTarjeta) {
+private fun IndicadorLlegada(
+    s: SalaTarjeta,
+    /** Sin 'historia_clinica' no se muestran los signos vitales del triaje. */
+    verValores: Boolean = true,
+) {
     val c = Sania.colors
     val espera = pe.saniape.app.data.staff.textoEspera(s.minutos)
     val (texto, color) = when (s.etapa) {
@@ -407,7 +417,7 @@ private fun IndicadorLlegada(s: SalaTarjeta) {
         EtapaLlegada.EN_CONSULTA -> "▶ ${EtapaLlegada.EN_CONSULTA.nombre}" to c.purple
         EtapaLlegada.LLEGO -> "🔔 ${EtapaLlegada.LLEGO.nombre}$espera${if (s.triajeOn) " · sin triaje" else ""}" to c.pend
         EtapaLlegada.TRIAJE -> {
-            val partes = pe.saniape.app.data.staff.resumenTriaje(s.atencion)
+            val partes = if (verValores) pe.saniape.app.data.staff.resumenTriaje(s.atencion) else ""
             "🩺 ${EtapaLlegada.TRIAJE.nombre}${if (partes.isNotBlank()) " $partes" else ""}$espera" to c.ok
         }
     }
