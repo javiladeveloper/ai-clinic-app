@@ -312,8 +312,10 @@ private fun SelectorAtendio(vm: AtencionViewModel, d: DatosConsultaApp, bloquead
     fun etiqueta(id: String?): String {
         val p = d.profesionales.firstOrNull { it.id == id } ?: return "— Elegir —"
         // La colegiatura con su colegio (CMP, COP, C.Ps.P.…), la misma función de toda la app.
-        val colegiatura = pe.saniape.app.data.staff.colegiaturaDe(
-            p.cmp, p.especialidades.map { it.rubro }, pe.saniape.app.data.staff.StaffContextoRepo.actual?.pais,
+        // Con el nombre de sus especialidades: la obstetra sale COP, no CMP.
+        val colegiatura = pe.saniape.app.data.staff.colegiaturaDeEspecialidades(
+            p.cmp, p.especialidades.map { pe.saniape.app.data.staff.EspecialidadColegio(it.rubro, it.nombre) },
+            pe.saniape.app.data.staff.StaffContextoRepo.actual?.pais,
         )
         return p.nombre + (colegiatura.takeIf { it.isNotBlank() }?.let { " · $it" } ?: " · sin colegiatura")
     }

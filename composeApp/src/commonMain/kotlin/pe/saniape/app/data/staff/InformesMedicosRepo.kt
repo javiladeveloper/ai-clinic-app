@@ -103,6 +103,7 @@ object InformesMedicosRepo {
                     estado = o.s("estado").orEmpty(),
                     rubros = esps.map { it.s("rubro") },
                     nombresEspecialidades = esps.mapNotNull { it.s("nombre") },
+                    especialidades = esps.map { EspecialidadColegio(it.s("rubro"), it.s("nombre")) },
                 )
             }
     }.getOrNull()

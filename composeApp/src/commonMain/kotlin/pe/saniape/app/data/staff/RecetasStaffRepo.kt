@@ -153,14 +153,15 @@ object RecetasStaffRepo {
         Supabase.client.postgrest["terapeutas"]
             .select(Columns.raw(
                 "id, nombre, cmp, estado, " +
-                    "especialidades:terapeuta_especialidades(especialidad:especialidades(id, rubro))"
+                    // nombre: distingue a la obstetra del ginecólogo en la colegiatura (COP).
+                    "especialidades:terapeuta_especialidades(especialidad:especialidades(id, rubro, nombre))"
             )) { order("nombre", Order.ASCENDING) }
             .decodeList<JsonObject>()
             .mapNotNull { o ->
                 val id = o.s("id") ?: return@mapNotNull null
                 val esps = (o["especialidades"] as? JsonArray ?: emptyList()).mapNotNull { rel ->
                     val e = (rel as? JsonObject)?.get("especialidad") as? JsonObject ?: return@mapNotNull null
-                    EspecialidadProfesionalApp(e.s("id") ?: return@mapNotNull null, e.s("rubro"))
+                    EspecialidadProfesionalApp(e.s("id") ?: return@mapNotNull null, e.s("rubro"), e.s("nombre"))
                 }
                 val p = ProfesionalPlan(id = id, nombre = o.s("nombre").orEmpty(), cmp = o.s("cmp"), estado = o.s("estado").orEmpty(), especialidades = esps)
                 p.copy(puedePrescribir = puedePrescribirConMapa(p, mapaReceta))

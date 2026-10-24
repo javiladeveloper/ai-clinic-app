@@ -379,8 +379,18 @@ data class FirmanteDoc(
     val estado: String,
     val rubros: List<String?>,
     val nombresEspecialidades: List<String> = emptyList(),
+    /** Sus especialidades con rubro Y nombre, a la par (la obstetra solo se distingue con el nombre). */
+    val especialidades: List<EspecialidadColegio> = emptyList(),
 ) {
     val psiquiatra: Boolean get() = nombresEspecialidades.any { esPsiquiatria(it) }
+
+    /**
+     * La colegiatura del selector de firmante: la función única de la app
+     * ([colegiaturaDeEspecialidades]); sin especialidades con nombre, por rubros.
+     */
+    fun colegiatura(pais: String? = null): String =
+        if (especialidades.isNotEmpty()) colegiaturaDeEspecialidades(cmp, especialidades, pais)
+        else colegiaturaDe(cmp, rubros, pais)
 }
 
 /**

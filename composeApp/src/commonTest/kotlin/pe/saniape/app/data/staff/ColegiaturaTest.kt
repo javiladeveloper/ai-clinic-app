@@ -2,7 +2,9 @@ package pe.saniape.app.data.staff
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * La colegiatura por rubro: gemela de lib/colegiatura.ts (mismos casos que
@@ -71,5 +73,52 @@ class ColegiaturaTest {
         assertEquals("321", colegiaturaDe("321", listOf("estetica")))
         // La obstetra que escribió su sigla: tal cual.
         assertEquals("COP 1234", colegiaturaDe("COP 1234", listOf("ginecologia")))
+    }
+
+    // ── Obstetra ≠ médico (mismos casos que la web, d9f6107a) ──
+
+    private val obstetra = listOf(r("ginecologia", "Obstetricia"))
+
+    @Test fun obstetriciaASecasEsDelColegioDeObstetras() {
+        val c = colegioDe(obstetra)
+        assertEquals("COP", c?.sigla)
+        assertTrue(c?.nombre.orEmpty().contains("Obstetras"))
+        assertEquals("COP 1234", colegiaturaParaMostrar("1234", c))
+        assertEquals("COP 1234", colegiaturaDeEspecialidades("1234", obstetra))
+    }
+
+    @Test fun elGinecoObstetraYElGinecologoSiguenSiendoMedicos() {
+        assertEquals("CMP", sigla(r("ginecologia", "Ginecología y Obstetricia")))
+        assertEquals("CMP", sigla(r("ginecologia", "Ginecología")))
+        assertEquals("CMP", sigla(r("ginecologia", "Obstetricia"), r("ginecologia", "Ginecología")))
+        assertEquals("CMP", sigla(r("ginecologia", "Obstetricia"), r("medicina_general", "Medicina general")))
+    }
+
+    @Test fun obstetraQueAdemasHaceEsteticaSigueSiendoObstetra() {
+        assertEquals("COP", sigla(r("ginecologia", "Obstetricia"), r("estetica", "Estética")))
+    }
+
+    @Test fun conSoloElRubroNoSeDistingue() {
+        assertEquals("CMP 1234", colegiaturaDe("1234", listOf("ginecologia")))
+        assertEquals("CTMP 1234", colegiaturaDeEspecialidades("1234", listOf(r("fisioterapia", "Fisioterapia"))))
+    }
+
+    @Test fun esObstetraYEspecialidadObstetra() {
+        assertTrue(esObstetra(obstetra))
+        assertTrue(esObstetra(listOf(r(null, "Obstetra"))))
+        assertFalse(esObstetra(emptyList()))
+        assertFalse(esObstetra(null))
+        assertFalse(esObstetra(listOf(r("estetica", "Estética"))))
+        assertTrue(esEspecialidadObstetra(null, "Obstetricia y psicoprofilaxis"))
+        assertFalse(esEspecialidadObstetra("ginecologia", "Ginecología y obstetricia"))
+        assertFalse(esEspecialidadObstetra("fisioterapia", "Fisio obstétrica"))
+    }
+
+    @Test fun firmanteDocUsaLasEspecialidadesConNombre() {
+        val f = FirmanteDoc("o", "Obst. A", "1234", "Activo", rubros = listOf("ginecologia"),
+            nombresEspecialidades = listOf("Obstetricia"), especialidades = obstetra)
+        assertEquals("COP 1234", f.colegiatura())
+        // Sin especialidades con nombre (servidor viejo): por rubros, como antes.
+        assertEquals("CMP 1234", f.copy(especialidades = emptyList()).colegiatura())
     }
 }

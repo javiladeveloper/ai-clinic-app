@@ -32,3 +32,20 @@ internal fun rubroPorNombre(nombre: String?): String? {
     if (n.isBlank()) return null
     return PALABRAS_RUBRO.firstOrNull { (_, ps) -> ps.any { n.contains(it) } }?.first
 }
+
+/** Gemelo de `rubroDeEspecialidad` (lib/flujo.ts): el rubro guardado o, si no, el que sugiere el nombre. */
+internal fun rubroDeEspecialidad(rubro: String?, nombre: String?): String? =
+    rubro?.trim()?.takeIf { it.isNotEmpty() } ?: rubroPorNombre(nombre)
+
+/**
+ * ¿Esta especialidad es de OBSTETRICIA a secas (la obstetra, del Colegio de
+ * Obstetras del Perú)? "Obstetricia", "Obstetra", "Obstetricia y psicoprofilaxis".
+ * "Ginecología y obstetricia" NO: esa la ejerce un médico gineco-obstetra (CMP).
+ * Gemelo de `esEspecialidadObstetra` (lib/flujo.ts).
+ */
+fun esEspecialidadObstetra(rubro: String?, nombre: String?): Boolean {
+    val n = sinTildesRubro(nombre.orEmpty())
+    if (!n.contains("obstetr") || n.contains("ginec")) return false
+    val r = rubroDeEspecialidad(rubro, nombre)
+    return r == null || r == "ginecologia"
+}

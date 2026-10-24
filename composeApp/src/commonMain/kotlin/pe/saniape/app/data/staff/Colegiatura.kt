@@ -19,6 +19,8 @@ data class Colegio(
 
 private val CMP = Colegio("CMP", "Colegio Médico del Perú")
 private val COP = Colegio("COP", "Colegio Odontológico del Perú")
+/** La obstetra (Ley 27853). Misma sigla que el odontológico: así firman las dos. */
+private val COLEGIO_OBSTETRAS = Colegio("COP", "Colegio de Obstetras del Perú")
 
 /**
  * Perú. Estética, capilar y "otro" no tienen uno: lo hace un médico, una
@@ -26,6 +28,8 @@ private val COP = Colegio("COP", "Colegio Odontológico del Perú")
  */
 val COLEGIO_POR_RUBRO: Map<String, Colegio> = mapOf(
     "medicina_general" to CMP,
+    // El ginecólogo es médico. La OBSTETRA comparte el rubro: la distingue el
+    // nombre de su especialidad ([esObstetra]), no el rubro.
     "ginecologia" to CMP,
     "odontologia" to COP,
     "psicologia" to Colegio("C.Ps.P.", "Colegio de Psicólogos del Perú"),
@@ -38,18 +42,35 @@ val COLEGIO_POR_RUBRO: Map<String, Colegio> = mapOf(
 data class EspecialidadColegio(val rubro: String?, val nombre: String? = null)
 
 /**
+ * ¿Es obstetra (no médico)? Todo lo que la hace prescriptora (sus especialidades
+ * de rubros que recetan) es obstetricia a secas: con "Ginecología", "Medicina
+ * general" u "Odontología" al lado manda ese colegio. LA regla para mostrar
+ * ([colegioDe]); gemela de `esObstetra` (lib/recetas.ts) y del trigger
+ * documento_sello_obstetra. Sin el NOMBRE no se distingue del ginecólogo
+ * (comparten rubro): con solo rubros, false.
+ */
+fun esObstetra(especialidades: List<EspecialidadColegio>?): Boolean {
+    val prescriben = especialidades.orEmpty().filter { e ->
+        rubroDeEspecialidad(e.rubro, e.nombre)?.let { it in RUBROS_QUE_RECETAN } == true
+    }
+    return prescriben.isNotEmpty() && prescriben.all { esEspecialidadObstetra(it.rubro, it.nombre) }
+}
+
+/**
  * El colegio de un profesional (`colegioDe` de la web). Con alguna especialidad
- * médica manda el médico (el psiquiatra es medicina_general → CMP), y COP solo
- * si todo lo médico es dental. Si no, el del primer rubro que tenga uno. Fuera
- * de Perú ([pais] ≠ "PE") o sin rubro conocido: null.
+ * médica manda el médico (el psiquiatra es medicina_general → CMP), COP
+ * (odontológico) solo si todo lo médico es dental y COP (obstetras) si todo es
+ * obstetricia a secas ([esObstetra]). Si no, el del primer rubro que tenga uno.
+ * Fuera de Perú ([pais] ≠ "PE") o sin rubro conocido: null.
  */
 fun colegioDe(especialidades: List<EspecialidadColegio>?, pais: String? = null): Colegio? {
     if (!pais.isNullOrBlank() && pais != "PE") return null
-    val rubros = especialidades.orEmpty().mapNotNull { e ->
-        e.rubro?.trim()?.takeIf { it.isNotEmpty() } ?: rubroPorNombre(e.nombre)
-    }
+    val rubros = especialidades.orEmpty().mapNotNull { e -> rubroDeEspecialidad(e.rubro, e.nombre) }
     val medicos = rubros.filter { it in RUBROS_QUE_RECETAN }
-    if (medicos.isNotEmpty()) return if (medicos.all { it == "odontologia" }) COP else CMP
+    if (medicos.isNotEmpty()) {
+        if (medicos.all { it == "odontologia" }) return COP
+        return if (esObstetra(especialidades)) COLEGIO_OBSTETRAS else CMP
+    }
     return rubros.firstNotNullOfOrNull { COLEGIO_POR_RUBRO[it] }
 }
 
@@ -68,6 +89,14 @@ fun colegiaturaParaMostrar(cmp: String?, colegio: Colegio?): String {
     return if (colegio != null && Regex("^[0-9][0-9 .-]*$").matches(v)) "${colegio.sigla} $v" else v
 }
 
-/** Atajo: la colegiatura de un profesional con los rubros de sus especialidades. */
+/**
+ * Atajo: la colegiatura de un profesional con los rubros de sus especialidades.
+ * Con solo rubros la obstetra no se distingue del ginecólogo: quien tenga los
+ * nombres usa [colegiaturaDeEspecialidades].
+ */
 fun colegiaturaDe(cmp: String?, rubros: List<String?>?, pais: String? = null): String =
     colegiaturaParaMostrar(cmp, colegioDeRubros(rubros, pais))
+
+/** La colegiatura con sus especialidades (rubro + nombre): distingue a la obstetra (COP). */
+fun colegiaturaDeEspecialidades(cmp: String?, especialidades: List<EspecialidadColegio>?, pais: String? = null): String =
+    colegiaturaParaMostrar(cmp, colegioDe(especialidades, pais))

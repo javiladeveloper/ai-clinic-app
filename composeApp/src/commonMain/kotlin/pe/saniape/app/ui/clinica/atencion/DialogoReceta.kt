@@ -53,7 +53,8 @@ import pe.saniape.app.data.staff.AtencionRepo
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.ProfesionalPlan
 import pe.saniape.app.data.staff.RUBROS_QUE_RECETAN
-import pe.saniape.app.data.staff.colegiaturaDe
+import pe.saniape.app.data.staff.EspecialidadColegio
+import pe.saniape.app.data.staff.colegiaturaDeEspecialidades
 import pe.saniape.app.data.staff.BancoMedicamentos
 import pe.saniape.app.data.staff.SugerenciaMedicamento
 import pe.saniape.app.data.staff.TotalPetitorio
@@ -555,7 +556,7 @@ fun DialogoReceta(
             // ── Prescriptor ──
             Column {
                 EtqForm("Prescriptor")
-                val opciones = prescriptores.map { it.id to "${it.nombre} · ${colegiaturaDe(it.cmp, it.especialidades.map { e -> e.rubro }, pe.saniape.app.data.staff.StaffContextoRepo.actual?.pais)}" }
+                val opciones = prescriptores.map { it.id to "${it.nombre} · ${colegiaturaDeEspecialidades(it.cmp, it.especialidades.map { e -> EspecialidadColegio(e.rubro, e.nombre) }, pe.saniape.app.data.staff.StaffContextoRepo.actual?.pais)}" }
                 if (bloqueadoASiMismo) {
                     val p = profesionales.firstOrNull { it.id == terapeutaId && it.puedePrescribir }
                     Box(
@@ -563,7 +564,7 @@ fun DialogoReceta(
                             .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
                             .padding(horizontal = 12.dp, vertical = 13.dp),
                     ) {
-                        Text(p?.let { "${it.nombre} · ${colegiaturaDe(it.cmp, it.especialidades.map { e -> e.rubro }, pe.saniape.app.data.staff.StaffContextoRepo.actual?.pais)}" } ?: prescriptor?.nombre ?: "—",
+                        Text(p?.let { "${it.nombre} · ${colegiaturaDeEspecialidades(it.cmp, it.especialidades.map { e -> EspecialidadColegio(e.rubro, e.nombre) }, pe.saniape.app.data.staff.StaffContextoRepo.actual?.pais)}" } ?: prescriptor?.nombre ?: "—",
                             color = c.texto, fontSize = 14.sp)
                     }
                     if (p == null) {

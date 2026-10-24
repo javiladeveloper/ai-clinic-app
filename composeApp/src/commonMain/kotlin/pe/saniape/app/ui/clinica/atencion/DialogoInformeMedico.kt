@@ -60,7 +60,6 @@ import pe.saniape.app.data.staff.cuerpoEmitirInforme
 import pe.saniape.app.data.staff.diasDescanso
 import pe.saniape.app.data.staff.filtrarExamenes
 import pe.saniape.app.data.staff.firmanteInicial
-import pe.saniape.app.data.staff.colegiaturaDe
 import pe.saniape.app.data.staff.firmantesDocumento
 import pe.saniape.app.data.staff.mensajeSinFirmantes
 import pe.saniape.app.data.staff.formatearNumeroInforme
@@ -313,8 +312,8 @@ fun DialogoInformeMedico(
                     falloEquipo -> Text("No se pudo cargar el equipo. Revisa tu conexión y vuelve a abrir.", color = c.error, fontSize = 13.sp)
                     firmantes.isEmpty() -> Text(mensajeSinFirmantes(tipo, esAdmin), color = c.error, fontSize = 13.sp)
                     // El profesional firma solo a su nombre (el servidor también lo exige: PROFESIONAL_AJENO).
-                    !esAdmin -> CajaFija(firmante?.let { "${it.nombre} · ${colegiaturaDe(it.cmp, it.rubros, pe.saniape.app.data.staff.StaffContextoRepo.actual?.pais)}" } ?: "—")
-                    else -> SelectorDialogo("", terapeutaId, firmantes.map { it.id to "${it.nombre} · ${colegiaturaDe(it.cmp, it.rubros, pe.saniape.app.data.staff.StaffContextoRepo.actual?.pais)}" }) { terapeutaId = it }
+                    !esAdmin -> CajaFija(firmante?.let { "${it.nombre} · ${it.colegiatura(pe.saniape.app.data.staff.StaffContextoRepo.actual?.pais)}" } ?: "—")
+                    else -> SelectorDialogo("", terapeutaId, firmantes.map { it.id to "${it.nombre} · ${it.colegiatura(pe.saniape.app.data.staff.StaffContextoRepo.actual?.pais)}" }) { terapeutaId = it }
                 }
             }
 

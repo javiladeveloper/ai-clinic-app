@@ -228,7 +228,12 @@ data class ServicioPlan(
 )
 
 @Serializable
-data class EspecialidadProfesionalApp(val id: String, val rubro: String? = null)
+data class EspecialidadProfesionalApp(
+    val id: String,
+    val rubro: String? = null,
+    /** El nombre distingue a la obstetra del ginecólogo (colegiatura COP). Un servidor viejo no lo manda. */
+    val nombre: String? = null,
+)
 
 @Serializable
 data class ProfesionalPlan(
