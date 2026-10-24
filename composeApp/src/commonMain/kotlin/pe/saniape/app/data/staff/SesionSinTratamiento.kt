@@ -147,3 +147,116 @@ fun tratamientoAgendableEnSesion(estado: String?, modalidad: String?): Boolean =
  */
 fun tratamientoCreadoEnLista(lista: List<TratamientoRef>, idCreado: String?): TratamientoRef? =
     idCreado?.let { id -> lista.firstOrNull { it.id == id } } ?: lista.singleOrNull()
+
+// ─────────────────────────────────────────────────────────────────────────────
+// «＋ Ampliar tratamiento anterior» desde «Nueva cita» (QA OMER + dueño, 23/10/2026)
+// Gemelo de `lib/ampliar-desde-cita.ts` (web).
+//
+// La profesional atiende «por sesión», una a la vez: cada tratamiento termina con
+// su sesión (queda Completado) y al agendarle la siguiente Sesión el paciente sale
+// «sin tratamiento». Ampliar el último es un toque, junto a «＋ Crear tratamiento».
+// La regla es la del «➕ Ampliar» de la ficha: por sesiones, Completado (sin alta),
+// y no una evaluación psicológica. El ampliar en sí es el de siempre
+// (`/api/staff/tratamiento/accion` · ampliar), sin reglas nuevas.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Un tratamiento terminado candidato a ampliarse desde la cita. */
+data class TratAmpliable(
+    val id: String,
+    val estado: String?,
+    val modalidad: String?,
+    val procedimientoId: String?,
+    val servicio: String?,
+    /** El precio del servicio en el catálogo (la lista de un paquete). */
+    val precioServicio: Double?,
+    val precioPorSesion: Double?,
+    val totalSesiones: Int?,
+    val terapeutaId: String?,
+    val especialidadId: String?,
+    val diagnostico: String?,
+    val fechaInicio: String?,
+    val creadoAt: String?,
+    /** `especialidad.usa_sesiones` del servicio (solo decide si no trae modalidad). */
+    val usaSesionesServicio: Boolean? = null,
+    /** Fecha de su última sesión completada (null = ninguna). */
+    val ultimaSesion: String? = null,
+    /** `procedimiento.tipo_clinico` (la evaluación psicológica no se amplía así). */
+    val tipoClinico: String? = null,
+)
+
+/** `tratamientoUsaSesiones` de la web: la modalidad manda; sin ella, la especialidad. */
+fun tratamientoUsaSesiones(modalidad: String?, usaSesionesServicio: Boolean?): Boolean = when (modalidad) {
+    "Consulta", "Unidades" -> false
+    "Paquete", "Sesión suelta" -> true
+    else -> usaSesionesServicio != false
+}
+
+/** ¿Se puede ampliar desde la cita? Completado (sin alta), por sesiones, no evaluación psicológica. */
+fun esAmpliableDesdeCita(t: TratAmpliable, evalPsico: Set<String> = emptySet()): Boolean {
+    if (t.estado != "Completado") return false
+    if (t.tipoClinico == TIPO_CLINICO_EVALUACION_PSICO) return false
+    if (t.procedimientoId != null && t.procedimientoId in evalPsico) return false
+    return tratamientoUsaSesiones(t.modalidad, t.usaSesionesServicio)
+}
+
+/** Los ampliables, el MÁS RECIENTE primero: por su última sesión; sin sesiones, por inicio y alta. */
+fun tratamientosAmpliables(trats: List<TratAmpliable>, evalPsico: Set<String> = emptySet()): List<TratAmpliable> {
+    fun clave(t: TratAmpliable) = listOf(t.ultimaSesion.orEmpty(), t.fechaInicio.orEmpty(), t.creadoAt.orEmpty())
+    return trats.filter { esAmpliableDesdeCita(it, evalPsico) }.sortedWith { a, b ->
+        val ka = clave(a); val kb = clave(b)
+        ka.indices.firstOrNull { ka[it] != kb[it] }?.let { i -> -ka[i].compareTo(kb[i]) } ?: 0
+    }
+}
+
+/**
+ * ¿Se muestra «＋ Ampliar tratamiento anterior»? Solo donde sale «＋ Crear
+ * tratamiento» (Sesión, paciente sin tratamiento vigente, permiso `sesiones`),
+ * con el paciente activo y al menos un ampliable. Los permisos del «➕ Ampliar» de la ficha.
+ */
+fun ofreceAmpliarAnterior(aviso: AvisoSinTratamiento, pacienteInactivo: Boolean, ampliables: Int): Boolean =
+    aviso == AvisoSinTratamiento.OFRECER_CREAR && !pacienteInactivo && ampliables > 0
+
+private val MESES_CORTOS = listOf("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "set", "oct", "nov", "dic")
+
+/** «Psicoterapia — última sesión 12 oct» (sin sesiones: «— terminado»). */
+fun textoTratamientoAmpliable(servicio: String?, ultimaSesion: String?): String {
+    val nombre = servicio?.trim()?.takeIf { it.isNotEmpty() } ?: "Tratamiento"
+    val m = ultimaSesion?.let { Regex("^(\\d{4})-(\\d{2})-(\\d{2})").find(it) }
+    val fecha = m?.let { r ->
+        val mes = r.groupValues[2].toInt()
+        "${r.groupValues[3].toInt()} ${MESES_CORTOS.getOrElse(mes - 1) { "" }}".trim()
+    }
+    return if (fecha != null) "$nombre — última sesión $fecha" else "$nombre — terminado"
+}
+
+/**
+ * `precioListaAmpliacion` de la web: +N sesiones valen N × el precio de una sesión
+ * (el pactado en una suelta; el del catálogo en un paquete). Unidades / pago único: null.
+ * [otraMoneda]: el catálogo está en la moneda de la clínica → solo vale el de la suelta.
+ */
+fun precioListaAmpliacion(t: TratAmpliable, n: Int, otraMoneda: Boolean = false): Double? {
+    if (n <= 0 || (t.modalidad != "Paquete" && t.modalidad != "Sesión suelta")) return null
+    val deSuelta = if (t.modalidad == "Sesión suelta") t.precioPorSesion else null
+    val unit = deSuelta?.takeIf { it > 0 } ?: (if (otraMoneda) null else t.precioServicio)
+    return unit?.takeIf { it > 0 }?.let { kotlin.math.round(it * n * 100) / 100 }
+}
+
+/** Lo que se manda al ampliar desde la cita, o el error a mostrar. */
+sealed class PedidoAmpliacion {
+    data class Ok(val sesiones: Int, val monto: Double) : PedidoAmpliacion()
+    data class Error(val error: String) : PedidoAmpliacion()
+}
+
+/**
+ * `pedidoAmpliacion` de la web. El monto VACÍO vale la lista de la ampliación (con
+ * un toque, una ampliación a S/ 0 sería una cortesía que nadie decidió); sin lista,
+ * 0. Un 0 escrito a mano es la cortesía, a propósito.
+ */
+fun pedidoAmpliacion(sesiones: String, monto: String, lista: Double?, moneda: String?): PedidoAmpliacion {
+    val txt = sesiones.trim()
+    val n = if (Regex("^\\d+$").matches(txt)) txt.toIntOrNull() else null
+    if (n == null || n < 1) return PedidoAmpliacion.Error("Indica cuántas sesiones agregar (1 o más)")
+    val l = leerPrecio(monto, moneda)
+    if (!l.ok) return PedidoAmpliacion.Error("Monto: ${l.error}")
+    return PedidoAmpliacion.Ok(n, l.valor ?: lista ?: 0.0)
+}
