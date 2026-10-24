@@ -122,6 +122,8 @@ fun PantallaAgenda(
     var creandoCita by remember { mutableStateOf(false) }
     // Sub-pantalla: la consulta guiada ("▶ Atender") de esta cita, nativa.
     var atendiendo by remember { mutableStateOf<Atendiendo?>(null) }
+    // ⚡ Atención directa (psicología, cita sin tratamiento): «▶ Atender» / «📝 Evolución».
+    var atencionDirectaId by remember { mutableStateOf<String?>(null) }
     var prefillEval by remember { mutableStateOf<PrefillCita?>(null) }
     // 🧠 Evaluación psicológica: (cita, apertura) del espacio abierto y el plan a crear.
     var evalPsico by remember { mutableStateOf<Pair<CitaStaff, Long>?>(null) }
@@ -844,6 +846,7 @@ fun PantallaAgenda(
                                         AccionTarjeta.Medidas -> abrirFichaNutricion(cita, "medidas", abrirFormulario = true)
                                         AccionTarjeta.PlanAlimentario -> abrirFichaNutricion(cita, "plan", abrirFormulario = false)
                                         AccionTarjeta.Embarazo -> abrirFichaEmbarazo(cita)
+                                        AccionTarjeta.AtenderDirecto, AccionTarjeta.Evolucion -> atencionDirectaId = cita.id
                                     }
                                 },
                                 onVerResumen = { resumenPacienteId = it },
@@ -890,6 +893,10 @@ fun PantallaAgenda(
                                 evaluacionPsico = cita.procedimientoId != null && cita.procedimientoId in procsEvalPsico &&
                                     pe.saniape.app.data.staff.puedeVerEvaluacionPsico(ctx.rol, ctx.miTerapeutaId, null, listOf(cita.terapeutaId)),
                                 medica = vm.esMedicaGuiada(cita),
+                                atencionDirecta = vm.atencionDirectaDe(cita),
+                                botonEvolucion = pe.saniape.app.data.staff.botonEvolucionCita(
+                                    vm.atencionDirectaDe(cita), vm.evolucionPorCita[cita.id],
+                                ),
                                 sala = vm.etapaDe(cita)?.let { etapa ->
                                     val a = vm.atencionDe(cita)
                                     pe.saniape.app.ui.clinica.agenda.componentes.SalaTarjeta(
@@ -934,6 +941,16 @@ fun PantallaAgenda(
             onVerFicha = { resumenPacienteId = it },
             onOdontograma = { id -> vm.citas.firstOrNull { it.id == id }?.let { odontogramaCita = it } },
         ) }
+    }
+
+    // ⚡ Atención directa: evolución + completar + cobro en UNA pantalla (o la
+    // evolución de la ya atendida), encima de la agenda.
+    atencionDirectaId?.takeIf { verHc }?.let { id ->
+        pe.saniape.app.ui.clinica.agenda.modales.PantallaAtencionDirecta(
+            ctx = ctx, citaId = id,
+            onCerrar = { atencionDirectaId = null },
+            onGuardado = { con -> vm.trasAtencionDirecta(id, con) },
+        )
     }
 
     // 🧠 Evaluación psicológica de la cita (su tratamiento), a pantalla completa.
@@ -1389,6 +1406,14 @@ fun PantallaAgenda(
             onNotasGuardadas = { vm.refrescar() },
             puedeEditarVideollamada = ctx.puede("citas") || ctx.puede("agendar") || ctx.puede("sesiones"),
             onVideollamadaCambiada = { vm.refrescar() },
+            atencionDirecta = when (vm.atencionDirectaDe(cita)) {
+                pe.saniape.app.data.staff.OfertaAtencionDirecta.ATENDER -> "▶ Atender" to false
+                pe.saniape.app.data.staff.OfertaAtencionDirecta.EVOLUCION -> pe.saniape.app.data.staff.botonEvolucionCita(
+                    pe.saniape.app.data.staff.OfertaAtencionDirecta.EVOLUCION, vm.evolucionPorCita[cita.id],
+                )?.let { it.texto to it.resaltado }
+                null -> null
+            }?.takeIf { verHc },
+            onAtencionDirecta = { detalleCita = null; atencionDirectaId = cita.id },
         )
     }
 

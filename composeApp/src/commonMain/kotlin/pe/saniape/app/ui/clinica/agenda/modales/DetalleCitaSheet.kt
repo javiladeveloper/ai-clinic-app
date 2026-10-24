@@ -85,6 +85,13 @@ fun DetalleCitaSheet(
      */
     puedeEditarVideollamada: Boolean = false,
     onVideollamadaCambiada: () -> Unit = {},
+    /**
+     * ⚡ Atención directa (psicología, cita sin tratamiento): el botón «▶ Atender» /
+     * «📝 Anotar evolución» / «📝 Evolución» y si va resaltado (falta la evolución).
+     * null = no aplica (otro rubro, cita de un tratamiento…): el detalle de siempre.
+     */
+    atencionDirecta: Pair<String, Boolean>? = null,
+    onAtencionDirecta: () -> Unit = {},
 ) {
     val c = Sania.colors
     var cargando by remember(cita.id) { mutableStateOf(true) }
@@ -134,6 +141,19 @@ fun DetalleCitaSheet(
                 cita.procedimiento?.takeIf { it.isNotBlank() }?.let { Dato("Servicio", it) }
                 if (puedeVerCosto && (cita.costo ?: 0.0) > 0) {
                     Dato("Costo", textoSoles(cita.costo ?: 0.0, monedaDeFila(cita.sedeId)))
+                }
+
+                atencionDirecta?.let { (texto, resaltado) ->
+                    val color = if (resaltado) c.pend else c.navy
+                    Box(
+                        Modifier.fillMaxWidth().padding(top = Sania.dim.md)
+                            .clip(RoundedCornerShape(Sania.shape.sm.dp))
+                            .background(color.copy(alpha = 0.12f))
+                            .border(1.dp, color, RoundedCornerShape(Sania.shape.sm.dp))
+                            .clickable { onAtencionDirecta() }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { Text(texto, color = color, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
                 }
 
                 // Cita por videollamada: Unirse, enlace, estado del Meet (solo virtuales).

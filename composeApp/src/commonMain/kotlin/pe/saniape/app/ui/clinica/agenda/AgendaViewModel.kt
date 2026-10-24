@@ -207,6 +207,47 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         )
     }
 
+    /**
+     * ⚡ Atención directa (AtencionDirecta.kt): la cita de psicología SIN
+     * tratamiento se atiende en una pantalla (evolución + completar + cobro).
+     * Sin interruptor: otro rubro o una cita de un paquete → null, lo de siempre.
+     * Lo barato primero: en DALU (todas con tratamiento o de fisio) ni se mira el rubro.
+     */
+    fun atencionDirectaDe(cita: CitaStaff): pe.saniape.app.data.staff.OfertaAtencionDirecta? {
+        if (cita.tratamientoId != null || cita.pacienteId == null || (cita.tipo != "Consulta" && cita.tipo != "Sesión")) return null
+        return pe.saniape.app.data.staff.ofertaAtencionDirecta(
+            esPsicologia = esPsicologia(cita), tipo = cita.tipo, estado = cita.estado,
+            tratamientoId = cita.tratamientoId, terapeutaId = cita.terapeutaId, pacienteId = cita.pacienteId,
+            rol = ctx.rol, puedeSesiones = ctx.puede("sesiones"), historiaClinica = verHc,
+            miTerapeutaId = ctx.miTerapeutaId,
+        )
+    }
+
+    /**
+     * ¿La cita YA atendida tiene su evolución? true/false; ausente = no se sabe
+     * (botón discreto). Solo se pregunta por las que ofrecen «📝 Evolución»:
+     * en otro rubro la lista va vacía y no se pide nada (`useEvolucionCitas`).
+     */
+    var evolucionPorCita by mutableStateOf<Map<String, Boolean>>(emptyMap()); private set
+    private var evolucionJob: kotlinx.coroutines.Job? = null
+
+    private fun cargarEvoluciones(lista: List<CitaStaff>) {
+        val ids = lista.filter { atencionDirectaDe(it) == pe.saniape.app.data.staff.OfertaAtencionDirecta.EVOLUCION }.map { it.id }
+        evolucionJob?.cancel()
+        if (ids.isEmpty()) { evolucionPorCita = emptyMap(); return }
+        evolucionPorCita = evolucionPorCita.filterKeys { it in ids }
+        evolucionJob = viewModelScope.launch {
+            val con = pe.saniape.app.data.staff.AtencionDirectaRepo.citasConEvolucion(ids) ?: return@launch
+            evolucionPorCita = ids.associateWith { it in con }
+        }
+    }
+
+    /** Tras guardar en «▶ Atender»: se pinta ya lo que se sabe y se recarga la agenda. */
+    fun trasAtencionDirecta(citaId: String, conEvolucion: Boolean) {
+        evolucionPorCita = evolucionPorCita + (citaId to conEvolucion)
+        refrescar()
+    }
+
     /** Ya se resolvió: completada o no asistió (baja al final del día). */
     fun citaYaAtendida(c: CitaStaff): Boolean = c.estado == "Completada" || c.estado == "No asistió"
 
@@ -785,6 +826,9 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                     espsPorTerapeuta = ts.associate { it.id to it.especialidadIds }
                     if (puedeFiltrarPorPersonal) terapeutas = ts
                 }
+                // El rubro de cada cita sale de las especialidades: si las citas
+                // llegaron antes, la evolución de la atención directa se pide ahora.
+                cargarEvoluciones(citas)
                 banD.await()
             }
         }
@@ -902,6 +946,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         }
         cargarMediosPago(nuevas)
         cargarRecetasVinculadas(nuevas)
+        cargarEvoluciones(nuevas)
     }
 
     /**

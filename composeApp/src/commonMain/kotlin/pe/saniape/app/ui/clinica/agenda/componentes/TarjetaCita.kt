@@ -149,6 +149,14 @@ fun TarjetaCita(
      * abona al tratamiento como «Registrar pago» de la ficha. Lo decide la pantalla.
      */
     abonarPaquete: Boolean = false,
+    /**
+     * ⚡ Atención directa (psicología, cita SIN tratamiento): ATENDER → «▶ Atender»
+     * reemplaza al ✓ Completar; EVOLUCION → [botonEvolucion]. null = lo de siempre
+     * (DALU y cualquier otro rubro no ven ningún cambio). Lo decide la pantalla.
+     */
+    atencionDirecta: pe.saniape.app.data.staff.OfertaAtencionDirecta? = null,
+    /** «📝 Anotar evolución» (resaltado) / «📝 Evolución» de la atención directa ya atendida. */
+    botonEvolucion: pe.saniape.app.data.staff.BotonEvolucionCita? = null,
 ) {
     // Multipaís: el costo va en la moneda de la sede de la cita ("todas las sedes").
     val moneda = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)
@@ -343,7 +351,9 @@ fun TarjetaCita(
                 embarazo = verClinico && embarazo && cita.pacienteId != null,
                 pedido = textoPedido?.takeIf { cita.pacienteId != null && cita.estado != "Cancelada" },
                 abonarPaquete = abonarPaquete && puedeCobrar,
-                terminado = terminado?.takeIf { cita.pacienteId != null && cita.tratamientoId != null })
+                terminado = terminado?.takeIf { cita.pacienteId != null && cita.tratamientoId != null },
+                directa = verClinico && atencionDirecta == pe.saniape.app.data.staff.OfertaAtencionDirecta.ATENDER,
+                evolucion = botonEvolucion?.takeIf { verClinico && atencionDirecta == pe.saniape.app.data.staff.OfertaAtencionDirecta.EVOLUCION })
             if (acc.isNotEmpty()) {
                 Spacer(Modifier.height(Sania.dim.md))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
@@ -355,7 +365,7 @@ fun TarjetaCita(
                             AccionTarjeta.Completar -> "agenda.completar"
                             AccionTarjeta.Cobrar -> "agenda.cobrar"
                             AccionTarjeta.Triaje -> "agenda.triaje"
-                            AccionTarjeta.Atender -> "agenda.atender"
+                            AccionTarjeta.Atender, AccionTarjeta.AtenderDirecto -> "agenda.atender"
                             else -> null
                         }
                         Column(if (ancla != null) Modifier.tourAncla(ancla) else Modifier) {
@@ -399,6 +409,10 @@ enum class AccionTarjeta {
     AbonarPaquete,
     /** Sesión que cerró el plan: «＋ Ampliar» / «✓ Dar de alta» (en la ficha del paciente). */
     Ampliar, DarAlta,
+    /** ⚡ Atención directa: «▶ Atender» (evolución + completar + cobro en una pantalla). */
+    AtenderDirecto,
+    /** ⚡ Atención directa ya atendida: «📝 Anotar evolución» / «📝 Evolución» (no completa ni cobra). */
+    Evolucion,
 }
 
 /**
@@ -478,6 +492,10 @@ private fun accionesPara(
     abonarPaquete: Boolean = false,
     /** Sesión que cerró el plan: ＋ Ampliar / ✓ Dar de alta. */
     terminado: pe.saniape.app.data.staff.AccionesTerminado? = null,
+    /** Atención directa: el cierre es «▶ Atender» (una pantalla), no ✓ Completar. */
+    directa: Boolean = false,
+    /** Atención directa ya atendida: el botón de su evolución. */
+    evolucion: pe.saniape.app.data.staff.BotonEvolucionCita? = null,
 ): List<Triple<String, AccionTarjeta, Color>> {
     val c = Sania.colors
     val lista = mutableListOf<Triple<String, AccionTarjeta, Color>>()
@@ -502,8 +520,16 @@ private fun accionesPara(
     }
     // Médica: por la sala de hoy o, sin sala, por la especialidad (como la web).
     val esMedica = sala?.medica == true || medica
-    val textoAtender = if (esMedica) (if (sala?.etapa == EtapaLlegada.EN_CONSULTA) "▶ Continuar" else "▶ Atender") else "✓ Completar"
-    val accionAtender = if (esMedica) AccionTarjeta.Atender else AccionTarjeta.Completar
+    val textoAtender = when {
+        directa -> "▶ Atender"
+        esMedica -> if (sala?.etapa == EtapaLlegada.EN_CONSULTA) "▶ Continuar" else "▶ Atender"
+        else -> "✓ Completar"
+    }
+    val accionAtender = when {
+        directa -> AccionTarjeta.AtenderDirecto
+        esMedica -> AccionTarjeta.Atender
+        else -> AccionTarjeta.Completar
+    }
     val textoTriaje = if (sala?.atencion?.triajeAt != null) "🩺 Triaje ✓ (corregir)" else "🩺 Triaje"
     when (principal) {
         AccionTarjeta.Llego -> lista.add(Triple(if (sala?.marcando == true) "…" else "🔔 Llegó", AccionTarjeta.Llego, c.ok))
@@ -521,6 +547,11 @@ private fun accionesPara(
     if (pasarA != null && activa) lista.add(Triple("→ $pasarA", AccionTarjeta.PasarEvaluacion, c.info))
     // Sin sala de espera: la acción de cierre según la especialidad (Atender o Completar).
     if (activa && principal == null) lista.add(Triple(textoAtender, accionAtender, c.navy))
+    // Atención directa ya atendida: la evolución se anota (o corrige) desde la misma
+    // tarjeta, sin ir a la ficha. Ámbar si falta; discreto si ya está.
+    if (evolucion != null && estado == "Completada") {
+        lista.add(Triple(evolucion.texto, AccionTarjeta.Evolucion, if (evolucion.resaltado) c.pend else c.textoSuave))
+    }
     if (estado == "Completada" || estado == "Cancelada") lista.add(Triple("↩ Revertir", AccionTarjeta.Revertir, c.pend))
     // Repetir: agendar la SIGUIENTE cita del mismo paciente en 1 toque (misma info,
     // fecha propuesta a futuro). Muy usado para citar la próxima sesión/control.
