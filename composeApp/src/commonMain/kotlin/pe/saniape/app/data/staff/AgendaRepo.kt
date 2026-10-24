@@ -779,7 +779,7 @@ object AgendaRepo {
 
     suspend fun tratamientosAgendables(pacienteId: String): List<TratamientoRef> {
         // El servicio trae su modalidad (cita virtual): la cita la hereda en el formulario.
-        val base = "id, estado, modalidad, terapeuta_id, diagnostico, fecha_inicio, total_sesiones, sesiones_completadas, procedimiento:procedimientos(nombre, especialidad_id"
+        val base = "id, estado, modalidad, terapeuta_id, diagnostico, fecha_inicio, total_sesiones, sesiones_completadas, precio_por_sesion, precio_acordado, procedimiento:procedimientos(nombre, especialidad_id"
         suspend fun traer(cols: String) = Supabase.client.postgrest["tratamientos"]
             .select(Columns.raw(cols)) {
                 filter { eq("paciente_id", pacienteId); isIn("estado", listOf("Activo", "Completado")) }
@@ -812,6 +812,8 @@ object AgendaRepo {
                     ServicioModalidad(p.str("modalidad"), p.str("enlace_modo"), p.str("enlace_fijo"))
                 },
                 estado = it.str("estado") ?: "Activo",
+                precioPorSesion = it.dbl("precio_por_sesion"),
+                precioAcordado = it.dbl("precio_acordado"),
             )
         }
     }
@@ -1058,6 +1060,9 @@ data class TratamientoRef(
     val servicio: ServicioModalidad? = null,
     /** "Activo", o "Completado" en un pago único realizado sin alta ([tratamientoAgendableEnSesion]). */
     val estado: String = "Activo",
+    /** Precios del tratamiento: el costo de la cita de sesión que se agenda ([costoCitaDeSesion]). */
+    val precioPorSesion: Double? = null,
+    val precioAcordado: Double? = null,
 ) {
     /**
      * Cómo se nombra en una lista para elegir. Con dos tratamientos del mismo

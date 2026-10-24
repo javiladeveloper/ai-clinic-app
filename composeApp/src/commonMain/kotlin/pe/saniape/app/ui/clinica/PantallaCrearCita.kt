@@ -705,9 +705,15 @@ fun PantallaCrearCita(
                 // Primera atención de un tratamiento creado aquí: su costo como lo pondría
                 // el tratamiento (paquete/unidades → 0; suelta → precio por sesión; pago
                 // único → precio acordado). Otra atención de un pago único: sin costo.
+                // Sesión de un tratamiento que ya existía: como las que agenda la web
+                // desde el plan (suelta → el precio de una sesión; paquete → 0). Antes
+                // iba siempre en 0 y el cierre proponía cobrar S/ 0.
                 costo = if (ov != null) ov.costo ?: 0.0
                     else creadoAqui?.takeIf { tipo == "Sesión" && it.first == tratamiento?.id }
                         ?.let { it.second ?: 0.0 }
+                        ?: tratamiento?.takeIf { tipo == "Sesión" }?.let { t ->
+                            pe.saniape.app.data.staff.costoCitaDeSesion(t.modalidad, t.precioPorSesion, t.precioAcordado, t.totalSesiones)
+                        }
                         ?: costo.toDoubleOrNull() ?: 0.0,
                 duracion = duracion,
                 notas = notas.ifBlank { null },

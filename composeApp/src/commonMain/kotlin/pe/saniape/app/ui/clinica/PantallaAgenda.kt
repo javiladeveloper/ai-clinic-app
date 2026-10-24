@@ -1086,11 +1086,25 @@ fun PantallaAgenda(
             val conEvalFisio = verHc && evalua && vm.esFisio(cita) && !vm.esDental(cita) && cita.pacienteId != null
             // Cobro en el mismo cierre de una SESIÓN (como la ficha), solo con permiso de pagos.
             val metodoCobro = pe.saniape.app.ui.clinica.pacientes.rememberMetodoPagoInicial(cita.pacienteId)
+            // Monto propuesto: lo que se debe de ESTA sesión (la regla del 💰 de la web:
+            // paquete → su saldo; suelta → su costo sin pasar de la deuda). Antes salía
+            // de `cita.costo`, que en las sesiones agendadas desde la app era 0.
+            val estadoPagoCita = vm.estadosPago[cita.id]
+            fun montoPropuesto(): String = pe.saniape.app.data.staff.textoPrecioCampo(
+                pe.saniape.app.data.staff.montoPropuestoCierreSesion(
+                    cita.costo, estadoPagoCita,
+                    esPaquete = estadoPagoCita?.esPaquete == true || cita.tratamientoModalidad == "Paquete",
+                ),
+            )
             val cobro = remember(cita.id) {
                 pe.saniape.app.ui.clinica.agenda.modales.CobroCierreAgenda(
-                    montoInicial = cita.costo?.takeIf { it > 0 }?.let { v -> if (v % 1.0 == 0.0) v.toInt().toString() else v.toString() } ?: "",
+                    montoInicial = montoPropuesto(),
                     metodo = metodoCobro,
                 )
+            }
+            // El estado de pago llegó después de abrir: se propone, sin pisar lo que ya se tocó.
+            androidx.compose.runtime.LaunchedEffect(cita.id, estadoPagoCita) {
+                if (!cobro.cobrar && cobro.monto.isBlank()) cobro.monto = montoPropuesto()
             }
             // Sin saldo (paquete pagado completo, o esta sesión suelta ya pagada: el
             // "¿Ya pagó?" del servidor dice "pagado") no se pregunta "¿pagó esta sesión?".
