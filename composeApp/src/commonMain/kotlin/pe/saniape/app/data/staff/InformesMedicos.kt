@@ -361,21 +361,6 @@ fun mensajeSinFirmantes(tipo: String, esAdmin: Boolean): String {
     else "Solo un médico u odontólogo con N° de colegiatura (CMP) firma ${docConArticulo(tipo)}."
 }
 
-/** "12345" → "C.Ps.P. 12345" (gemelo de `colegiaturaPsicologo`); un texto con letras queda tal cual. */
-fun colegiaturaPsicologo(cmp: String?): String {
-    val v = cmp.orEmpty().trim()
-    if (v.isEmpty()) return ""
-    return if (Regex("^[0-9][0-9 .-]*$").matches(v)) "C.Ps.P. $v" else v
-}
-
-/**
- * La colegiatura al elegir firmante: el psicólogo con el Colegio de Psicólogos
- * ("C.Ps.P. 12345", lo mismo que congela la base); los demás, tal como está
- * cargada. Gemelo de `colegiaturaFirmante`.
- */
-fun colegiaturaFirmante(cmp: String?, rubros: List<String?>?): String =
-    if (esEmisorPsicologo(rubros)) colegiaturaPsicologo(cmp) else cmp.orEmpty().trim()
-
 /** ¿Quién puede EMITIR? Admin o el profesional vinculado, siempre con permiso `sesiones`. */
 fun puedeEmitirDocumentos(rol: String?, miTerapeutaId: String?, permisoSesiones: Boolean): Boolean =
     permisoSesiones && (rol == "Admin" || !miTerapeutaId.isNullOrBlank())

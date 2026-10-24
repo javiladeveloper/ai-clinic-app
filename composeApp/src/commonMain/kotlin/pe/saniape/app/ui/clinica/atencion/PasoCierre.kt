@@ -311,7 +311,11 @@ private fun SelectorAtendio(vm: AtencionViewModel, d: DatosConsultaApp, bloquead
     var menu by remember { mutableStateOf(false) }
     fun etiqueta(id: String?): String {
         val p = d.profesionales.firstOrNull { it.id == id } ?: return "— Elegir —"
-        return p.nombre + (p.cmp?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: " · sin colegiatura")
+        // La colegiatura con su colegio (CMP, COP, C.Ps.P.…), la misma función de toda la app.
+        val colegiatura = pe.saniape.app.data.staff.colegiaturaDe(
+            p.cmp, p.especialidades.map { it.rubro }, pe.saniape.app.data.staff.StaffContextoRepo.actual?.pais,
+        )
+        return p.nombre + (colegiatura.takeIf { it.isNotBlank() }?.let { " · $it" } ?: " · sin colegiatura")
     }
     Column {
         EtqForm("Profesional que atendió (firma y sella)")

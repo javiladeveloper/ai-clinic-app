@@ -53,6 +53,7 @@ import pe.saniape.app.data.staff.AtencionRepo
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.ProfesionalPlan
 import pe.saniape.app.data.staff.RUBROS_QUE_RECETAN
+import pe.saniape.app.data.staff.colegiaturaDe
 import pe.saniape.app.data.staff.BancoMedicamentos
 import pe.saniape.app.data.staff.SugerenciaMedicamento
 import pe.saniape.app.data.staff.TotalPetitorio
@@ -301,19 +302,6 @@ internal fun prescriptorInicial(
 /** El prescriptor no es de un rubro que receta: su hoja sale como INDICACIONES. */
 internal fun prescriptorNoMedico(p: ProfesionalPlan?): Boolean =
     p != null && p.especialidades.isNotEmpty() && !esPrescriptorLegal(p.especialidades.map { it.rubro })
-
-/** Colegiatura para mostrar (colegiaturaImpresa de la web: CMP / COP / CTMP). */
-internal fun colegiaturaImpresa(p: ProfesionalPlan): String {
-    val v = p.cmp?.trim().orEmpty()
-    if (v.isEmpty()) return ""
-    if (!Regex("^[0-9][0-9 .-]*$").matches(v)) return v
-    val rubros = p.especialidades.mapNotNull { it.rubro }
-    val receta = rubros.any { it in RUBROS_QUE_RECETAN }
-    val otro = rubros.any { it !in RUBROS_QUE_RECETAN }
-    if (otro && !receta) return if ("fisioterapia" in rubros) "CTMP $v" else v
-    val soloDental = rubros.isNotEmpty() && rubros.all { it == "odontologia" }
-    return "${if (soloDental) "COP" else "CMP"} $v"
-}
 
 /** Un medicamento del formulario (todo texto; `cantidad` se convierte al emitir). */
 internal data class ItemRecetaForm(
@@ -567,7 +555,7 @@ fun DialogoReceta(
             // ── Prescriptor ──
             Column {
                 EtqForm("Prescriptor")
-                val opciones = prescriptores.map { it.id to "${it.nombre} · ${colegiaturaImpresa(it)}" }
+                val opciones = prescriptores.map { it.id to "${it.nombre} · ${colegiaturaDe(it.cmp, it.especialidades.map { e -> e.rubro }, pe.saniape.app.data.staff.StaffContextoRepo.actual?.pais)}" }
                 if (bloqueadoASiMismo) {
                     val p = profesionales.firstOrNull { it.id == terapeutaId && it.puedePrescribir }
                     Box(
@@ -575,7 +563,7 @@ fun DialogoReceta(
                             .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
                             .padding(horizontal = 12.dp, vertical = 13.dp),
                     ) {
-                        Text(p?.let { "${it.nombre} · ${colegiaturaImpresa(it)}" } ?: prescriptor?.nombre ?: "—",
+                        Text(p?.let { "${it.nombre} · ${colegiaturaDe(it.cmp, it.especialidades.map { e -> e.rubro }, pe.saniape.app.data.staff.StaffContextoRepo.actual?.pais)}" } ?: prescriptor?.nombre ?: "—",
                             color = c.texto, fontSize = 14.sp)
                     }
                     if (p == null) {

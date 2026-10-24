@@ -17,6 +17,7 @@ import pe.saniape.app.data.staff.ProfesionalPlan
 import pe.saniape.app.data.staff.SugerenciaMedicamento
 import pe.saniape.app.data.staff.MapaClinico
 import pe.saniape.app.data.staff.puedePrescribirConMapa
+import pe.saniape.app.data.staff.colegiaturaDe
 
 /** Piezas puras de DialogoReceta y DialogoFiliacion (gemelas de lib/recetas.ts y lib/historia-clinica.ts). */
 class DialogosAtencionTest {
@@ -125,8 +126,9 @@ class DialogosAtencionTest {
         assertEquals(listOf("m"), listOf(medico, fisio, sinCmp, inactivo).filter { puedePrescribirConMapa(it, mixta) }.map { it.id })
         assertFalse(prescriptorNoMedico(medico))
         assertTrue(prescriptorNoMedico(fisio))
-        assertEquals("CMP 45678", colegiaturaImpresa(medico))
-        assertEquals("CTMP 1234", colegiaturaImpresa(fisio))
+        // La colegiatura del selector: la función única (Colegiatura.kt, gemela de lib/colegiatura.ts).
+        assertEquals("CMP 45678", colegiaturaDe(medico.cmp, medico.especialidades.map { it.rubro }))
+        assertEquals("CTMP 1234", colegiaturaDe(fisio.cmp, fisio.especialidades.map { it.rubro }))
     }
 
     @Test

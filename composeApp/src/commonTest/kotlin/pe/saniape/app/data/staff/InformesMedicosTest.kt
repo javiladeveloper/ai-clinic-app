@@ -162,11 +162,13 @@ class InformesMedicosTest {
     }
 
     @Test fun colegiaturaYMensajesPorTipo() {
-        assertEquals("C.Ps.P. 12345", colegiaturaFirmante("12345", listOf("psicologia")))
-        assertEquals("C.Ps.P. 999", colegiaturaFirmante("C.Ps.P. 999", listOf("psicologia")))
-        assertEquals("12345", colegiaturaFirmante("12345", listOf("medicina_general")))
-        assertEquals("CMP 777", colegiaturaFirmante(" CMP 777 ", listOf("medicina_general")))
-        assertEquals("12345", colegiaturaFirmante("12345", listOf("psicologia", "medicina_general")))
+        // El firmante, con la función única de la app (Colegiatura.kt): su colegio por rubro.
+        assertEquals("C.Ps.P. 12345", colegiaturaDe("12345", listOf("psicologia")))
+        assertEquals("C.Ps.P. 999", colegiaturaDe("C.Ps.P. 999", listOf("psicologia")))
+        assertEquals("CMP 12345", colegiaturaDe("12345", listOf("medicina_general")))
+        assertEquals("CMP 777", colegiaturaDe(" CMP 777 ", listOf("medicina_general")))
+        // El psiquiatra que también es psicólogo: manda el médico.
+        assertEquals("CMP 12345", colegiaturaDe("12345", listOf("psicologia", "medicina_general")))
         assertTrue("psicólogo" in mensajeSinFirmantes(DOC_INFORME, true))
         assertFalse("CMP" in mensajeSinFirmantes(DOC_INFORME, true))
         assertTrue("psicólogo" in mensajeSinFirmantes(DOC_INFORME, false))
