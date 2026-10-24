@@ -454,14 +454,37 @@ fun PantallaAgenda(
         cita: CitaStaff,
         diagnostico: String,
         registro: pe.saniape.app.ui.clinica.odontologia.RegistroPresupuesto,
+        /** «✓ Acepta hoy» crea lo marcado; «Lo pensará» no crea nada y manda el enlace (como la web). */
+        decision: pe.saniape.app.ui.clinica.odontologia.DecisionPresupuesto,
         cerrar: () -> Unit,
     ) {
         val pac = cita.pacienteId ?: return
         if (completandoEval) return
         completandoEval = true
         scope.launch {
+            // «Lo pensará»: el enlace para aceptar (congela lo marcado) y su WhatsApp,
+            // ANTES de completar, como la web. Si no se pudo, se completa igual y se avisa.
+            var enlaceEnviado = false
+            if (decision == pe.saniape.app.ui.clinica.odontologia.DecisionPresupuesto.LO_PENSARA) {
+                try {
+                    when (val r = registro.enviarEnlace?.invoke()) {
+                        is pe.saniape.app.data.staff.ResultadoEnlacePresupuesto.Listo -> {
+                            acciones.abrirUrl(r.urlWhatsApp)
+                            enlaceEnviado = true
+                            if (r.reuso) pe.saniape.app.ui.Toaster.info("Se reenvía el enlace que ya estaba vigente")
+                        }
+                        is pe.saniape.app.data.staff.ResultadoEnlacePresupuesto.NoSe -> pe.saniape.app.ui.Toaster.error(r.motivo)
+                        null -> pe.saniape.app.ui.Toaster.error("El presupuesto todavía está cargando: el enlace no se envió.")
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    completandoEval = false
+                    throw e
+                } catch (e: Exception) {
+                    pe.saniape.app.ui.Toaster.error("No se pudo generar el enlace: ${e.message ?: "error inesperado"}")
+                }
+            }
             val res = try {
-                pe.saniape.app.ui.clinica.odontologia.asegurarTratamientoDeEvaluacion(pac, cita.id, registro)
+                pe.saniape.app.ui.clinica.odontologia.asegurarTratamientoDeEvaluacion(pac, cita.id, registro, decision)
             } catch (e: pe.saniape.app.ui.clinica.odontologia.ErrorEvaluacionDental) {
                 pe.saniape.app.ui.Toaster.error("No se completó la evaluación: ${e.message}")
                 completandoEval = false
@@ -475,7 +498,9 @@ fun PantallaAgenda(
                 completandoEval = false
                 return@launch
             }
-            val detalle = pe.saniape.app.ui.clinica.odontologia.textoTratamientoEvaluacion(res)
+            val detalle = if (res == pe.saniape.app.ui.clinica.odontologia.ResultadoTratamientoEvaluacion.SinAceptar && enlaceEnviado)
+                "el presupuesto va por WhatsApp y queda «sin aceptar» hasta que el paciente lo acepte"
+            else pe.saniape.app.ui.clinica.odontologia.textoTratamientoEvaluacion(res)
             val creados = res is pe.saniape.app.ui.clinica.odontologia.ResultadoTratamientoEvaluacion.Creado
             val terId = profesionalEvaluacion(cita)
             val diag = diagnostico.trim()
@@ -1070,8 +1095,8 @@ fun PantallaAgenda(
                     mapaDental = ctx.mapaDental,
                     atendio = nombreProfesional(cita, profesionalEvaluacion(cita)),
                     guardando = completandoEval,
-                    onCompletar = { diag, registro ->
-                        completarEvaluacionDental(cita, diag, registro) { completar = null; revisada = null }
+                    onCompletar = { diag, registro, decision ->
+                        completarEvaluacionDental(cita, diag, registro, decision) { completar = null; revisada = null }
                     },
                     onCancelar = { if (!completandoEval) { completar = null; revisada = null } },
                     onAtencionPuntual = { puntual = true },
@@ -1222,8 +1247,8 @@ fun PantallaAgenda(
                 mapaDental = ctx.mapaDental,
                 atendio = nombreProfesional(cita, profesionalEvaluacion(cita)),
                 guardando = completandoEval,
-                onCompletar = { diag, registro ->
-                    completarEvaluacionDental(cita, diag, registro) { odontogramaCita = null }
+                onCompletar = { diag, registro, decision ->
+                    completarEvaluacionDental(cita, diag, registro, decision) { odontogramaCita = null }
                 },
                 // "Cerrar" solo cierra: lo marcado ya quedó guardado.
                 onCancelar = { if (!completandoEval) odontogramaCita = null },

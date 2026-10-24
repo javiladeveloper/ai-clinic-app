@@ -168,9 +168,21 @@ internal fun PresupuestoOdontograma(
             precios = emptyMap()
             ResultadoTratamientoEvaluacion.Creado(cuantos, oferta)
         }
+        // «Lo pensará»: el mismo enlace para aceptar de la web (sin crear nada).
+        val enviarEnlace: suspend () -> pe.saniape.app.data.staff.ResultadoEnlacePresupuesto = {
+            val items = pe.saniape.app.data.staff.itemsPresupuestoDental(
+                lineas.filter { it.procedimientoId in marcadas },
+                extras.map { it.copy(precio = precioExtra(it)) },
+                preciosManuales = precios.keys,
+            )
+            pe.saniape.app.data.staff.PresupuestoDentalRepo.enlaceWhatsApp(pacienteId, items, hallazgos, catalogo, moneda)
+        }
         val listo = serviciosCargados && !soloLectura
-        androidx.compose.runtime.SideEffect { registro.crear = if (listo) crearMarcados else null }
-        androidx.compose.runtime.DisposableEffect(registro) { onDispose { registro.crear = null } }
+        androidx.compose.runtime.SideEffect {
+            registro.crear = if (listo) crearMarcados else null
+            registro.enviarEnlace = if (listo) enviarEnlace else null
+        }
+        androidx.compose.runtime.DisposableEffect(registro) { onDispose { registro.crear = null; registro.enviarEnlace = null } }
     }
 
     Column(

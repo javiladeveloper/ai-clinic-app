@@ -2,6 +2,8 @@ package pe.saniape.app.ui.clinica.odontologia
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,7 +16,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -42,6 +46,13 @@ import pe.saniape.app.ui.theme.Sania
  * saber solo (varios odontólogos, o ningún hallazgo del que sacar diagnóstico).
  * Eso lo decide la agenda en [onCompletar].
  *
+ * DOS cierres (auditoría de flujos 2026-10-24, como la web): «✓ Acepta hoy»
+ * crea los tratamientos de lo marcado si el odontólogo no apretó "Crear
+ * tratamiento(s)" (idempotente: no duplica); «Lo pensará · enviar enlace» no
+ * crea nada, deja el presupuesto sin aceptar y abre el WhatsApp con el enlace
+ * para aceptarlo. Nada se crea sin aceptación explícita. Boca sana (nada que
+ * presupuestar): un solo «✓ Completar evaluación».
+ *
  * Solo citas dentales: la agenda lo monta únicamente con `vm.esDental(cita)`
  * (por cita: en una clínica con fisio y odontología, la de fisio no pasa por acá).
  * Gemelo de `components/odontologia/RevisionPrevia.tsx` en la web.
@@ -58,7 +69,7 @@ fun RevisionPrevia(
     /** Completando (crea tratamiento + completa): el botón no acepta otro toque. */
     guardando: Boolean,
     /** El diagnóstico redactado y el presupuesto a la vista (para crear lo marcado). */
-    onCompletar: (diagnostico: String, registro: RegistroPresupuesto) -> Unit,
+    onCompletar: (diagnostico: String, registro: RegistroPresupuesto, decision: DecisionPresupuesto) -> Unit,
     onCancelar: () -> Unit,
     titulo: String = "🦷 Revisión",
     // "Salir sin completar" y no "Cancelar": lo marcado ya se GUARDÓ (cada
@@ -83,21 +94,30 @@ fun RevisionPrevia(
     // El presupuesto de adentro registra aquí "crear lo marcado". Estable: el
     // presupuesto escribe en él.
     val registro = remember { RegistroPresupuesto() }
+    // ¿Hay algo que presupuestar? Boca sana / todo ya con tratamiento → un solo
+    // «✓ Completar evaluación» (no hay nada que aceptar ni que pensar).
+    var hayPresupuesto by remember { mutableStateOf(false) }
 
     DialogoForm(
         titulo = titulo,
         subtitulo = pacienteNombre?.let { "Marca lo que encontraste en ${it.split(' ').first()}" }
             ?: "Marca lo que encontraste",
-        textoAccion = if (guardando) "Guardando…" else "✓ Completar evaluación",
+        textoAccion = when {
+            guardando -> "Guardando…"
+            hayPresupuesto -> "✓ Acepta hoy"
+            else -> "✓ Completar evaluación"
+        },
         accionHabilitada = !guardando,
         onCancelar = onCancelar,
-        onAccion = { if (!guardando) onCompletar(sugerido, registro) },
+        onAccion = { if (!guardando) onCompletar(sugerido, registro, DecisionPresupuesto.ACEPTA) },
         textoCancelar = textoCancelar,
     ) {
         if (onAtencionPuntual != null) SelectorModoAtencion(puntual = false) { if (it) onAtencionPuntual() }
         Text(
-            "Se guarda al momento. El diagnóstico se redacta solo con lo que marques, y al completar " +
-                "se crea el tratamiento con lo marcado en el presupuesto (si ya lo creaste, no se duplica).",
+            if (hayPresupuesto) "Se guarda al momento. El diagnóstico se redacta solo con lo que marques. " +
+                "«✓ Acepta hoy» crea los tratamientos de lo marcado en el presupuesto (si ya los creaste, no se duplican). " +
+                "«Lo pensará» no crea nada: le llega el enlace para aceptarlo y queda en «Presupuestos sin aceptar»."
+            else "Se guarda al momento. El diagnóstico se redacta solo con lo que marques.",
             color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(bottom = 10.dp),
         )
 
@@ -107,7 +127,10 @@ fun RevisionPrevia(
             mapaDental = mapaDental,
             registroPresupuesto = registro,
             puedeCrearTratamientos = puedeCrearTratamientos,
-            onDatos = { hallazgos, catalogo -> sugerido = diagnosticoDesdeHallazgos(hallazgos, catalogo) },
+            onDatos = { hallazgos, catalogo ->
+                sugerido = diagnosticoDesdeHallazgos(hallazgos, catalogo)
+                hayPresupuesto = hayPresupuestoPendiente(hallazgos)
+            },
         )
 
         Spacer(Modifier.height(12.dp))
@@ -135,6 +158,27 @@ fun RevisionPrevia(
                 Text(
                     "Hay varios odontólogos: al completar eliges quién lo atendió.",
                     color = c.textoSuave, fontSize = 13.sp, fontStyle = FontStyle.Italic,
+                )
+            }
+        }
+
+        // «Lo pensará · enviar enlace»: completa sin crear tratamientos y abre el
+        // WhatsApp con el enlace para aceptar el presupuesto. La principal (abajo)
+        // es «✓ Acepta hoy».
+        if (hayPresupuesto) {
+            Spacer(Modifier.height(12.dp))
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
+                    .border(1.5.dp, c.navy, RoundedCornerShape(Sania.shape.md.dp))
+                    .clickable(enabled = !guardando, role = Role.Button) {
+                        onCompletar(sugerido, registro, DecisionPresupuesto.LO_PENSARA)
+                    }
+                    .padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    if (guardando) "Guardando…" else "Lo pensará · enviar enlace",
+                    color = if (guardando) c.textoSuave else c.navy, fontSize = 14.sp, fontWeight = FontWeight.Bold,
                 )
             }
         }

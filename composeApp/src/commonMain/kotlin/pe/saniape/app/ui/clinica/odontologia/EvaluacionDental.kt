@@ -29,7 +29,20 @@ sealed interface ResultadoTratamientoEvaluacion {
     data object SinServicio : ResultadoTratamientoEvaluacion
     /** El odontólogo desmarcó todo en el presupuesto: se respeta. */
     data object Desmarcado : ResultadoTratamientoEvaluacion
+    /** «Lo pensará»: no se crea nada; el presupuesto queda sin aceptar. */
+    data object SinAceptar : ResultadoTratamientoEvaluacion
 }
+
+/**
+ * Qué decidió el paciente sobre el presupuesto al cerrar el Diagnóstico
+ * (auditoría de flujos 2026-10-24, odonto O1; `DecisionPresupuesto` de la web).
+ * Antes completar creaba los tratamientos de TODO lo presupuestado: inflaba el
+ * saldo pendiente y lo sacaba de «Presupuestos sin aceptar». Ahora nada se crea
+ * sin un «✓ Acepta hoy» explícito.
+ *  · [ACEPTA]     → se crean los tratamientos de lo aceptado (lo marcado).
+ *  · [LO_PENSARA] → no se crea nada; se le manda el enlace para aceptar.
+ */
+enum class DecisionPresupuesto { ACEPTA, LO_PENSARA }
 
 /**
  * Puente entre la revisión (RevisionPrevia) y el presupuesto que el
@@ -41,14 +54,21 @@ sealed interface ResultadoTratamientoEvaluacion {
  */
 class RegistroPresupuesto {
     var crear: (suspend () -> ResultadoTratamientoEvaluacion)? = null
+    /**
+     * «Lo pensará · enviar enlace»: congela lo marcado y arma el WhatsApp con el
+     * enlace para aceptar (el «🔗 Enlace para aceptar» del panel web). null = el
+     * presupuesto aún no cargó.
+     */
+    var enviarEnlace: (suspend () -> pe.saniape.app.data.staff.ResultadoEnlacePresupuesto)? = null
 }
 
 /** Un "no" que el odontólogo tiene que leer (la evaluación queda SIN completar). */
 class ErrorEvaluacionDental(mensaje: String) : Exception(mensaje)
 
 /**
- * Antes de completar: si esta evaluación todavía no tiene tratamiento, lo crea
- * con lo marcado en el presupuesto.
+ * Antes de completar CON «✓ Acepta hoy»: si esta evaluación todavía no tiene
+ * tratamiento, lo crea con lo marcado en el presupuesto. Con «Lo pensará» no
+ * crea nada ([decision]; ni una consulta, como la web).
  *
  * Idempotente: si ya existe uno con `cita_origen_id` = la cita (lo creó el
  * botón del presupuesto, o un intento anterior que falló al completar), no crea
@@ -61,7 +81,10 @@ suspend fun asegurarTratamientoDeEvaluacion(
     pacienteId: String,
     citaId: String,
     registro: RegistroPresupuesto,
+    /** OBLIGATORIA: sin un «Acepta hoy» explícito no se crea nada. */
+    decision: DecisionPresupuesto,
 ): ResultadoTratamientoEvaluacion {
+    if (decision != DecisionPresupuesto.ACEPTA) return ResultadoTratamientoEvaluacion.SinAceptar
     when (OdontogramaRepo.hayTratamientoDeEvaluacion(pacienteId, citaId)) {
         true -> return ResultadoTratamientoEvaluacion.YaExistia
         null -> throw ErrorEvaluacionDental("no se pudo revisar si ya había tratamiento. Revisa la conexión e intenta de nuevo.")
@@ -81,4 +104,13 @@ fun textoTratamientoEvaluacion(r: ResultadoTratamientoEvaluacion): String = when
     ResultadoTratamientoEvaluacion.SinServicio ->
         "Sin tratamiento: los hallazgos marcados no tienen un servicio (asígnalo en el presupuesto)"
     ResultadoTratamientoEvaluacion.Desmarcado -> "Sin tratamiento: desmarcaste todo el presupuesto"
+    ResultadoTratamientoEvaluacion.SinAceptar ->
+        "Sin tratamiento: el paciente lo pensará. El presupuesto queda en «Presupuestos sin aceptar»"
 }
+
+/**
+ * ¿Hay algo que presupuestar? (hallazgos pendientes sin tratamiento). Boca sana
+ * o todo ya con tratamiento → un solo «✓ Completar evaluación», como la web.
+ */
+fun hayPresupuestoPendiente(hallazgos: List<pe.saniape.app.data.staff.DienteHallazgo>): Boolean =
+    hallazgos.any { it.estado == "Pendiente" && it.tratamientoId == null }
