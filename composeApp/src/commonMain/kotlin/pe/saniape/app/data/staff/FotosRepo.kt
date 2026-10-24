@@ -20,7 +20,7 @@ data class FotoEvolutiva(
     val sesionId: String?,
     val nombre: String,
     val archivoUrl: String,    // path en el bucket privado (se firma para verla)
-    val momento: String?,      // "Antes" | "Durante" | "Despues"
+    val momento: String?,      // "Antes" | "Durante" | "Después" (las viejas de la app: "Despues"; ver MomentoFoto.kt)
     val notas: String?,
     val visiblePaciente: Boolean,
     val createdAt: String?,
@@ -64,11 +64,6 @@ object FotosRepo {
         }
         if (valor.isFailure) return true
         return (valor.getOrNull() != "false").also { fotosActivasCache = clinica to it }
-    }
-
-    /** Orden de momentos: Antes → Durante → Después, luego cronológico (igual que la web). */
-    private fun ordenMomento(m: String?): Int = when (m) {
-        "Antes" -> 0; "Durante" -> 1; "Despues" -> 2; else -> 1
     }
 
     /** Fotos evolutivas de un paciente (todas; se filtran por tratamiento en la UI). */

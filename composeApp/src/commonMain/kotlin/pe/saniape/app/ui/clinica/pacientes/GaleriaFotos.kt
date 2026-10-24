@@ -52,10 +52,9 @@ import pe.saniape.app.ui.recordarSelectorArchivo
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.tutoriales.tourAncla
 
-private val MOMENTOS = listOf("Antes", "Durante", "Despues")
-private fun momentoLabel(m: String?): String = when (m) {
-    "Despues" -> "Después"; else -> m ?: ""
-}
+// Se escribe el valor de la web ("Después", con tilde) y se leen las dos variantes (MomentoFoto.kt).
+private val MOMENTOS = pe.saniape.app.data.staff.MOMENTOS_EVOLUCION
+private fun momentoLabel(m: String?): String = pe.saniape.app.data.staff.momentoCanonico(m) ?: ""
 
 /**
  * Galería de fotos evolutivas (antes/durante/después) de UN tratamiento. Espeja
@@ -114,8 +113,11 @@ fun GaleriaFotos(
     // del "Antes" y otra del "Después"). Es lo que el profesional le muestra al paciente
     // para que vea su avance — el mejor motivador para que termine el tratamiento.
     var comparar by remember { mutableStateOf(false) }
-    val fotoAntes = delTratamiento.filter { it.momento == "Antes" }.minByOrNull { it.createdAt ?: "" }
-    val fotoDespues = delTratamiento.filter { it.momento == "Despues" }.maxByOrNull { it.createdAt ?: "" }
+    // Con o sin tilde: las fotos «Después» subidas desde la web también se comparan.
+    val fotoAntes = delTratamiento.filter { pe.saniape.app.data.staff.esMomento(it.momento, pe.saniape.app.data.staff.MOMENTO_ANTES) }
+        .minByOrNull { it.createdAt ?: "" }
+    val fotoDespues = delTratamiento.filter { pe.saniape.app.data.staff.esMomento(it.momento, pe.saniape.app.data.staff.MOMENTO_DESPUES) }
+        .maxByOrNull { it.createdAt ?: "" }
     val puedeComparar = fotoAntes != null && fotoDespues != null
 
     Column(Modifier.fillMaxWidth().tourAncla("fotos").padding(top = 12.dp)) {
@@ -326,8 +328,11 @@ private fun Thumb(
     var url by remember(f.id) { mutableStateOf<String?>(null) }
     LaunchedEffect(f.id) { url = urlProvider(f.archivoUrl) }
 
-    val momColor = when (f.momento) {
-        "Antes" -> c.textoSuave; "Durante" -> c.info; "Despues" -> c.ok; else -> c.textoSuave
+    val momColor = when (pe.saniape.app.data.staff.momentoCanonico(f.momento)) {
+        pe.saniape.app.data.staff.MOMENTO_ANTES -> c.textoSuave
+        pe.saniape.app.data.staff.MOMENTO_DURANTE -> c.info
+        pe.saniape.app.data.staff.MOMENTO_DESPUES -> c.ok
+        else -> c.textoSuave
     }
     Box(Modifier.size(92.dp)) {
         Box(Modifier.fillMaxSize().clip(RoundedCornerShape(Sania.shape.sm.dp))
@@ -372,7 +377,7 @@ private fun ModalSubirFoto(
     onGuardar: (momento: String, sesionId: String?, nota: String?, visible: Boolean) -> Unit,
 ) {
     val c = Sania.colors
-    var momento by remember { mutableStateOf("Antes") }
+    var momento by remember { mutableStateOf(pe.saniape.app.data.staff.MOMENTO_ANTES) }
     var sesionId by remember { mutableStateOf<String?>(null) }
     var sesionAbierta by remember { mutableStateOf(false) }
     var nota by remember { mutableStateOf("") }

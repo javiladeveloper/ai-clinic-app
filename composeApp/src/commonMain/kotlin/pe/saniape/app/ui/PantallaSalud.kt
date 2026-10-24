@@ -608,11 +608,8 @@ private const val VIGENCIA_URL_MS = 50L * 60 * 1000
 
 private fun ahoraMs(): Long = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
 
-private fun momentoFoto(m: String?): String? = when (m) {
-    "Despues" -> "Después"
-    null, "" -> null
-    else -> m
-}
+/** Con o sin tilde ("Despues" de las fotos viejas de la app): como lo escribe la web. */
+private fun momentoFoto(m: String?): String? = pe.saniape.app.data.staff.momentoCanonico(m)
 
 /** "Tienes S/ X a favor": lo pagado de más entre todos sus tratamientos. */
 @Composable

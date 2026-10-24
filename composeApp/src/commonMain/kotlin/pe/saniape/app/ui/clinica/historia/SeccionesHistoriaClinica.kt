@@ -703,7 +703,7 @@ private fun FotoHcVista(f: FotoHc, etiqueta: String?, abrir: (FotoHc) -> Unit, m
             else Text("📷", fontSize = 22.sp)
         }
         Text(
-            listOfNotNull(etiqueta ?: f.momento?.let { if (it == "Despues") "Después" else it }, fechaHc(f.fecha)).joinToString(" · "),
+            listOfNotNull(etiqueta ?: pe.saniape.app.data.staff.momentoCanonico(f.momento), fechaHc(f.fecha)).joinToString(" · "),
             color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp),
         )
     }
