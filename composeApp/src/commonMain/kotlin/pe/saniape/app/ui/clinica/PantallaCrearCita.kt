@@ -170,6 +170,9 @@ fun PantallaCrearCita(
     var tratEnCurso by remember { mutableStateOf<TratEnCurso?>(null) }
     // La modalidad (cita virtual) del servicio que se está eligiendo ahí.
     var servicioEnCurso by remember { mutableStateOf<pe.saniape.app.data.staff.ServicioModalidad?>(null) }
+    // De qué servicio terminó la consulta (bien o mal): mientras no sea el elegido,
+    // «Crear tratamiento y agendar cita» espera (servicioPendiente).
+    var servicioEnCursoDe by remember { mutableStateOf<String?>(null) }
     // Lo que la verificación fresca dijo al tocar el botón (se borra al cambiar la cita).
     var errorUnPaso by remember { mutableStateOf<String?>(null) }
     var precioConsulta by remember { mutableStateOf(0.0) }
@@ -465,8 +468,16 @@ fun PantallaCrearCita(
     // «＋ Crear tratamiento» abierto: el tratamiento que se está armando ahí.
     val enCurso = if (crearTratamiento) tratEnCurso else null
     LaunchedEffect(enCurso?.procedimientoId) {
-        val procId = enCurso?.procedimientoId
-        servicioEnCurso = if (procId == null) null else AgendaRepo.modalidadDeServicio(procId)
+        val procId = enCurso?.procedimientoId ?: run { servicioEnCurso = null; servicioEnCursoDe = null; return@LaunchedEffect }
+        try {
+            servicioEnCurso = AgendaRepo.modalidadDeServicio(procId)
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Sin red: no se toca servicioEnCurso, así la cita conserva su modalidad
+            // (lo que ya muestra el selector) y el botón deja de esperar.
+        }
+        servicioEnCursoDe = procId
     }
     // El servicio de la cita (el de su tratamiento, o el del que se está creando)
     // decide cómo arranca el selector.
@@ -764,6 +775,8 @@ fun PantallaCrearCita(
         else -> (pe.saniape.app.data.staff.camposModalidadCita(virt, servicioCita, meetPlan)
             as? pe.saniape.app.data.staff.ResultadoCampos.Error)?.let { "Videollamada: ${it.error}" }
     }
+    fun cargandoServicioCita(): Boolean =
+        pe.saniape.app.data.staff.servicioPendiente(tratEnCurso?.procedimientoId, servicioEnCursoDe)
     fun horaPasadaAhora(): Boolean {
         val a = pe.saniape.app.data.staff.ahoraEn(ctx.zonaDeSede(sedeId))
         return pe.saniape.app.data.staff.horaDeCitaYaPaso(fecha, hora, a.fecha, a.minutos)
@@ -772,6 +785,7 @@ fun PantallaCrearCita(
     val estadoUnPaso = pe.saniape.app.data.staff.estadoCitaUnPaso(
         fecha = fecha, hora = hora, horaPasada = horaPasada, regularizacion = esRegularizacion,
         conflicto = conflictoDe(disponibilidad), fueraDelBloque = if (crearTratamiento) fueraDelBloqueCita() else null,
+        cargandoServicio = crearTratamiento && cargandoServicioCita(),
     )
     // Lo que dijo la verificación fresca deja de valer al cambiar la cita.
     LaunchedEffect(fecha, hora, terapeuta?.id, duracion, esRegularizacion) { errorUnPaso = null }
@@ -786,6 +800,7 @@ fun PantallaCrearCita(
         val pasada = horaPasadaAhora()
         val e = pe.saniape.app.data.staff.estadoCitaUnPaso(
             fecha, hora, pasada, esRegularizacion, conflictoDe(disponibilidad), fueraDelBloqueCita(),
+            cargandoServicio = cargandoServicioCita(),
         )
         if (e.estado != pe.saniape.app.data.staff.EstadoCitaUnPaso.Estado.LISTO) return e.motivo ?: "Revisa la cita"
         // Regularización (ya ocurrió) o sin profesional: no hay horario que verificar.
@@ -949,6 +964,9 @@ fun PantallaCrearCita(
             }
             val d = disponibilidad
             val aviso: Pair<String, androidx.compose.ui.graphics.Color>? = when {
+                // Consultando la videollamada del servicio: espera, no es un error.
+                estadoUnPaso.motivo == pe.saniape.app.data.staff.MOTIVO_CARGANDO_SERVICIO ->
+                    pe.saniape.app.data.staff.MOTIVO_CARGANDO_SERVICIO to c.textoSuave
                 estadoUnPaso.estado == pe.saniape.app.data.staff.EstadoCitaUnPaso.Estado.FALTA ->
                     "✗ ${estadoUnPaso.motivo}" to c.error
                 estadoUnPaso.estado == pe.saniape.app.data.staff.EstadoCitaUnPaso.Estado.NO ->

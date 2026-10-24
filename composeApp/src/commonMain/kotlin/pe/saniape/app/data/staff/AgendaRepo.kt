@@ -735,7 +735,8 @@ object AgendaRepo {
     /**
      * La modalidad (cita virtual) de UN servicio: la cita que se agenda junto con el
      * tratamiento que se está creando nace como él, igual que al elegirlo después
-     * (CitaUnPaso.kt). null = presencial, sin red o base sin las columnas.
+     * (CitaUnPaso.kt). null = presencial o base sin las columnas. Sin red LANZA:
+     * quien llama distingue "no se pudo saber" de "es presencial".
      */
     suspend fun modalidadDeServicio(procedimientoId: String): ServicioModalidad? {
         if (!virtualesEnBase) return null
@@ -748,7 +749,8 @@ object AgendaRepo {
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (faltaColumnaVirtual(e)) virtualesEnBase = false
+            if (!faltaColumnaVirtual(e)) throw e
+            virtualesEnBase = false
             return null
         }
         return fila?.let { ServicioModalidad(it.str("modalidad"), it.str("enlace_modo"), it.str("enlace_fijo")) }

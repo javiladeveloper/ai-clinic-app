@@ -62,6 +62,27 @@ class CitaUnPasoTest {
         )
     }
 
+    @Test
+    fun mientrasCargaLaModalidadDelServicioElBotonEspera() {
+        // Gana a todo: de esa modalidad depende también el enlace (fuera del bloque).
+        assertEquals(
+            EstadoCitaUnPaso(EstadoCitaUnPaso.Estado.FALTA, "Cargando…"),
+            estadoCitaUnPaso("2026-10-25", "", false, false, "x", "Videollamada: el enlace no es válido", cargandoServicio = true),
+        )
+    }
+
+    @Test
+    fun servicioPendienteHastaQueTermineLaConsultaDeEseServicio() {
+        // Sin servicio elegido no hay nada que esperar.
+        assertFalse(servicioPendiente(null, null))
+        // Recién elegido: espera.
+        assertTrue(servicioPendiente("p1", null))
+        // Terminó la consulta (bien o mal): ya no.
+        assertFalse(servicioPendiente("p1", "p1"))
+        // Cambió de servicio: vuelve a esperar al nuevo.
+        assertTrue(servicioPendiente("p2", "p1"))
+    }
+
     // ── horaDeCitaYaPaso ──
 
     @Test

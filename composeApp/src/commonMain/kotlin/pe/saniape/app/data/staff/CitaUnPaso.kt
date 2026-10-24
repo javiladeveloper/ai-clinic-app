@@ -46,8 +46,15 @@ fun estadoCitaUnPaso(
     conflicto: String?,
     /** Algo de la cita que solo se corrige en su formulario (null = nada). */
     fueraDelBloque: String?,
+    /**
+     * Todavía no se sabe la modalidad (videollamada) del servicio elegido en el
+     * tratamiento ([servicioPendiente]): agendar ya podría guardarla presencial.
+     */
+    cargandoServicio: Boolean = false,
 ): EstadoCitaUnPaso {
     val falta = EstadoCitaUnPaso.Estado.FALTA
+    // Primero: de esa modalidad depende también lo de «fuera del bloque» (el enlace).
+    if (cargandoServicio) return EstadoCitaUnPaso(falta, MOTIVO_CARGANDO_SERVICIO)
     if (!fueraDelBloque.isNullOrBlank()) return EstadoCitaUnPaso(EstadoCitaUnPaso.Estado.NO, fueraDelBloque)
     if (fecha.isBlank()) return EstadoCitaUnPaso(falta, "Falta la fecha de la cita")
     if (hora.isBlank()) return EstadoCitaUnPaso(falta, "Falta la hora de la cita")
@@ -58,6 +65,18 @@ fun estadoCitaUnPaso(
     if (!conflicto.isNullOrBlank() && !(horaPasada && regularizacion)) return EstadoCitaUnPaso(falta, conflicto)
     return EstadoCitaUnPaso.LISTO
 }
+
+/** El motivo del botón apagado mientras se consulta la modalidad del servicio. */
+const val MOTIVO_CARGANDO_SERVICIO = "Cargando…"
+
+/**
+ * ¿Falta saber la modalidad del servicio elegido en el tratamiento? Sí mientras
+ * la consulta de ESE servicio no haya terminado ([resueltoDe] = el último servicio
+ * cuya consulta terminó, bien o mal). Si la consulta falla se marca resuelta
+ * igual: la cita conserva su modalidad y el botón deja de esperar.
+ */
+fun servicioPendiente(procedimientoId: String?, resueltoDe: String?): Boolean =
+    procedimientoId != null && procedimientoId != resueltoDe
 
 /**
  * ¿La cita de [fecha] a la [hora] ("HH:MM") ya pasó, con "ahora" en la zona de su
