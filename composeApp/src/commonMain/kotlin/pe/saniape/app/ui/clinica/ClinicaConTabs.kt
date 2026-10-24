@@ -80,14 +80,22 @@ fun ClinicaConTabs(
     // aviso de una cita. Se consume una sola vez: si no, cada regreso a la app
     // lo devolvería a esa fecha en vez de a hoy.
     var fechaDeAviso by remember { mutableStateOf<String?>(null) }
+    // Y la cita cuyo detalle abrir en esa fecha (aviso o Inicio): antes se
+    // descartaba el id y el profesional quedaba buscándola (DALU, 24/10/2026).
+    var citaDeAviso by remember { mutableStateOf<String?>(null) }
+    // Abrir la agenda EN la cita: su día y su detalle.
+    fun abrirCitaEnAgenda(citaId: String, fecha: String?) {
+        citaDeAviso = citaId
+        fechaDeAviso = fecha
+        tab = TabClinica.Agenda
+    }
 
     // El aviso de "cita nueva" tiene que dejar al profesional EN la cita, no en
     // Inicio buscándola (reportado 2026-09-13). Llega con la app cerrada
     // (MainActivity) o abierta (onNewIntent); por eso se observa el estado.
     LaunchedEffect(CitaPendienteDeAbrir.actual) {
-        if (CitaPendienteDeAbrir.actual != null) {
-            fechaDeAviso = CitaPendienteDeAbrir.fechaActual
-            tab = TabClinica.Agenda
+        CitaPendienteDeAbrir.actual?.let { id ->
+            abrirCitaEnAgenda(id, CitaPendienteDeAbrir.fechaActual)
             CitaPendienteDeAbrir.consumir()
         }
     }
@@ -360,6 +368,8 @@ fun ClinicaConTabs(
                     TabClinica.Inicio -> PantallaInicioStaff(
                         ctx = contexto,
                         onIrAgenda = { tab = TabClinica.Agenda },
+                        // La agenda de hoy del Inicio: tocar una cita abre SU detalle.
+                        onAbrirCita = { id -> abrirCitaEnAgenda(id, pe.saniape.app.data.staff.hoyClinicaIso()) },
                         onIrPacientes = { tab = TabClinica.Pacientes },
                         onAbrirCaja = if (contexto.puede("pagos")) ({ verCaja = true }) else null,
                         onBuscar = if (verPacientes) ({ verBuscador = true }) else null,
@@ -369,6 +379,8 @@ fun ClinicaConTabs(
                         ctx = contexto,
                         fechaInicial = fechaDeAviso,
                         onFechaConsumida = { fechaDeAviso = null },
+                        citaInicial = citaDeAviso,
+                        onCitaConsumida = { citaDeAviso = null },
                         onPantallaCompleta = { pantallaCompleta = it },
                     ) }
                     TabClinica.Pacientes -> pe.saniape.app.tutoriales.PantallaTutorial("Pacientes") { PantallaPacientesStaff(contexto) }

@@ -97,6 +97,14 @@ fun PantallaAgenda(
     /** Se llama al posicionarse: así no vuelve a esa fecha en cada recomposición. */
     onFechaConsumida: () -> Unit = {},
     /**
+     * Id de la cita cuyo DETALLE abrir (aviso de cita nueva, «siguiente» o fila de la
+     * agenda de hoy en el Inicio). Va con [fechaInicial]: primero se posiciona el
+     * día, luego se abre la cita. null = solo la agenda.
+     */
+    citaInicial: String? = null,
+    /** Se llama al tomar [citaInicial]: se abre una sola vez. */
+    onCitaConsumida: () -> Unit = {},
+    /**
      * Avisa si hay un flujo a pantalla completa abierto (crear cita, "▶ Atender"):
      * el contenedor de tabs oculta la barra inferior mientras tanto. Si no, tocar
      * un tab destruía el flujo a medias sin pasar por su "¿salir sin guardar?".
@@ -111,7 +119,15 @@ fun PantallaAgenda(
 
     // El profesional tocó "Nueva cita agendada": la agenda abre en el día de ESA
     // cita, no en hoy. Sin esto, una cita de la semana que viene no se ve.
-    LaunchedEffect(fechaInicial) {
+    // Y además abre ESA cita (reporte DALU 24/10/2026: «la ve, la toca y no la lleva
+    // a ningún lado»). Se guarda aquí y se suelta arriba: se resuelve cuando cargue
+    // el día (ver el efecto junto al detalle).
+    var citaPedida by remember { mutableStateOf<pe.saniape.app.data.staff.CitaPedida?>(null) }
+    LaunchedEffect(fechaInicial, citaInicial) {
+        if (citaInicial != null) {
+            citaPedida = pe.saniape.app.data.staff.CitaPedida(citaInicial, fechaInicial)
+            onCitaConsumida()
+        }
         if (fechaInicial != null) {
             vm.seleccionarDia(fechaInicial)
             onFechaConsumida()
@@ -172,6 +188,8 @@ fun PantallaAgenda(
     var derivacionPendiente by remember { mutableStateOf<String?>(null) }
     // Resumen clínico (popup al tocar el nombre) + ficha completa que abre desde ahí.
     var resumenPacienteId by remember { mutableStateOf<String?>(null) }
+    // La cita desde la que se tocó el nombre: si la ficha no abre, se vuelve a su detalle.
+    var resumenDeCita by remember { mutableStateOf<CitaStaff?>(null) }
     // Detalle de la cita (tocar la tarjeta): observaciones + lo clínico para quien atiende.
     var detalleCita by remember { mutableStateOf<pe.saniape.app.data.staff.CitaStaff?>(null) }
     // 🧾 Comprobante: la cita cobrada cuyo recibo se reimprime (A4 / ticket).
@@ -849,7 +867,7 @@ fun PantallaAgenda(
                                         AccionTarjeta.AtenderDirecto, AccionTarjeta.Evolucion -> atencionDirectaId = cita.id
                                     }
                                 },
-                                onVerResumen = { resumenPacienteId = it },
+                                onVerResumen = { resumenDeCita = cita; resumenPacienteId = it },
                                 onAbrirDetalle = { detalleCita = cita },
                                 conteoFranja = vm.conteosFranja[cita.id] ?: 1,
                                 odontologia = vm.esDental(cita),
@@ -1398,7 +1416,7 @@ fun PantallaAgenda(
             puedeVerCosto = ctx.puede("pagos"),
             verClinico = pe.saniape.app.data.staff.veClinicoEnDetalleCita(ctx.puede("sesiones"), verHc),
             onCerrar = { detalleCita = null },
-            onVerResumen = { pid -> detalleCita = null; resumenPacienteId = pid },
+            onVerResumen = { pid -> detalleCita = null; resumenDeCita = cita; resumenPacienteId = pid },
             // Como la web: permiso `citas`. La app no recibe el flag de solo
             // lectura (soporte): el servidor lo corta con 403 SOLO_LECTURA.
             puedeEditarNotas = pe.saniape.app.data.staff.puedeEditarObservaciones(ctx.puede("citas")),
@@ -1417,6 +1435,28 @@ fun PantallaAgenda(
         )
     }
 
+    /**
+     * Abre la ficha del paciente. Si no se puede (no existe, sin permiso, sin señal)
+     * no se queda en silencio: vuelve al detalle de la cita de la que venía, o avisa.
+     * Antes un null (o un fallo de red) dejaba la pantalla «sin hacer nada».
+     */
+    fun abrirFichaDesdeResumen(pid: String) {
+        val origen = resumenDeCita
+        resumenDeCita = null
+        cargandoFicha = true
+        // En el scope de la pantalla: el efecto que lo pide sale de la composición al soltar el id.
+        scope.launch {
+            val pac = try { PacientesRepo.porId(pid) }
+                catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e }
+                catch (_: Exception) { null }
+            cargandoFicha = false
+            if (pac != null) fichaPaciente = pac
+            else {
+                pe.saniape.app.ui.Toaster.error(pe.saniape.app.data.staff.AVISO_FICHA_NO_DISPONIBLE)
+                if (origen != null) detalleCita = origen
+            }
+        }
+    }
     // Popup de resumen clínico (tocar el nombre en una tarjeta). "Ver ficha" carga el
     // paciente por id y abre la ficha completa como overlay (misma pantalla que la web).
     // Sin 'historia_clinica' el resumen clínico no se muestra (el servidor lo niega):
@@ -1424,27 +1464,54 @@ fun PantallaAgenda(
     resumenPacienteId?.takeIf { !verHc }?.let { pid ->
         LaunchedEffect(pid) {
             resumenPacienteId = null
-            cargandoFicha = true
-            // En el scope de la pantalla: este efecto sale de la composición al soltar el id.
-            scope.launch {
-                fichaPaciente = PacientesRepo.porId(pid)
-                cargandoFicha = false
-            }
+            abrirFichaDesdeResumen(pid)
         }
     }
     resumenPacienteId?.takeIf { verHc }?.let { pid ->
         ResumenClinicoSheet(
             pacienteId = pid,
-            onCerrar = { resumenPacienteId = null },
+            onCerrar = { resumenPacienteId = null; resumenDeCita = null },
             onVerFicha = {
                 resumenPacienteId = null
-                cargandoFicha = true
-                scope.launch {
-                    fichaPaciente = PacientesRepo.porId(pid)
-                    cargandoFicha = false
-                }
+                abrirFichaDesdeResumen(pid)
             },
         )
+    }
+
+    // La cita pedida (aviso de cita nueva, Inicio): cuando el día cargue, se abre su
+    // detalle; si no vino en la lista (filtro de profesional, equipo, otra sede, se
+    // movió de día), se lee por id; si tampoco, un aviso claro — nunca «nada».
+    LaunchedEffect(citaPedida, vm.diaCargado, vm.citas) {
+        val p = citaPedida ?: return@LaunchedEffect
+        when (val paso = pe.saniape.app.data.staff.resolverCitaPedida(p, vm.diaCargado, vm.citas)) {
+            pe.saniape.app.data.staff.PasoCitaPedida.Esperar -> Unit
+            is pe.saniape.app.data.staff.PasoCitaPedida.Abrir -> { citaPedida = null; detalleCita = paso.cita }
+            pe.saniape.app.data.staff.PasoCitaPedida.BuscarPorId -> {
+                citaPedida = null
+                cargandoFicha = true
+                // En el scope de la pantalla: soltar citaPedida reinicia este efecto.
+                scope.launch {
+                    val leida = try {
+                        val cita = pe.saniape.app.data.staff.AgendaRepo.citaPorId(p.id)
+                        val equipo = if (pe.saniape.app.data.staff.hayQueLeerEquipo(cita, ctx.miTerapeutaId))
+                            pe.saniape.app.data.staff.AgendaRepo.equipoDeCita(p.id) else emptyList()
+                        pe.saniape.app.data.staff.destinoCitaLeida(cita, ctx.miTerapeutaId, equipo)
+                    } catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e }
+                    catch (_: Exception) {
+                        pe.saniape.app.data.staff.DestinoCitaLeida.Avisar(pe.saniape.app.data.staff.AVISO_CITA_SIN_CONEXION)
+                    }
+                    cargandoFicha = false
+                    when (leida) {
+                        is pe.saniape.app.data.staff.DestinoCitaLeida.Abrir -> {
+                            // El aviso no traía la fecha: la agenda se pone en el día de la cita.
+                            if (p.fecha == null && leida.cita.fecha != vm.fechaSel) vm.seleccionarDia(leida.cita.fecha)
+                            detalleCita = leida.cita
+                        }
+                        is pe.saniape.app.data.staff.DestinoCitaLeida.Avisar -> pe.saniape.app.ui.Toaster.info(leida.mensaje)
+                    }
+                }
+            }
+        }
     }
     if (cargandoFicha) {
         Box(Modifier.fillMaxSize().background(c.fondo.copy(alpha = 0.6f)), Alignment.Center) {

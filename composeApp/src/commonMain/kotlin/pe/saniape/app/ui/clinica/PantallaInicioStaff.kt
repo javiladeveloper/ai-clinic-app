@@ -63,6 +63,12 @@ import pe.saniape.app.ui.nombreDeSaludo
 fun PantallaInicioStaff(
     ctx: ContextoStaff,
     onIrAgenda: () -> Unit = {},
+    /**
+     * Tocar UNA cita (la «siguiente» o una fila de la agenda de hoy): la agenda abre
+     * en su detalle, no solo en la pestaña (DALU, 24/10/2026: «no la lleva a ningún
+     * lado»). Sin él, cae en la agenda como antes.
+     */
+    onAbrirCita: (citaId: String) -> Unit = { onIrAgenda() },
     onIrPacientes: () -> Unit = {},
     onAbrirCaja: (() -> Unit)? = null,
     onBuscar: (() -> Unit)? = null,
@@ -230,7 +236,7 @@ fun PantallaInicioStaff(
                                 Modifier.fillMaxWidth()
                                     .shadow(6.dp, RoundedCornerShape(Sania.shape.md.dp))
                                     .clip(RoundedCornerShape(Sania.shape.md.dp))
-                                    .background(c.navy).tocable { onIrAgenda() }
+                                    .background(c.navy).tocable { onAbrirCita(proxima.id) }
                                     .padding(Sania.dim.lg),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -243,7 +249,7 @@ fun PantallaInicioStaff(
                                 }
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text(hora12(proxima.hora), color = c.sobreNavy, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                    Text("→ ver agenda", color = c.sobreNavy.copy(alpha = 0.7f), fontSize = 10.sp)
+                                    Text("→ ver cita", color = c.sobreNavy.copy(alpha = 0.7f), fontSize = 10.sp)
                                 }
                             }
                         }
@@ -352,7 +358,7 @@ fun PantallaInicioStaff(
                         }
                     } else {
                         items(s.agendaHoy) { cita ->
-                            FilaAgenda(cita, onClick = onIrAgenda,
+                            FilaAgenda(cita, onClick = { onAbrirCita(cita.id) },
                                 yaPago = pe.saniape.app.data.staff.yaPagoConRespaldo(cita.estado, estadosPagoHoy[cita.id]?.estado, cita.yaPago))
                         }
                     }
