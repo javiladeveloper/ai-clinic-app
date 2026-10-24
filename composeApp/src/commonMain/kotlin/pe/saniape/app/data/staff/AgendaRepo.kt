@@ -172,6 +172,27 @@ object AgendaRepo {
 
     const val PAGE_SIZE = 10
 
+    /**
+     * Una cita por id (la que se tocó en un aviso o en el Inicio y no vino en la
+     * lista del día). null = no existe o la RLS no la deja ver. Sin red, lanza:
+     * quien llama distingue «no está» de «no se pudo leer».
+     */
+    suspend fun citaPorId(citaId: String): CitaStaff? {
+        val filas = conColumnasVirtuales { cols ->
+            Supabase.client.postgrest["citas"]
+                .select(Columns.raw(cols)) { filter { eq("id", citaId) } }
+                .decodeList<JsonObject>()
+        }
+        return filas.firstOrNull()?.let { mapearCita(it) }
+    }
+
+    /** Profesionales del equipo de una cita (`cita_equipo`). Vacío si falla o no hay. */
+    suspend fun equipoDeCita(citaId: String): List<String> = try {
+        Supabase.client.postgrest["cita_equipo"].select(Columns.list("terapeuta_id")) {
+            filter { eq("cita_id", citaId) }
+        }.decodeList<JsonObject>().mapNotNull { it.str("terapeuta_id") }
+    } catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e } catch (_: Exception) { emptyList() }
+
     /** Tamaño pedido por tanda (PostgREST puede devolver menos si su max_rows es menor). */
     private const val TANDA_MES = 1000
     /** Tope de filas de un mes: pasarlo se AVISA (conteo parcial), no se corta en silencio. */
