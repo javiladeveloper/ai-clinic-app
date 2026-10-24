@@ -732,6 +732,28 @@ object AgendaRepo {
      * pago único ya realizado sin alta ([tratamientoAgendableEnSesion], gemelo de
      * `tratamientosParaSesion` del CitaForm web). También el control vinculado.
      */
+    /**
+     * La modalidad (cita virtual) de UN servicio: la cita que se agenda junto con el
+     * tratamiento que se está creando nace como él, igual que al elegirlo después
+     * (CitaUnPaso.kt). null = presencial, sin red o base sin las columnas.
+     */
+    suspend fun modalidadDeServicio(procedimientoId: String): ServicioModalidad? {
+        if (!virtualesEnBase) return null
+        val fila = try {
+            Supabase.client.postgrest["procedimientos"]
+                .select(Columns.raw("modalidad, enlace_modo, enlace_fijo")) {
+                    filter { eq("id", procedimientoId) }; limit(1)
+                }
+                .decodeList<JsonObject>().firstOrNull()
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (faltaColumnaVirtual(e)) virtualesEnBase = false
+            return null
+        }
+        return fila?.let { ServicioModalidad(it.str("modalidad"), it.str("enlace_modo"), it.str("enlace_fijo")) }
+    }
+
     suspend fun tratamientosAgendables(pacienteId: String): List<TratamientoRef> {
         // El servicio trae su modalidad (cita virtual): la cita la hereda en el formulario.
         val base = "id, estado, modalidad, terapeuta_id, diagnostico, fecha_inicio, total_sesiones, sesiones_completadas, procedimiento:procedimientos(nombre, especialidad_id"
