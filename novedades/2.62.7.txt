@@ -1,0 +1,7 @@
+Psicología más directa: atiende y anota la evolución desde la cita, sin crear tratamiento. Y «Ampliar tratamiento anterior» al agendar una nueva sesión.
+---
+Menos pasos en la consulta:
+• Psicología: «Atención directa» al agendar a un paciente sin tratamiento.
+• «▶ Atender» en la cita: evolución, contexto del caso y cobro en una sola pantalla.
+• «📝 Anotar evolución» en las citas ya completadas.
+• Al agendar una sesión de un tratamiento terminado: «Ampliar tratamiento anterior» en un toque.
