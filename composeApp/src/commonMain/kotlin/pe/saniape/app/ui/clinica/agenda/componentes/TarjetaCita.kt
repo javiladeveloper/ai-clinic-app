@@ -219,7 +219,9 @@ fun TarjetaCita(
                 // motivo, diagnóstico, progreso). El "›" lo hace descubrible: antes
                 // nada indicaba que fuera tocable y el fisio no lo encontraba.
                 Row(
-                    Modifier.weight(1f).clickable { cita.pacienteId?.let(onVerResumen) },
+                    // Sin paciente vinculado no hay resumen: el toque abre el detalle
+                    // de la cita (antes no hacía nada).
+                    Modifier.weight(1f).clickable { cita.pacienteId?.let(onVerResumen) ?: onAbrirDetalle?.invoke() },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(cita.pacienteNombre ?: "${LocalTerminologiaPaciente.current.Paciente}", color = c.texto,
