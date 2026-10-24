@@ -1,0 +1,7 @@
+Agenda más limpia: cada cita muestra solo lo que toca hacer ahora y el resto en «⋯ Más». Además, crear el tratamiento y agendar la cita en un solo toque.
+---
+Menos pasos y menos botones:
+• Tarjeta de cita: una acción principal (Completar, Atender, Triaje…) y el resto en «⋯ Más».
+• Crear tratamiento desde Nueva cita ahora agenda la cita en el mismo toque.
+• Tocar el aviso de cita nueva o una cita del Inicio abre esa cita directamente.
+• Tocar el nombre del paciente siempre abre algo o te dice por qué no.
