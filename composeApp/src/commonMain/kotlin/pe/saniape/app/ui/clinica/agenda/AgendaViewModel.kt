@@ -591,6 +591,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     fun seleccionarDia(iso: String) {
         verHistorial = false
         fechaSel = iso
+        diaCargado = null
         citaAgendadaEn = null
         // El mes del encabezado sigue al día elegido (calendario cerrado o no).
         pe.saniape.app.data.staff.MesAgenda.de(iso)?.let { if (it != mesVisible) irAMes(it) }
@@ -780,6 +781,13 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
 
     fun limpiarMensaje() { mensaje = null }
 
+    /**
+     * El día cuya lista ya llegó (null = ninguno, o se cambió de día y aún no llega).
+     * Con esto la agenda sabe cuándo una cita pedida (aviso, Inicio) de verdad NO
+     * está en el día, y no solo que todavía no cargó.
+     */
+    var diaCargado by mutableStateOf<String?>(null); private set
+
     private fun cargarDia(fecha: String) {
         viewModelScope.launch {
             // Spinner completo solo si aún no hay nada; si ya hay citas (cambio de día),
@@ -788,7 +796,14 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             coroutineScope {
                 // Las llegadas de hoy van EN PARALELO con la agenda (sin cascada).
                 val lleg = async { recargarLlegadas() }
-                ponerCitas(runCatching { AgendaRepo.citasDelDia(fecha, ctx.miTerapeutaId) }.getOrDefault(emptyList()))
+                val lista = runCatching { AgendaRepo.citasDelDia(fecha, ctx.miTerapeutaId) }.getOrDefault(emptyList())
+                // Una carga vieja que llega tarde no pisa el día elegido: al abrir por
+                // un aviso, la carga de hoy (init) y la del día del aviso corren a la
+                // vez, y si la de hoy terminaba última la agenda mostraba hoy.
+                if (fecha == fechaSel && !verHistorial) {
+                    ponerCitas(lista)
+                    diaCargado = fecha
+                }
                 lleg.await()
             }
             cargando = false; recargando = false
