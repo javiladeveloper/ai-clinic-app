@@ -388,8 +388,9 @@ object AgendaRepo {
     suspend fun cobrarCita(
         citaId: String, metodo: String, modo: String, fecha: String?,
         pagos: List<PartePago>? = null,
+        costoAcordado: Double? = null,
     ): ResultadoCobro {
-        val cuerpo = cuerpoCobrarCita(citaId, metodo, modo, fecha, pagos)
+        val cuerpo = cuerpoCobrarCita(citaId, metodo, modo, fecha, pagos, costoAcordado)
         val firma = cuerpo.toString()
         val clave = mutexClavesCobro.withLock { clavesCobroInciertas[firma] }
             ?: pe.saniape.app.data.offline.nuevaIdemKey()

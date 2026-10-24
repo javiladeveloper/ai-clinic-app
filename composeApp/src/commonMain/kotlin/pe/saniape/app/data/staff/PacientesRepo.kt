@@ -1543,6 +1543,19 @@ object PacientesRepo {
             if (!nota.isNullOrBlank()) put("nota", nota)
         })
 
+    /**
+     * Como [ampliarTratamiento], con el detalle (sin mostrar el rechazo): «＋ Ampliar
+     * tratamiento anterior» de la cita necesita saber si quedó en la cola (sin red)
+     * para no atar la cita a un tratamiento que todavía no se amplió.
+     */
+    suspend fun ampliarTratamientoDetalle(
+        tratamientoId: String, sesionesExtra: Int, montoExtra: Double, nota: String?,
+    ): pe.saniape.app.data.offline.ResultadoEscritura = postStaffDetalle("/api/staff/tratamiento/accion", buildJsonObject {
+        put("accion", "ampliar"); put("tratamientoId", tratamientoId)
+        put("sesionesExtra", sesionesExtra); put("montoExtra", montoExtra)
+        if (!nota.isNullOrBlank()) put("nota", nota)
+    })
+
     /** Crear una sesión para un tratamiento (reusa el endpoint de crear cita tipo Sesión). */
     suspend fun crearSesion(
         pacienteId: String, tratamientoId: String, terapeutaId: String?,

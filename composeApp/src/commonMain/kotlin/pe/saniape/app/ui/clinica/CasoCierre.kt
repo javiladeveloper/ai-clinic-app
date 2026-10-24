@@ -189,3 +189,31 @@ fun BloqueSesionAnterior(
         }
     }
 }
+
+/**
+ * «🗒 Última evolución (dd/mm)» de la atención directa (sin sesión ni número):
+ * la evolución anterior del paciente, campo por campo. Plegada.
+ */
+@Composable
+fun BloqueEvolucionAnterior(
+    fecha: String, campos: List<Pair<String, String>>, abiertoInicial: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val c = Sania.colors
+    if (campos.isEmpty()) return
+    Column(modifier) {
+        BloquePlegable(
+            "🗒 Última evolución (${pe.saniape.app.data.staff.fechaDiaMes(fecha)})",
+            null, abiertoInicial, c.superficie, c.borde,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                campos.forEach { (etiqueta, texto) ->
+                    Column {
+                        EtiquetaCaso(etiqueta)
+                        TextoPlegable(texto)
+                    }
+                }
+            }
+        }
+    }
+}

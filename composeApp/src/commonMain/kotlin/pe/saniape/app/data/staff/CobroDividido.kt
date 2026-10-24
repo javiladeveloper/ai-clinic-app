@@ -173,6 +173,8 @@ fun etiquetaMetodos(pagos: List<PartePago>): String =
  */
 fun cuerpoCobrarCita(
     citaId: String, metodo: String, modo: String, fecha: String?, pagos: List<PartePago>? = null,
+    /** El precio negociado de ESTA cita (la atención directa cobra otro monto): null = el de la cita. */
+    costoAcordado: Double? = null,
 ): JsonObject = buildJsonObject {
     put("citaId", citaId)
     val dividido = !pagos.isNullOrEmpty() && modo != "gratis"
@@ -185,6 +187,7 @@ fun cuerpoCobrarCita(
     }
     put("modo", modo)
     if (!fecha.isNullOrBlank()) { put("fecha", fecha); put("fechaElegida", true) }
+    if (costoAcordado != null) put("costoAcordado", costoAcordado)
 }
 
 /** ¿El rechazo es "incierto" (5xx / timeout de Vercel)? El cobro pudo haber entrado. */
