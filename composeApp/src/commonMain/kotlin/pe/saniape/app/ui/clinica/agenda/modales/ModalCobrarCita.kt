@@ -52,6 +52,8 @@ import pe.saniape.app.ui.fechaDMA
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.tutoriales.tourAncla
 import pe.saniape.app.data.staff.simboloMoneda
+import pe.saniape.app.data.staff.textoLista
+import pe.saniape.app.ui.clinica.presupuestos.CampoPrecioPresu
 
 /**
  * "💵 Registrar cobro" de una Consulta/Evaluación (gemelo del modal de /citas web).
@@ -67,6 +69,12 @@ import pe.saniape.app.data.staff.simboloMoneda
  * [onConfirmar] recibe (método, modo, fecha yyyy-MM-dd, pagos). Sin botón de
  * tarjeta: la app no tiene aquí el flujo de QR de la web.
  *
+ * PRECIO ACORDADO (regla del proyecto: el catálogo es la sugerencia, el precio
+ * siempre se negocia; gemelo del campo de /citas web, 2026-10-16): arranca en
+ * el costo de la cita y «↺ Precio de la cita» lo devuelve. Si en caja se acuerda
+ * otro, se cobra ese y llega en `costoAcordado` (el servidor lo guarda en la
+ * cita antes de cobrar); igual al de la cita → null.
+ *
  * COBRO DIVIDIDO (DALU 2026-10-03): con "Pagó con más de un medio" se reparte el
  * monto en 2 a 4 medios (S/ 20 Efectivo + S/ 20 Yape) y `pagos` llega con las
  * partes validadas; si no, llega null y vale `metodo`. Cobrar se habilita solo
@@ -78,7 +86,7 @@ import pe.saniape.app.data.staff.simboloMoneda
 fun ModalCobrarCita(
     cita: CitaStaff,
     onCancelar: () -> Unit,
-    onConfirmar: (metodo: String, modo: String, fecha: String, pagos: List<PartePago>?) -> Unit,
+    onConfirmar: (metodo: String, modo: String, fecha: String, pagos: List<PartePago>?, costoAcordado: Double?) -> Unit,
     guardando: Boolean,
     /** Cómo llama el flujo de la clínica al tipo de la cita ("Diagnóstico"…). */
     nombreTipo: String = cita.tipo ?: "Cita",
@@ -112,10 +120,16 @@ fun ModalCobrarCita(
     val metodos = rememberMetodosPago()
     var dividido by remember(cita.id) { mutableStateOf(false) }
     var filas by remember(cita.id) { mutableStateOf<List<FilaPago>>(emptyList()) }
-    val total = cita.costo ?: 0.0
+    // Precio acordado: lo escrito (válido y > 0) o el costo de la cita.
+    val costoCita = cita.costo ?: 0.0
+    var precio by remember(cita.id) { mutableStateOf(textoLista(costoCita, moneda)) }
+    // Vacío = el de la cita; 0 no (para no cobrar nada está "No cobrar"), como la web.
+    val precioCobro = pe.saniape.app.data.staff.precioCobroCita(precio, costoCita, moneda)
+    val total = precioCobro.total
+    val precioInvalido = precioCobro.invalido
     val conDivision = dividido && modo != "gratis"
     val reparto = if (conDivision) repartoValido(filas, total) else null
-    val monto = textoSoles(cita.costo ?: 0.0, moneda)
+    val monto = textoSoles(total, moneda)
     val tipoMin = nombreTipo.lowercase()
 
     if (mostrarFecha) {
@@ -147,13 +161,15 @@ fun ModalCobrarCita(
             modo == "abonar" -> "Cobrar y abonar $monto"
             else -> "Cobrar $monto"
         },
-        accionHabilitada = !guardando && (!conDivision || reparto != null) && (!leyendoCampania || modoElegido),
+        accionHabilitada = !guardando && (!conDivision || reparto != null) && (!leyendoCampania || modoElegido) &&
+            (modo == "gratis" || !precioInvalido),
         ancla = "cobro",
         anclaAccion = "cobro.confirmar",
         onCancelar = { if (!guardando) onCancelar() },
         onAccion = {
-            if (conDivision) reparto?.let { onConfirmar(metodo, modo, fecha, it) }
-            else onConfirmar(metodo, modo, fecha, null)
+            val acordado = if (modo != "gratis") precioCobro.costoAcordado else null
+            if (conDivision) reparto?.let { onConfirmar(metodo, modo, fecha, it, acordado) }
+            else onConfirmar(metodo, modo, fecha, null, acordado)
         },
     ) {
         // Qué se cobra: tipo · paciente, y el monto grande.
@@ -163,7 +179,21 @@ fun ModalCobrarCita(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
             Text("$nombreTipo · ${cita.pacienteNombre ?: "${LocalTerminologiaPaciente.current.Paciente}"}", color = c.textoSuave, fontSize = 12.sp)
-            Text(monto, color = c.texto, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Text(if (modo == "gratis") textoSoles(0.0, moneda) else monto, color = c.texto, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        }
+
+        // Precio acordado: el de la cita es la sugerencia; si se acuerda otro, se cobra ese.
+        if (modo != "gratis") {
+            Spacer(Modifier.height(12.dp))
+            CampoPrecioPresu(
+                etiqueta = "Precio acordado",
+                valor = precio,
+                onCambio = { precio = it },
+                lista = costoCita,
+                moneda = moneda,
+                habilitado = !guardando,
+                textoBoton = "↺ Precio de la cita",
+            )
         }
 
         Spacer(Modifier.height(12.dp))

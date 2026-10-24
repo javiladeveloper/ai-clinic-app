@@ -1391,8 +1391,8 @@ fun PantallaAgenda(
         ModalCobrarCita(
             cita = cita,
             onCancelar = { cobrar = null },
-            onConfirmar = { metodo, modo, fecha, pagos ->
-                vm.cobrar(cita, metodo, modo, fecha, pagos) { ok -> if (ok) cobrar = null }
+            onConfirmar = { metodo, modo, fecha, pagos, acordado ->
+                vm.cobrar(cita, metodo, modo, fecha, pagos, costoAcordado = acordado) { ok -> if (ok) cobrar = null }
             },
             guardando = vm.accionando,
             nombreTipo = vm.flujoDe(cita).nombreTipo(cita.tipo),

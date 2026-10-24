@@ -190,6 +190,23 @@ fun cuerpoCobrarCita(
     if (costoAcordado != null) put("costoAcordado", costoAcordado)
 }
 
+/**
+ * El "Precio acordado" del cobro de una Consulta/Evaluación (gemelo del campo de
+ * /citas web: `costoCobro` / `precioCambiado` / `precioCobroInvalido`).
+ * [total] = lo escrito (válido y > 0) o el costo de la cita; [costoAcordado] =
+ * lo que viaja al servidor (null si es el de la cita); [invalido] = no se puede
+ * cobrar así (letras, negativo, o 0: para no cobrar nada está "No cobrar").
+ */
+data class PrecioCobroCita(val total: Double, val costoAcordado: Double?, val invalido: Boolean)
+
+fun precioCobroCita(texto: String, costoCita: Double?, moneda: String?): PrecioCobroCita {
+    val costo = costoCita ?: 0.0
+    val l = leerPrecio(texto, moneda)
+    val total = l.valor?.takeIf { l.ok && it > 0 } ?: costo
+    val cambiado = aCentimos(total) != aCentimos(costo)
+    return PrecioCobroCita(total, if (cambiado) total else null, invalido = !l.ok || l.valor == 0.0)
+}
+
 /** ¿El rechazo es "incierto" (5xx / timeout de Vercel)? El cobro pudo haber entrado. */
 fun rechazoIncierto(r: RechazoServidor?): Boolean = r != null && r.status >= 500
 

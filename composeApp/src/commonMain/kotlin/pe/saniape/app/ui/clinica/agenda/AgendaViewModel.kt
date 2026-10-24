@@ -1559,19 +1559,22 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
      */
     fun cobrar(
         cita: CitaStaff, metodo: String, modo: String, fecha: String,
-        pagos: List<pe.saniape.app.data.staff.PartePago>? = null, onFin: (Boolean) -> Unit = {},
+        pagos: List<pe.saniape.app.data.staff.PartePago>? = null,
+        /** Precio acordado en caja distinto del de la cita (null = el de la cita). */
+        costoAcordado: Double? = null,
+        onFin: (Boolean) -> Unit = {},
     ) {
         if (accionando) return
         viewModelScope.launch {
             accionando = true
-            val r = AgendaRepo.cobrarCita(cita.id, metodo, modo, fecha, pagos)
+            val r = AgendaRepo.cobrarCita(cita.id, metodo, modo, fecha, pagos, costoAcordado = costoAcordado)
             if (r.registrada) {
                 // Encolada: enviarOEncolar ya avisó "se registrará al volver la señal".
                 if (!r.encolada) {
                     pe.saniape.app.ui.Toaster.exito(
                         pe.saniape.app.ui.clinica.atencion.textoCobrado(
                             flujoDe(cita).nombreTipo(cita.tipo),
-                            pe.saniape.app.ui.clinica.agenda.modales.textoSoles(cita.costo ?: 0.0, pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)),
+                            pe.saniape.app.ui.clinica.agenda.modales.textoSoles(costoAcordado ?: cita.costo ?: 0.0, pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)),
                             // Bugs caja 2026-10-08: "fechado el…" solo si no es HOY (de la sede activa).
                             modo, fecha, hoyIso(), pagos, r.yaEstaba,
                         )

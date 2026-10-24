@@ -419,14 +419,16 @@ private fun BloqueCobro(vm: AtencionViewModel, d: DatosConsultaApp, ctx: Context
         ModalCobrarCita(
             cita = citaStaffDeConsulta(d),
             onCancelar = { if (!cobrando) abierto = false },
-            onConfirmar = { metodo, modo, fecha, pagos ->
+            onConfirmar = { metodo, modo, fecha, pagos, acordado ->
                 if (!cobrando) {
                     vm.lanzar("cobrar") {
-                        val r = AgendaRepo.cobrarCita(cita.id, metodo, modo, fecha, pagos)
+                        // Precio acordado en caja: el servidor lo guarda en la cita antes de cobrar.
+                        val r = AgendaRepo.cobrarCita(cita.id, metodo, modo, fecha, pagos, costoAcordado = acordado)
                         if (r.registrada) {
                             abierto = false
+                            val cobrado = acordado?.let { textoSoles(it, moneda) } ?: monto
                             // Encolada: enviarOEncolar ya avisó "se registrará al volver la señal".
-                            if (!r.encolada) Toaster.exito(textoCobrado(nombreTipo, monto, modo, fecha, pe.saniape.app.data.staff.hoyClinicaIso(), pagos, r.yaEstaba))
+                            if (!r.encolada) Toaster.exito(textoCobrado(nombreTipo, cobrado, modo, fecha, pe.saniape.app.data.staff.hoyClinicaIso(), pagos, r.yaEstaba))
                             vm.recargar()
                         } else {
                             r.rechazo?.let { Toaster.error(pe.saniape.app.data.staff.mensajeRechazoCobro(it, pagos != null)) }
