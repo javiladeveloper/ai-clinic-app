@@ -1,0 +1,8 @@
+Arreglos importantes: el cierre de una sesión propone lo que el paciente debe (ya no S/ 0), el cobro acepta el precio acordado y odontología ya no crea tratamientos sin la aceptación del paciente.
+---
+Correcciones:
+• Cerrar una sesión propone el monto que corresponde, no S/ 0.
+• Cobrar una cita con el precio acordado.
+• Capilar y estética: al terminar la evaluación se ofrece crear el plan.
+• Odontología: «✓ Acepta hoy» o «Lo pensará · enviar enlace».
+• Fotos «Después» comparables entre web y app; colegiatura correcta por especialidad.
