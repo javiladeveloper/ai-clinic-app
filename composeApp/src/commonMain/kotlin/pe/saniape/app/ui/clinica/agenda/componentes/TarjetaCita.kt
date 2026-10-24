@@ -34,6 +34,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.CitaStaff
+import pe.saniape.app.data.staff.AccionCitaItem
+import pe.saniape.app.data.staff.AccionTarjeta
+import pe.saniape.app.data.staff.EntradaAccionesCita
+import pe.saniape.app.data.staff.GrupoAccion
+import pe.saniape.app.data.staff.SalaAcciones
+import pe.saniape.app.data.staff.TonoAccion
+import pe.saniape.app.data.staff.planAccionesCita
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import pe.saniape.app.ui.clinica.agenda.modales.textoSoles
 import pe.saniape.app.data.staff.EtapaLlegada
 import pe.saniape.app.ui.hora12
@@ -281,6 +294,38 @@ fun TarjetaCita(
             val yaPagoLocal = !conBadgePago && pe.saniape.app.data.staff.citaYaPago(
                 cita.tipo, cita.estado, cita.costo, cita.pagadaAt, cita.tratamientoId)
 
+            // Qué acciones existen (mismas condiciones y permisos de siempre) y dónde
+            // va cada una: primaria · secundaria · 💰 · «⋯ Más» (planAccionesCita).
+            val plan = planAccionesCita(EntradaAccionesCita(
+                estado = cita.estado, tipo = cita.tipo,
+                odontograma = verClinico && odontologia && cita.pacienteId != null,
+                pasarA = flujo.labelEvaluacion.takeIf { flujo.pasaAEvaluacion(cita.tipo) },
+                crearTratamiento = crearTratamiento && cita.pacienteId != null,
+                sala = salaEf?.takeIf { cita.pacienteId != null }?.let {
+                    SalaAcciones(it.etapa, it.triajeOn, it.medica, it.marcando, triajeHecho = it.atencion?.triajeAt != null)
+                },
+                // Sin el permiso, la cita médica se cierra con "✓ Completar" (sin la consulta guiada).
+                medica = verClinico && medica && cita.pacienteId != null,
+                evaluacionPsico = verClinico && evaluacionPsico && cita.tratamientoId != null,
+                cobrar = cobrable && puedeCobrar && !pagada,
+                // Cita SIN precio (las importadas de Google Calendar entran sin
+                // servicio ni costo): sin precio no hay 💰, así que se le pone aquí.
+                ponerPrecio = puedeCobrar && cita.tipo != "Sesión" && (cita.costo ?: 0.0) <= 0 &&
+                    cita.estado != "Cancelada" && !pagada,
+                anularCobro = anularCobro && pagada,
+                // 🧾 Comprobante: el recibo del cobro YA hecho, otra vez (gemelo de /citas web).
+                comprobante = pe.saniape.app.data.staff.ofreceComprobanteCita(
+                    cita.tipo, cita.costo, cita.pagadaAt, cita.estado, puedeCobrar),
+                receta = textoReceta?.takeIf { verClinico && cita.pacienteId != null },
+                nutricion = verClinico && nutricion && cita.pacienteId != null,
+                embarazo = verClinico && embarazo && cita.pacienteId != null,
+                pedido = textoPedido?.takeIf { cita.pacienteId != null && cita.estado != "Cancelada" },
+                abonarPaquete = abonarPaquete && puedeCobrar,
+                terminado = terminado?.takeIf { cita.pacienteId != null && cita.tratamientoId != null },
+                directa = verClinico && atencionDirecta == pe.saniape.app.data.staff.OfertaAtencionDirecta.ATENDER,
+                evolucion = botonEvolucion?.takeIf { verClinico && atencionDirecta == pe.saniape.app.data.staff.OfertaAtencionDirecta.EVOLUCION },
+            ))
+
             // Chips: costo, Web, Asignar (discretos, en una línea)
             val chips = buildList {
                 if (puedeVerCosto) {
@@ -312,11 +357,18 @@ fun TarjetaCita(
                     add(Triple("$icono $conteoFranja en esta hora", solape.fg, solape.bg))
                 }
             }
-            if (chips.isNotEmpty() || conBadgePago || yaPagoLocal || !pedidos.isNullOrEmpty()) {
+            if (chips.isNotEmpty() || conBadgePago || yaPagoLocal || !pedidos.isNullOrEmpty() || plan.cobro != null) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 8.dp)) {
                     if (conBadgePago) BadgeEstadoPago(estadoPago, cita.estado)
                     // Junto al 💰 (que se queda: es el botón para cobrar / ver).
                     else if (yaPagoLocal) EtiquetaYaPago()
+                    // 💰 compacto pegado a la píldora "Sin pagar · debe S/ N": cobrar sin un
+                    // botón grande aparte (solo hay 💰 cuando hay deuda).
+                    plan.cobro?.let { a ->
+                        Column(Modifier.tourAncla("agenda.cobrar")) {
+                            CobroCompacto(a, !accionando && !decidiendo) { onAccion(a.accion) }
+                        }
+                    }
                     chips.forEach { (t, fg, bg) -> Chip(t, fg, bg) }
                     pe.saniape.app.ui.clinica.pedidos.ChipPedido(pedidos, onPedido)
                 }
@@ -331,51 +383,28 @@ fun TarjetaCita(
                 }
             }
 
-            // Acciones según estado (separadas por un divisor sutil)
-            val acc = accionesPara(cita.estado, cita.tipo, verClinico && odontologia && cita.pacienteId != null,
-                pasarA = flujo.labelEvaluacion.takeIf { flujo.pasaAEvaluacion(cita.tipo) },
-                crearTratamiento = crearTratamiento && cita.pacienteId != null,
-                sala = salaEf?.takeIf { cita.pacienteId != null },
-                // Sin el permiso, la cita médica se cierra con "✓ Completar" (sin la consulta guiada).
-                medica = verClinico && medica && cita.pacienteId != null,
-                evaluacionPsico = verClinico && evaluacionPsico && cita.tratamientoId != null,
-                cobrar = cobrable && puedeCobrar && !pagada,
-                // Cita SIN precio (las importadas de Google Calendar entran sin
-                // servicio ni costo): sin precio no hay 💰, así que se le pone aquí.
-                ponerPrecio = puedeCobrar && cita.tipo != "Sesión" && (cita.costo ?: 0.0) <= 0 &&
-                    cita.estado != "Cancelada" && !pagada,
-                anularCobro = anularCobro && pagada,
-                // 🧾 Comprobante: el recibo del cobro YA hecho, otra vez (gemelo de /citas web).
-                comprobante = pe.saniape.app.data.staff.ofreceComprobanteCita(
-                    cita.tipo, cita.costo, cita.pagadaAt, cita.estado, puedeCobrar),
-                receta = textoReceta?.takeIf { verClinico && cita.pacienteId != null },
-                nutricion = verClinico && nutricion && cita.pacienteId != null,
-                embarazo = verClinico && embarazo && cita.pacienteId != null,
-                pedido = textoPedido?.takeIf { cita.pacienteId != null && cita.estado != "Cancelada" },
-                abonarPaquete = abonarPaquete && puedeCobrar,
-                terminado = terminado?.takeIf { cita.pacienteId != null && cita.tratamientoId != null },
-                directa = verClinico && atencionDirecta == pe.saniape.app.data.staff.OfertaAtencionDirecta.ATENDER,
-                evolucion = botonEvolucion?.takeIf { verClinico && atencionDirecta == pe.saniape.app.data.staff.OfertaAtencionDirecta.EVOLUCION })
-            if (acc.isNotEmpty()) {
+            // Acciones: UNA primaria del momento + a lo sumo una secundaria + «⋯ Más»
+            // con el resto (planAccionesCita). El 💰 va arriba, junto a la píldora de pago.
+            if (plan.visibles.isNotEmpty() || plan.menu.isNotEmpty()) {
                 Spacer(Modifier.height(Sania.dim.md))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
                 Spacer(Modifier.height(Sania.dim.md))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    acc.forEach { (label, accion, color) ->
-                        // Anclas de los tutoriales (se señala la primera visible de la agenda).
-                        val ancla = when (accion) {
-                            AccionTarjeta.Completar -> "agenda.completar"
-                            AccionTarjeta.Cobrar -> "agenda.cobrar"
-                            AccionTarjeta.Triaje -> "agenda.triaje"
-                            AccionTarjeta.Atender, AccionTarjeta.AtenderDirecto -> "agenda.atender"
-                            else -> null
+                    val habilitado = !accionando && !decidiendo
+                    fun texto(a: AccionCitaItem) =
+                        if (decidiendo && a.accion == AccionTarjeta.Completar) "Abriendo…" else a.texto
+                    plan.primaria?.let { a ->
+                        Column(anclaTour(a.accion)?.let { Modifier.tourAncla(it) } ?: Modifier) {
+                            BotonAccion(texto(a), colorTono(a.tono), habilitado, lleno = true) { onAccion(a.accion) }
                         }
-                        Column(if (ancla != null) Modifier.tourAncla(ancla) else Modifier) {
-                            BotonAccion(
-                                if (decidiendo && accion == AccionTarjeta.Completar) "Abriendo…" else label,
-                                color, !accionando && !decidiendo,
-                            ) { onAccion(accion) }
+                    }
+                    plan.secundaria?.let { a ->
+                        Column(anclaTour(a.accion)?.let { Modifier.tourAncla(it) } ?: Modifier) {
+                            BotonAccion(texto(a), colorTono(a.tono), habilitado) { onAccion(a.accion) }
                         }
+                    }
+                    if (plan.menu.isNotEmpty()) {
+                        MenuMasAcciones(plan.menu, habilitado) { onAccion(it) }
                     }
                 }
             }
@@ -383,38 +412,80 @@ fun TarjetaCita(
     }
 }
 
-enum class AccionTarjeta {
-    Confirmar, Completar, Cancelar, Revertir, Editar, PasarEvaluacion, Repetir, Odontograma, CrearTratamiento,
-    /** Sala de espera: "🔔 Llegó" y "🩺 Triaje". */
-    Llego, Triaje,
-    /** "▶ Atender": la consulta guiada (nativa, pantalla completa). */
-    Atender,
-    /** "💰 Cobrar": registrar el cobro de una Consulta/Evaluación (método + fecha del pago). */
-    Cobrar,
-    /** "💲 Poner precio": la cita no tiene costo (importada de Google Calendar); con precio aparece el 💰. */
-    PonerPrecio,
-    /** "🧠 Evaluación": el espacio de trabajo de la evaluación psicológica de su tratamiento. */
-    EvaluacionPsico,
-    /** "↺ Anular cobro": borra el cobro dividido de caja y la cita vuelve a "por cobrar" (solo Admin). */
-    AnularCobro,
-    /** "🧾 Comprobante": reimprimir el recibo del cobro ya hecho (A4 o ticket 80 mm). */
-    Comprobante,
-    /** "📝 Dar receta / indicaciones" de la cita atendida (o "🖨 Ver" la que ya tiene). */
-    Receta,
-    /** Nutrición: la ficha en ⚖️ Medidas (formulario abierto, vinculado a la cita) o en 🥗 Plan alimentario. */
-    Medidas, PlanAlimentario,
-    /** Gineco-obstetricia: la ficha en la pestaña 🤰 Embarazo. */
-    Embarazo,
-    /** 🧾 Pedido para recepción: armarlo (profesional) o cobrarlo (quien cobra). */
-    Pedido,
-    /** 💰 Saldo del paquete en la sesión ya atendida: abono al tratamiento. */
-    AbonarPaquete,
-    /** Sesión que cerró el plan: «＋ Ampliar» / «✓ Dar de alta» (en la ficha del paciente). */
-    Ampliar, DarAlta,
-    /** ⚡ Atención directa: «▶ Atender» (evolución + completar + cobro en una pantalla). */
-    AtenderDirecto,
-    /** ⚡ Atención directa ya atendida: «📝 Anotar evolución» / «📝 Evolución» (no completa ni cobra). */
-    Evolucion,
+/** Anclas de los tutoriales (se señala la primera visible de la agenda). */
+private fun anclaTour(a: AccionTarjeta): String? = when (a) {
+    AccionTarjeta.Completar -> "agenda.completar"
+    AccionTarjeta.Cobrar -> "agenda.cobrar"
+    AccionTarjeta.Triaje -> "agenda.triaje"
+    AccionTarjeta.Atender, AccionTarjeta.AtenderDirecto -> "agenda.atender"
+    else -> null
+}
+
+@Composable
+private fun colorTono(t: TonoAccion): Color {
+    val c = Sania.colors
+    return when (t) {
+        TonoAccion.OK -> c.ok
+        TonoAccion.INFO -> c.info
+        TonoAccion.NAVY -> c.navy
+        TonoAccion.PEND -> c.pend
+        TonoAccion.ERROR -> c.error
+        TonoAccion.PURPLE -> c.purple
+        TonoAccion.TEAL -> c.teal
+        TonoAccion.SUAVE -> c.textoSuave
+    }
+}
+
+/**
+ * «⋯ Más»: el resto de las acciones de la cita, por grupo (Atención · Cobro ·
+ * Cita, con Cancelar en rojo al final). Mismo patrón de menú que la lista de
+ * sesiones (DropdownMenu): no cambia la altura de la tarjeta al abrirse.
+ */
+@Composable
+private fun MenuMasAcciones(
+    grupos: List<Pair<GrupoAccion, List<AccionCitaItem>>>,
+    habilitado: Boolean,
+    onAccion: (AccionTarjeta) -> Unit,
+) {
+    val c = Sania.colors
+    var abierto by remember { mutableStateOf(false) }
+    Box {
+        BotonAccion("⋯ Más", c.textoSuave, habilitado) { abierto = true }
+        DropdownMenu(expanded = abierto, onDismissRequest = { abierto = false },
+            modifier = Modifier.background(c.superficie)) {
+            grupos.forEachIndexed { i, (grupo, items) ->
+                if (i > 0) Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).height(1.dp).background(c.borde))
+                Text(grupo.titulo.uppercase(), color = c.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                items.forEach { a ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(a.texto, color = if (a.tono == TonoAccion.ERROR) c.error else c.texto,
+                                fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        },
+                        enabled = habilitado,
+                        onClick = { abierto = false; onAccion(a.accion) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 💰 compacto junto a la píldora de pago (no un botón grande aparte): solo
+ * aparece cuando hay deuda que cobrar.
+ */
+@Composable
+private fun CobroCompacto(a: AccionCitaItem, habilitado: Boolean, onClick: () -> Unit) {
+    val c = Sania.colors
+    Box(
+        Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+            .background(c.ok.copy(alpha = 0.14f))
+            .border(1.dp, c.ok, RoundedCornerShape(Sania.shape.pill.dp))
+            .tocable(habilitado = habilitado) { onClick() }
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    ) { Text(a.texto, color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
 }
 
 /**
@@ -460,132 +531,6 @@ private fun IndicadorLlegada(
     }
 }
 
-/** Acciones disponibles según estado/tipo (espeja accionesCita de la web). */
-@Composable
-private fun accionesPara(
-    estado: String,
-    tipo: String?,
-    /** Solo en clínicas de odontología y con paciente. */
-    odontograma: Boolean = false,
-    crearTratamiento: Boolean = false,
-    sala: SalaTarjeta? = null,
-    /** Consulta guiada por especialidad (sin depender de la sala de espera). */
-    medica: Boolean = false,
-    /** Nombre del paso Evaluación en el flujo de la cita; null = no hay paso al que pasar. */
-    pasarA: String? = null,
-    /** Consulta/Evaluación con costo, sin cobrar, y quien mira tiene permiso 'pagos'. */
-    cobrar: Boolean = false,
-    /** Cita sin costo (no Sesión, no cancelada, no pagada) y quien mira tiene 'pagos'. */
-    ponerPrecio: Boolean = false,
-    evaluacionPsico: Boolean = false,
-    /** Cobro dividido ya hecho y quien mira es Admin con 'pagos'. */
-    anularCobro: Boolean = false,
-    /** Cita cobrada (no Sesión, con costo, no cancelada) y quien mira tiene 'pagos'. */
-    comprobante: Boolean = false,
-    /** Texto de "📝 Dar receta / indicaciones" (solo en la cita completada); null = no aplica. */
-    receta: String? = null,
-    /** Nutrición: "⚖️ Medidas" y "🥗 Plan alimentario" de la atención. */
-    nutricion: Boolean = false,
-    /** Gineco-obstetricia: "🤰 Embarazo" (la pestaña del carné perinatal). */
-    embarazo: Boolean = false,
-    /** Texto de "🧾 Pedido para recepción" (null = no aplica). */
-    pedido: String? = null,
-    /** Sesión ya atendida de un paquete con deuda: 💰 abona al paquete. */
-    abonarPaquete: Boolean = false,
-    /** Sesión que cerró el plan: ＋ Ampliar / ✓ Dar de alta. */
-    terminado: pe.saniape.app.data.staff.AccionesTerminado? = null,
-    /** Atención directa: el cierre es «▶ Atender» (una pantalla), no ✓ Completar. */
-    directa: Boolean = false,
-    /** Atención directa ya atendida: el botón de su evolución. */
-    evolucion: pe.saniape.app.data.staff.BotonEvolucionCita? = null,
-): List<Triple<String, AccionTarjeta, Color>> {
-    val c = Sania.colors
-    val lista = mutableListOf<Triple<String, AccionTarjeta, Color>>()
-    // El dinero va primero, como la moneda de la web: el paciente llega al
-    // mostrador y paga antes de pasar (o paga hoy la evaluación de mañana).
-    if (cobrar) lista.add(Triple("💰 Cobrar", AccionTarjeta.Cobrar, c.ok))
-    if (abonarPaquete) lista.add(Triple("💰 Cobrar paquete", AccionTarjeta.AbonarPaquete, c.ok))
-    // La última sesión del plan ya se atendió: ¿más sesiones o alta? (los flujos de la ficha).
-    if (terminado?.ampliar == true) lista.add(Triple("＋ Ampliar", AccionTarjeta.Ampliar, c.info))
-    if (terminado?.alta == true) lista.add(Triple("✓ Dar de alta", AccionTarjeta.DarAlta, c.ok))
-    if (ponerPrecio) lista.add(Triple("💲 Poner precio", AccionTarjeta.PonerPrecio, c.teal))
-    val activa = estado == "Pendiente" || estado == "Confirmada"
-    // SALA DE ESPERA (gemelo de `principalSala` de /citas): la acción del MOMENTO
-    // reemplaza a Confirmar/Completar mientras el paciente recorre la sala:
-    // por llegar → Llegó; llegó → Triaje (si la clínica lo toma); después →
-    // Atender (consulta guiada, nativa) o Completar. Lo demás queda detrás.
-    val principal: AccionTarjeta? = when {
-        sala == null || !activa -> null
-        sala.etapa == EtapaLlegada.POR_LLEGAR -> AccionTarjeta.Llego
-        sala.etapa == EtapaLlegada.LLEGO && sala.triajeOn -> AccionTarjeta.Triaje
-        else -> AccionTarjeta.Atender
-    }
-    // Médica: por la sala de hoy o, sin sala, por la especialidad (como la web).
-    val esMedica = sala?.medica == true || medica
-    val textoAtender = when {
-        directa -> "▶ Atender"
-        esMedica -> if (sala?.etapa == EtapaLlegada.EN_CONSULTA) "▶ Continuar" else "▶ Atender"
-        else -> "✓ Completar"
-    }
-    val accionAtender = when {
-        directa -> AccionTarjeta.AtenderDirecto
-        esMedica -> AccionTarjeta.Atender
-        else -> AccionTarjeta.Completar
-    }
-    val textoTriaje = if (sala?.atencion?.triajeAt != null) "🩺 Triaje ✓ (corregir)" else "🩺 Triaje"
-    when (principal) {
-        AccionTarjeta.Llego -> lista.add(Triple(if (sala?.marcando == true) "…" else "🔔 Llegó", AccionTarjeta.Llego, c.ok))
-        AccionTarjeta.Triaje -> lista.add(Triple("🩺 Triaje", AccionTarjeta.Triaje, c.info))
-        AccionTarjeta.Atender -> lista.add(Triple(textoAtender, accionAtender, c.navy))
-        else -> Unit
-    }
-    if (principal != null) {
-        if (estado == "Pendiente") lista.add(Triple("✓ Confirmar", AccionTarjeta.Confirmar, c.ok))
-        if (sala?.triajeOn == true && principal != AccionTarjeta.Triaje) lista.add(Triple(textoTriaje, AccionTarjeta.Triaje, c.info))
-        if (principal != AccionTarjeta.Atender) lista.add(Triple(textoAtender, accionAtender, c.navy))
-    } else if (estado == "Pendiente") lista.add(Triple("✓ Confirmar", AccionTarjeta.Confirmar, c.ok))
-    // Evaluación psicológica: el espacio de trabajo, en cualquier estado (como la web).
-    if (evaluacionPsico && estado != "Cancelada") lista.add(Triple("🧠 Evaluación", AccionTarjeta.EvaluacionPsico, c.purple))
-    if (pasarA != null && activa) lista.add(Triple("→ $pasarA", AccionTarjeta.PasarEvaluacion, c.info))
-    // Sin sala de espera: la acción de cierre según la especialidad (Atender o Completar).
-    if (activa && principal == null) lista.add(Triple(textoAtender, accionAtender, c.navy))
-    // Atención directa ya atendida: la evolución se anota (o corrige) desde la misma
-    // tarjeta, sin ir a la ficha. Ámbar si falta; discreto si ya está.
-    if (evolucion != null && estado == "Completada") {
-        lista.add(Triple(evolucion.texto, AccionTarjeta.Evolucion, if (evolucion.resaltado) c.pend else c.textoSuave))
-    }
-    if (estado == "Completada" || estado == "Cancelada") lista.add(Triple("↩ Revertir", AccionTarjeta.Revertir, c.pend))
-    // Repetir: agendar la SIGUIENTE cita del mismo paciente en 1 toque (misma info,
-    // fecha propuesta a futuro). Muy usado para citar la próxima sesión/control.
-    // Receta / indicaciones de la atención (después de completar, o para verla).
-    if (estado == "Completada" && receta != null) lista.add(Triple(receta, AccionTarjeta.Receta, c.purple))
-    if (estado == "Completada") lista.add(Triple("🔁 Repetir", AccionTarjeta.Repetir, c.teal))
-    // Odontograma desde la cita, en cualquier estado: el dentista lo abre para
-    // revisar o marcar sin ir a la ficha. No en las sesiones de tratamiento
-    // (ahí se atiende lo ya presupuestado). Mismo criterio que la web.
-    if (odontograma && tipo != "Sesión") lista.add(Triple("🦷 Odontograma", AccionTarjeta.Odontograma, c.info))
-    // Nutrición: medidas y plan alimentario de esta atención (no en la cancelada).
-    if (nutricion && estado != "Cancelada") {
-        lista.add(Triple("⚖️ Medidas", AccionTarjeta.Medidas, c.teal))
-        lista.add(Triple("🥗 Plan alimentario", AccionTarjeta.PlanAlimentario, c.teal))
-    }
-    // Gineco-obstetricia: el carné perinatal de la paciente (no en la cancelada).
-    if (embarazo && estado != "Cancelada") lista.add(Triple("🤰 Embarazo", AccionTarjeta.Embarazo, c.teal))
-    // 🧾 Productos que se lleva o un servicio extra de esta atención (o cobrarlo).
-    if (pedido != null) lista.add(Triple(pedido, AccionTarjeta.Pedido, c.teal))
-    // Crear el plan desde la cita que evalúa (no cancelada), como la web.
-    if (crearTratamiento && estado != "Cancelada") lista.add(Triple("🩺 Crear tratamiento", AccionTarjeta.CrearTratamiento, c.purple))
-    // 🧾 El recibo del cobro ya hecho, junto al dinero (como el menú de /citas web).
-    if (comprobante) lista.add(Triple("🧾 Comprobante", AccionTarjeta.Comprobante, c.navy))
-    // Corregir un cobro dividido es anularlo y volver a cobrar (como la web, solo Admin).
-    if (anularCobro && estado != "Cancelada") lista.add(Triple("↺ Anular cobro", AccionTarjeta.AnularCobro, c.error))
-    if (estado != "Cancelada" && estado != "Completada") {
-        lista.add(Triple("✏ Editar", AccionTarjeta.Editar, c.textoSuave))
-        lista.add(Triple("✕ Cancelar", AccionTarjeta.Cancelar, c.error))
-    }
-    return lista
-}
-
 /**
  * "🎥 Unirse · Zoom" (o el dominio: "Unirse · sala.clinica.pe"), gemelo de
  * `BotonUnirse` de la web. Ancho completo en la tarjeta: es la acción del momento.
@@ -610,14 +555,23 @@ fun BotonUnirse(enlace: String, modifier: Modifier = Modifier, onClick: () -> Un
 }
 
 @Composable
-private fun BotonAccion(label: String, color: Color, habilitado: Boolean, onClick: () -> Unit) {
+private fun BotonAccion(
+    label: String, color: Color, habilitado: Boolean,
+    /** La acción del momento: botón lleno (las demás, contorno tintado). */
+    lleno: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val c = Sania.colors
+    // Texto sobre el color lleno: blanco sobre navy; sobre los de estado, el color
+    // de la tarjeta (claro: blanco; oscuro: el fondo, que contrasta con los tonos claros).
+    val sobre = if (color == c.navy) c.sobreNavy else c.superficie
     Box(
         Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp))
-            .background(color.copy(alpha = 0.12f))
+            .background(if (lleno) color else color.copy(alpha = 0.12f))
             .border(1.dp, color, RoundedCornerShape(Sania.shape.sm.dp))
             .tocable(habilitado = habilitado) { onClick() }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-    ) { Text(label, color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+            .padding(horizontal = if (lleno) 16.dp else 12.dp, vertical = 8.dp),
+    ) { Text(label, color = if (lleno) sobre else color, fontSize = if (lleno) 13.sp else 12.sp, fontWeight = FontWeight.Bold) }
 }
 
 /** Icono de contacto compacto (📞/💬) — botón redondo discreto junto al nombre. */

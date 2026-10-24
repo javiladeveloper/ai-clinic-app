@@ -43,7 +43,7 @@ import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.clinica.agenda.AccionCita
 import pe.saniape.app.ui.clinica.agenda.AgendaViewModel
-import pe.saniape.app.ui.clinica.agenda.componentes.AccionTarjeta
+import pe.saniape.app.data.staff.AccionTarjeta
 import pe.saniape.app.ui.clinica.agenda.componentes.FiltrosAgenda
 import pe.saniape.app.ui.clinica.agenda.componentes.TarjetaCita
 import pe.saniape.app.ui.clinica.agenda.componentes.TiraDias
@@ -781,7 +781,7 @@ fun PantallaAgenda(
                             when {
                                 vm.mirandoHoy && vm.soloEspera -> pe.saniape.app.ui.clinica.EstadoVacio(
                                     emoji = "🪑", titulo = "Nadie en sala de espera ahora",
-                                    subtitulo = "Marca \"🔔 Llegó\" cuando el ${LocalTerminologiaPaciente.current.paciente} llegue.",
+                                    subtitulo = "Marca \"🔔 Llegó\" (en ⋯ Más de la cita) cuando el ${LocalTerminologiaPaciente.current.paciente} llegue.",
                                 )
                                 vm.citas.isEmpty() && vm.verHistorial -> pe.saniape.app.ui.clinica.EstadoVacio(
                                     emoji = "🗂", titulo = "Historial vacío",
