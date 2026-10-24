@@ -44,6 +44,20 @@ data class FlujoClinica(
     fun esCitaQueEvalua(tipo: String?): Boolean =
         tipo == "Evaluación" || (tipo == "Consulta" && usaConsulta && !usaEvaluacion)
 
+    /**
+     * Al completar una cita, ¿se ofrece crear el plan de tratamiento? Gemelo de
+     * `planTrasEvaluar` (lib/flujo.ts) → 'crear': la MISMA regla que abrió la
+     * ventana "✓ Completar evaluación" ([esCitaQueEvalua]), no el tipo literal.
+     * Bug: en estética / capilar la "Evaluación" es por dentro una Consulta y la
+     * app solo lo ofrecía con tipo == "Evaluación".
+     *
+     * [porVentanaEvaluacion] = se cerró por esa ventana. El control de nutrición
+     * se cierra directo (sin ventana, decidirCompletar) y no ofrece plan, como la
+     * web. Lo dental lo resuelve la revisión con odontograma (quien llama).
+     */
+    fun ofrecePlanAlCompletar(tipo: String?, porVentanaEvaluacion: Boolean): Boolean =
+        porVentanaEvaluacion && esCitaQueEvalua(tipo)
+
     /** ¿Se puede pasar esta cita a la Evaluación? Solo si el flujo la tiene. */
     fun pasaAEvaluacion(tipo: String?): Boolean = tipo == "Consulta" && usaEvaluacion
 

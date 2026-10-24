@@ -1174,6 +1174,8 @@ fun PantallaAgenda(
                         evaluacionFisio = if (conEvalFisio) evalFisio.valor else null,
                         pago = if (conCobro) cobro.pago() else null,
                         ofrecerPlan = !planResuelto,
+                        // Cerrada por la ventana de la evaluación: se ofrece el plan (no el control).
+                        evaluada = evalua,
                         alCompletarSesion = alCompletarConFotos(),
                     )
                 },
@@ -1194,6 +1196,8 @@ fun PantallaAgenda(
                         // (bug PodoBlack 2026-10-08, ver rutaCompletar).
                         pago = if (conCobro) cobro.pago() else null,
                         ofrecerPlan = !planResuelto,
+                        // Cerrada por la ventana de la evaluación: se ofrece el plan (no el control).
+                        evaluada = evalua,
                         alCompletarSesion = alCompletarConFotos(),
                     )
                 },

@@ -82,6 +82,15 @@ data class EntradaAccionesCita(
     /** Solo en clínicas de odontología y con paciente. */
     val odontograma: Boolean = false,
     val crearTratamiento: Boolean = false,
+    /**
+     * «🩺 Crear tratamiento» es la acción PRINCIPAL de la cita que evalúa ya
+     * completada: el plan es el paso que sigue (estética, capilar, fisio,
+     * podología, psicología). No en lo dental (el plan sale de la revisión con
+     * odontograma), en la consulta médica guiada (su plan vive en la atención)
+     * ni en nutrición (el control sigue con medidas y plan alimentario): ahí
+     * queda en «⋯ Más», como en la web.
+     */
+    val crearTratamientoPrincipal: Boolean = false,
     val sala: SalaAcciones? = null,
     /** Consulta guiada por especialidad (sin depender de la sala de espera). */
     val medica: Boolean = false,
@@ -246,7 +255,8 @@ private fun ordenCita(a: AccionTarjeta): Int = when (a) {
  *   no se usa: nunca es primaria, va al menú. «🩺 Triaje» es primaria solo si el
  *   paciente ya llegó, la clínica toma triaje y aún falta tomarlo.
  * - Completada → «📝 Anotar evolución» si falta; si la sesión cerró el plan,
- *   «✓ Dar de alta» (o «＋ Ampliar»). Si no, nada.
+ *   «✓ Dar de alta» (o «＋ Ampliar»); la cita que evalúa, «🩺 Crear tratamiento»
+ *   (si [EntradaAccionesCita.crearTratamientoPrincipal]). Si no, nada.
  * - Cancelada u otro estado → nada (todo en el menú).
  *
  * Secundaria (una): ✓ Confirmar (Pendiente) › el cierre si la primaria es
@@ -268,6 +278,7 @@ fun planAccionesCita(e: EntradaAccionesCita): PlanAccionesCita {
         e.estado == "Completada" ->
             de(AccionTarjeta.Evolucion)?.takeIf { e.evolucion?.resaltado == true }
                 ?: de(AccionTarjeta.DarAlta) ?: de(AccionTarjeta.Ampliar)
+                ?: de(AccionTarjeta.CrearTratamiento)?.takeIf { e.crearTratamientoPrincipal }
         else -> null
     }
 

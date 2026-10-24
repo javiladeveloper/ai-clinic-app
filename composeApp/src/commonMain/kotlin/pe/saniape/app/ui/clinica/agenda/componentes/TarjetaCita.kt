@@ -301,6 +301,10 @@ fun TarjetaCita(
                 odontograma = verClinico && odontologia && cita.pacienteId != null,
                 pasarA = flujo.labelEvaluacion.takeIf { flujo.pasaAEvaluacion(cita.tipo) },
                 crearTratamiento = crearTratamiento && cita.pacienteId != null,
+                // Tras completar la evaluación, el plan es lo que sigue (no en dental,
+                // consulta médica guiada ni nutrición: ahí va en «⋯ Más», como la web).
+                crearTratamientoPrincipal = crearTratamiento && cita.pacienteId != null &&
+                    !odontologia && !medica && !nutricion,
                 sala = salaEf?.takeIf { cita.pacienteId != null }?.let {
                     SalaAcciones(it.etapa, it.triajeOn, it.medica, it.marcando, triajeHecho = it.atencion?.triajeAt != null)
                 },

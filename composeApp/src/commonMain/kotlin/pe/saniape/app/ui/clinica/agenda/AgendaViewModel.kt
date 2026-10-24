@@ -1075,6 +1075,9 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         val evaluacionFisio: pe.saniape.app.data.staff.BorradorEvaluacionFisio? = null,
         /** Fotos de la sesión pendientes de subir: el reintento con profesional no las pierde. */
         val alCompletarSesion: ((ok: Boolean, encolada: Boolean) -> Unit)? = null,
+        /** El plan tras completar: el reintento lo ofrece (o no) igual que el primer intento. */
+        val ofrecerPlan: Boolean = true,
+        val evaluada: Boolean = false,
     )
     var pedirProfesional by mutableStateOf<PedidoProfesional?>(null); private set
 
@@ -1273,6 +1276,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             AccionCita.Completar, p.cita, p.observaciones, p.diagnostico, p.derivarEspId,
             piezas = p.piezas, congelarOdontograma = p.congelarOdontograma, terapeutaId = terapeutaId,
             evaluacionFisio = p.evaluacionFisio,
+            ofrecerPlan = p.ofrecerPlan, evaluada = p.evaluada,
             alCompletarSesion = p.alCompletarSesion,
         )
     }
@@ -1303,6 +1307,13 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
          * ofrecerlo aquí sería un segundo plan por lo mismo (como la web).
          */
         ofrecerPlan: Boolean = true,
+        /**
+         * true = la cita se cerró por la ventana "✓ Completar evaluación" (la que
+         * evalúa según el flujo, [FlujoClinica.esCitaQueEvalua]). Solo entonces se
+         * ofrece el plan ([FlujoClinica.ofrecePlanAlCompletar]); el cierre directo
+         * (el control de nutrición) no lo ofrece, como la web.
+         */
+        evaluada: Boolean = false,
         /**
          * false = no ofrecer "📅 Agendar siguiente" al terminar la sesión. Con
          * "dejarle ejercicios de apoyo" se va a la ficha (pestaña 🏠) y ese
@@ -1358,6 +1369,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                             pedirProfesional = PedidoProfesional(
                                 cita, observaciones, diagnostico, derivarEspId, piezas, congelarOdontograma,
                                 evaluacionFisio, alCompletarSesion,
+                                ofrecerPlan = ofrecerPlan, evaluada = evaluada,
                             )
                             accionando = false
                             alTerminar?.invoke(false)
@@ -1442,7 +1454,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                     }
                 }
                 // Evaluación completada → el siguiente paso natural es el plan (como la web).
-                val evaluaParaPlan = cita.tipo == "Evaluación" || (esPsicologia(cita) && flujoDe(cita).esCitaQueEvalua(cita.tipo))
+                val evaluaParaPlan = flujoDe(cita).ofrecePlanAlCompletar(cita.tipo, evaluada)
                 if (accion == AccionCita.Completar && evaluaParaPlan && ofrecerPlan &&
                     ctx.puede("sesiones") && cita.pacienteId != null) {
                     ofrecerTratamiento = OfertaTratamiento(
