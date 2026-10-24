@@ -77,11 +77,24 @@ import pe.saniape.app.ui.ManejarAtras
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.tutoriales.tourAncla
 import pe.saniape.app.data.staff.simboloMoneda
+import pe.saniape.app.data.staff.monedaDeSede
 
 private val TIPOS = listOf("Consulta", "Evaluación", "Sesión")
 
 /** Info visual de cada tipo de cita (icono + descripción), como las tarjetas de la web. */
-private data class TipoInfo(val valor: String, val icono: String, val desc: String)
+private data class TipoInfo(
+    val valor: String, val icono: String, val desc: String,
+    /** Nombre fijo (la «Atención directa»); null = el del flujo de la clínica. */
+    val etiqueta: String? = null,
+)
+
+/**
+ * ⚡ La atención directa de psicología (AtencionDirecta.kt): se guarda como
+ * Consulta, sin tratamiento; se atiende con «▶ Atender».
+ */
+private val TIPO_ATENCION_DIRECTA_INFO = TipoInfo(
+    pe.saniape.app.data.staff.TIPO_ATENCION_DIRECTA, "📝", "Atender y anotar evolución", etiqueta = "Atención directa",
+)
 private val TIPOS_INFO = listOf(
     TipoInfo("Consulta", "💬", "El @ explica su caso"),
     TipoInfo("Evaluación", "🔍", "Se evalúa y diagnostica"),
@@ -157,12 +170,15 @@ fun PantallaCrearCita(
     var promoAplicada by remember { mutableStateOf<CampaniaApp?>(null) }
 
     var tipo by remember { mutableStateOf(prefill?.tipo ?: "Consulta") }
+    // ¿Quien agenda tocó el tipo? Entonces la atención directa ya no se lo cambia.
+    var tipoTocado by remember { mutableStateOf(false) }
+    // El tipo lo puso solo el paciente (Sesión de su tratamiento vigente): se dice en una línea.
+    var tipoAuto by remember { mutableStateOf(false) }
     // Duración EDITABLE (antes era fija 15/60 y una sesión de 30 no se podía agendar).
     // Default por tipo (igual que la web: Consulta 15, resto 60); si el usuario la
     // tocó, cambiar de tipo ya no se la pisa.
     var duracion by remember { mutableStateOf(if ((prefill?.tipo ?: "Consulta") == "Consulta") 15 else 60) }
     var duracionTocada by remember { mutableStateOf(false) }
-    LaunchedEffect(tipo) { if (!duracionTocada) duracion = if (tipo == "Consulta") 15 else 60 }
     var paciente by remember { mutableStateOf<RefNombre?>(null) }
     var tratamiento by remember { mutableStateOf<TratamientoRef?>(null) }
     var terapeuta by remember { mutableStateOf<TerapeutaRef?>(null) }
@@ -206,9 +222,25 @@ fun PantallaCrearCita(
     // Los tipos que se ofrecen de verdad. Antes se mostraban los tres SIEMPRE:
     // a RENOVA, que no hace consultas, se le ofrecía "Consulta"; y con los
     // nombres internos, no los suyos.
-    val tiposVisibles = remember(flujoEfectivo, ctx.usaSesiones) {
-        TIPOS_INFO.filter { flujoEfectivo.usaTipo(it.valor) }
+    // ⚡ ATENCIÓN DIRECTA (psicología, sin interruptor): la especialidad elegida →
+    // la del profesional → la de la clínica. Otro rubro (DALU, RENOVA): el
+    // formulario de siempre. Gemelo de `atencionRapidaForm` (CitaForm web).
+    val atencionDirectaForm = remember(especialidadesClinica, especialidad?.id, terapeuta?.id, terapeutas) {
+        val prof = (terapeuta?.id ?: ctx.miTerapeutaId)?.let { id -> terapeutas.find { it.id == id } }
+        pe.saniape.app.data.staff.atencionDirectaAplica(pe.saniape.app.data.staff.atencionEsPsicologia(
+            especialidadesClinica.map { Triple(it.id, it.rubro, it.nombre) }, especialidad?.id, prof?.especialidadIds.orEmpty(),
+        ))
+    }
+    val tiposVisibles = remember(flujoEfectivo, ctx.usaSesiones, atencionDirectaForm) {
+        val base = TIPOS_INFO.filter { flujoEfectivo.usaTipo(it.valor) }
             .filter { it.valor != "Sesión" || ctx.usaSesiones }
+            .map { if (atencionDirectaForm && it.valor == "Sesión") it.copy(desc = "Dentro de un tratamiento o paquete") else it }
+        // Atención directa PRIMERO (aunque el flujo no tenga Consulta); lo demás detrás.
+        pe.saniape.app.data.staff.tiposConAtencionDirecta(base, atencionDirectaForm, TIPO_ATENCION_DIRECTA_INFO) { it.valor }
+    }
+    // La atención directa dura lo que una sesión, no lo que una consulta de entrada.
+    LaunchedEffect(tipo, atencionDirectaForm) {
+        if (!duracionTocada) duracion = if (tipo == "Consulta" && !atencionDirectaForm) 15 else 60
     }
     // Psicología (sin Consulta ni Evaluación): la Sesión es la primera cita, así que
     // ahí también se ofrece el alta rápida del paciente. Con Consulta/Evaluación el
@@ -225,7 +257,38 @@ fun PantallaCrearCita(
         puedeSesiones = ctx.puede("sesiones"),
     )
     // La otra puerta de la clínica (su Consulta/Evaluación), para sugerirla en el aviso.
-    val entradaClinica = tiposVisibles.firstOrNull { it.valor != "Sesión" }?.let { flujoEfectivo.nombreTipo(it.valor) }
+    val entradaClinica = tiposVisibles.firstOrNull { it.valor != "Sesión" }?.let { it.etiqueta ?: flujoEfectivo.nombreTipo(it.valor) }
+    // «＋ Ampliar tratamiento anterior» (SesionSinTratamiento.kt): el paciente no
+    // tiene tratamiento vigente pero sí uno TERMINADO por sesiones. Misma regla y
+    // permisos que «➕ Ampliar» de la ficha. Solo se consulta con el aviso
+    // «＋ Crear tratamiento» a la vista (dos lecturas chicas de ESE paciente).
+    var ampliables by remember { mutableStateOf<List<pe.saniape.app.data.staff.TratAmpliable>>(emptyList()) }
+    var ampliablesDe by remember { mutableStateOf<String?>(null) }
+    val pedirAmpliables = avisoTratamiento == pe.saniape.app.data.staff.AvisoSinTratamiento.OFRECER_CREAR
+    LaunchedEffect(paciente?.id, pedirAmpliables) {
+        val pid = paciente?.id
+        if (pid == null || !pedirAmpliables) { ampliables = emptyList(); ampliablesDe = null; return@LaunchedEffect }
+        if (ampliablesDe == pid) return@LaunchedEffect
+        ampliables = pe.saniape.app.data.staff.tratamientosAmpliables(
+            pe.saniape.app.data.staff.AtencionDirectaRepo.tratamientosTerminados(pid),
+        )
+        ampliablesDe = pid
+    }
+    val ofreceAmpliar = paciente != null && ampliablesDe == paciente?.id &&
+        pe.saniape.app.data.staff.ofreceAmpliarAnterior(avisoTratamiento, pacienteInactivo = false, ampliables = ampliables.size)
+    // Lo elegido (por defecto el más reciente), cuántas sesiones y el monto (vacío = la lista).
+    var ampliarId by remember(paciente?.id) { mutableStateOf<String?>(null) }
+    var ampliarSesiones by remember(paciente?.id) { mutableStateOf("1") }
+    var ampliarMonto by remember(paciente?.id) { mutableStateOf("") }
+    var ampliando by remember { mutableStateOf(false) }
+    val tratAmpliar = ampliables.firstOrNull { it.id == ampliarId } ?: ampliables.firstOrNull()
+    // La lista solo vale si la cita cobra en la moneda del catálogo (la de la clínica).
+    val listaAmpliar = tratAmpliar?.let {
+        pe.saniape.app.data.staff.precioListaAmpliacion(
+            it, ampliarSesiones.trim().toIntOrNull() ?: 0, otraMoneda = moneda != ctx.monedaDeSede(null),
+        )
+    }
+
     // Si el tipo elegido deja de ofrecerse (al cambiar de especialidad, o al
     // abrir la pantalla en una clínica que no usa Consulta), se cae al primero
     // que sí exista. Sin esto se guardaba una cita de un tipo que la clínica
@@ -345,10 +408,33 @@ fun PantallaCrearCita(
         } catch (_: Exception) {}
     }
 
+    // ⚡ Atención directa: el tipo lo decide el PACIENTE. Con tratamiento vigente
+    // por sesiones → Sesión; sin él (o sin paciente) → atención directa. Nunca pisa
+    // un tipo que quien agenda tocó ni uno prefijado (derivación, «Repetir»…).
+    // `tipoInicialAtencionRapida` de la web.
+    LaunchedEffect(atencionDirectaForm, paciente?.id, tratamientosDe, tratamientos) {
+        if (!atencionDirectaForm || tipoTocado || prefill != null) return@LaunchedEffect
+        val vigentes = if (paciente != null && tratamientosDe == paciente?.id)
+            tratamientos.filter { it.estado == "Activo" }.map { it.modalidad } else emptyList()
+        val deseado = pe.saniape.app.data.staff.tipoInicialAtencionDirecta(tiposVisibles.map { it.valor }, vigentes)
+        tipoAuto = deseado == "Sesión"
+        if (deseado != tipo) tipo = deseado
+    }
+    // Sin precio de Consulta: la atención directa sugiere el de la sesión de
+    // psicoterapia (editable). Solo se piden los servicios en psicología.
+    var precioSugeridoDirecta by remember { mutableStateOf<Double?>(null) }
+    LaunchedEffect(atencionDirectaForm, especialidad?.id) {
+        precioSugeridoDirecta = if (!atencionDirectaForm) null else pe.saniape.app.data.staff.precioSugeridoAtencionDirecta(
+            pe.saniape.app.data.staff.AtencionDirectaRepo.serviciosPrecio(), especialidad?.id,
+        )
+    }
+    val precioConsultaEf = if (atencionDirectaForm && precioConsulta <= 0) precioSugeridoDirecta ?: precioConsulta else precioConsulta
+
     // Costo por defecto según tipo, con la MEJOR campaña vigente ya descontada.
-    LaunchedEffect(tipo) {
+    // (La clave del precio solo cuenta en psicología: en otro rubro, como siempre, por tipo.)
+    LaunchedEffect(tipo, if (atencionDirectaForm) precioConsultaEf else null) {
         if (tipo == "Sesión") { costo = "0"; promoAplicada = null; return@LaunchedEffect }
-        val base = if (tipo == "Evaluación") precioEvaluacion else precioConsulta
+        val base = if (tipo == "Evaluación") precioEvaluacion else precioConsultaEf
         val (precio, promo) = CatalogosCobroRepo.precioCitaConCampania(campanias, tipo, base)
         promoAplicada = promo
         costo = precio.toString()
@@ -537,6 +623,53 @@ fun PantallaCrearCita(
         )
     }
 
+    // «＋ Ampliar tratamiento anterior»: la MISMA acción que «➕ Ampliar» de la ficha
+    // (suma sesiones y monto, lo deja Activo). Queda elegido: esta cita es su
+    // siguiente sesión, con la fecha, hora y profesional ya puestos.
+    fun ampliarAnterior() {
+        val t = tratAmpliar ?: return
+        val pac = paciente ?: return
+        if (ampliando) return
+        val pedido = pe.saniape.app.data.staff.pedidoAmpliacion(ampliarSesiones, ampliarMonto, listaAmpliar, moneda)
+        if (pedido is pe.saniape.app.data.staff.PedidoAmpliacion.Error) { mensaje = pedido.error; return }
+        val ok = pedido as pe.saniape.app.data.staff.PedidoAmpliacion.Ok
+        ampliando = true
+        mensaje = null
+        scope.launch {
+            try {
+                val r = pe.saniape.app.data.staff.PacientesRepo.ampliarTratamientoDetalle(t.id, ok.sesiones, ok.monto, "desde Nueva cita")
+                if (paciente?.id != pac.id) return@launch
+                when {
+                    r.rechazo != null -> mensaje = "No se pudo ampliar el tratamiento: ${r.rechazo!!.error}"
+                    !r.registrada -> mensaje = "No se pudo ampliar el tratamiento. Intenta de nuevo."
+                    // En la cola (sin señal): la cita no se ata a un tratamiento aún terminado.
+                    r.encolada -> mensaje = "El tratamiento se ampliará al recuperar la señal; agenda la sesión después."
+                    else -> {
+                        val lista = runCatching { AgendaRepo.tratamientosAgendables(pac.id) }.getOrNull()
+                            ?.takeIf { l -> l.any { it.id == t.id } }
+                            // Aún no se ve (réplica, caché): se agrega el ampliado tal cual.
+                            ?: (tratamientos + TratamientoRef(
+                                id = t.id, procedimiento = t.servicio ?: "Tratamiento", modalidad = t.modalidad.orEmpty(),
+                                terapeutaId = t.terapeutaId, especialidadId = t.especialidadId, diagnostico = t.diagnostico,
+                                fechaInicio = t.fechaInicio, totalSesiones = (t.totalSesiones ?: 0) + ok.sesiones,
+                                estado = "Activo",
+                            )).distinctBy { it.id }
+                        tratamientos = lista
+                        tratamientosDe = pac.id
+                        tratamiento = lista.firstOrNull { it.id == t.id }
+                        pe.saniape.app.ui.Toaster.exito(
+                            "Tratamiento ampliado: +${ok.sesiones} ${if (ok.sesiones == 1) "sesión" else "sesiones"}" +
+                                (if (ok.monto > 0) " por ${pe.saniape.app.ui.clinica.agenda.modales.textoSoles(ok.monto, moneda)}" else " sin costo extra") +
+                                ". Esta cita queda como su siguiente sesión.",
+                        )
+                    }
+                }
+            } finally {
+                ampliando = false
+            }
+        }
+    }
+
     // Guardar: la misma acción desde el botón del final y desde la cabecera
     // (esta última solo con el teclado abierto, que tapa el final).
     fun guardar() {
@@ -547,8 +680,10 @@ fun PantallaCrearCita(
             mensaje = "Elige el tratamiento"; return
         }
         if (creandoTratamiento) { mensaje = "Espera: se está creando el tratamiento."; return }
+        if (ampliando) { mensaje = "Espera: se está ampliando el tratamiento."; return }
         pe.saniape.app.data.staff.mensajeFaltaTratamiento(avisoTratamiento, ctx.terminologiaPaciente.paciente)?.let {
-            mensaje = it; return
+            mensaje = if (ofreceAmpliar) "Amplía su tratamiento anterior o crea uno nuevo para agendar la sesión." else it
+            return
         }
         // Clínica que mezcla odontología con otra especialidad: la
         // cita tiene que decir de cuál es, porque de eso depende que
@@ -737,10 +872,24 @@ fun PantallaCrearCita(
                     tiposVisibles.forEach { ti ->
                         TarjetaTipo(
                             info = ti, activo = tipo == ti.valor,
-                            etiqueta = flujoEfectivo.nombreTipo(ti.valor),
+                            etiqueta = ti.etiqueta ?: flujoEfectivo.nombreTipo(ti.valor),
                             modifier = Modifier.weight(1f),
-                        ) { tipo = ti.valor }
+                        ) { tipo = ti.valor; tipoTocado = true; tipoAuto = false }
                     }
+                }
+                // Atención directa: el paciente tiene un tratamiento vigente y por eso
+                // arrancó en Sesión. Una línea: por qué, y cuál tocar si no.
+                if (atencionDirectaForm && tipoAuto && tipo == "Sesión") {
+                    val nombres = tratamientos.filter { it.estado == "Activo" && pe.saniape.app.data.staff.vaPorSesiones(it.modalidad) }
+                        .map { it.procedimiento }.distinct()
+                    Text(
+                        "Tiene un tratamiento activo" + (if (nombres.isNotEmpty()) " (${nombres.joinToString(", ")})" else "") +
+                            ". ¿Viene por otra cosa? Elige ${TIPO_ATENCION_DIRECTA_INFO.etiqueta}.",
+                        color = c.texto, fontSize = 12.sp,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                            .background(c.pendBg).border(1.dp, c.pend.copy(alpha = 0.4f), RoundedCornerShape(Sania.shape.sm.dp))
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                    )
                 }
                 Spacer(Modifier.height(Sania.dim.md))
 
@@ -774,13 +923,32 @@ fun PantallaCrearCita(
                 // Sesión con un paciente sin tratamiento: decirlo y ofrecer crearlo (o a quién pedírselo).
                 if (avisoTratamiento != pe.saniape.app.data.staff.AvisoSinTratamiento.NINGUNO) {
                     Spacer(Modifier.height(Sania.dim.sm))
-                    AvisoSinTratamientoCita(
-                        titulo = pe.saniape.app.data.staff.tituloSinTratamiento(avisoTratamiento, ctx.terminologiaPaciente.paciente),
-                        detalle = pe.saniape.app.data.staff.detalleSinTratamiento(avisoTratamiento, entradaClinica),
-                        aviso = avisoTratamiento,
-                        creando = creandoTratamiento,
-                        onCrear = { if (!creandoTratamiento) crearTratamiento = true },
-                    )
+                    val termino = ctx.terminologiaPaciente.paciente
+                    val t = tratAmpliar
+                    if (ofreceAmpliar && t != null) {
+                        // Ya tuvo uno y terminó (una sesión a la vez): ampliarlo es un toque;
+                        // crear otro sigue a mano para cuando viene por otro servicio.
+                        AvisoAmpliarAnterior(
+                            termino = termino,
+                            ampliables = ampliables, elegido = t, onElegir = { ampliarId = it.id; ampliarMonto = "" },
+                            sesiones = ampliarSesiones, onSesiones = { ampliarSesiones = it.filter(Char::isDigit).take(3) },
+                            monto = ampliarMonto, onMonto = { ampliarMonto = it },
+                            lista = listaAmpliar, moneda = moneda,
+                            ampliando = ampliando, creando = creandoTratamiento,
+                            onAmpliar = { ampliarAnterior() },
+                            onCrear = { if (!creandoTratamiento && !ampliando) crearTratamiento = true },
+                        )
+                    } else {
+                        AvisoSinTratamientoCita(
+                            titulo = pe.saniape.app.data.staff.tituloSinTratamiento(avisoTratamiento, termino),
+                            detalle = pe.saniape.app.data.staff.detalleSinTratamiento(
+                                avisoTratamiento, entradaClinica, atencionDirecta = atencionDirectaForm,
+                            ),
+                            aviso = avisoTratamiento,
+                            creando = creandoTratamiento,
+                            onCrear = { if (!creandoTratamiento) crearTratamiento = true },
+                        )
+                    }
                 }
 
                 // Tratamiento (solo Sesión)
@@ -904,7 +1072,7 @@ fun PantallaCrearCita(
                 }
 
                 if (ctx.puede("pagos") && tipo != "Sesión") {
-                    val precioBase = if (tipo == "Evaluación") precioEvaluacion else precioConsulta
+                    val precioBase = if (tipo == "Evaluación") precioEvaluacion else precioConsultaEf
                     // Con promo, "Restablecer" vuelve al precio PROMOCIONAL (es el vigente).
                     val precioDefault = promoAplicada?.precioCon(precioBase) ?: precioBase
                     Spacer(Modifier.height(Sania.dim.md))
@@ -1000,6 +1168,97 @@ private fun AvisoSinTratamientoCita(
                 }
                 Text(if (creando) "Creando tratamiento…" else "＋ Crear tratamiento",
                     color = c.sobreNavy, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+/**
+ * «El tratamiento anterior de este paciente ya terminó» con «＋ Ampliar tratamiento
+ * anterior» (servicio + última sesión, select si hay varios, sesiones y monto) y
+ * «＋ Crear tratamiento» al lado. Gemelo del bloque de CitaForm web.
+ */
+@Composable
+private fun AvisoAmpliarAnterior(
+    termino: String,
+    ampliables: List<pe.saniape.app.data.staff.TratAmpliable>,
+    elegido: pe.saniape.app.data.staff.TratAmpliable,
+    onElegir: (pe.saniape.app.data.staff.TratAmpliable) -> Unit,
+    sesiones: String, onSesiones: (String) -> Unit,
+    monto: String, onMonto: (String) -> Unit,
+    lista: Double?, moneda: String,
+    ampliando: Boolean, creando: Boolean,
+    onAmpliar: () -> Unit, onCrear: () -> Unit,
+) {
+    val c = Sania.colors
+    val forma = RoundedCornerShape(Sania.shape.sm.dp)
+    val texto = { t: pe.saniape.app.data.staff.TratAmpliable -> pe.saniape.app.data.staff.textoTratamientoAmpliable(t.servicio, t.ultimaSesion) }
+    Column(
+        Modifier.fillMaxWidth().clip(forma).background(c.pendBg).border(1.dp, c.pend.copy(alpha = 0.4f), forma).padding(12.dp),
+    ) {
+        Text("📋 El tratamiento anterior de este $termino ya terminó", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(
+            "Amplíalo para seguir: esta cita queda como su siguiente sesión, con la fecha, hora y profesional que ya elegiste. " +
+                "Si viene por otro servicio, crea uno nuevo.",
+            color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp),
+        )
+        Spacer(Modifier.height(8.dp))
+        if (ampliables.size > 1) {
+            SelectorLista(items = ampliables, elegido = elegido, etiqueta = texto, onElegir = onElegir, placeholder = "Tratamiento a ampliar")
+        } else {
+            Text(texto(elegido), color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+            Column(Modifier.width(90.dp)) {
+                Etiqueta("Sesiones")
+                OutlinedTextField(
+                    value = sesiones, onValueChange = onSesiones, singleLine = true, enabled = !ampliando,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Column(Modifier.weight(1f)) {
+                Etiqueta("Monto adicional (${simboloMoneda(moneda)})")
+                OutlinedTextField(
+                    value = monto, onValueChange = onMonto, singleLine = true, enabled = !ampliando,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    // Precio negociable: vacío = la lista de la ampliación; 0 escrito = cortesía.
+                    placeholder = {
+                        Text(lista?.let { pe.saniape.app.ui.clinica.agenda.modales.textoSoles(it, moneda) } ?: "0.00", color = c.textoSuave)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+        Text(
+            if (lista != null) "Vacío = precio de lista (${pe.saniape.app.ui.clinica.agenda.modales.textoSoles(lista, moneda)}) · 0 = cortesía"
+            else "Vacío = sin costo extra",
+            color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp),
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.weight(1.4f).heightIn(min = 44.dp).clip(RoundedCornerShape(Sania.shape.md.dp))
+                    .background(if (ampliando) c.navy.copy(alpha = 0.5f) else c.navy)
+                    .clickable(enabled = !ampliando && !creando, onClick = onAmpliar).padding(horizontal = 10.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (ampliando) {
+                    CircularProgressIndicator(color = c.sobreNavy, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(if (ampliando) "Ampliando…" else "＋ Ampliar tratamiento anterior", color = c.sobreNavy,
+                    fontSize = 13.sp, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
+            Box(
+                Modifier.weight(1f).heightIn(min = 44.dp).clip(RoundedCornerShape(Sania.shape.md.dp))
+                    .border(1.dp, c.navy, RoundedCornerShape(Sania.shape.md.dp))
+                    .clickable(enabled = !ampliando && !creando, onClick = onCrear).padding(horizontal = 10.dp, vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(if (creando) "Creando…" else "＋ Crear tratamiento", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         }
     }

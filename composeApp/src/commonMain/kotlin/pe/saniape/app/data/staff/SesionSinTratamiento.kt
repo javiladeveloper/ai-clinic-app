@@ -62,11 +62,15 @@ fun tituloSinTratamiento(aviso: AvisoSinTratamiento, termino: String): String = 
  * El detalle del aviso. [entrada]: el nombre de la otra puerta de la clínica
  * (su Consulta/Evaluación, con el nombre del flujo), o null si solo entra por Sesión.
  */
-fun detalleSinTratamiento(aviso: AvisoSinTratamiento, entrada: String?): String = when (aviso) {
+fun detalleSinTratamiento(aviso: AvisoSinTratamiento, entrada: String?, atencionDirecta: Boolean = false): String = when (aviso) {
     AvisoSinTratamiento.OFRECER_CREAR ->
         "Una sesión va siempre dentro de un tratamiento. Créalo aquí: esta cita queda como su Sesión #1, " +
             "con la fecha, hora y profesional que ya elegiste." +
-            (entrada?.let { " Si viene por algo nuevo, elige $it arriba." } ?: "")
+            (entrada?.let {
+                // Psicología: lo que casi siempre se busca es atender sin paquete.
+                if (atencionDirecta) " Para atender sin tratamiento ni paquete, elige $it arriba."
+                else " Si viene por algo nuevo, elige $it arriba."
+            } ?: "")
     AvisoSinTratamiento.PEDIR_A_QUIEN_PUEDE ->
         "Pídeselo a su profesional o al Admin: una sesión va siempre dentro de un tratamiento." +
             (entrada?.let { " Si viene por algo nuevo, agéndale una $it." } ?: "")
