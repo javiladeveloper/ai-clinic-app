@@ -175,6 +175,8 @@ fun TarjetaCita(
      * mapa): documentosDeCita, ya con sus permisos. Lo decide la pantalla.
      */
     documentos: List<pe.saniape.app.data.staff.DocumentoCita> = emptyList(),
+    /** «✓ Se realizó en esta visita» (ofreceServicioEnVisita, ya con permisos). Lo decide la pantalla. */
+    servicioEnVisita: Boolean = false,
 ) {
     // Multipaís: el costo va en la moneda de la sede de la cita ("todas las sedes").
     val moneda = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)
@@ -336,6 +338,7 @@ fun TarjetaCita(
                 noVino = noVino,
                 // Lo clínico (documentos de la atención) pide la historia clínica, como el resto.
                 documentos = if (verClinico) documentos else emptyList(),
+                servicioEnVisita = servicioEnVisita && cita.pacienteId != null,
             ))
 
             // Chips: costo, Web, Asignar (discretos, en una línea)

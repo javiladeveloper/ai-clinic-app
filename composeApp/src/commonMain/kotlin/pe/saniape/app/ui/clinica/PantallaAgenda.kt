@@ -186,6 +186,13 @@ fun PantallaAgenda(
     var noVino by remember { mutableStateOf<CitaStaff?>(null) }
     // 📄 Informe / descanso / constancia del ⋯ de una cita atendida (prellenado con ESA atención).
     var docCita by remember { mutableStateOf<Pair<CitaStaff, pe.saniape.app.data.staff.DocumentoCita>?>(null) }
+    // «✓ Se realizó en esta visita» (ServicioEnVisita.kt): la cita y los servicios de
+    // una vez de la clínica (solo para quien puede crear tratamientos; DALU no vende ninguno).
+    var servicioEnVisitaCita by remember { mutableStateOf<CitaStaff?>(null) }
+    var serviciosUnaVez by remember { mutableStateOf<List<pe.saniape.app.data.staff.ServicioUnaVez>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        if (ctx.puede("sesiones")) serviciosUnaVez = pe.saniape.app.data.staff.ServicioEnVisitaRepo.servicios()
+    }
     // 🧮 Cerrar mi caja (quien cobra, hoy): la pestaña de cierre a pantalla completa.
     var cerrandoCaja by remember { mutableStateOf(false) }
     // Derivación cuya evaluación se está agendando: se marca procesada SOLO si la
@@ -953,6 +960,7 @@ fun PantallaAgenda(
                                                 .firstOrNull { pe.saniape.app.data.staff.accionDeDocumento(it.clave) == accion }
                                                 ?.let { docCita = cita to it }
                                         AccionTarjeta.MapaAplicacion -> abrirFichaAplicaciones(cita)
+                                        AccionTarjeta.ServicioEnVisita -> servicioEnVisitaCita = cita
                                     }
                                 },
                                 onVerResumen = { resumenDeCita = cita; resumenPacienteId = it },
@@ -1007,6 +1015,14 @@ fun PantallaAgenda(
                                 noVino = vm.ofreceNoVinoEn(cita),
                                 // 📄 Documentos y 💉 mapa de ESTA atención (con sus permisos).
                                 documentos = vm.documentosDe(cita, verHc),
+                                // ✓ El servicio de una vez hecho en esta evaluación/consulta (no dental).
+                                servicioEnVisita = pe.saniape.app.data.staff.ofreceServicioEnVisita(
+                                    tipo = cita.tipo, estado = cita.estado, fecha = cita.fecha, hoy = vm.hoy,
+                                    dental = vm.esDental(cita), puedeSesiones = ctx.puede("sesiones"), soloLectura = false,
+                                    pacienteInactivo = pe.saniape.app.data.staff.fichaInactiva(cita.pacienteEstado),
+                                    hayServicios = pe.saniape.app.data.staff.hayServicioDeUnaVez(
+                                        serviciosUnaVez, cita.especialidadId ?: cita.especialidadServicioId),
+                                ),
                                 sala = vm.etapaDe(cita)?.let { etapa ->
                                     val a = vm.atencionDe(cita)
                                     pe.saniape.app.ui.clinica.agenda.componentes.SalaTarjeta(
@@ -1383,6 +1399,17 @@ fun PantallaAgenda(
             onGuardar = { fecha, hora, terId, motivo ->
                 vm.reprogramar(cita, fecha, hora, terapeutaId = terId, motivo = motivo) { ok -> if (ok) editar = null }
             },
+        )
+    }
+    // «✓ Se realizó en esta visita»: el servicio, el precio y el cobro en un guardado.
+    servicioEnVisitaCita?.let { cita ->
+        pe.saniape.app.ui.clinica.agenda.modales.DialogoServicioEnVisita(
+            cita = cita, servicios = serviciosUnaVez,
+            moneda = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId),
+            nombreCita = vm.flujoDe(cita).nombreTipo(cita.tipo),
+            puedeCobrar = ctx.puede("pagos"), verClinico = verHc,
+            onCerrar = { servicioEnVisitaCita = null },
+            onRegistrado = { vm.refrescar() },
         )
     }
     // "✗ No vino": confirmar la falta (con motivo) o reponerla en otra fecha.

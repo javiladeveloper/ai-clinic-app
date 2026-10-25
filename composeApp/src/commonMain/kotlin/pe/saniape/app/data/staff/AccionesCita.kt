@@ -51,6 +51,8 @@ enum class AccionTarjeta {
     DocInforme, DocDescanso, DocOrden, DocConstancia,
     /** 💉 Mapa de aplicación (estética): la ficha en la pestaña con ESA cita. */
     MapaAplicacion,
+    /** «✓ Se realizó en esta visita»: el servicio de una vez hecho en esta evaluación/consulta (ServicioEnVisita.kt). */
+    ServicioEnVisita,
 }
 
 /** La acción de la tarjeta para cada documento (lib/agenda-dia → AgendaDia.kt). null = no hay en la app. */
@@ -142,6 +144,8 @@ data class EntradaAccionesCita(
     val noVino: Boolean = false,
     /** Documentos de la atención (documentosDeCita, ya con sus permisos). */
     val documentos: List<DocumentoCita> = emptyList(),
+    /** «✓ Se realizó en esta visita» ([ofreceServicioEnVisita], ya con permisos): lo decide la pantalla. */
+    val servicioEnVisita: Boolean = false,
 )
 
 /**
@@ -220,6 +224,9 @@ fun accionesCita(e: EntradaAccionesCita): List<AccionCitaItem> {
     e.documentos.forEach { d -> accionDeDocumento(d.clave)?.let { add(d.texto, it, TonoAccion.PURPLE) } }
     // 🧾 Productos que se lleva o un servicio extra de esta atención (o cobrarlo).
     if (e.pedido != null) add(e.pedido, AccionTarjeta.Pedido, TonoAccion.TEAL)
+    // El servicio de una vez hecho en ESTA visita (uña encarnada, bótox): tratamiento
+    // realizado + cita completada + cobro en un guardado, como la web.
+    if (e.servicioEnVisita && estado != "Cancelada") add("✓ Se realizó en esta visita", AccionTarjeta.ServicioEnVisita, TonoAccion.OK)
     // Crear el plan desde la cita que evalúa (no cancelada), como la web.
     if (e.crearTratamiento && estado != "Cancelada") add("🩺 Crear tratamiento", AccionTarjeta.CrearTratamiento, TonoAccion.PURPLE)
     // 🧾 El recibo del cobro ya hecho, junto al dinero (como el menú de /citas web).
@@ -313,6 +320,8 @@ fun planAccionesCita(e: EntradaAccionesCita): PlanAccionesCita {
             de(AccionTarjeta.Confirmar),
             cierre?.takeIf { primaria?.accion == AccionTarjeta.Triaje },
             de(AccionTarjeta.PasarEvaluacion),
+            // Podología y todo servicio de una vez: a un toque en la evaluación del día.
+            de(AccionTarjeta.ServicioEnVisita),
             de(AccionTarjeta.EvaluacionPsico),
         )
         e.estado == "Completada" -> listOf(
