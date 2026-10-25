@@ -1537,6 +1537,12 @@ fun SeccionPagos(
             }
         }
     } else {
+        // «Todo / 50 % / Saldo» (data/staff/ChipsCobro): un toque llena el monto.
+        ChipsCobro(
+            total = acordado.takeIf { it > 0 }, saldo = if (acordado > 0) maxOf(0.0, saldo) else null,
+            valor = monto, onElegir = { monto = it }, moneda = moneda, habilitado = !guardando,
+        )
+        Spacer(Modifier.height(6.dp))
         androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(), 
             value = monto, onValueChange = { monto = it.filter { ch -> ch.isDigit() || ch == '.' } },
             placeholder = { Text("Monto", color = c.textoSuave) },

@@ -73,6 +73,11 @@ fun DialogoAbonarPaquete(
                         ": se descuenta de lo que debe (${textoSoles(deuda, moneda)}).",
                     color = c.texto, fontSize = 13.sp,
                 )
+                // «Saldo / 50 %» (data/staff/ChipsCobro): un toque llena el monto.
+                pe.saniape.app.ui.clinica.pacientes.ChipsCobro(
+                    total = null, saldo = deuda, valor = texto, onElegir = { texto = it; error = null },
+                    moneda = moneda, habilitado = !guardando, modifier = Modifier.padding(top = 10.dp),
+                )
                 OutlinedTextField(
                     value = texto,
                     onValueChange = { v -> texto = v.filter { it.isDigit() || it == '.' || it == ',' }.take(10); error = null },

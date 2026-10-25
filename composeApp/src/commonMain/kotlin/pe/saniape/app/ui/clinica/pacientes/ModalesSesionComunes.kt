@@ -265,6 +265,9 @@ fun BloqueCobroSesion(
     cobrar: Boolean, onCobrar: (Boolean) -> Unit,
     monto: String, onMonto: (String) -> Unit,
     metodo: String, onMetodo: (String) -> Unit,
+    /** Chips «Todo / 50 % / Saldo» (data/staff/ChipsCobro). Sin ninguno de los dos, no salen. */
+    chipsTotal: Double? = null,
+    chipsSaldo: Double? = null,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
@@ -294,6 +297,10 @@ fun BloqueCobroSesion(
         Spacer(Modifier.height(8.dp))
         TarjetaForm(titulo = "Cobro", icono = "💳") {
             EtqForm("Monto (${simboloMoneda(moneda)})")
+            if (chipsTotal != null || chipsSaldo != null) {
+                ChipsCobro(total = chipsTotal, saldo = chipsSaldo, valor = monto, onElegir = onMonto, moneda = moneda)
+                Spacer(Modifier.height(8.dp))
+            }
             androidx.compose.material3.OutlinedTextField(colors = coloresCampoForm(),
                 value = monto,
                 onValueChange = { onMonto(it.filter { ch -> ch.isDigit() || ch == '.' }) },
