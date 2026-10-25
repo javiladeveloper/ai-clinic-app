@@ -89,6 +89,8 @@ data class CitaStaff(
     val tratamientoCompletadas: Int? = null,
     /** "Activo" / "Inactivo" (ficha dada de baja: no admite cambios). */
     val pacienteEstado: String? = null,
+    /** Observaciones de la cita (`citas.notas`): de aquí sale el motivo ([motivoDeNotasCita]). */
+    val notas: String? = null,
 ) {
     val esVirtual: Boolean get() = esCitaVirtual(modalidad)
 
@@ -233,7 +235,7 @@ object AgendaRepo {
 
     /** Columnas comunes de una cita (con joins). Una sola fuente. */
     const val SELECT_CITA =
-        "id, fecha, hora, estado, tipo, costo, pagada_at, duracion, origen, confirmada_por_paciente, " +
+        "id, fecha, hora, estado, tipo, costo, pagada_at, duracion, origen, confirmada_por_paciente, notas, " +
             "terapeuta_id, paciente_id, tratamiento_id, especialidad_id, procedimiento_id, sede_id, sesion_id, confirmacion_token, created_at, " +
             "paciente:pacientes(nombre, telefono, edad, fecha_nacimiento, requiere_apoderado, estado), terapeuta:terapeutas(nombre), " +
             "tratamiento:tratamientos!citas_tratamiento_id_fkey(nota_recepcion, estado, modalidad, total_sesiones, sesiones_completadas, " +
@@ -318,6 +320,7 @@ object AgendaRepo {
                 tratamientoTotalSesiones = obj("tratamiento")?.let { t -> (t["total_sesiones"] as? JsonPrimitive)?.content?.toDoubleOrNull()?.toInt() },
                 tratamientoCompletadas = obj("tratamiento")?.let { t -> (t["sesiones_completadas"] as? JsonPrimitive)?.content?.toDoubleOrNull()?.toInt() },
                 pacienteEstado = (obj("paciente")?.get("estado") as? JsonPrimitive)?.content?.takeIf { it != "null" },
+                notas = s("notas")?.takeIf { it.isNotBlank() },
             )
     }
 

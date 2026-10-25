@@ -275,6 +275,18 @@ fun TarjetaCita(
                 Text(sub, color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
             }
 
+            // Por qué viene: el motivo que recepción escribió al agendar la evaluación.
+            // Sin esto la profesional no lo veía si no abría el detalle (reporte DALU
+            // 2026-10-16). Solo en la cita que evalúa: en una Sesión las notas son otra cosa.
+            // Es dato clínico: sin permiso de Historia clínica no se muestra.
+            if (verClinico && flujo.esCitaQueEvalua(cita.tipo) && cita.estado != "Cancelada") {
+                pe.saniape.app.data.staff.motivoDeNotasCita(cita.notas)?.let { motivo ->
+                    Text("🩺 $motivo", color = if (cerrada) c.textoSuave else c.texto, fontSize = 12.sp,
+                        maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 4.dp))
+                }
+            }
+
             // Sala de espera: ○ Por llegar · 🔔 Llegó · 12 min · 🩺 Triaje ✓ PA 120/80 · ▶ En consulta.
             salaEf?.let { IndicadorLlegada(it, verValores = verClinico) }
 

@@ -219,6 +219,24 @@ fun breve(texto: String, max: Int = 160): String? {
     return t.take(corte).trimEnd(' ', '·', ',', ';') + "…"
 }
 
+// ── Motivo de la cita ──
+
+private val MOTIVO_EN_NOTAS = Regex("""Motivo:\s*([^·]+)""", RegexOption.IGNORE_CASE)
+private val RESERVA_EN_NOTAS = Regex("""Reserva online:\s*([^·]+)""", RegexOption.IGNORE_CASE)
+
+/**
+ * Por qué viene el paciente: lo que recepción escribió al agendar la evaluación
+ * ("Motivo: dolor lumbar · …" en las notas de la cita) o lo que dejó la reserva
+ * online. Gemelo de `motivoDeNotas` de la web (ConsultaGuiada / ficha). null = no hay.
+ * Antes la profesional solo lo veía abriendo el detalle de la cita, y al completar
+ * la evaluación el campo salía vacío (reporte DALU, Lic. Katherine, 2026-10-16).
+ */
+fun motivoDeNotasCita(notas: String?): String? {
+    val t = notas.orEmpty()
+    val m = MOTIVO_EN_NOTAS.find(t) ?: RESERVA_EN_NOTAS.find(t) ?: return null
+    return m.groupValues[1].trim().takeIf { it.isNotEmpty() }
+}
+
 // ── Lectura ──
 
 /** Columnas del detalle: [clinico] = false no pide nada clínico a la base. */

@@ -240,6 +240,18 @@ fun ModalCompletar(
                 if (!verClinico) {
                     // Nada clínico que escribir: solo quién atendió y el cobro (abajo).
                 } else if (esEvaluacion) {
+                    // Por qué vino (lo que recepción anotó al agendar): referencia para
+                    // redactar el diagnóstico. Antes no se veía aquí (reporte DALU 2026-10-16).
+                    pe.saniape.app.data.staff.motivoDeNotasCita(cita.notas)?.let { motivo ->
+                        Column(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(c.chipBg).padding(10.dp),
+                        ) {
+                            Text("🩺 Motivo de la consulta", color = c.navy, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(motivo, color = c.texto, fontSize = 13.sp, modifier = Modifier.padding(top = 3.dp))
+                        }
+                        Spacer(Modifier.height(Sania.dim.lg))
+                    }
                     Text("Diagnóstico / Motivo", color = c.textoSuave, fontSize = Sania.txt.mini,
                         fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
                     // Campo con TYPEAHEAD + chips, igual que la web: al escribir sugiere las

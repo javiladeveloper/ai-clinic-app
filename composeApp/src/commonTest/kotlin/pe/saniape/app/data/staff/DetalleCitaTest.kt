@@ -247,4 +247,17 @@ class DetalleCitaTest {
         assertEquals("Láser", d.sesionNotas)
         assertNull(d.sesionMejorias)
     }
+
+    // ── Motivo de la cita (lo que se anotó al agendar) ──
+
+    @Test
+    fun motivoDeLasNotasDeLaCita() {
+        assertEquals("DOLOR DE CUELLO", motivoDeNotasCita("Motivo: DOLOR DE CUELLO"))
+        // La web une motivo y notas con " · ": el motivo termina ahí.
+        assertEquals("dolor lumbar", motivoDeNotasCita("Motivo: dolor lumbar · trae resonancia"))
+        assertEquals("rodilla", motivoDeNotasCita("Reserva online: rodilla"))
+        assertNull(motivoDeNotasCita("Trae resonancia"))
+        assertNull(motivoDeNotasCita("Motivo:   "))
+        assertNull(motivoDeNotasCita(null))
+    }
 }
