@@ -101,12 +101,33 @@ class ProximaCitaTest {
     }
 
     @Test
+    fun mismaListaMismaClaveOtraListaOtraClave() {
+        var n = 0
+        val clave = ClaveEnvioPlan { "k${++n}" }
+        val a = FilaPlanSesion("2026-11-03", "10:00", emptyList(), true)
+        val b = FilaPlanSesion("2026-11-05", "10:00", emptyList(), true)
+        val k1 = clave.para("tr1", listOf(a, b))
+        // Reintento del MISMO envío (se perdió la respuesta): la misma clave.
+        assertEquals(k1, clave.para("tr1", listOf(b, a)))
+        // Quitar una fecha es otro envío: otra clave.
+        val k2 = clave.para("tr1", listOf(a, b.copy(incluida = false)))
+        assertTrue(k2 != k1)
+        assertEquals(firmaEnvioPlan("tr1", listOf(a)), firmaEnvioPlan("tr1", listOf(a, b.copy(incluida = false))))
+        // Misma firma que la web: "tr|fecha hora,…" ordenada.
+        assertEquals("tr1|2026-11-03 10:00,2026-11-05 10:00", firmaEnvioPlan("tr1", listOf(b, a)))
+    }
+
+    @Test
     fun resultadoDelPlanListaLasQueFaltaron() {
         val r = parsearResultadoPlan(json("""
             {"ok":true,"creadas":2,"fallidas":[{"fecha":"2026-11-04","hora":"10:00","error":"Ya no hay cupo en ese horario."}]}
         """.trimIndent()))
         assertEquals(2, r.creadas)
+        assertEquals(0, r.yaExistian)
         assertEquals(1, r.fallidas.size)
+        // Reintento con otra clave: las ya creadas vuelven como «ya estaban».
+        val otra = parsearResultadoPlan(json("""{"ok":true,"creadas":0,"yaExistian":[{"fecha":"2026-11-03","hora":"10:00"}],"fallidas":[]}"""))
+        assertEquals(1, otra.yaExistian)
         assertEquals("mié 04/11 10:00 — Ya no hay cupo en ese horario.", textoFallidas(r.fallidas))
         // Todas fallaron (409): el detalle viaja en el rechazo.
         val todas = parsearResultadoPlan(json("""{"creadas":0,"fallidas":[],"error":"x"}"""), "No se agendó ninguna sesión")

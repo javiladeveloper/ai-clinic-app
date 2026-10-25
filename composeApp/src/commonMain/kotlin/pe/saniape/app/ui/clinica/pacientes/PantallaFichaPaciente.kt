@@ -3972,6 +3972,8 @@ private fun ModalPlanEntero(
     var trabajando by remember { mutableStateOf(false) }
     var mostrarFecha by remember { mutableStateOf(false) }
     var mostrarHora by remember { mutableStateOf(false) }
+    // Una clave por envío: reintentar el mismo envío no duplica (el servidor es idempotente).
+    val claveEnvio = remember { pe.saniape.app.data.staff.ClaveEnvioPlan() }
 
     if (mostrarFecha) {
         val estadoP = androidx.compose.material3.rememberDatePickerState(
@@ -4038,16 +4040,19 @@ private fun ModalPlanEntero(
                     }
                     trabajando = false
                 } else {
+                    val elegidas = actuales.filter { it.incluida }
                     val res = pe.saniape.app.data.staff.ProximaCitaRepo.agendarPlan(
-                        inicial.t.id, inicial.terapeutaId, actuales.filter { it.incluida },
+                        inicial.t.id, inicial.terapeutaId, elegidas, claveEnvio.para(inicial.t.id, elegidas),
                     )
                     trabajando = false
                     if (res.creadas > 0) pe.saniape.app.ui.Toaster.exito(
                         if (res.creadas == 1) "Sesión agendada" else "${res.creadas} sesiones agendadas")
+                    if (res.yaExistian > 0) pe.saniape.app.ui.Toaster.exito(
+                        if (res.yaExistian == 1) "1 ya estaba agendada: no se duplicó" else "${res.yaExistian} ya estaban agendadas: no se duplicaron")
                     if (res.fallidas.isNotEmpty()) pe.saniape.app.ui.Toaster.error(
                         "No se agendaron ${res.fallidas.size}:\n" + pe.saniape.app.data.staff.textoFallidas(res.fallidas))
-                    else if (res.creadas == 0) pe.saniape.app.ui.Toaster.error(res.error ?: "No se agendó ninguna sesión")
-                    if (res.creadas > 0) onListo()
+                    else if (res.creadas == 0 && res.yaExistian == 0) pe.saniape.app.ui.Toaster.error(res.error ?: "No se agendó ninguna sesión")
+                    if (res.creadas > 0 || res.yaExistian > 0) onListo()
                 }
             }
         },

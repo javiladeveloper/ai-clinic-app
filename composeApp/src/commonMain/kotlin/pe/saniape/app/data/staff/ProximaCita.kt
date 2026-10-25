@@ -139,7 +139,33 @@ fun cuerpoCitaPropuesta(c: CitaPropuesta): JsonObject = buildJsonObject {
 data class ConflictoPlan(val codigo: String, val mensaje: String)
 data class FilaPlanSesion(val fecha: String, val hora: String, val conflictos: List<ConflictoPlan>, val incluida: Boolean)
 data class SesionNoAgendada(val fecha: String, val hora: String, val error: String)
-data class ResultadoPlan(val creadas: Int, val fallidas: List<SesionNoAgendada>, val error: String?)
+data class ResultadoPlan(
+    val creadas: Int,
+    val fallidas: List<SesionNoAgendada>,
+    val error: String?,
+    /** Filas que ya estaban agendadas por un envío anterior: el servidor no las duplicó. */
+    val yaExistian: Int = 0,
+)
+
+/**
+ * UNA clave de idempotencia por envío del plan (gemelo de firmaEnvioPlan de la
+ * web, lib/plan-idempotente.ts): repetir el MISMO envío (se perdió la respuesta)
+ * reusa la clave y el servidor devuelve lo mismo sin crear nada; cambiar la
+ * lista (marcar o quitar una fecha) es otro envío y lleva otra.
+ */
+class ClaveEnvioPlan(private val nueva: () -> String = { pe.saniape.app.data.offline.nuevaIdemKey() }) {
+    private var firma: String? = null
+    private var clave: String = ""
+    fun para(tratamientoId: String, filas: List<FilaPlanSesion>): String {
+        val f = firmaEnvioPlan(tratamientoId, filas)
+        if (f != firma) { firma = f; clave = nueva() }
+        return clave
+    }
+}
+
+/** "tr|2026-11-03 10:00,2026-11-05 10:00" — solo las marcadas, ordenadas (igual que la web). */
+fun firmaEnvioPlan(tratamientoId: String, filas: List<FilaPlanSesion>): String =
+    tratamientoId + "|" + filas.filter { it.incluida }.map { "${it.fecha.take(10)} ${it.hora.take(5)}" }.sorted().joinToString(",")
 
 /** Chips de días, lunes primero: (día 0=dom…6=sáb, letra). Gemelo de CHIPS_DIAS (lib/proxima-cita). */
 val CHIPS_DIAS_PLAN: List<Pair<Int, String>> = listOf(1 to "L", 2 to "M", 3 to "X", 4 to "J", 5 to "V", 6 to "S", 0 to "D")
@@ -161,6 +187,7 @@ fun parsearFilasPlan(o: JsonObject?): List<FilaPlanSesion> = (o?.get("filas") as
 
 fun parsearResultadoPlan(o: JsonObject?, error: String? = null): ResultadoPlan = ResultadoPlan(
     creadas = o?.s("creadas")?.toDoubleOrNull()?.toInt() ?: 0,
+    yaExistian = (o?.get("yaExistian") as? JsonArray)?.size ?: 0,
     fallidas = (o?.get("fallidas") as? JsonArray).orEmpty().mapNotNull { e ->
         val f = e as? JsonObject ?: return@mapNotNull null
         SesionNoAgendada(f.s("fecha") ?: return@mapNotNull null, (f.s("hora") ?: "").take(5), f.s("error") ?: "No se pudo agendar")
@@ -249,7 +276,9 @@ object ProximaCitaRepo {
     }
 
     /** Guarda las elegidas. Directo, sin cola (son varias citas: quien agenda tiene que ver cuáles quedaron). */
-    suspend fun agendarPlan(tratamientoId: String, terapeutaId: String?, filas: List<FilaPlanSesion>, sedeId: String? = null): ResultadoPlan {
+    suspend fun agendarPlan(
+        tratamientoId: String, terapeutaId: String?, filas: List<FilaPlanSesion>, idemKey: String, sedeId: String? = null,
+    ): ResultadoPlan {
         val cuerpo = buildJsonObject {
             put("accion", "agendar")
             put("tratamientoId", tratamientoId)
@@ -261,7 +290,7 @@ object ProximaCitaRepo {
         }
         val (res, rechazo, resp) = try {
             pe.saniape.app.data.offline.Sincronizador.enviarAhoraCompleto(
-                "/api/staff/sesion/plan", cuerpo, pe.saniape.app.data.offline.nuevaIdemKey(),
+                "/api/staff/sesion/plan", cuerpo, idemKey,
             )
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
