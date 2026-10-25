@@ -449,6 +449,8 @@ data class PrefillPlanPsico(
     val totalSesiones: Int? = null,
     val precioPaquete: Double? = null,
     val diagnostico: String? = null,
+    /** El plan de la agenda tras una evaluación (T3): se respeta su modalidad (la psicológica, siempre Paquete). */
+    val respetarModalidad: Boolean = false,
 )
 
 data class SugerenciaSesionesPsico(val clave: String, val nombre: String, val sesiones: Int)

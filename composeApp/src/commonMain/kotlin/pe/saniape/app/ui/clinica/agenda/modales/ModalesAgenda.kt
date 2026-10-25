@@ -101,6 +101,12 @@ fun ModalCompletar(
      */
     cobro: CobroCierreAgenda? = null,
     /**
+     * «💵 ¿Pagó la evaluación?» en la misma ventana (T3, gemelo de la web): la cita
+     * que evalúa, con permiso 'pagos' y sin cobrar. Quien llama la cobra tras
+     * completar (cobro de cita de siempre). null = no aparece.
+     */
+    cobroEvaluacion: CobroCierreAgenda? = null,
+    /**
      * "¿Ya pagó?" de esta cita (servidor: estado y deuda, nunca lo pagado). La
      * agenda ya lo tiene cargado: no se pide de nuevo. null = no se muestra.
      */
@@ -348,8 +354,13 @@ fun ModalCompletar(
                             cobrar = cobro.cobrar, onCobrar = { cobro.cobrar = it },
                             monto = cobro.monto, onMonto = { cobro.monto = it },
                             metodo = cobro.metodo.value, onMetodo = { cobro.metodo.value = it },
+                            chipsTotal = cobro.chipsTotal, chipsSaldo = cobro.chipsSaldo,
                         )
                     }
+                }
+                if (cobroEvaluacion != null && esEvaluacion) {
+                    Spacer(Modifier.height(Sania.dim.lg))
+                    BloqueCobroEvaluacion(cobroEvaluacion, cita, flujo.nombreTipo(cita.tipo).lowercase())
                 }
                 // Derivar es una decisión clínica: solo con 'historia_clinica'.
                 if (verClinico && esEvaluacion && especialidades.size > 1) {
@@ -398,7 +409,8 @@ fun ModalCompletar(
             // Botón principal grande (full-width via padding del AlertDialog).
             val faltaProfesional = esEvaluacion && profesionales != null && terapeutaElegido == null
             // Cobro activado sin monto: no se deja confirmar (como la ficha).
-            val faltaMonto = cobro != null && !esEvaluacion && !cobro.valido
+            val faltaMonto = (cobro != null && !esEvaluacion && !cobro.valido) ||
+                (cobroEvaluacion != null && esEvaluacion && !cobroEvaluacion.valido)
             // Fotos comprimiéndose: se espera un instante para no perderlas.
             val preparandoFotos = (fotosSesion?.preparando ?: 0) > 0
             val bloqueado = faltaProfesional || faltaMonto || preparandoFotos
@@ -424,7 +436,7 @@ fun ModalCompletar(
                         }
                     }.padding(horizontal = 20.dp, vertical = 11.dp),
             ) {
-                Text(if (psicoSesion) "Guardar evolución y completar" else if (cobro?.cobrar == true && !esEvaluacion) "✓ Completar y cobrar" else "✓ Guardar y completar",
+                Text(if (psicoSesion) "Guardar evolución y completar" else if ((cobro?.cobrar == true && !esEvaluacion) || (cobroEvaluacion?.cobrar == true && esEvaluacion)) "✓ Completar y cobrar" else "✓ Guardar y completar",
                     color = c.sobreNavy, fontWeight = FontWeight.Bold)
             }
         },
@@ -432,6 +444,43 @@ fun ModalCompletar(
         containerColor = c.superficie,
         shape = RoundedCornerShape(Sania.shape.lg.dp),
     )
+}
+
+/**
+ * «💵 ¿Pagó la evaluación?» (T3): el precio de la cita propuesto y negociable
+ * («↺ Precio de la cita»), y el método. Gemelo de CobroEvaluacionCierre (web).
+ */
+@Composable
+private fun BloqueCobroEvaluacion(cobro: CobroCierreAgenda, cita: CitaStaff, nombreCita: String) {
+    val c = Sania.colors
+    val moneda = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+            .background(if (cobro.cobrar) c.tealBg else c.chipBg)
+            .border(1.dp, if (cobro.cobrar) c.teal else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+            .padding(Sania.dim.md),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().clickable { cobro.cobrar = !cobro.cobrar }) {
+            Text(if (cobro.cobrar) "☑" else "☐", fontSize = 18.sp, color = if (cobro.cobrar) c.teal else c.textoSuave)
+            Spacer(Modifier.width(8.dp))
+            Text("💵 ¿Pagó la " + nombreCita + "?", color = c.texto, fontSize = Sania.txt.cuerpo,
+                fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            if (!cobro.cobrar) cita.costo?.takeIf { it > 0 }?.let {
+                Text(pe.saniape.app.data.staff.formatearDinero(it, moneda), color = c.textoSuave, fontSize = 12.sp)
+            }
+        }
+        if (cobro.cobrar) {
+            Spacer(Modifier.height(Sania.dim.sm))
+            pe.saniape.app.ui.clinica.presupuestos.CampoPrecioPresu(
+                etiqueta = "Precio acordado", valor = cobro.monto, onCambio = { cobro.monto = it },
+                lista = cita.costo?.takeIf { it > 0 }, moneda = moneda, habilitado = true,
+                textoBoton = "↺ Precio de la cita",
+            )
+            Spacer(Modifier.height(8.dp))
+            pe.saniape.app.ui.clinica.pacientes.ChipsMetodoPago(cobro.metodo.value) { cobro.metodo.value = it }
+        }
+    }
 }
 
 /** Por cuál callback de [ModalCompletar] sale "✓ Completar". */
@@ -460,6 +509,9 @@ fun rutaCompletar(fisioSesion: Boolean, pideProfesional: Boolean, hayConProfesio
 class CobroCierreAgenda(montoInicial: String, val metodo: androidx.compose.runtime.MutableState<String>) {
     var cobrar by mutableStateOf(false)
     var monto by mutableStateOf(montoInicial)
+    /** Chips «Todo / 50 % / Saldo» (data/staff/ChipsCobro): precio de referencia y lo que falta. */
+    var chipsTotal by mutableStateOf<Double?>(null)
+    var chipsSaldo by mutableStateOf<Double?>(null)
     val valido: Boolean get() = !cobrar || (monto.toDoubleOrNull() ?: 0.0) > 0
     /** (monto, método) si se activó y el monto es válido; null = no se cobra. */
     fun pago(): Pair<Double, String>? =

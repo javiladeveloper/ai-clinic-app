@@ -435,7 +435,13 @@ fun PantallaAgenda(
     LaunchedEffect(completar) {
         if (completar == null) ofertaTrasCompletar?.let { ofertaPrimera = it; ofertaTrasCompletar = null }
     }
-    fun cerrarTratamiento() { tratCita = null; tratDiag = null; tratPac = null; tratForm = false }
+    // «Más opciones» desde la hoja del plan: el formulario de siempre con el servicio ya elegido.
+    var tratPrefill by remember { mutableStateOf<pe.saniape.app.data.staff.PrefillPlanPsico?>(null) }
+    // 🩺 «Plan de tratamiento» tras completar la evaluación (T3): la hoja corta
+    // (HojaPlanTrasEvaluacion) y, al crear, el plan entero de sus sesiones.
+    var planEval by remember { mutableStateOf<Pair<CitaStaff, String?>?>(null) }
+    var planEnteroAgenda by remember { mutableStateOf<pe.saniape.app.ui.clinica.pacientes.PlanEnteroInicial?>(null) }
+    fun cerrarTratamiento() { tratCita = null; tratDiag = null; tratPac = null; tratForm = false; tratPrefill = null }
     fun abrirTratamientoDeCita(cita: CitaStaff, diagnostico: String?) {
         val pid = cita.pacienteId ?: return
         if (!ctx.puede("sesiones")) return
@@ -577,6 +583,9 @@ fun PantallaAgenda(
         vm.ofrecerTratamiento?.let { o ->
             vm.cerrarOfertaTratamiento()
             if (vm.esPsicologia(o.cita)) ofertaPlanPsico = o
+            // T3: la hoja corta del plan (servicio, sesiones y precio propuestos);
+            // lo dental lo resuelve su revisión con el popup de siempre.
+            else if (!vm.esDental(o.cita)) planEval = o.cita to o.diagnostico
             else abrirTratamientoDeCita(o.cita, o.diagnostico)
         }
     }
@@ -902,7 +911,10 @@ fun PantallaAgenda(
                                             } ?: repetirDesde(cita)
                                         }
                                         AccionTarjeta.Odontograma -> odontogramaCita = cita
-                                        AccionTarjeta.CrearTratamiento -> abrirTratamientoDeCita(cita, null)
+                                        // Evaluación ya completada → la hoja corta del plan (T3); el resto, lo de siempre.
+                                        AccionTarjeta.CrearTratamiento -> if (cita.estado == "Completada" && vm.flujoDe(cita).esCitaQueEvalua(cita.tipo) &&
+                                            !vm.esPsicologia(cita) && !vm.esDental(cita)) planEval = cita to null
+                                        else abrirTratamientoDeCita(cita, null)
                                         AccionTarjeta.Llego -> vm.marcarLlegada(cita)
                                         AccionTarjeta.Triaje -> triajeCita = cita
                                         AccionTarjeta.Cobrar -> cobrar = cita
@@ -1185,6 +1197,27 @@ fun PantallaAgenda(
             // El estado de pago llegó después de abrir: se propone, sin pisar lo que ya se tocó.
             androidx.compose.runtime.LaunchedEffect(cita.id, estadoPagoCita) {
                 if (!cobro.cobrar && cobro.monto.isBlank()) cobro.monto = montoPropuesto()
+                // Chips «Todo / 50 % / Saldo»: la sesión suelta (su costo) o el paquete (lo que debe).
+                val paquete = estadoPagoCita?.esPaquete == true || cita.tratamientoModalidad == "Paquete"
+                cobro.chipsTotal = if (paquete) null else cita.costo?.takeIf { it > 0 }
+                cobro.chipsSaldo = estadoPagoCita?.deuda
+            }
+            // «💵 ¿Pagó la evaluación?» (T3): la cita que evalúa, con 'pagos', con precio y sin cobrar.
+            val cobroEval = remember(cita.id) {
+                pe.saniape.app.ui.clinica.agenda.modales.CobroCierreAgenda(
+                    montoInicial = pe.saniape.app.data.staff.textoPrecioCampo(cita.costo), metodo = metodoCobro,
+                )
+            }
+            val conCobroEval = evalua && cita.tipo != "Sesión" && ctx.puede("pagos") && cita.pagadaAt == null &&
+                (cita.costo ?: 0.0) > 0 && vm.estadosPago[cita.id]?.estado != "pagado"
+            // Tras completar, el cobro de cita de siempre (precio acordado si se negoció). Nunca frena.
+            fun cobrarEvalTrasCompletar(): ((Boolean) -> Unit)? {
+                val pago = (if (conCobroEval) cobroEval.pago() else null) ?: return null
+                val acordado = pago.first.takeIf { kotlin.math.abs(it - (cita.costo ?: 0.0)) > 0.005 }
+                return { ok ->
+                    if (ok) vm.cobrar(cita, pago.second, "cobrar",
+                        pe.saniape.app.data.staff.hoyEnIso(ctx.zonaDeSede(cita.sedeId)), costoAcordado = acordado)
+                }
             }
             // Sin saldo (paquete pagado completo, o esta sesión suelta ya pagada: el
             // "¿Ya pagó?" del servidor dice "pagado") no se pregunta "¿pagó esta sesión?".
@@ -1228,6 +1261,7 @@ fun PantallaAgenda(
                     )
                 } else null,
                 cobro = if (conCobro) cobro else null,
+                cobroEvaluacion = if (conCobroEval) cobroEval else null,
                 estadoPago = vm.estadosPago[cita.id],
                 onConfirmarFisio = { obs, piezas, mejorias, eva ->
                     completar = null
@@ -1256,6 +1290,7 @@ fun PantallaAgenda(
                         ofrecerPlan = !planResuelto,
                         // Cerrada por la ventana de la evaluación: se ofrece el plan (no el control).
                         evaluada = evalua,
+                        alTerminar = cobrarEvalTrasCompletar(),
                         alCompletarSesion = alCompletarConFotos(),
                     )
                 },
@@ -1278,6 +1313,7 @@ fun PantallaAgenda(
                         ofrecerPlan = !planResuelto,
                         // Cerrada por la ventana de la evaluación: se ofrece el plan (no el control).
                         evaluada = evalua,
+                        alTerminar = cobrarEvalTrasCompletar(),
                         alCompletarSesion = alCompletarConFotos(),
                     )
                 },
@@ -1688,6 +1724,7 @@ fun PantallaAgenda(
             diagnosticoPrevio = tratDiag ?: tratPac?.diagnostico,
             citaOrigenId = citaTrat.id,
             terapeutaInicialId = citaTrat.terapeutaId,
+            prefillPlan = tratPrefill,
             onCancelar = { cerrarTratamiento() },
             onArmarPresupuesto = if (ofrecePresupuesto) ({ citaOrigen ->
                 cerrarTratamiento()
@@ -1704,6 +1741,40 @@ fun PantallaAgenda(
             },
         )
     }
+    // 🩺 Plan de tratamiento tras la evaluación (T3, gemelo de la web): todo propuesto;
+    // «Crear plan y agendar» sigue con el plan entero de sus sesiones.
+    planEval?.let { (cita, diag) ->
+        pe.saniape.app.ui.clinica.agenda.modales.HojaPlanTrasEvaluacion(
+            ctx = ctx, cita = cita, diagnostico = diag,
+            onMasOpciones = { servicioId, modalidad ->
+                planEval = null
+                abrirTratamientoDeCita(cita, diag)
+                tratPrefill = servicioId?.let {
+                    pe.saniape.app.data.staff.PrefillPlanPsico(
+                        procedimientoId = it, terapeutaId = cita.terapeutaId, diagnostico = diag,
+                        modalidad = modalidad ?: "Paquete", respetarModalidad = true,
+                    )
+                }
+            },
+            onYaTienePlan = { planEval = null; abrirTratamientoDeCita(cita, diag) },
+            onCerrar = { cambio -> planEval = null; if (cambio) vm.refrescar() },
+            onCreado = { plan, agendar ->
+                planEval = null
+                vm.refrescar()
+                if (agendar) planEnteroAgenda = pe.saniape.app.ui.clinica.pacientes.PlanEnteroInicial(
+                    plan.tratamientoId, plan.nombre, plan.desde, plan.hora, plan.terapeutaId, plan.faltan,
+                )
+            },
+        )
+    }
+    planEnteroAgenda?.let { inicial ->
+        pe.saniape.app.ui.clinica.pacientes.ModalPlanEntero(
+            inicial = inicial,
+            onCancelar = { planEnteroAgenda = null },
+            onListo = { planEnteroAgenda = null; vm.refrescar() },
+        )
+    }
+
     // Tratamiento creado sin su primera cita: "📅 Agendar la primera sesión" → el
     // formulario nativo de crear cita, prellenado.
     ofertaPrimera?.let { of ->
@@ -1723,7 +1794,7 @@ fun PantallaAgenda(
         // Y su tiempo no corre detrás de "¿Agendar la siguiente?" ni del cobro fallido.
         val recetaEnPantalla = pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.oferta != null &&
             ctx.modulosClinicos.recetas && ctx.puede("sesiones")
-        val visible = fichaPaciente == null && tratCita == null && vm.ofrecerTratamiento == null &&
+        val visible = fichaPaciente == null && tratCita == null && vm.ofrecerTratamiento == null && planEval == null && planEnteroAgenda == null &&
             !recetaEnPantalla && vm.ofrecerSiguiente == null && vm.cobroFallido == null
         LaunchedEffect(cm, visible) {
             if (!visible) return@LaunchedEffect
@@ -1747,7 +1818,7 @@ fun PantallaAgenda(
     vm.ofrecerPie?.let { cp ->
         val recetaEnPantalla = pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.oferta != null &&
             ctx.modulosClinicos.recetas && ctx.puede("sesiones")
-        val visible = fichaPaciente == null && tratCita == null && vm.ofrecerTratamiento == null &&
+        val visible = fichaPaciente == null && tratCita == null && vm.ofrecerTratamiento == null && planEval == null && planEnteroAgenda == null &&
             !recetaEnPantalla && vm.ofrecerSiguiente == null && vm.cobroFallido == null && vm.ofrecerMedidas == null
         LaunchedEffect(cp, visible) {
             if (!visible) return@LaunchedEffect
@@ -1770,7 +1841,7 @@ fun PantallaAgenda(
     vm.ofrecerIndicaciones?.let { oi ->
         val recetaEnPantalla = pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.oferta != null &&
             ctx.modulosClinicos.recetas && ctx.puede("sesiones")
-        val visible = fichaPaciente == null && tratCita == null && vm.ofrecerTratamiento == null &&
+        val visible = fichaPaciente == null && tratCita == null && vm.ofrecerTratamiento == null && planEval == null && planEnteroAgenda == null &&
             !recetaEnPantalla && vm.ofrecerSiguiente == null && vm.cobroFallido == null &&
             vm.ofrecerMedidas == null && vm.ofrecerPie == null && ofertaPrimera == null && completar == null
         LaunchedEffect(oi, visible) {
@@ -1797,7 +1868,7 @@ fun PantallaAgenda(
     vm.ofrecerControlOrto?.let { oo ->
         val recetaEnPantalla = pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.oferta != null &&
             ctx.modulosClinicos.recetas && ctx.puede("sesiones")
-        val visible = fichaPaciente == null && tratCita == null && vm.ofrecerTratamiento == null &&
+        val visible = fichaPaciente == null && tratCita == null && vm.ofrecerTratamiento == null && planEval == null && planEnteroAgenda == null &&
             !recetaEnPantalla && vm.ofrecerSiguiente == null && vm.cobroFallido == null &&
             vm.ofrecerMedidas == null && vm.ofrecerPie == null && ofertaPrimera == null && completar == null
         LaunchedEffect(oo, visible) {

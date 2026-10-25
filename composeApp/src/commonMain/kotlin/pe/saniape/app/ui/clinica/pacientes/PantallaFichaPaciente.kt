@@ -1782,7 +1782,7 @@ private fun PantallaFichaPacienteContenido(
             onCancelar = { crearSesionEn = null },
             onPlanEntero = { desde, hora, terId, faltan ->
                 crearSesionEn = null
-                planEnteroEn = PlanEnteroInicial(t, desde, hora, terId, faltan)
+                planEnteroEn = PlanEnteroInicial(t.id, t.procedimiento, desde, hora, terId, faltan)
             },
             onGuardar = { fecha, hora, dur, terapeutaId, estado, costo, notas, pago ->
                 crearSesionEn = null
@@ -2277,9 +2277,14 @@ private data class OfertaProximaFicha(
     val propuesta: pe.saniape.app.data.staff.PropuestaProxima,
 )
 
-/** «Agendar las N restantes»: desde dónde arranca el patrón (lo que tenía el formulario de una sesión). */
-private data class PlanEnteroInicial(
-    val t: TratamientoPaciente,
+/**
+ * «Agendar las N restantes»: desde dónde arranca el patrón (lo que tenía el
+ * formulario de una sesión). También lo abre la agenda tras crear el plan de
+ * una evaluación (HojaPlanTrasEvaluacion, T3).
+ */
+internal data class PlanEnteroInicial(
+    val tratamientoId: String,
+    val nombre: String?,
     val desde: String,
     val hora: String,
     val terapeutaId: String?,
@@ -4027,7 +4032,7 @@ private class RelojCargaFicha {
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun ModalPlanEntero(
+internal fun ModalPlanEntero(
     inicial: PlanEnteroInicial,
     onCancelar: () -> Unit,
     onListo: () -> Unit,
@@ -4087,7 +4092,7 @@ private fun ModalPlanEntero(
     val marcadas = filas?.count { it.incluida } ?: 0
     DialogoForm(
         titulo = "Agendar las ${inicial.faltan} restantes",
-        subtitulo = inicial.t.procedimiento,
+        subtitulo = inicial.nombre,
         textoAccion = when {
             trabajando -> if (filas == null) "Calculando…" else "Agendando…"
             filas == null -> "Ver fechas"
@@ -4102,7 +4107,7 @@ private fun ModalPlanEntero(
             scope.launch {
                 if (actuales == null) {
                     when (val r = pe.saniape.app.data.staff.ProximaCitaRepo.previsualizarPlan(
-                        inicial.t.id, inicial.terapeutaId, hora, desde, dias.toList().sorted(),
+                        inicial.tratamientoId, inicial.terapeutaId, hora, desde, dias.toList().sorted(),
                         (cantidad.toIntOrNull() ?: inicial.faltan).coerceIn(1, 40),
                     )) {
                         is pe.saniape.app.data.staff.ProximaCitaRepo.Previa.Ok -> filas = r.filas
@@ -4112,7 +4117,7 @@ private fun ModalPlanEntero(
                 } else {
                     val elegidas = actuales.filter { it.incluida }
                     val res = pe.saniape.app.data.staff.ProximaCitaRepo.agendarPlan(
-                        inicial.t.id, inicial.terapeutaId, elegidas, claveEnvio.para(inicial.t.id, elegidas),
+                        inicial.tratamientoId, inicial.terapeutaId, elegidas, claveEnvio.para(inicial.tratamientoId, elegidas),
                     )
                     trabajando = false
                     if (res.creadas > 0) pe.saniape.app.ui.Toaster.exito(
