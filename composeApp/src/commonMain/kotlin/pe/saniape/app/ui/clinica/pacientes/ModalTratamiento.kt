@@ -534,7 +534,9 @@ fun ModalCrearTratamiento(
     val esServUnico = tipoTrat == pe.saniape.app.data.staff.TipoTratamientoNuevo.SERVICIO_UNICO
     val esConsulta = tipoTrat == pe.saniape.app.data.staff.TipoTratamientoNuevo.CONSULTA
     val usaSesiones = tipoTrat == pe.saniape.app.data.staff.TipoTratamientoNuevo.SESIONES
-    // Unidades: exige cantidad y precio por unidad (> 0) para poder crear.
+    // Unidades: exige el precio por unidad (> 0); la CANTIDAD es opcional (E3): se
+    // completa luego en el mapa o al editar. Sin ella el tratamiento nace sin monto
+    // (ver UnidadesAlCrear.kt: nada de "Pagado" ni cobros de más).
     // Paquete SIN precio: nacía en S/ 0 y la ficha decía "nada que cobrar" (demo
     // dental, 28/09/2026: el servicio no tenía precio de paquete y nadie lo
     // escribió). Gratis se puede, escribiendo 0. Gemelo de TratamientoForm (web).
@@ -550,7 +552,7 @@ fun ModalCrearTratamiento(
     val avisoMoneda = "Esta sede cobra en ${pe.saniape.app.data.staff.normalizarMoneda(monedaSede)} y el servicio " +
         "no tiene precio propio aquí: escribe el precio para poder crearlo."
     val puedeCrear = proc != null && !faltaPrecioPaquete && !faltaPrecioMoneda && (!esUnidades ||
-        ((cantidadUnidades.toIntOrNull() ?: 0) > 0 && (precioUnitario.toDoubleOrNull() ?: 0.0) > 0.0))
+        pe.saniape.app.data.staff.puedeCrearPorUnidades(precioUnitario))
 
     // La cita sigue al profesional, el servicio y la modalidad elegidos aquí
     // (quién la atiende, si es por videollamada, cómo se llama su cita).
@@ -593,8 +595,9 @@ fun ModalCrearTratamiento(
                                 it.isNotEmpty() && pe.saniape.app.data.staff.claveChip(it) !=
                                     pe.saniape.app.data.staff.claveChip(diagnosticoPrevio.orEmpty())
                             }
-                            // Unidades: si no se negoció un acordado, el total = cantidad × precio.
-                            val totalUnidades = (cantidadUnidades.toIntOrNull() ?: 0) * (precioUnitario.toDoubleOrNull() ?: 0.0)
+                            // Unidades: si no se negoció un acordado, el total = cantidad × precio;
+                            // sin cantidad (opcional), ni cantidad ni acordado: nace sin monto.
+                            val cantidadUAGuardar = pe.saniape.app.data.staff.cantidadUnidadesAGuardar(cantidadUnidades)
                             val tipoFinal = tipoTrat ?: pe.saniape.app.data.staff.tipoTratamientoDe(p, precioSede)
                             // Nunca una modalidad que contradiga el modo de cobro del servicio.
                             val modalidadFinal = pe.saniape.app.data.staff.modalidadAGuardar(tipoFinal, modalidad)
@@ -611,9 +614,10 @@ fun ModalCrearTratamiento(
                                         precioPorSesion.toDoubleOrNull() ?: precioBaseONull else null,
                                     // Vacío = precio de lista (igual que la web): unidades → cantidad ×
                                     // precio; servicio único → el precio base del servicio.
-                                    precioAcordado = precioAcordado.toDoubleOrNull()
-                                        ?: if (esUnidades && totalUnidades > 0) totalUnidades
-                                        else if (esServUnico) precioBaseONull else null,
+                                    precioAcordado = if (esUnidades) pe.saniape.app.data.staff.acordadoUnidadesAlCrear(
+                                        precioAcordado, cantidadUAGuardar, precioUnitario.toDoubleOrNull(),
+                                    ) else precioAcordado.toDoubleOrNull()
+                                        ?: if (esServUnico) precioBaseONull else null,
                                     diagnostico = diagnostico.trim().ifBlank { null },
                                     // La cita de la agenda cuenta aunque no esté en la lista
                                     // (una Consulta que evalúa, en flujos sin Evaluación).
@@ -624,7 +628,7 @@ fun ModalCrearTratamiento(
                                     medicacion = medicacion.trim().ifBlank { null },
                                     // Con protocolo de controles, el próximo lo programa el protocolo.
                                     proximoControl = proximoControl.takeIf { p.controlesDias.isEmpty() },
-                                    cantidadUnidades = if (esUnidades) cantidadUnidades.toIntOrNull() else null,
+                                    cantidadUnidades = if (esUnidades) cantidadUAGuardar else null,
                                     precioUnitario = if (esUnidades) precioUnitario.toDoubleOrNull() else null,
                                     tecnicasSugeridas = plantilla?.tecnicasSesion?.takeIf { it.isNotBlank() },
                                     plantillaId = plantilla?.id,
@@ -910,11 +914,18 @@ fun ModalCrearTratamiento(
                     val etiquetaU = proc?.unidadLabel ?: "unidades"
                     Tarjeta(titulo = "Cobro por $etiquetaU", icono = "🔢") {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Column(Modifier.weight(1f)) { Etq("Cantidad de $etiquetaU"); CampoNum(cantidadUnidades) { cantidadUnidades = it } }
+                            Column(Modifier.weight(1f)) { Etq("Cantidad de $etiquetaU — opcional"); CampoNum(cantidadUnidades) { cantidadUnidades = it } }
                             Column(Modifier.weight(1f)) { Etq("Precio por unidad (${simboloMoneda(moneda)})"); CampoNum(precioUnitario) { precioUnitario = it } }
                         }
                         // Total en vivo (cantidad × precio unitario) — es el acordado por defecto.
-                        val total = (cantidadUnidades.toIntOrNull() ?: 0) * (precioUnitario.toDoubleOrNull() ?: 0.0)
+                        val total = (pe.saniape.app.data.staff.cantidadUnidadesAGuardar(cantidadUnidades) ?: 0) *
+                            (precioUnitario.toDoubleOrNull() ?: 0.0)
+                        // Sin cantidad no hay total: se dice qué pasa con el cobro (es dinero).
+                        if (pe.saniape.app.data.staff.cantidadUnidadesAGuardar(cantidadUnidades) == null && precioAcordado.toDoubleOrNull() == null) {
+                            Text("¿Aún no sabes cuántas? Déjala vacía y complétala después (mapa de aplicación o editar el tratamiento). " +
+                                "Hasta entonces no hay monto que cobrar.",
+                                color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                        }
                         if (total > 0) {
                             Spacer(Modifier.height(8.dp))
                             Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
