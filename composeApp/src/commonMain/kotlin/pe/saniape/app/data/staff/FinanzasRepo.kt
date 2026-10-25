@@ -61,6 +61,11 @@ data class DiaCierre(
     val cierrePosterior: String? = null,
     /** ¿La base ya tiene los ajustes de caja? (sin la migración no se ofrecen). */
     val ajustesDisponibles: Boolean = false,
+    /**
+     * 'completo' (finanzas) o 'mi-caja' (solo pagos: hoy y sin el listado). null =
+     * servidor anterior (siempre completo).
+     */
+    val alcance: String? = null,
 )
 
 /** Totales de un día en UNA moneda (consolidado multipaís). */
@@ -393,6 +398,7 @@ object FinanzasRepo {
             esperadoAlActualizar = o.dbl("esperadoAlActualizar"),
             cierrePosterior = o.str("cierrePosterior")?.takeIf { it.isNotBlank() },
             ajustesDisponibles = o.bool("ajustesDisponibles") ?: false,
+            alcance = o.str("alcance")?.takeIf { it.isNotBlank() },
             totalesPorMoneda = (o["totalesPorMoneda"] as? JsonArray).orEmpty().mapNotNull { e ->
                 val x = e as? JsonObject ?: return@mapNotNull null
                 TotalMoneda(

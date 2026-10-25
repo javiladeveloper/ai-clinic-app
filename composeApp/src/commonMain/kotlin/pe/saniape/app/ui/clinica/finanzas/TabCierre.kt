@@ -68,6 +68,13 @@ import pe.saniape.app.ui.theme.Sania
 internal fun TabCierre(
     /** "± Registrar retiro o ingreso de efectivo": permiso finanzas (el servidor lo vuelve a validar). */
     puedeAjustar: Boolean = false,
+    /** «🧮 Cerrar mi caja» (agenda / Caja de hoy): solo el día de hoy, sin elegir fecha. */
+    soloHoy: Boolean = false,
+    /**
+     * Quien cobra sin ver las finanzas: cerrar, no reportes (sin el listado de
+     * movimientos; el servidor con alcance 'mi-caja' ya no lo manda).
+     */
+    sinDetalle: Boolean = false,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -120,7 +127,7 @@ internal fun TabCierre(
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Sania.dim.lg), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) {
-                CajaSelectorForm("📅 " + (if (fecha == hoy) "Hoy · " else "") + fechaCortaFin(fecha) + " (" + fecha + ")") { eligiendo = true }
+                CajaSelectorForm("📅 " + (if (fecha == hoy) "Hoy · " else "") + fechaCortaFin(fecha) + " (" + fecha + ")") { if (!soloHoy) eligiendo = true }
             }
             val d = dia
             if (d != null) {
@@ -346,7 +353,8 @@ internal fun TabCierre(
                     }
                 }
                 // Movimientos del día: si el arqueo no cuadra, se revisan aquí mismo.
-                TarjetaFin {
+                // «Cerrar mi caja» sin finanzas: no (el servidor tampoco manda el listado).
+                if (!sinDetalle && d.alcance != "mi-caja") TarjetaFin {
                     Row(Modifier.fillMaxWidth().clickable { verMovs = !verMovs }, verticalAlignment = Alignment.CenterVertically) {
                         Text(if (verMovs) "▾ " else "▸ ", color = c.textoSuave, fontSize = 12.sp)
                         RotuloFin("Movimientos del día (${d.movimientos.size})")

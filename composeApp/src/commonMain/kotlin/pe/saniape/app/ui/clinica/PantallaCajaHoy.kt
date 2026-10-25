@@ -56,6 +56,9 @@ fun PantallaCajaHoy(ctx: ContextoStaff) {
     var fallo by remember { mutableStateOf(false) }
     var registrando by remember { mutableStateOf(false) }
     val puedePagos = ctx.puede("pagos")
+    // 🧮 Cerrar mi caja (T2 2026-10-24): quien cobra cierra el día sin pasar por Finanzas.
+    var cerrandoCaja by remember { mutableStateOf(false) }
+    val verCerrar = pe.saniape.app.data.staff.ofreceCerrarMiCaja(puedePagos, ctx.puede("finanzas"), ctx.can("finanzas"))
 
     suspend fun cargar() {
         runCatching { CajaRepo.movimientosDeHoy() }
@@ -65,6 +68,15 @@ fun PantallaCajaHoy(ctx: ContextoStaff) {
     // Multisede: la caja es de la sede activa; al cambiarla se recarga UNA vez.
     val sedeActiva by pe.saniape.app.data.staff.SedeActiva.estado.collectAsState()
     LaunchedEffect(ctx.clinicaId, sedeActiva.filtro) { movs = null; cargar() }
+
+    // 🧮 La pestaña de cierre de siempre, solo HOY (al volver, la caja se relee).
+    if (cerrandoCaja) {
+        pe.saniape.app.ui.clinica.finanzas.PantallaCerrarMiCaja(ctx) {
+            cerrandoCaja = false
+            scope.launch { cargar() }
+        }
+        return
+    }
 
     if (registrando) {
         ModalRegistrarMovimiento(
@@ -95,6 +107,14 @@ fun PantallaCajaHoy(ctx: ContextoStaff) {
                 }
                 pe.saniape.app.ui.tutoriales.BotonAyuda("Caja")
                 Spacer(Modifier.width(8.dp))
+                if (verCerrar) {
+                    Box(
+                        Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).border(1.dp, c.sobreNavy, RoundedCornerShape(Sania.shape.pill.dp))
+                            .clickable { cerrandoCaja = true }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    ) { Text("🧮 Cerrar", color = c.sobreNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                    Spacer(Modifier.width(8.dp))
+                }
                 Box(
                     Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.navy)
                         .clickable { registrando = true }
