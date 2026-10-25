@@ -1,0 +1,6 @@
+Agenda más clara en clínicas con triaje y tratamientos por unidades sin pedir la cantidad antes de tiempo.
+---
+• Clínicas con triaje: «🔔 Llegó» es el botón principal de las citas de hoy.
+• Por unidades: la cantidad es opcional al crear el tratamiento; se completa en el mapa.
+• Nuevo ajuste (apagado): abonar al paquete desde la agenda en sesiones pendientes.
+---
