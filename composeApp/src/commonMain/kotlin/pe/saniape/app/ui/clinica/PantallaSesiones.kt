@@ -49,7 +49,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import kotlinx.datetime.toLocalDateTime
+import androidx.compose.foundation.layout.FlowRow
+import pe.saniape.app.data.staff.AccionSesion
+import pe.saniape.app.data.staff.ACCIONES_ESTADO_SESION
 import pe.saniape.app.data.staff.ContextoStaff
+import pe.saniape.app.data.staff.ROJAS_SESION
+import pe.saniape.app.data.staff.estadoDeAccionSesion
+import pe.saniape.app.data.staff.repartirAccionesSesion
+import pe.saniape.app.data.staff.textoAccionSesion
+import pe.saniape.app.ui.componentes.BotonTarjeta
+import pe.saniape.app.ui.componentes.MenuMas
 import pe.saniape.app.data.staff.PacientesRepo
 import pe.saniape.app.data.staff.RefNombre
 import pe.saniape.app.data.staff.SesionGlobal
@@ -631,6 +640,7 @@ private fun FiltroProfesional(
 }
 
 // ── Tarjeta de sesión ──
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun TarjetaSesion(
     s: SesionGlobal,
@@ -654,7 +664,6 @@ private fun TarjetaSesion(
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
-    var menu by remember { mutableStateOf(false) }
     val (badgeFg, badgeBg) = colorEstado(s.estado, c)
 
     Column(
@@ -729,60 +738,83 @@ private fun TarjetaSesion(
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
 
-        // Acciones — solo si tiene permiso de sesiones
+        // Acciones — solo si tiene permiso de sesiones. La misma regla que la fila de la
+        // ficha (repartirAccionesSesion): la del momento (+ a lo sumo una) y el resto en
+        // «⋯ Más». «↩ Revertir» ya no queda a la vista en cada completada: va al ⋯, en
+        // rojo al final (con «✕ Canceló»). Cada acción conserva su handler de siempre.
         if (ctx.puede("sesiones")) {
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            val acciones = buildList {
                 if (s.pendiente) {
-                    BotonAccion("✓ Completar", c.navy, c.sobreNavy, onClick = onCompletar)
-                    Box {
-                        BotonAccion("⋯", c.superficie, c.texto, borde = true) { menu = true }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                            DropdownMenuItem(
-                                text = { Text("👤 Cambiar profesional", color = c.navy, fontWeight = FontWeight.Bold) },
-                                onClick = { menu = false; onReasignar() },
-                            )
-                            DropdownMenuItem(text = { Text("📅 Reprogramar") }, onClick = { menu = false; onEstado("Reprogramada") })
-                            DropdownMenuItem(text = { Text("🚫 No asistió") }, onClick = { menu = false; onEstado("No asistió") })
-                            DropdownMenuItem(text = { Text("✕ Canceló") }, onClick = { menu = false; onEstado("Cancelada") })
-                            DropdownMenuItem(text = { Text("⚪ Otro") }, onClick = { menu = false; onEstado("Otro") })
-                        }
-                    }
+                    add(AccionSesion.Completar)
+                    add(AccionSesion.Reasignar)
+                    addAll(ACCIONES_ESTADO_SESION)
                 }
                 if (s.estado == "Completada") {
-                    BotonAccion("↩ Revertir", c.superficie, c.texto, borde = true, onClick = onRevertir)
+                    add(AccionSesion.Revertir)
                     // Receta / indicaciones de la sesión atendida: verla si ya tiene, si no darla.
                     when {
-                        recetaVinculada != null -> BotonAccion("🖨 ${recetaVinculada.nombreHoja}", c.purpleBg, c.purple) { onVerReceta(recetaVinculada) }
-                        textoReceta != null -> BotonAccion(textoReceta, c.purpleBg, c.purple, onClick = onReceta)
+                        recetaVinculada != null -> add(AccionSesion.VerReceta)
+                        textoReceta != null -> add(AccionSesion.Receta)
                     }
                 }
-                if (s.estado == "Cancelada" || s.estado == "No asistió" || s.estado == "Otro") {
-                    BotonAccion("↩ Reactivar", c.superficie, c.texto, borde = true, onClick = onReactivar)
+                if (s.estado == "Cancelada" || s.estado == "No asistió" || s.estado == "Otro") add(AccionSesion.Reactivar)
+                // ¿Más sesiones o alta? (la sesión que cerró el plan).
+                if (terminado?.ampliar == true) add(AccionSesion.Ampliar)
+                if (terminado?.alta == true) add(AccionSesion.Alta)
+            }
+            val plan = repartirAccionesSesion(s.estado, acciones)
+            fun texto(a: AccionSesion): String = when (a) {
+                AccionSesion.VerReceta -> recetaVinculada?.let { "🖨 ${it.nombreHoja}" } ?: textoAccionSesion(a)
+                AccionSesion.Receta -> textoReceta ?: textoAccionSesion(a)
+                else -> textoAccionSesion(a)
+            }
+            fun ejecutar(a: AccionSesion) {
+                when (a) {
+                    AccionSesion.Completar -> onCompletar()
+                    AccionSesion.Reasignar -> onReasignar()
+                    AccionSesion.Revertir -> onRevertir()
+                    AccionSesion.VerReceta -> recetaVinculada?.let { onVerReceta(it) }
+                    AccionSesion.Receta -> onReceta()
+                    AccionSesion.Reactivar -> onReactivar()
+                    AccionSesion.Ampliar -> onAmpliar()
+                    AccionSesion.Alta -> onDarAlta()
+                    // Reprogramar / No asistió / Canceló / Otro: el modal de siempre.
+                    else -> estadoDeAccionSesion(a)?.let { onEstado(it) }
                 }
             }
-            // ¿Más sesiones o alta? En su propia fila (con Revertir y la receta no entran).
-            if (terminado != null) {
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (terminado.ampliar) BotonAccion("＋ Ampliar", c.infoBg, c.info, onClick = onAmpliar)
-                    if (terminado.alta) BotonAccion("✓ Dar de alta", c.okBg, c.ok, onClick = onDarAlta)
+            if (plan.visibles.isNotEmpty() || plan.menu.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    plan.primaria?.let { a ->
+                        BotonTarjeta(texto(a), colorAccionSesionGlobal(a), lleno = true) { ejecutar(a) }
+                    }
+                    plan.secundarias.forEach { a ->
+                        BotonTarjeta(texto(a), colorAccionSesionGlobal(a)) { ejecutar(a) }
+                    }
+                    MenuMas(
+                        grupos = plan.menu,
+                        texto = { texto(it) },
+                        onAccion = { ejecutar(it) },
+                        rojo = { it in ROJAS_SESION },
+                        descripcion = "Más acciones de la sesión ${s.numero}",
+                    )
                 }
             }
         }
     }
 }
 
+/** Color de cada acción de la sesión a la vista (el mismo criterio que la ficha). */
 @Composable
-private fun BotonAccion(
-    texto: String, fondo: Color, contenido: Color, borde: Boolean = false, onClick: () -> Unit,
-) {
+private fun colorAccionSesionGlobal(a: AccionSesion): Color {
     val c = Sania.colors
-    Box(
-        Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).background(fondo)
-            .then(if (borde) Modifier.border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)) else Modifier)
-            .tocable { onClick() }.padding(horizontal = 12.dp, vertical = 8.dp),
-    ) { Text(texto, color = contenido, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+    return when (a) {
+        AccionSesion.Completar -> c.navy
+        AccionSesion.VerReceta, AccionSesion.Receta -> c.purple
+        AccionSesion.Alta -> c.ok
+        AccionSesion.Ampliar -> c.info
+        else -> c.textoSuave
+    }
 }
 
 private fun colorEstado(estado: String, c: pe.saniape.app.ui.theme.SaniaColors): Pair<Color, Color> = when (estado) {
