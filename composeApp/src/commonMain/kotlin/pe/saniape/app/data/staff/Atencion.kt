@@ -394,6 +394,8 @@ data class DatosConsultaApp(
     val modulos: ModulosConsulta = ModulosConsulta(),
     /** Triaje de otra cita de hoy (opcional; ausente en servidores viejos). */
     val triajeDeHoy: TriajeDeHoyApp? = null,
+    /** «🗒 La última vez» (opcional, 2026-10-24; ver UltimaAtencion.kt). null = sin anterior o servidor viejo. */
+    val laUltimaVez: LaUltimaVezApp? = null,
 )
 
 /**
