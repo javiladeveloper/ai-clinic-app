@@ -282,6 +282,8 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     fun trasAtencionDirecta(citaId: String, conEvolucion: Boolean) {
         evolucionPorCita = evolucionPorCita + (citaId to conEvolucion)
         refrescar()
+        // Psicología: «misma hora, la semana que viene» en un toque.
+        citas.firstOrNull { it.id == citaId }?.let { ofrecerProximaDe(it.copy(estado = "Completada")) }
     }
 
     /** Ya se resolvió: completada o no asistió (baja al final del día). */
@@ -1133,13 +1135,48 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     fun cerrarOfertaTratamiento() { ofrecerTratamiento = null }
 
     /**
-     * Tras completar una SESIÓN: "📅 Agendar siguiente" con la fecha sugerida
-     * (intervalo del servicio o +7 días), la MISMA hora y el MISMO profesional de
-     * la sesión atendida. Solo si quedan sesiones y no hay ya una futura.
+     * Tras cerrar CUALQUIER atención (sesión de paquete o suelta, control,
+     * atención directa): «📅 Agendar próxima» de UN toque con la propuesta de la
+     * regla única de la web (GET /api/staff/cita/proxima · lib/proxima-cita):
+     * intervalo del paciente → servicio → tipo; misma hora y profesional si
+     * están libres. El servidor no la ofrece si ya tiene la siguiente, si el
+     * plan terminó o sin permiso. Antes: solo sesiones de paquete y +7 / +intervalo.
      */
-    data class OfertaSiguiente(val cita: CitaStaff, val oferta: pe.saniape.app.data.staff.OfertaSiguienteSesion)
+    data class OfertaSiguiente(val cita: CitaStaff, val propuesta: pe.saniape.app.data.staff.PropuestaProxima)
     var ofrecerSiguiente by mutableStateOf<OfertaSiguiente?>(null); private set
     fun cerrarOfertaSiguiente() { ofrecerSiguiente = null }
+    var agendandoProxima by mutableStateOf(false); private set
+
+    /** Pide la propuesta para la atención recién cerrada (sin bloquear nada: es solo un ofrecimiento). */
+    fun ofrecerProximaDe(cita: CitaStaff): kotlinx.coroutines.Job = viewModelScope.launch {
+        pe.saniape.app.data.staff.ProximaCitaRepo.proponer(citaId = cita.id)
+            ?.takeIf { it.puedeAgendar }?.propuesta
+            ?.let { ofrecerSiguiente = OfertaSiguiente(cita, it) }
+    }
+
+    /** El toque del chip: agenda la propuesta tal cual (/api/staff/cita/crear). */
+    fun agendarProxima(os: OfertaSiguiente, alFallar: (String) -> Unit) {
+        if (agendandoProxima) return
+        agendandoProxima = true
+        viewModelScope.launch {
+            val (ok, aviso) = pe.saniape.app.data.staff.ProximaCitaRepo.agendar(os.propuesta)
+            agendandoProxima = false
+            if (ok) {
+                ofrecerSiguiente = null
+                pe.saniape.app.ui.Toaster.exito("Próxima cita agendada: ${os.propuesta.etiqueta}")
+                aviso?.let { pe.saniape.app.ui.Toaster.error(it) }
+                recargarCitas()
+                recargarBanners()
+            } else alFallar(aviso ?: "No se pudo agendar")
+        }
+    }
+
+    /**
+     * «🔁 Repetir»: la fecha y la hora de la regla única (antes +7 días fijos).
+     * null = sin respuesta: quien llama usa su respaldo de siempre.
+     */
+    suspend fun propuestaParaRepetir(cita: CitaStaff): pe.saniape.app.data.staff.PropuestaProxima? =
+        pe.saniape.app.data.staff.ProximaCitaRepo.proponer(citaId = cita.id, modo = "repetir")?.propuesta
 
     /**
      * Nutrición: tras completar un control, "⚖️ Registrar medidas" (gemelo de
@@ -1511,15 +1548,12 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                             cobroFallido = CobroFallidoAgenda(cita, tratSesion, numero, pago.first, pago.second, motivo)
                         }
                     }
-                    // "📅 Agendar siguiente": lee el tratamiento YA sincronizado. Sin
-                    // señal (encolada) no se ofrece: no se sabe si ya tiene la siguiente.
-                    if (ofrecerSiguienteSesion && !completadaEncolada && ctx.puede("sesiones") && cita.pacienteId != null) {
-                        val atendida = cita.copy(terapeutaId = terapeutaId ?: cita.terapeutaId)
-                        jobSiguiente = viewModelScope.launch {
-                            pe.saniape.app.data.staff.SiguienteSesionRepo.evaluar(tratSesion, hoy, excluirCitaId = cita.id)
-                                ?.let { ofrecerSiguiente = OfertaSiguiente(atendida, it) }
-                        }
-                    }
+                }
+                // «📅 Agendar próxima» (cualquier atención): lo decide el servidor con la
+                // cita YA cerrada. Sin señal (encolada) no se ofrece: no se sabe si ya
+                // tiene la siguiente.
+                if (accion == AccionCita.Completar && ofrecerSiguienteSesion && !completadaEncolada && cita.pacienteId != null) {
+                    jobSiguiente = ofrecerProximaDe(cita.copy(terapeutaId = terapeutaId ?: cita.terapeutaId, estado = "Completada"))
                 }
                 // 📝 "Dejar indicaciones": la regla menos ruidosa (Indicaciones.kt). Otra
                 // entrega en este cierre la calla: la receta, los ejercicios de apoyo, las

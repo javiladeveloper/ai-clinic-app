@@ -895,7 +895,12 @@ fun PantallaAgenda(
                                         AccionTarjeta.Revertir -> confirmar = cita to AccionCita.Revertir
                                         AccionTarjeta.Editar -> editar = cita
                                         AccionTarjeta.PasarEvaluacion -> pasarEval = cita
-                                        AccionTarjeta.Repetir -> prefillEval = repetirDesde(cita)
+                                        // La fecha y la hora de la regla única (sin red: +7 de siempre).
+                                        AccionTarjeta.Repetir -> scope.launch {
+                                            prefillEval = vm.propuestaParaRepetir(cita)?.let { pr ->
+                                                repetirDesde(cita).copy(fecha = pr.fecha, hora = pr.hora, terapeutaId = pr.terapeutaId ?: cita.terapeutaId)
+                                            } ?: repetirDesde(cita)
+                                        }
                                         AccionTarjeta.Odontograma -> odontogramaCita = cita
                                         AccionTarjeta.CrearTratamiento -> abrirTratamientoDeCita(cita, null)
                                         AccionTarjeta.Llego -> vm.marcarLlegada(cita)
@@ -1386,37 +1391,28 @@ fun PantallaAgenda(
             onCerrar = { vm.cerrarCobroFallido() },
         )
     }
-    // "📅 Agendar siguiente" tras completar una sesión (después del cobro fallido, si lo hubo).
+    // «📅 Agendar próxima» tras cerrar una atención (después del cobro fallido, si lo
+    // hubo): UN toque con la propuesta de la regla única, u «Otra fecha» prellenada.
     vm.ofrecerSiguiente?.takeIf { vm.cobroFallido == null }?.let { os ->
-        val horaSig = os.cita.hora.take(5).takeIf { it.length == 5 } ?: pe.saniape.app.ui.proximaHoraEnPunto()
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { vm.cerrarOfertaSiguiente() },
-            title = { Text("📅 ¿Agendar la siguiente sesión?", fontWeight = FontWeight.Bold) },
-            text = {
-                Text(
-                    "${os.cita.pacienteNombre ?: "El ${LocalTerminologiaPaciente.current.paciente}"}: quedan ${os.oferta.quedan} sesión(es). Se propone el " +
-                        "${pe.saniape.app.data.staff.fechaLegibleCorta(os.oferta.fecha)} a las ${hora12(horaSig)}" +
-                        (os.cita.terapeutaNombre?.let { " con $it" } ?: "") + "; puedes ajustarlo antes de guardar.",
-                    color = c.textoSuave, fontSize = 13.sp,
-                )
-            },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
-                    vm.cerrarOfertaSiguiente()
-                    prefillEval = PrefillCita(
-                        tipo = "Sesión",
-                        pacienteId = os.cita.pacienteId, pacienteNombre = os.cita.pacienteNombre,
-                        fecha = os.oferta.fecha, hora = horaSig,
-                        terapeutaId = os.cita.terapeutaId ?: os.oferta.terapeutaTratamientoId,
-                        especialidadId = os.cita.especialidadId ?: os.oferta.especialidadId,
-                        tratamientoId = os.oferta.tratamientoId,
-                    )
-                }) { Text("Agendar (+${os.oferta.intervaloDias} días)", color = c.navy, fontWeight = FontWeight.Bold) }
-            },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { vm.cerrarOfertaSiguiente() }) { Text("Ahora no", color = c.textoSuave) }
-            },
-            containerColor = c.superficie,
+        val p = os.propuesta
+        val otraFecha = {
+            vm.cerrarOfertaSiguiente()
+            prefillEval = PrefillCita(
+                tipo = p.cita.tipo,
+                pacienteId = p.cita.pacienteId, pacienteNombre = os.cita.pacienteNombre ?: p.pacienteNombre,
+                fecha = p.fecha, hora = p.hora,
+                terapeutaId = p.terapeutaId,
+                especialidadId = p.cita.especialidadId ?: os.cita.especialidadId,
+                tratamientoId = p.cita.tratamientoId,
+            )
+        }
+        pe.saniape.app.ui.clinica.agenda.modales.DialogoProximaCita(
+            pacienteNombre = os.cita.pacienteNombre ?: p.pacienteNombre,
+            propuesta = p,
+            agendando = vm.agendandoProxima,
+            onAgendar = { vm.agendarProxima(os) { error -> pe.saniape.app.ui.Toaster.error(error) } },
+            onOtraFecha = otraFecha,
+            onCerrar = { vm.cerrarOfertaSiguiente() },
         )
     }
     // El servidor pidió quién atendió (SIN_PROFESIONAL): selector y reintento, sin cola.
