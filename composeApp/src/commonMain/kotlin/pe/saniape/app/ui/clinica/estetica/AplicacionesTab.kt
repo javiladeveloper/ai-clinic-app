@@ -124,7 +124,7 @@ import pe.saniape.app.ui.theme.Sania
 
 /** El editor: un mapa nuevo (opcionalmente partiendo de uno anterior) o el que se edita. */
 private sealed interface EditorAp {
-    data class Nuevo(val inicial: List<Aplicacion>? = null, val desde: String? = null) : EditorAp
+    data class Nuevo(val inicial: List<Aplicacion>? = null, val desde: String? = null, val citaId: String? = null) : EditorAp
     data class Editar(val id: String) : EditorAp
 }
 
@@ -168,6 +168,13 @@ fun AplicacionesTab(
     onDejarIndicaciones: ((servicio: String?, citaId: String?) -> Unit)? = null,
     /** Abre el formulario del tratamiento con la cantidad pre-llenada (el usuario confirma). */
     onUsarUnidades: ((tratamientoId: String, cantidad: Int) -> Unit)? = null,
+    /**
+     * «💉 Mapa de aplicación» del ⋯ de una cita de la agenda (gemelo de
+     * `?tab=aplicaciones&cita=` de la web): abre el mapa de ESA cita (el suyo si ya
+     * lo tiene; si no, uno nuevo vinculado a ella). Vale una vez.
+     */
+    citaInicial: String? = null,
+    onCitaInicialUsada: () -> Unit = {},
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -190,6 +197,17 @@ fun AplicacionesTab(
     var recien by remember { mutableStateOf<String?>(null) }
     var confirmarBorrar by remember { mutableStateOf<AplicacionEstetica?>(null) }
     var borrando by remember { mutableStateOf(false) }
+    // Desde la agenda: con la lista ya cargada, el mapa de esa cita (un mapa por cita).
+    LaunchedEffect(citaInicial, items) {
+        val ci = citaInicial ?: return@LaunchedEffect
+        val ya = items ?: return@LaunchedEffect
+        if (puedeEditar) {
+            val suyo = ya.firstOrNull { it.citaId == ci }
+            recien = null
+            editor = if (suyo != null) EditorAp.Editar(suyo.id) else EditorAp.Nuevo(citaId = ci)
+        }
+        onCitaInicialUsada()
+    }
 
     if (cargando && items == null) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -306,7 +324,7 @@ fun AplicacionesTab(
                 EditorMapa(
                     pacienteId = pacienteId, hoy = hoy, citas = citas, tratamientos = tratamientos,
                     citasConMapa = lista.mapNotNull { it.citaId }.toSet(),
-                    aplicacion = enEdicion, inicial = nuevoM?.inicial, desde = nuevoM?.desde,
+                    aplicacion = enEdicion, inicial = nuevoM?.inicial, desde = nuevoM?.desde, citaInicial = nuevoM?.citaId,
                     anterior = if (nuevoM != null) lista.firstOrNull() else null,
                     profesionales = profesionales, clinicaId = clinicaId,
                     onCerrar = { editor = null },
@@ -516,6 +534,8 @@ private fun EditorMapa(
     onGuardado: (AplicacionEstetica, Boolean) -> Unit,
     /** Guardado, pero sin la fila en la respuesta: el padre cierra y recarga. */
     onGuardadoSinFila: () -> Unit,
+    /** Mapa nuevo abierto desde una cita de la agenda: esa cita ya elegida. */
+    citaInicial: String? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -525,7 +545,8 @@ private fun EditorMapa(
         citas.filter { it.estado != "Cancelada" && (it.id !in citasConMapa || it.id == aplicacion?.citaId) }
             .sortedByDescending { "${it.fecha} ${it.hora.orEmpty()}" }
     }
-    val citaPorDefecto = if (aplicacion != null) aplicacion.citaId.orEmpty() else citasElegibles.firstOrNull { it.fecha == hoy }?.id.orEmpty()
+    val citaPorDefecto = if (aplicacion != null) aplicacion.citaId.orEmpty()
+        else citaInicial ?: citasElegibles.firstOrNull { it.fecha == hoy }?.id.orEmpty()
     var citaSel by remember { mutableStateOf(citaPorDefecto) }
     var tocoCita by remember { mutableStateOf(false) }
     val activos = tratamientos.filter { it.estado == "Activo" }
@@ -534,7 +555,17 @@ private fun EditorMapa(
     // Quién aplicó: el guardado o el de la cita. Vacío = el servidor decide (el de la cita o el del usuario).
     var terSel by remember { mutableStateOf(aplicacion?.terapeutaId.orEmpty()) }
     // Las citas llegan después de abrir: la de hoy se elige sola (si nadie tocó la cita).
+    // Abierto desde una cita de la agenda: su fecha, tratamiento y profesional (una vez, al llegar).
+    var inicialAplicada by remember { mutableStateOf(false) }
     LaunchedEffect(citasElegibles) {
+        if (nuevo && !tocoCita && !inicialAplicada && citaInicial != null && citaSel == citaInicial) {
+            citasElegibles.firstOrNull { it.id == citaInicial }?.let { ci ->
+                inicialAplicada = true
+                fecha = ci.fecha
+                ci.tratamientoId?.let { tratSel = it }
+                ci.terapeutaId?.let { terSel = it }
+            }
+        }
         if (nuevo && !tocoCita && citaSel.isEmpty()) {
             citasElegibles.firstOrNull { it.fecha == hoy }?.let { ci ->
                 citaSel = ci.id; fecha = ci.fecha

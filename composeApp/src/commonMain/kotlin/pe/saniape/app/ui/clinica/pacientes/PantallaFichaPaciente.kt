@@ -125,6 +125,11 @@ fun PantallaFichaPaciente(
      */
     accionTratamientoAlAbrir: pe.saniape.app.data.staff.AperturaAccionTratamiento? = null,
     /**
+     * 💉 «Mapa de aplicación» del ⋯ de una cita (estética): la ficha arranca en la
+     * pestaña 💉 con el mapa de ESA cita abierto (el suyo, o uno nuevo vinculado).
+     */
+    aplicacionesCitaId: String? = null,
+    /**
      * Se llama cuando en la ficha se CAMBIÓ algo (completar, cobrar, editar…). La
      * lista de Pacientes lo usa para releer solo ese paciente al volver, en vez de
      * bajar la lista entera cada vez (DALU, 23/10/2026).
@@ -143,7 +148,7 @@ fun PantallaFichaPaciente(
     androidx.compose.runtime.CompositionLocalProvider(
         pe.saniape.app.ui.LocalMoneda provides pe.saniape.app.data.staff.monedaDeFila(sedePaciente),
     ) {
-        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir, sedePaciente, embarazoAlAbrir, embarazoCitaId, presupuestosAlAbrir || presupuestoNuevo, presupuestoNuevoCitaId, presupuestoNuevo, pieAlAbrir, accionTratamientoAlAbrir, onHuboCambios)
+        PantallaFichaPacienteContenido(ctx, pacienteInicial, onCerrar, ejerciciosAlAbrir, nutricionAlAbrir, indicacionesAlAbrir, ortodonciaAlAbrir, sedePaciente, embarazoAlAbrir, embarazoCitaId, presupuestosAlAbrir || presupuestoNuevo, presupuestoNuevoCitaId, presupuestoNuevo, pieAlAbrir, accionTratamientoAlAbrir, onHuboCambios, aplicacionesCitaId)
     }
 }
 
@@ -164,6 +169,7 @@ private fun PantallaFichaPacienteContenido(
     pieAlAbrir: pe.saniape.app.ui.clinica.podologia.AperturaPie? = null,
     accionTratamientoAlAbrir: pe.saniape.app.data.staff.AperturaAccionTratamiento? = null,
     onHuboCambios: () -> Unit = {},
+    aplicacionesCitaId: String? = null,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val tpl = LocalTerminologiaPaciente.current
@@ -214,6 +220,7 @@ private fun PantallaFichaPacienteContenido(
             else if (ortodonciaAlAbrir != null) "ortodoncia"
             else if (embarazoAlAbrir) "embarazo"
             else if (pieAlAbrir != null) "evaluacion_pie"
+            else if (aplicacionesCitaId != null) "aplicaciones"
             else if (presupuestosAlAbrir && pe.saniape.app.data.staff.puedeVerPresupuestos { ctx.puede(it) }) "presupuestos"
             else nutricionAlAbrir?.tab ?: "atenciones",
         )
@@ -409,7 +416,10 @@ private fun PantallaFichaPacienteContenido(
         ctx.mapaGineco, atenciones = atencionesConCitas, tieneEmbarazos = tieneEmbarazos,
         especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
     )
-    val esPacienteEstetica = pe.saniape.app.data.staff.pacienteEsEstetica(
+    // 💉 Abierta desde el ⋯ de una cita de estética: la pestaña está, como 🤰 Embarazo.
+    // La cita de la agenda vale una vez (se suelta al abrir su mapa).
+    var flujoApli by remember { mutableStateOf(aplicacionesCitaId) }
+    val esPacienteEstetica = aplicacionesCitaId != null || pe.saniape.app.data.staff.pacienteEsEstetica(
         ctx.mapaEstetica, atenciones = atencionesConCitas, tieneAplicaciones = tieneAplicaciones,
         especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
     )
@@ -1624,6 +1634,8 @@ private fun PantallaFichaPacienteContenido(
                                 }?.let { editarTratamiento = it.copy(cantidadUnidades = cantidad) }
                                 Unit
                             }.takeIf { ctx.puede("sesiones") && !inactiva },
+                            citaInicial = flujoApli,
+                            onCitaInicialUsada = { flujoApli = null },
                         )
                     }
                     // 😁 Ortodoncia: consulta SOLO al abrirse. Mismo permiso que el API.
