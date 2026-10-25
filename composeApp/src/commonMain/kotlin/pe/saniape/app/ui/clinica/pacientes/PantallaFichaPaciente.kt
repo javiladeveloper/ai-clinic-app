@@ -194,6 +194,9 @@ private fun PantallaFichaPacienteContenido(
     var completarSesion by remember { mutableStateOf<CompletarSesionReq?>(null) }
     // Tras completar una sesión con paquete no terminado: ofrecer agendar la próxima en 1 tap.
     var ofrecerAgendarProxima by remember { mutableStateOf<OfertaProximaFicha?>(null) }
+    var agendandoProxima by remember { mutableStateOf(false) }
+    // «📅 Agendar las N restantes» (plan entero con patrón de días).
+    var planEnteroEn by remember { mutableStateOf<PlanEnteroInicial?>(null) }
     // La sesión se completó pero el cobro no entró: se ofrece reintentar SOLO el cobro.
     var cobroFallido by remember { mutableStateOf<CobroFallido?>(null) }
     var reintentandoCobro by remember { mutableStateOf(false) }
@@ -1780,6 +1783,10 @@ private fun PantallaFichaPacienteContenido(
             puedePagos = ctx.puede("pagos"),
             pacienteId = paciente.id,
             onCancelar = { crearSesionEn = null },
+            onPlanEntero = { desde, hora, terId, faltan ->
+                crearSesionEn = null
+                planEnteroEn = PlanEnteroInicial(t, desde, hora, terId, faltan)
+            },
             onGuardar = { fecha, hora, dur, terapeutaId, estado, costo, notas, pago ->
                 crearSesionEn = null
                 scope.launch {
@@ -1803,6 +1810,14 @@ private fun PantallaFichaPacienteContenido(
                     recargar()
                 }
             },
+        )
+    }
+
+    planEnteroEn?.let { inicial ->
+        ModalPlanEntero(
+            inicial = inicial,
+            onCancelar = { planEnteroEn = null },
+            onListo = { planEnteroEn = null; recargar() },
         )
     }
 
@@ -2105,59 +2120,54 @@ private fun PantallaFichaPacienteContenido(
                     // intervalo del servicio (o +7 días), a la MISMA hora y con el MISMO
                     // profesional de la sesión recién atendida. No se ofrece si ya tiene
                     // la siguiente agendada (crearía un duplicado) ni si no quedan.
+                    // «📅 Agendar próxima» (2026-10-24): la propuesta de la regla única de
+                    // la web (GET /api/staff/cita/proxima): intervalo del paciente →
+                    // servicio → 7 d, misma hora y profesional si están libres. También en
+                    // sesión suelta. Sin señal (encolada) no se ofrece: no se sabe si ya
+                    // tiene la siguiente (mejor nada que un duplicado).
                     val tr = req.trat
-                    if (ok && tr.usaSesiones && ctx.puede("sesiones")) {
-                        val hoyProx = pe.saniape.app.data.staff.hoyClinicaIso()
-                        val oferta = if (!r.encolada) {
-                            pe.saniape.app.data.staff.SiguienteSesionRepo.evaluar(tr.id, hoyProx, excluirSesionId = ses.id)
-                        } else if ((tr.sesionesCompletadas + 1) < tr.totalSesiones) {
-                            // Sin señal (quedó en la cola): la regla local de siempre.
-                            pe.saniape.app.data.staff.OfertaSiguienteSesion(
-                                tratamientoId = tr.id,
-                                fecha = pe.saniape.app.data.staff.fechaSugeridaSiguienteSesion(hoyProx, null),
-                                intervaloDias = 7,
-                                quedan = tr.totalSesiones - (tr.sesionesCompletadas + 1),
-                                terapeutaTratamientoId = tr.terapeutaId, especialidadId = tr.especialidadId,
-                            )
-                        } else null
-                        if (oferta != null) {
-                            ofrecerAgendarProxima = OfertaProximaFicha(
-                                tr = tr, oferta = oferta,
-                                hora = ses.hora?.take(5)?.takeIf { it.length == 5 } ?: pe.saniape.app.ui.proximaHoraEnPunto(),
-                                terapeutaId = ses.terapeutaId ?: tr.terapeutaId,
-                            )
-                        }
+                    if (ok && !r.encolada && tr.usaSesiones && ctx.puede("sesiones")) {
+                        pe.saniape.app.data.staff.ProximaCitaRepo.proponer(tratamientoId = tr.id)
+                            ?.takeIf { it.puedeAgendar }?.propuesta
+                            ?.let { ofrecerAgendarProxima = OfertaProximaFicha(tr = tr, propuesta = it) }
                     }
                 }
             },
         )
     }
 
-    // Ofrecer agendar la próxima sesión tras completar (1 tap → form pre-llenado a +7 días).
+    // «📅 Agendar próxima» tras completar: UN toque, u «Otra fecha» (el formulario prellenado).
     ofrecerAgendarProxima?.let { op ->
-        val tr = op.tr
-        // Fecha desde el "hoy" de la CLÍNICA (America/Lima): con la zona del
-        // teléfono (o UTC) de noche proponía un día de más.
-        val proximaIso = op.oferta.fecha
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { ofrecerAgendarProxima = null },
-            title = { Text("📅 ¿Agendar la siguiente sesión?", fontWeight = FontWeight.Bold) },
-            text = { Text("Quedan ${op.oferta.quedan} sesión(es). Se propone el ${pe.saniape.app.data.staff.fechaLegibleCorta(proximaIso)} a las ${pe.saniape.app.ui.hora12(op.hora)} con el mismo profesional; puedes ajustarlo antes de guardar.", color = c.textoSuave, fontSize = 13.sp) },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
-                    ofrecerAgendarProxima = null
-                    crearCita = pe.saniape.app.ui.clinica.PrefillCita(
-                        tipo = "Sesión",
-                        pacienteId = paciente.id, pacienteNombre = paciente.nombre,
-                        fecha = proximaIso, hora = op.hora,
-                        terapeutaId = op.terapeutaId,
-                        especialidadId = tr.especialidadId ?: op.oferta.especialidadId,
-                        tratamientoId = tr.id,
-                    )
-                }) { Text("Agendar (+${op.oferta.intervaloDias} días)", color = c.navy, fontWeight = FontWeight.Bold) }
+        val p = op.propuesta
+        pe.saniape.app.ui.clinica.agenda.modales.DialogoProximaCita(
+            pacienteNombre = paciente.nombre, propuesta = p, agendando = agendandoProxima,
+            onAgendar = {
+                if (!agendandoProxima) {
+                    agendandoProxima = true
+                    scope.launch {
+                        val (okP, aviso) = pe.saniape.app.data.staff.ProximaCitaRepo.agendar(p)
+                        agendandoProxima = false
+                        if (okP) {
+                            ofrecerAgendarProxima = null
+                            pe.saniape.app.ui.Toaster.exito("Próxima cita agendada: ${p.etiqueta}")
+                            aviso?.let { pe.saniape.app.ui.Toaster.error(it) }
+                            recargar()
+                        } else pe.saniape.app.ui.Toaster.error(aviso ?: "No se pudo agendar")
+                    }
+                }
             },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { ofrecerAgendarProxima = null }) { Text("Ahora no", color = c.textoSuave) } },
-            containerColor = c.superficie,
+            onOtraFecha = {
+                ofrecerAgendarProxima = null
+                crearCita = pe.saniape.app.ui.clinica.PrefillCita(
+                    tipo = p.cita.tipo,
+                    pacienteId = paciente.id, pacienteNombre = paciente.nombre,
+                    fecha = p.fecha, hora = p.hora,
+                    terapeutaId = p.terapeutaId,
+                    especialidadId = op.tr.especialidadId ?: p.cita.especialidadId,
+                    tratamientoId = op.tr.id,
+                )
+            },
+            onCerrar = { ofrecerAgendarProxima = null },
         )
     }
 
@@ -2202,12 +2212,19 @@ private fun PantallaFichaPacienteContenido(
  */
 private val PESTANAS_SIN_HISTORIA = setOf("atenciones", "presupuestos", "pagos", "resumen")
 
-/** "Agendar siguiente" pendiente de confirmar: la oferta + la hora y el profesional de la sesión atendida. */
+/** «📅 Agendar próxima» pendiente de confirmar: el tratamiento y la propuesta del servidor. */
 private data class OfertaProximaFicha(
     val tr: TratamientoPaciente,
-    val oferta: pe.saniape.app.data.staff.OfertaSiguienteSesion,
+    val propuesta: pe.saniape.app.data.staff.PropuestaProxima,
+)
+
+/** «Agendar las N restantes»: desde dónde arranca el patrón (lo que tenía el formulario de una sesión). */
+private data class PlanEnteroInicial(
+    val t: TratamientoPaciente,
+    val desde: String,
     val hora: String,
     val terapeutaId: String?,
+    val faltan: Int,
 )
 
 /** Un cobro que falló justo después de completar su sesión (para reintentarlo solo). */
@@ -2590,6 +2607,8 @@ private fun ModalCrearSesion(
     puedePagos: Boolean,
     pacienteId: String? = null,
     onCancelar: () -> Unit,
+    /** «📅 Agendar las N restantes»: (desde, hora, profesional, cuántas faltan). */
+    onPlanEntero: ((String, String, String?, Int) -> Unit)? = null,
     // pago = (monto, método) si activó "¿el paciente pagó?" — momento 1 del cobro (web).
     onGuardar: (fecha: String, hora: String, duracion: Int, terapeutaId: String?, estado: String, costo: Double?, notas: String?, pago: Pair<Double, String>?) -> Unit,
 ) {
@@ -2609,6 +2628,20 @@ private fun ModalCrearSesion(
     var terapeutaId by remember { mutableStateOf(miTerapeutaId ?: t.terapeutaId) }
     var mostrarFecha by remember { mutableStateOf(false) }
     var mostrarHora by remember { mutableStateOf(false) }
+    // La fecha y la hora de la regla única (la misma de la web): antes abría en
+    // HOY con la próxima hora en punto. `tocado` = quien agenda ya las cambió.
+    var tocado by remember { mutableStateOf(false) }
+    var sugerencia by remember { mutableStateOf<String?>(null) }
+    var faltanPlan by remember { mutableStateOf(0) }
+    LaunchedEffect(t.id) {
+        val p = pe.saniape.app.data.staff.ProximaCitaRepo.proponer(tratamientoId = t.id, modo = "agendar")?.propuesta
+            ?: return@LaunchedEffect
+        faltanPlan = p.faltanPlan ?: 0
+        if (tocado) return@LaunchedEffect
+        fecha = p.fecha; hora = p.hora
+        if (miTerapeutaId == null && p.terapeutaId != null) terapeutaId = p.terapeutaId
+        sugerencia = "Fecha sugerida ${p.porQue}."
+    }
 
     // Profesionales de la(s) especialidad(es) del tratamiento. (El número de sesión ya no
     // se calcula aquí: lo asigna el servidor por fecha al guardar; evita una consulta extra.)
@@ -2637,6 +2670,7 @@ private fun ModalCrearSesion(
                         val d = kotlinx.datetime.Instant.fromEpochMilliseconds(ms)
                             .toLocalDateTime(kotlinx.datetime.TimeZone.UTC).date
                         fecha = "${d.year}-${d.monthNumber.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}"
+                        tocado = true
                     }
                     mostrarFecha = false
                 }) { Text("Aceptar", color = c.navy) }
@@ -2656,6 +2690,7 @@ private fun ModalCrearSesion(
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
                     hora = "${estadoP.hour.toString().padStart(2, '0')}:${estadoP.minute.toString().padStart(2, '0')}"
+                    tocado = true
                     mostrarHora = false
                 }) { Text("Aceptar", color = c.navy) }
             },
@@ -2687,6 +2722,19 @@ private fun ModalCrearSesion(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) { EtqForm("Fecha"); SelectorBoxFicha(fecha) { mostrarFecha = true } }
                 Column(Modifier.weight(1f)) { EtqForm("Hora"); SelectorBoxFicha(hora12(hora)) { mostrarHora = true } }
+            }
+            sugerencia?.takeIf { !tocado }?.let {
+                Text(it, color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+            }
+            // El plan entero de una vez (días + hora + desde): no de a una.
+            if (onPlanEntero != null && faltanPlan > 1) {
+                Spacer(Modifier.height(8.dp))
+                Box(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .border(1.dp, c.navy, RoundedCornerShape(Sania.shape.sm.dp))
+                        .clickable { onPlanEntero(fecha, hora, terapeutaId, faltanPlan) }.padding(vertical = 9.dp),
+                    contentAlignment = Alignment.Center,
+                ) { Text("📅 Agendar las $faltanPlan restantes", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
             }
             Spacer(Modifier.height(10.dp))
             EtqForm("Duración")
@@ -3896,4 +3944,163 @@ private class RelojCargaFicha {
     var iniciada: Long? = null
     /** Último evento de una ráfaga que llegó con el cierre de sesión abierto. */
     var pendienteRealtime: Long? = null
+}
+
+/**
+ * «📅 Agendar las N restantes» (2026-10-24): el plan entero de una vez, gemelo
+ * de PlanEnteroAgendar de la web. Días de la semana (L M X J V S D) + hora +
+ * desde → la lista con los conflictos marcados (feriado, cierre, vacaciones del
+ * profesional, fuera de horario, el paciente ya tiene otra cita, sin cupo) →
+ * quitar alguna → guardar todas en un toque. La regla y el guardado son del
+ * servidor (POST /api/staff/sesion/plan · ProximaCitaRepo); si una falla, las
+ * demás quedan y se listan las que faltaron.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun ModalPlanEntero(
+    inicial: PlanEnteroInicial,
+    onCancelar: () -> Unit,
+    onListo: () -> Unit,
+) {
+    val c = Sania.colors
+    val scope = rememberCoroutineScope()
+    var dias by remember { mutableStateOf(setOf(pe.saniape.app.data.staff.diaSemanaPlan(inicial.desde))) }
+    var hora by remember { mutableStateOf(inicial.hora) }
+    var desde by remember { mutableStateOf(inicial.desde) }
+    var cantidad by remember { mutableStateOf(inicial.faltan.toString()) }
+    var filas by remember { mutableStateOf<List<pe.saniape.app.data.staff.FilaPlanSesion>?>(null) }
+    var trabajando by remember { mutableStateOf(false) }
+    var mostrarFecha by remember { mutableStateOf(false) }
+    var mostrarHora by remember { mutableStateOf(false) }
+
+    if (mostrarFecha) {
+        val estadoP = androidx.compose.material3.rememberDatePickerState(
+            initialSelectedDateMillis = pe.saniape.app.data.staff.isoAMillisUtc(desde))
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { mostrarFecha = false },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    estadoP.selectedDateMillis?.let { ms ->
+                        val d = kotlinx.datetime.Instant.fromEpochMilliseconds(ms)
+                            .toLocalDateTime(kotlinx.datetime.TimeZone.UTC).date
+                        desde = "${d.year}-${d.monthNumber.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}"
+                        filas = null
+                    }
+                    mostrarFecha = false
+                }) { Text("Aceptar", color = c.navy) }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { mostrarFecha = false }) { Text("Cancelar", color = c.textoSuave) } },
+        ) { androidx.compose.material3.DatePicker(state = estadoP) }
+    }
+    if (mostrarHora) {
+        val partes = hora.split(":")
+        val estadoP = androidx.compose.material3.rememberTimePickerState(
+            initialHour = partes.getOrNull(0)?.toIntOrNull() ?: 9,
+            initialMinute = partes.getOrNull(1)?.toIntOrNull() ?: 0,
+            is24Hour = false,
+        )
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { mostrarHora = false },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    hora = "${estadoP.hour.toString().padStart(2, '0')}:${estadoP.minute.toString().padStart(2, '0')}"
+                    filas = null
+                    mostrarHora = false
+                }) { Text("Aceptar", color = c.navy) }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { mostrarHora = false }) { Text("Cancelar", color = c.textoSuave) } },
+        ) { Box(Modifier.fillMaxWidth().padding(Sania.dim.lg), Alignment.Center) { androidx.compose.material3.TimePicker(state = estadoP) } }
+    }
+
+    val marcadas = filas?.count { it.incluida } ?: 0
+    DialogoForm(
+        titulo = "Agendar las ${inicial.faltan} restantes",
+        subtitulo = inicial.t.procedimiento,
+        textoAccion = when {
+            trabajando -> if (filas == null) "Calculando…" else "Agendando…"
+            filas == null -> "Ver fechas"
+            marcadas == 1 -> "Agendar 1 sesión"
+            else -> "Agendar $marcadas sesiones"
+        },
+        accionHabilitada = !trabajando && dias.isNotEmpty() && (filas == null || marcadas > 0),
+        onCancelar = onCancelar,
+        onAccion = {
+            val actuales = filas
+            trabajando = true
+            scope.launch {
+                if (actuales == null) {
+                    when (val r = pe.saniape.app.data.staff.ProximaCitaRepo.previsualizarPlan(
+                        inicial.t.id, inicial.terapeutaId, hora, desde, dias.toList().sorted(),
+                        (cantidad.toIntOrNull() ?: inicial.faltan).coerceIn(1, 40),
+                    )) {
+                        is pe.saniape.app.data.staff.ProximaCitaRepo.Previa.Ok -> filas = r.filas
+                        is pe.saniape.app.data.staff.ProximaCitaRepo.Previa.Error -> pe.saniape.app.ui.Toaster.error(r.mensaje)
+                    }
+                    trabajando = false
+                } else {
+                    val res = pe.saniape.app.data.staff.ProximaCitaRepo.agendarPlan(
+                        inicial.t.id, inicial.terapeutaId, actuales.filter { it.incluida },
+                    )
+                    trabajando = false
+                    if (res.creadas > 0) pe.saniape.app.ui.Toaster.exito(
+                        if (res.creadas == 1) "Sesión agendada" else "${res.creadas} sesiones agendadas")
+                    if (res.fallidas.isNotEmpty()) pe.saniape.app.ui.Toaster.error(
+                        "No se agendaron ${res.fallidas.size}:\n" + pe.saniape.app.data.staff.textoFallidas(res.fallidas))
+                    else if (res.creadas == 0) pe.saniape.app.ui.Toaster.error(res.error ?: "No se agendó ninguna sesión")
+                    if (res.creadas > 0) onListo()
+                }
+            }
+        },
+    ) {
+        TarjetaForm(titulo = "Patrón", icono = "📅") {
+            EtqForm("Días")
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                pe.saniape.app.data.staff.CHIPS_DIAS_PLAN.forEach { (dia, letra) ->
+                    val activo = dia in dias
+                    Box(
+                        Modifier.size(36.dp).clip(RoundedCornerShape(Sania.shape.pill.dp))
+                            .background(if (activo) c.navy else c.superficie)
+                            .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
+                            .clickable { dias = if (activo) dias - dia else dias + dia; filas = null },
+                        contentAlignment = Alignment.Center,
+                    ) { Text(letra, color = if (activo) c.sobreNavy else c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f)) { EtqForm("Desde"); SelectorBoxFicha(desde) { mostrarFecha = true } }
+                Column(Modifier.weight(1f)) { EtqForm("Hora"); SelectorBoxFicha(hora12(hora)) { mostrarHora = true } }
+            }
+            Spacer(Modifier.height(10.dp))
+            EtqForm("¿Cuántas?")
+            CampoFicha("", cantidad, soloNumero = true) { cantidad = it; filas = null }
+        }
+        filas?.let { lista ->
+            Spacer(Modifier.height(12.dp))
+            TarjetaForm(titulo = "$marcadas de ${lista.size} fechas", icono = "🗓") {
+                lista.forEachIndexed { i, f ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable {
+                            filas = lista.mapIndexed { j, x -> if (j == i) x.copy(incluida = !x.incluida) else x }
+                        }.padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Box(
+                            Modifier.size(20.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(if (f.incluida) c.navy else c.superficie)
+                                .border(1.dp, if (f.incluida) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
+                            contentAlignment = Alignment.Center,
+                        ) { if (f.incluida) Text("✓", color = c.sobreNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("${pe.saniape.app.data.staff.fechaLegibleCorta(f.fecha)} · ${hora12(f.hora)}",
+                                color = if (f.incluida) c.texto else c.textoSuave, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            if (f.conflictos.isNotEmpty()) Text(f.conflictos.joinToString(" · ") { it.mensaje },
+                                color = c.error, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
