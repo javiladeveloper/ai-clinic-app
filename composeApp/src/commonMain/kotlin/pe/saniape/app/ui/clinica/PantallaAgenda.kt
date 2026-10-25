@@ -1003,9 +1003,11 @@ fun PantallaAgenda(
                                     esEvaluacionPsico = cita.procedimientoId != null && cita.procedimientoId in procsEvalPsico,
                                     numero = cita.numeroSesion,
                                 ).takeIf { it.alguna },
-                                // 💰 del paquete: solo en la sesión YA atendida con deuda (las pendientes, no).
+                                // 💰 del paquete: en la sesión YA atendida con deuda; en las pendientes,
+                                // solo si la clínica encendió abono_paquete_agenda (apagado por defecto).
                                 abonarPaquete = pe.saniape.app.data.staff.paqueteCobrableEnAgenda(
                                     cita.tipo, cita.tratamientoId, cita.estado, cita.tratamientoModalidad, vm.estadosPago[cita.id],
+                                    abonoEnPendientes = ctx.abonoPaqueteAgenda,
                                 ),
                                 // Gemelo de evalPsicoDe (/citas web): servicio de evaluación + Admin o
                                 // quien atiende la cita. La base decide al abrir.

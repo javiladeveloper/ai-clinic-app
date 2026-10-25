@@ -62,7 +62,8 @@ fun DialogoAbonarPaquete(
         onDismissRequest = { if (!guardando) onCancelar() },
         title = {
             Column {
-                Text("💰 Cobrar el paquete", fontWeight = FontWeight.Bold)
+                // Sesión pendiente (ajuste abonoPaqueteAgenda): es un abono adelantado.
+                Text(if (cita.estado == "Completada") "💰 Cobrar el paquete" else "💰 Abonar al paquete", fontWeight = FontWeight.Bold)
                 cita.pacienteNombre?.let { Text(it, color = c.textoSuave, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp)) }
             }
         },

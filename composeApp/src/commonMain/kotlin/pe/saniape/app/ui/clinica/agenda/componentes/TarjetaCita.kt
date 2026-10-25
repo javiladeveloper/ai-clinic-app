@@ -153,8 +153,9 @@ fun TarjetaCita(
      */
     terminado: pe.saniape.app.data.staff.AccionesTerminado? = null,
     /**
-     * 💰 del saldo del PAQUETE en la sesión ya atendida (paqueteCobrableEnAgenda):
-     * abona al tratamiento como «Registrar pago» de la ficha. Lo decide la pantalla.
+     * 💰 del saldo del PAQUETE en la sesión ya atendida — o en la pendiente, con el
+     * ajuste abonoPaqueteAgenda — (paqueteCobrableEnAgenda): abona al tratamiento
+     * como «Registrar pago» de la ficha. Lo decide la pantalla.
      */
     abonarPaquete: Boolean = false,
     /**

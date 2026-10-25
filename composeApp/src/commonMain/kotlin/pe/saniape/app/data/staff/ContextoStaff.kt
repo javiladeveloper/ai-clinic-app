@@ -248,6 +248,14 @@ data class ContextoStaff(
     val pais: String = PAIS_POR_DEFECTO,
     /** Dirección de la clínica (WhatsApp prearmado de la cita). Servidor viejo → null. */
     val clinicaDireccion: String? = null,
+    /**
+     * Ajuste por clínica `abono_paquete_agenda` (lo expone /api/staff/contexto
+     * como `abonoPaqueteAgenda`): «💰 Abonar al paquete» también en la sesión
+     * PENDIENTE de un paquete con deuda. Apagado por defecto: sin el campo
+     * (backend viejo) o en false, el paquete se abona desde la ficha o en la
+     * sesión ya atendida, como decidió DALU el 2026-10-14.
+     */
+    val abonoPaqueteAgenda: Boolean = false,
 ) {
     /** Permiso granular (mismo significado que puede() en la web). */
     fun puede(key: String): Boolean = when (key) {

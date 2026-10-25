@@ -65,17 +65,24 @@ fun accionesSesionTerminada(
 }
 
 /**
- * ¿Muestra la agenda el 💰 del SALDO DEL PAQUETE en esta cita? Solo en una
- * Sesión YA ATENDIDA (Completada) de un paquete con deuda: las pendientes siguen
- * sin 💰 (decisión DALU 2026-10-14). NO cobra la sesión: es el «Registrar pago»
- * de la ficha, un abono al tratamiento (POST /api/staff/pago/registrar sin
- * sesionId). Paquete = la modalidad del tratamiento o lo que dice el servidor.
+ * ¿Muestra la agenda el 💰 del SALDO DEL PAQUETE en esta cita? En una Sesión
+ * YA ATENDIDA (Completada) de un paquete con deuda. Las pendientes siguen sin 💰
+ * (decisión DALU 2026-10-14) SALVO que la clínica encienda el ajuste
+ * `abono_paquete_agenda` ([abonoEnPendientes] = `ContextoStaff.abonoPaqueteAgenda`):
+ * entonces también la sesión Pendiente/Confirmada ofrece «💰 Abonar al paquete».
+ * NO cobra la sesión: es el «Registrar pago» de la ficha, un abono al
+ * tratamiento (POST /api/staff/pago/registrar sin sesionId). Paquete = la
+ * modalidad del tratamiento o lo que dice el servidor.
  */
 fun paqueteCobrableEnAgenda(
     tipo: String?, tratamientoId: String?, estado: String?, modalidadTratamiento: String?,
     estadoPago: EstadoPagoCita?,
+    /** Ajuste por clínica `abonoPaqueteAgenda` (apagado por defecto). */
+    abonoEnPendientes: Boolean = false,
 ): Boolean {
-    if (tipo != "Sesión" || tratamientoId.isNullOrBlank() || estado != "Completada") return false
+    val estadoValido = estado == "Completada" ||
+        (abonoEnPendientes && (estado == "Pendiente" || estado == "Confirmada"))
+    if (tipo != "Sesión" || tratamientoId.isNullOrBlank() || !estadoValido) return false
     if (!(modalidadTratamiento == "Paquete" || estadoPago?.esPaquete == true)) return false
     if (estadoPago == null || (estadoPago.deuda ?: 0.0) <= 0.0) return false
     return estadoPago.estado == "debe" || estadoPago.estado == "parcial"

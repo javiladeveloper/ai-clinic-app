@@ -140,7 +140,10 @@ data class EntradaAccionesCita(
     val embarazo: Boolean = false,
     /** Texto de "🧾 Pedido para recepción" (null = no aplica). */
     val pedido: String? = null,
-    /** Sesión ya atendida de un paquete con deuda: 💰 abona al paquete. */
+    /**
+     * Sesión de un paquete con deuda: 💰 abona al paquete. Ya atendida, siempre;
+     * pendiente, solo con el ajuste de la clínica (paqueteCobrableEnAgenda).
+     */
     val abonarPaquete: Boolean = false,
     /** Sesión que cerró el plan: ＋ Ampliar / ✓ Dar de alta. */
     val terminado: AccionesTerminado? = null,
@@ -167,7 +170,12 @@ fun accionesCita(e: EntradaAccionesCita): List<AccionCitaItem> {
     fun add(t: String, a: AccionTarjeta, tono: TonoAccion) { lista.add(AccionCitaItem(t, a, tono)) }
     // El dinero va primero, como la moneda de la web.
     if (e.cobrar) add("💰 Cobrar", AccionTarjeta.Cobrar, TonoAccion.OK)
-    if (e.abonarPaquete) add("💰 Cobrar paquete", AccionTarjeta.AbonarPaquete, TonoAccion.OK)
+    // En la sesión ya atendida, «Cobrar paquete» (como siempre); en la pendiente
+    // (solo con el ajuste abonoPaqueteAgenda) es un abono adelantado.
+    if (e.abonarPaquete) add(
+        if (estado == "Completada") "💰 Cobrar paquete" else "💰 Abonar al paquete",
+        AccionTarjeta.AbonarPaquete, TonoAccion.OK,
+    )
     // La última sesión del plan ya se atendió: ¿más sesiones o alta? (los flujos de la ficha).
     if (e.terminado?.ampliar == true) add("＋ Ampliar", AccionTarjeta.Ampliar, TonoAccion.INFO)
     if (e.terminado?.alta == true) add("✓ Dar de alta", AccionTarjeta.DarAlta, TonoAccion.OK)

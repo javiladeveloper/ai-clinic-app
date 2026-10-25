@@ -280,6 +280,8 @@ object StaffContextoRepo {
             moneda = o.str("moneda")?.takeIf { it.isNotBlank() }?.let(::normalizarMoneda) ?: MONEDA_POR_DEFECTO,
             zona = o.str("zona")?.takeIf { esZonaValida(it) } ?: ZONA_POR_DEFECTO,
             pais = paisValidoONull(o.str("pais")) ?: PAIS_POR_DEFECTO,
+            // Ajuste por clínica, apagado por defecto: sin el campo → false (como siempre).
+            abonoPaqueteAgenda = o.bool("abonoPaqueteAgenda"),
         )
     }
 
