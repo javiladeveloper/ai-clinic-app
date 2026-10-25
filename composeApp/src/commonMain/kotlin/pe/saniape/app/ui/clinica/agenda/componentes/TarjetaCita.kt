@@ -37,16 +37,11 @@ import pe.saniape.app.data.staff.CitaStaff
 import pe.saniape.app.data.staff.AccionCitaItem
 import pe.saniape.app.data.staff.AccionTarjeta
 import pe.saniape.app.data.staff.EntradaAccionesCita
-import pe.saniape.app.data.staff.GrupoAccion
 import pe.saniape.app.data.staff.SalaAcciones
 import pe.saniape.app.data.staff.TonoAccion
 import pe.saniape.app.data.staff.planAccionesCita
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import pe.saniape.app.data.staff.comoPlan
+import pe.saniape.app.ui.componentes.MenuMas
 import pe.saniape.app.ui.clinica.agenda.modales.textoSoles
 import pe.saniape.app.data.staff.EtapaLlegada
 import pe.saniape.app.ui.hora12
@@ -420,9 +415,16 @@ fun TarjetaCita(
                             BotonAccion(texto(a), colorTono(a.tono), habilitado) { onAccion(a.accion) }
                         }
                     }
-                    if (plan.menu.isNotEmpty()) {
-                        MenuMasAcciones(plan.menu, habilitado) { onAccion(it) }
-                    }
+                    // El «⋯ Más» común de la app (MenuMas), con el mismo reparto de
+                    // planAccionesCita (comoPlan no cambia grupos ni orden).
+                    MenuMas(
+                        grupos = plan.comoPlan().menu,
+                        texto = { it.texto },
+                        onAccion = { onAccion(it.accion) },
+                        rojo = { it.tono == TonoAccion.ERROR },
+                        habilitado = habilitado,
+                        disparador = { abrir -> BotonAccion("⋯ Más", c.textoSuave, habilitado) { abrir() } },
+                    )
                 }
             }
         }
@@ -450,42 +452,6 @@ private fun colorTono(t: TonoAccion): Color {
         TonoAccion.PURPLE -> c.purple
         TonoAccion.TEAL -> c.teal
         TonoAccion.SUAVE -> c.textoSuave
-    }
-}
-
-/**
- * «⋯ Más»: el resto de las acciones de la cita, por grupo (Atención · Cobro ·
- * Cita, con Cancelar en rojo al final). Mismo patrón de menú que la lista de
- * sesiones (DropdownMenu): no cambia la altura de la tarjeta al abrirse.
- */
-@Composable
-private fun MenuMasAcciones(
-    grupos: List<Pair<GrupoAccion, List<AccionCitaItem>>>,
-    habilitado: Boolean,
-    onAccion: (AccionTarjeta) -> Unit,
-) {
-    val c = Sania.colors
-    var abierto by remember { mutableStateOf(false) }
-    Box {
-        BotonAccion("⋯ Más", c.textoSuave, habilitado) { abierto = true }
-        DropdownMenu(expanded = abierto, onDismissRequest = { abierto = false },
-            modifier = Modifier.background(c.superficie)) {
-            grupos.forEachIndexed { i, (grupo, items) ->
-                if (i > 0) Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).height(1.dp).background(c.borde))
-                Text(grupo.titulo.uppercase(), color = c.textoSuave, fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-                items.forEach { a ->
-                    DropdownMenuItem(
-                        text = {
-                            Text(a.texto, color = if (a.tono == TonoAccion.ERROR) c.error else c.texto,
-                                fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        },
-                        enabled = habilitado,
-                        onClick = { abierto = false; onAccion(a.accion) },
-                    )
-                }
-            }
-        }
     }
 }
 
