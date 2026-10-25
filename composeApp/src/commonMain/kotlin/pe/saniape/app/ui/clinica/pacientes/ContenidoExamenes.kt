@@ -29,6 +29,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -70,6 +74,9 @@ fun ContenidoExamenes(
     var especialidades by remember { mutableStateOf<List<EspecialidadClinica>>(emptyList()) }
     var nuevo by remember { mutableStateOf<String?>(null) }            // "Examen" | "Derivacion"
     var resultadoDe by remember { mutableStateOf<SolicitudFicha?>(null) }
+    // Esperando confirmación: (examen, ¿eliminar? — si no, cancelar) y el documento a borrar.
+    var confirmarExamen by remember { mutableStateOf<Pair<SolicitudFicha, Boolean>?>(null) }
+    var borrarDocumento by remember { mutableStateOf<DocumentoFicha?>(null) }
     // "+ Subir" con tratamientos: primero se elige a cuál se ancla el documento.
     var eligiendoTratamiento by remember { mutableStateOf(false) }
     // Tratamientos de la ficha (los activos primero) → nombre para agrupar y elegir.
@@ -115,16 +122,9 @@ fun ContenidoExamenes(
             examenes.forEach { s ->
                 FilaSolicitud(s, acciones,
                     onResultado = { resultadoDe = s },
-                    onCancelar = { scope.launch {
-                        val ok = SolicitudesRepo.cambiarEstado(s.id, "Cancelada")
-                        if (ok) pe.saniape.app.ui.Toaster.exito("Examen cancelado") else pe.saniape.app.ui.Toaster.error("No se pudo cancelar")
-                        recargar()
-                    } },
-                    onEliminar = { scope.launch {
-                        val ok = SolicitudesRepo.eliminarSolicitud(s.id)
-                        if (ok) pe.saniape.app.ui.Toaster.exito("Examen eliminado") else pe.saniape.app.ui.Toaster.error("No se pudo eliminar")
-                        recargar()
-                    } },
+                    // Cancelar y eliminar se confirman (antes, de un toque).
+                    onCancelar = { confirmarExamen = s to false },
+                    onEliminar = { confirmarExamen = s to true },
                     onAbrir = { path -> scope.launch { SolicitudesRepo.urlFirmada(path)?.let { acciones.abrirUrl(it) } } },
                 )
                 Spacer(Modifier.height(6.dp))
@@ -195,19 +195,57 @@ fun ContenidoExamenes(
                     if (d.protegidoPsico) Text("🔒", fontSize = 14.sp, modifier = Modifier.clickable {
                         pe.saniape.app.ui.Toaster.info(pe.saniape.app.data.staff.MOTIVO_INFORME_NO_SE_BORRA)
                     })
-                    else Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable {
-                        scope.launch {
-                            val error = SolicitudesRepo.eliminarDocumento(d.id)
-                            if (error == null) pe.saniape.app.ui.Toaster.exito("Documento eliminado") else pe.saniape.app.ui.Toaster.error(error)
-                            recargar()
-                        }
-                    })
+                    // Borrar se confirma (antes, de un toque).
+                    else Text("🗑", fontSize = 14.sp, modifier = Modifier
+                        .semantics { contentDescription = "Eliminar documento ${d.nombre}"; role = Role.Button }
+                        .clickable { borrarDocumento = d }.padding(6.dp))
                 }
                 Spacer(Modifier.height(6.dp))
             }
             }
             }
         }
+    }
+
+    // ✗ Cancelar / 🗑 Eliminar un examen: con confirmación.
+    confirmarExamen?.let { (s, eliminar) ->
+        pe.saniape.app.ui.componentes.DialogoConfirmar(
+            titulo = if (eliminar) "¿Eliminar este examen?" else "¿Cancelar este examen?",
+            texto = "«${s.descripcion}»" +
+                (if (eliminar) " se borra de la ficha. No se puede deshacer." else " queda cancelado (se conserva en la ficha)."),
+            textoConfirmar = if (eliminar) "Sí, eliminar" else "Sí, cancelar",
+            onCancelar = { confirmarExamen = null },
+            onConfirmar = {
+                confirmarExamen = null
+                scope.launch {
+                    if (eliminar) {
+                        val ok = SolicitudesRepo.eliminarSolicitud(s.id)
+                        if (ok) pe.saniape.app.ui.Toaster.exito("Examen eliminado") else pe.saniape.app.ui.Toaster.error("No se pudo eliminar")
+                    } else {
+                        val ok = SolicitudesRepo.cambiarEstado(s.id, "Cancelada")
+                        if (ok) pe.saniape.app.ui.Toaster.exito("Examen cancelado") else pe.saniape.app.ui.Toaster.error("No se pudo cancelar")
+                    }
+                    recargar()
+                }
+            },
+        )
+    }
+    // 🗑 Eliminar un documento subido: con confirmación.
+    borrarDocumento?.let { d ->
+        pe.saniape.app.ui.componentes.DialogoConfirmar(
+            titulo = "¿Eliminar este documento?",
+            texto = "«${d.nombre}» se borra de la ficha. No se puede deshacer.",
+            textoConfirmar = "Sí, eliminar",
+            onCancelar = { borrarDocumento = null },
+            onConfirmar = {
+                borrarDocumento = null
+                scope.launch {
+                    val error = SolicitudesRepo.eliminarDocumento(d.id)
+                    if (error == null) pe.saniape.app.ui.Toaster.exito("Documento eliminado") else pe.saniape.app.ui.Toaster.error(error)
+                    recargar()
+                }
+            },
+        )
     }
 
     // Elegir el tratamiento del documento ANTES de abrir el selector de archivo.
@@ -393,9 +431,14 @@ private fun FilaSolicitud(
                         Text("📋 Resultado", color = c.sobreNavy, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
-                Text("✗ Cancelar", color = c.pend, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable { onCancelar() })
-                Text("🗑", fontSize = 13.sp, modifier = Modifier.clickable { onEliminar() })
+                // Cancelar y eliminar al «⋯», en rojo (los dos se confirman).
+                pe.saniape.app.ui.componentes.MenuMas(
+                    grupos = listOf(pe.saniape.app.data.staff.GrupoMenu(pe.saniape.app.data.staff.GRUPO_PELIGRO, listOf(false, true))),
+                    texto = { eliminar -> if (eliminar) "🗑 Eliminar examen" else "✗ Cancelar examen" },
+                    rojo = { true },
+                    descripcion = "Más acciones del examen",
+                    onAccion = { eliminar -> if (eliminar) onEliminar() else onCancelar() },
+                )
             }
         }
     }

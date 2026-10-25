@@ -79,6 +79,8 @@ fun GaleriaFotos(
     var subiendo by remember { mutableStateOf(false) }
     var pendiente by remember { mutableStateOf<ArchivoSeleccionado?>(null) }    // archivo elegido, esperando datos
     var lightbox by remember { mutableStateOf<FotoEvolutiva?>(null) }
+    // Foto a borrar, esperando la confirmación (o null).
+    var borrarFoto by remember { mutableStateOf<FotoEvolutiva?>(null) }
     var pedirArchivo by remember { mutableStateOf(false) }
 
     suspend fun urlDe(path: String): String? {
@@ -166,14 +168,29 @@ fun GaleriaFotos(
                                 recargar()
                             }
                         },
-                        onBorrar = { scope.launch {
-                            val ok = FotosRepo.borrarFoto(f.id)
-                            if (ok) pe.saniape.app.ui.Toaster.exito("Foto eliminada") else pe.saniape.app.ui.Toaster.error("No se pudo eliminar")
-                            recargar()
-                        } })
+                        // Borrar se confirma (antes, el ✕ de 18 dp borraba de un toque).
+                        onBorrar = { borrarFoto = f })
                 }
             }
         }
+    }
+
+    borrarFoto?.let { f ->
+        pe.saniape.app.ui.componentes.DialogoConfirmar(
+            titulo = "¿Eliminar esta foto?",
+            texto = "Se borra de la evolución del tratamiento" +
+                (if (f.visiblePaciente) " y el ${tpl.paciente} deja de verla en su app." else ".") + " No se puede deshacer.",
+            textoConfirmar = "Sí, eliminar",
+            onCancelar = { borrarFoto = null },
+            onConfirmar = {
+                borrarFoto = null
+                scope.launch {
+                    val ok = FotosRepo.borrarFoto(f.id)
+                    if (ok) pe.saniape.app.ui.Toaster.exito("Foto eliminada") else pe.saniape.app.ui.Toaster.error("No se pudo eliminar")
+                    recargar()
+                }
+            },
+        )
     }
 
     // Modal de subida (momento + sesión opcional + nota + visibilidad).
