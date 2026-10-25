@@ -45,6 +45,12 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import pe.saniape.app.data.staff.AccionFicha
+import pe.saniape.app.ui.componentes.MenuMas
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -203,7 +209,12 @@ private fun PantallaFichaPacienteContenido(
     // Tras dar de alta (con teléfono y enlace de encuesta): ofrecer pedir la calificación.
     var ofrecerEncuesta by remember { mutableStateOf<String?>(null) }   // enlace de WhatsApp listo
     var editandoPaciente by remember { mutableStateOf(false) }
-    var menuPaciente by remember { mutableStateOf(false) }
+    // «Dar de baja» del ⋯ esperando confirmación.
+    var confirmarBaja by remember { mutableStateOf(false) }
+    // 💰 El resumen de pagos (antes, la pestaña Pagos): se abre tocando la tarjeta SALDO.
+    var pagosAbierto by remember { mutableStateOf(false) }
+    // Recordatorio de recepción a borrar (id del tratamiento), esperando confirmación.
+    var borrarRecordatorio by remember { mutableStateOf<String?>(null) }
     var crearSesionEn by remember { mutableStateOf<TratamientoPaciente?>(null) }
     // Tras crear un tratamiento sin su primera cita: "📅 Agendar la primera sesión".
     var ofertaPrimera by remember { mutableStateOf<OfertaPrimeraCita?>(null) }
@@ -840,81 +851,70 @@ private fun PantallaFichaPacienteContenido(
                 // (ManejarAtras arriba). Dibujarla era redundante y comía espacio del header.
                 Text("Ficha del ${ctx.terminologiaPaciente.paciente}", color = c.sobreNavy, fontSize = Sania.txt.subtitulo,
                     fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                // Editar paciente + menú (portal, dar de baja/reactivar): como la web, con
-                // 'datos_personales' (no con 'pacientes').
+                // Un solo ⋯ del paciente (con 'datos_personales', no con 'pacientes', como la
+                // web): ✏ Editar · ↻ Reactivar · Portal · «Dar de baja» en rojo al final, con
+                // confirmación. Antes: ✏ suelto + una columna que empujaba la ficha hacia
+                // abajo, no se cerraba al tocar afuera y daba de baja de un toque.
                 if (verContacto) {
-                    Box(
-                        Modifier.size(38.dp).clip(CircleShape).background(c.sobreNavy.copy(alpha = 0.15f))
-                            .clickable { editandoPaciente = true },
-                        contentAlignment = Alignment.Center,
-                    ) { Text("✏", color = c.sobreNavy, fontSize = 16.sp) }
-                    Spacer(Modifier.width(8.dp))
-                    Box(
-                        Modifier.size(38.dp).clip(CircleShape).background(c.sobreNavy.copy(alpha = 0.15f))
-                            .clickable { menuPaciente = !menuPaciente },
-                        contentAlignment = Alignment.Center,
-                    ) { Text("⋯", color = c.sobreNavy, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
-                }
-            }
-
-            // Menú del paciente: invitar al portal (Plus) + dar de baja / reactivar.
-            if (menuPaciente) {
-                Column(Modifier.fillMaxWidth().background(c.superficie)) {
+                    val inactivo = paciente.estado == "Inactivo"
                     // Invitar al portal: el paciente entra con su correo y ve sus citas/tratamiento.
                     // Requiere feature reservas (Plus) + email o teléfono.
                     val puedeInvitar = ctx.can("reservas") &&
                         (!paciente.email.isNullOrBlank() || !paciente.telefono.isNullOrBlank())
-                    if (puedeInvitar) {
-                        val base = pe.saniape.app.data.Supabase.SITE_URL
-                        val link = paciente.email?.takeIf { it.isNotBlank() }
-                            ?.let { "$base/paciente/login?email=$it" } ?: "$base/paciente/login"
-                        val msg = "Hola ${paciente.nombre.split(" ").first()}, accede a tu portal para ver tus citas y tu tratamiento: $link"
-                        if (!paciente.telefono.isNullOrBlank()) {
-                            Text("💬 Invitar por WhatsApp", color = c.texto, fontSize = Sania.txt.cuerpo,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.fillMaxWidth().clickable {
-                                    menuPaciente = false
-                                    val tel = paciente.telefono!!.filter { it.isDigit() }
+                    val planFicha = pe.saniape.app.data.staff.accionesMenuFicha(
+                        inactivo = inactivo, puedeInvitar = puedeInvitar, conTelefono = !paciente.telefono.isNullOrBlank(),
+                    )
+                    val base = pe.saniape.app.data.Supabase.SITE_URL
+                    val link = paciente.email?.takeIf { it.isNotBlank() }
+                        ?.let { "$base/paciente/login?email=$it" } ?: "$base/paciente/login"
+                    MenuMas(
+                        grupos = planFicha.menu,
+                        texto = { a ->
+                            when (a) {
+                                AccionFicha.Editar -> "✏ Editar datos del ${ctx.terminologiaPaciente.paciente}"
+                                AccionFicha.Reactivar -> "↻ Reactivar ${ctx.terminologiaPaciente.paciente}"
+                                AccionFicha.InvitarWhatsApp -> "💬 Invitar al portal por WhatsApp"
+                                AccionFicha.CopiarPortal -> "🔗 Copiar enlace del portal"
+                                AccionFicha.DarDeBaja -> "Dar de baja al ${ctx.terminologiaPaciente.paciente}"
+                            }
+                        },
+                        rojo = { it == AccionFicha.DarDeBaja },
+                        descripcion = "Más acciones del ${ctx.terminologiaPaciente.paciente}",
+                        onAccion = { a ->
+                            when (a) {
+                                AccionFicha.Editar -> editandoPaciente = true
+                                AccionFicha.InvitarWhatsApp -> {
+                                    val msg = "Hola ${paciente.nombre.split(" ").first()}, accede a tu portal para ver tus citas y tu tratamiento: $link"
+                                    val tel = paciente.telefono.orEmpty().filter { it.isDigit() }
                                     val wa = pe.saniape.app.data.staff.numeroWhatsApp(tel, pe.saniape.app.data.staff.paisActivo())
                                     acciones.abrirUrl(pe.saniape.app.ui.urlWhatsApp(wa, msg))
-                                }.padding(horizontal = Sania.dim.xl, vertical = Sania.dim.md))
-                            Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
-                        }
-                        Text("🔗 Copiar enlace del portal", color = c.texto, fontSize = Sania.txt.cuerpo,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.fillMaxWidth().clickable {
-                                menuPaciente = false
-                                acciones.copiarTexto(link, "Enlace del portal")
-                            }.padding(horizontal = Sania.dim.xl, vertical = Sania.dim.md))
-                        Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
-                    }
-
-                    val inactivo = paciente.estado == "Inactivo"
-                    Text(
-                        if (inactivo) "↻ Reactivar ${ctx.terminologiaPaciente.paciente}" else "Dar de baja al ${ctx.terminologiaPaciente.paciente}",
-                        color = if (inactivo) c.ok else c.error, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Medium,
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            menuPaciente = false
-                            scope.launch {
-                                if (inactivo) {
+                                }
+                                AccionFicha.CopiarPortal -> acciones.copiarTexto(link, "Enlace del portal")
+                                AccionFicha.Reactivar -> scope.launch {
                                     // Reactivar por el endpoint compartido con la web: el
                                     // estado de vuelta lo decide el servidor por su historia
                                     // (antes era siempre 'Nuevo', aunque tuviera un plan en curso).
                                     val r = pe.saniape.app.data.staff.ReactivarRepo.reactivar(paciente.id)
                                     if (r.ok) pe.saniape.app.ui.Toaster.exito("${tpl.Paciente} reactivado" + (r.estado?.let { " · $it" } ?: ""))
                                     else pe.saniape.app.ui.Toaster.error(r.error ?: "No se pudo reactivar")
-                                } else {
-                                    val ok = PacientesRepo.cambiarEstadoPaciente(paciente.id, "Inactivo")
-                                    if (ok) pe.saniape.app.ui.Toaster.exito("${tpl.Paciente} dado de baja")
-                                    else pe.saniape.app.ui.Toaster.error("No se pudo actualizar")
+                                    recargar()
                                 }
-                                recargar()
+                                // Dar de baja se confirma (antes se ejecutaba de un toque).
+                                AccionFicha.DarDeBaja -> confirmarBaja = true
                             }
-                        }.padding(horizontal = Sania.dim.xl, vertical = Sania.dim.md),
+                        },
+                        disparador = { abrir ->
+                            Box(
+                                Modifier.size(40.dp).clip(CircleShape).background(c.sobreNavy.copy(alpha = 0.15f))
+                                    .semantics { contentDescription = "Más acciones del ${ctx.terminologiaPaciente.paciente}"; role = Role.Button }
+                                    .clickable { abrir() },
+                                contentAlignment = Alignment.Center,
+                            ) { Text("⋯", color = c.sobreNavy, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+                        },
                     )
-                    Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
                 }
             }
+
 
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Sania.dim.xl)) {
                 // ── Cabecera: nombre + semáforo + estado ──
@@ -1010,10 +1010,12 @@ private fun PantallaFichaPacienteContenido(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     StatCard(statLabel, statValor, statColor, Modifier.weight(1f))
                     if (ctx.puede("pagos")) {
+                        // Tocable: abre el resumen de pagos (lo que era la pestaña 💰 Pagos).
                         StatCard(
                             "SALDO PENDIENTE",
                             when { saldo == null -> "…"; saldo > 0.005 -> "${simboloMoneda(moneda)} ${formatoMonto(saldo)}"; else -> "${simboloMoneda(moneda)} 0.00" },
                             if (saldo != null && saldo > 0.005) c.error else c.ok, Modifier.weight(1f),
+                            onClick = { pagosAbierto = true }, pista = "Ver pagos ›",
                         )
                     } else {
                         Spacer(Modifier.weight(1f))
@@ -1057,12 +1059,10 @@ private fun PantallaFichaPacienteContenido(
                             }
                             Text("✏", fontSize = 14.sp, modifier = Modifier.padding(horizontal = 6.dp)
                                 .clickable { notaRecModal = t.id to (t.notaRecepcion ?: "") })
+                            // Borrar el recordatorio se confirma (antes, el ✕ borraba de un toque).
                             Text("✕", fontSize = 14.sp, color = c.textoSuave, modifier = Modifier
-                                .clickable { scope.launch {
-                                    val ok = PacientesRepo.guardarNotaRecepcion(t.id, null)
-                                    if (ok) pe.saniape.app.ui.Toaster.exito("Recordatorio borrado") else pe.saniape.app.ui.Toaster.error("No se pudo borrar")
-                                    recargar()
-                                } })
+                                .semantics { contentDescription = "Borrar recordatorio"; role = Role.Button }
+                                .clickable { borrarRecordatorio = t.id }.padding(horizontal = 6.dp))
                         }
                     }
                 }
@@ -1108,7 +1108,8 @@ private fun PantallaFichaPacienteContenido(
                     // 🧾 Presupuestos: TODAS las especialidades (ver: sesiones, pagos o
                     // pacientes, como el API). Sin plan Premium se ve con 🔒.
                     if (pe.saniape.app.data.staff.puedeVerPresupuestos { ctx.puede(it) }) add("presupuestos" to "🧾 Presupuestos")
-                    if (ctx.puede("pagos")) add("pagos" to "💰 Pagos")
+                    // (💰 Pagos ya no es pestaña: solo resumía y decía «el detalle… en Atenciones».
+                    //  El resumen se abre tocando la tarjeta SALDO; el cobro sigue en Atenciones.)
                     add("resumen" to "📋 Resumen")
                 }.let { todas ->
                     // Sin 'historia_clinica' quedan solo las pestañas operativas: las
@@ -1261,10 +1262,6 @@ private fun PantallaFichaPacienteContenido(
                             recargaToken = recargarToken,
                         )
                     }
-                    "pagos" -> ContenidoPagos(
-                        ctx = ctx, paciente = paciente, recargaToken = recargarToken,
-                        onVerEnAtenciones = { tab = "atenciones" },
-                    )
                     "resumen" -> ContenidoResumen(
                         ctx = ctx, paciente = paciente, acciones = acciones,
                         onEditarClinico = { editarClinico = true },
@@ -1681,7 +1678,7 @@ private fun PantallaFichaPacienteContenido(
                             onAperturaConsumida = { flujoOrto = null },
                             // 💰 Cuotas del tratamiento (solo lectura), como `verCuotas={puede('pagos')}` de la web.
                             puedePagos = ctx.puede("pagos"),
-                            onVerPagos = { tab = "pagos" },
+                            onVerPagos = { pagosAbierto = true },
                             hoyFicha = pe.saniape.app.data.staff.hoyEnIso(regPac.zona),
                             // Tras la instalación: 📝 con la plantilla base "Cuidados con brackets" (por su clave
                             // del catálogo), vinculada a la cita del control. Se abre UNA vez.
@@ -1984,6 +1981,68 @@ private fun PantallaFichaPacienteContenido(
         )
     }
 
+    // «Dar de baja» (del ⋯ de la cabecera): con confirmación.
+    if (confirmarBaja) {
+        pe.saniape.app.ui.componentes.DialogoConfirmar(
+            titulo = "¿Dar de baja al ${tpl.paciente}?",
+            texto = "${paciente.nombre} queda Inactivo: su historial se puede consultar, pero la ficha no acepta " +
+                "sesiones, citas ni pagos nuevos. Puedes reactivarlo desde ⋯.",
+            textoConfirmar = "Sí, dar de baja",
+            onCancelar = { confirmarBaja = false },
+            onConfirmar = {
+                confirmarBaja = false
+                scope.launch {
+                    val ok = PacientesRepo.cambiarEstadoPaciente(paciente.id, "Inactivo")
+                    if (ok) pe.saniape.app.ui.Toaster.exito("${tpl.Paciente} dado de baja")
+                    else pe.saniape.app.ui.Toaster.error("No se pudo actualizar")
+                    recargar()
+                }
+            },
+        )
+    }
+
+    // ✕ del recordatorio de recepción: con confirmación.
+    borrarRecordatorio?.let { tratId ->
+        pe.saniape.app.ui.componentes.DialogoConfirmar(
+            titulo = "¿Borrar el recordatorio?",
+            texto = "El aviso de recepción de este tratamiento deja de mostrarse.",
+            textoConfirmar = "Sí, borrar",
+            onCancelar = { borrarRecordatorio = null },
+            onConfirmar = {
+                borrarRecordatorio = null
+                scope.launch {
+                    val ok = PacientesRepo.guardarNotaRecepcion(tratId, null)
+                    if (ok) pe.saniape.app.ui.Toaster.exito("Recordatorio borrado") else pe.saniape.app.ui.Toaster.error("No se pudo borrar")
+                    recargar()
+                }
+            },
+        )
+    }
+
+    // 💰 Resumen de pagos (antes, la pestaña «💰 Pagos», que solo resumía): al tocar
+    // la tarjeta SALDO. El cobro sigue en cada tratamiento (pestaña Atenciones).
+    if (pagosAbierto && ctx.puede("pagos")) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pagosAbierto = false },
+            title = { Text("💰 Pagos", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    ContenidoPagos(
+                        ctx = ctx, paciente = paciente, recargaToken = recargarToken,
+                        onVerEnAtenciones = { pagosAbierto = false; tab = "atenciones" },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { pagosAbierto = false; tab = "atenciones" }) {
+                    Text("Cobrar en Atenciones", color = c.navy, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = { TextButton(onClick = { pagosAbierto = false }) { Text("Cerrar", color = c.textoSuave) } },
+            containerColor = c.superficie,
+        )
+    }
+
     // Modal editar recordatorio de recepción.
     notaRecModal?.let { (tratId, textoActual) ->
         ModalNotaRecepcion(
@@ -2210,7 +2269,7 @@ private fun PantallaFichaPacienteContenido(
  * recepción necesita para agendar y cobrar. Resumen se queda con los datos del
  * paciente (lo clínico de adentro se oculta).
  */
-private val PESTANAS_SIN_HISTORIA = setOf("atenciones", "presupuestos", "pagos", "resumen")
+private val PESTANAS_SIN_HISTORIA = setOf("atenciones", "presupuestos", "resumen")
 
 /** «📅 Agendar próxima» pendiente de confirmar: el tratamiento y la propuesta del servidor. */
 private data class OfertaProximaFicha(
@@ -3191,15 +3250,26 @@ private fun formatoMonto(n: Double): String {
 
 /** Tarjeta de estadística (Estado / Saldo / Próxima cita / Última atención). */
 @Composable
-private fun StatCard(label: String, valor: String, valorColor: androidx.compose.ui.graphics.Color, modifier: Modifier) {
+private fun StatCard(
+    label: String, valor: String, valorColor: androidx.compose.ui.graphics.Color, modifier: Modifier,
+    /** Tarjeta tocable (p. ej. SALDO → resumen de pagos); null = solo lectura. */
+    onClick: (() -> Unit)? = null,
+    /** Texto chico bajo el valor que dice que se puede tocar ("Ver pagos ›"). */
+    pista: String? = null,
+) {
     val c = Sania.colors
     Column(
         modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
-            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(12.dp),
+            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp))
+            .then(if (onClick != null) Modifier.clickable(onClickLabel = pista) { onClick() } else Modifier)
+            .padding(12.dp),
     ) {
         Text(label, color = c.textoSuave, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
         Spacer(Modifier.height(4.dp))
         Text(valor, color = valorColor, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        if (onClick != null && pista != null) {
+            Text(pista, color = c.navy, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 2.dp))
+        }
     }
 }
 

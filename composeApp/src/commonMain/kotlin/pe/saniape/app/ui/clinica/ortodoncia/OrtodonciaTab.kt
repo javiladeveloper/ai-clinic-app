@@ -146,7 +146,7 @@ fun OrtodonciaTab(
     onDejarCuidados: ((citaId: String?, especialidadId: String?) -> Unit)? = null,
     /** `puede('pagos')`: muestra el resumen 💰 de cuotas del tratamiento (como `verCuotas` de la web). */
     puedePagos: Boolean = false,
-    /** "Ver pagos →": lleva a la pestaña 💰 Pagos de la ficha, donde se cobra. */
+    /** "Ver pagos →": abre el resumen de pagos de la ficha (tarjeta SALDO); se cobra en Atenciones. */
     onVerPagos: (() -> Unit)? = null,
     /** "Hoy" en la zona de la sede del PACIENTE (`regPac.hoy()` de la web); null = la de la sede activa. */
     hoyFicha: String? = null,
