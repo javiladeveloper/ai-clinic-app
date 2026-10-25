@@ -342,6 +342,8 @@ data class ProcedimientoRef(
     val precioPorCaras: Map<String, Double>? = null,
     /** Protocolo de controles (días tras la intervención). Con protocolo, él programa el próximo control. */
     val controlesDias: List<Int> = emptyList(),
+    /** 'Consulta' | 'Evaluación': el servicio de la cita de entrada (nunca se sugiere como plan). */
+    val tipoCita: String? = null,
 )
 
 /** Un profesional con sus especialidades (para filtrar servicios). */
@@ -1739,7 +1741,7 @@ object PacientesRepo {
         val filas = Supabase.client.postgrest["procedimientos"]
             .select(Columns.raw(
                 "id, nombre, precio, precio_paquete, especialidad_id, " +
-                    "modo_cobro, unidad_label, precio_unitario_sugerido, controles_dias, " +
+                    "modo_cobro, unidad_label, precio_unitario_sugerido, controles_dias, tipo_cita, " +
                     "especialidad:especialidades(usa_sesiones), " +
                     "tarifarios:tarifario_paquetes(id, cantidad_sesiones, precio_total, estado)"
             )) {
@@ -1771,6 +1773,7 @@ object PacientesRepo {
                 precioUnitarioSugerido = o.dbl("precio_unitario_sugerido"),
                 controlesDias = (o["controles_dias"] as? JsonArray)
                     ?.mapNotNull { (it as? JsonPrimitive)?.content?.toIntOrNull() }.orEmpty(),
+                tipoCita = o.str("tipo_cita"),
             )
         }
     }
