@@ -25,6 +25,7 @@ import pe.saniape.app.data.staff.EspecialidadRef
 import pe.saniape.app.data.staff.TerapeutaRef
 import pe.saniape.app.data.staff.FlujoClinica
 import pe.saniape.app.data.staff.citaEsDental
+import pe.saniape.app.data.staff.zonaDeSede
 import io.github.jan.supabase.auth.auth
 
 /**
@@ -149,6 +150,41 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     /** "⚖️ Medidas" / "🥗 Plan alimentario" en la tarjeta: cita de nutrición + permiso de escribir en la ficha. */
     fun nutricionEnTarjeta(cita: CitaStaff): Boolean =
         cita.pacienteId != null && (ctx.puede("pacientes") || ctx.puede("sesiones")) && esNutricion(cita)
+
+    /**
+     * «🚫 No vino» en «⋯ Más» (T2 2026-10-24, AgendaDia.kt): cita abierta de hoy
+     * ya empezada (o de días anteriores), con permiso 'citas' (el del endpoint).
+     * El "hoy" y la hora son los de la sede de la cita.
+     */
+    fun ofreceNoVinoEn(cita: CitaStaff): Boolean {
+        if (!ctx.puede("citas")) return false
+        val a = pe.saniape.app.data.staff.ahoraEn(ctx.zonaDeSede(cita.sedeId))
+        return pe.saniape.app.data.staff.ofreceNoVino(cita.estado, cita.fecha, cita.hora, a.fecha, a.hora)
+    }
+
+    /**
+     * Documentos de ESTA atención en «⋯ Más» (gemelo de documentosCita de /citas):
+     * informe / descanso / constancia del rubro en la completada, con documentos
+     * médicos en la clínica y quien los firma (DALU: nada); 💉 mapa en estética.
+     * El consentimiento todavía no se emite en la app fuera de la atención guiada.
+     */
+    fun documentosDe(cita: CitaStaff, verHc: Boolean): List<pe.saniape.app.data.staff.DocumentoCita> {
+        val profs = cita.terapeutaId?.let { espsPorTerapeuta[it] }
+        val puedeDocs = verHc && pe.saniape.app.data.staff.documentosMedicosActivos(ctx.modulosClinicos) &&
+            pe.saniape.app.data.staff.puedeEmitirDocumentos(ctx.rol, ctx.miTerapeutaId, ctx.puede("sesiones"))
+        val conDocs = cita.estado == "Completada" && puedeDocs
+        val apartado = if (conDocs) pe.saniape.app.data.staff.apartadoDeAtencionDocs(
+            especialidades, cita.especialidadId ?: cita.especialidadServicioId, profs) else null
+        return pe.saniape.app.data.staff.documentosDeCita(
+            estado = cita.estado, pacienteId = cita.pacienteId,
+            docsRubro = if (conDocs) pe.saniape.app.data.staff.documentosDelRubro(apartado) else null,
+            puedeEmitirDocs = puedeDocs,
+            consentimiento = false,
+            mapaAplicacion = verHc && (ctx.puede("pacientes") || ctx.puede("sesiones")) &&
+                pe.saniape.app.data.staff.citaEsEstetica(ctx.mapaEstetica, cita.especialidadId, cita.especialidadServicioId, profs),
+            psico = apartado == "psicologia",
+        )
+    }
 
     /** La cita cuyo "✓ Completar" está decidiendo si abre la evaluación ("Abriendo…"). */
     var decidiendoCita by mutableStateOf<String?>(null); private set

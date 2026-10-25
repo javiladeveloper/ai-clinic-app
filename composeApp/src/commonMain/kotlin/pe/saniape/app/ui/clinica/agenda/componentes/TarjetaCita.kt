@@ -170,6 +170,16 @@ fun TarjetaCita(
     atencionDirecta: pe.saniape.app.data.staff.OfertaAtencionDirecta? = null,
     /** «📝 Anotar evolución» (resaltado) / «📝 Evolución» de la atención directa ya atendida. */
     botonEvolucion: pe.saniape.app.data.staff.BotonEvolucionCita? = null,
+    /**
+     * «🚫 No vino» el mismo día en «⋯ Más» (ofreceNoVino + permiso 'citas'):
+     * registra la falta en vez de cancelar. Lo decide la pantalla.
+     */
+    noVino: Boolean = false,
+    /**
+     * Documentos de ESTA atención (📄 informe / 🛌 descanso / 📄 constancia, 💉
+     * mapa): documentosDeCita, ya con sus permisos. Lo decide la pantalla.
+     */
+    documentos: List<pe.saniape.app.data.staff.DocumentoCita> = emptyList(),
 ) {
     // Multipaís: el costo va en la moneda de la sede de la cita ("todas las sedes").
     val moneda = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)
@@ -328,6 +338,9 @@ fun TarjetaCita(
                 terminado = terminado?.takeIf { cita.pacienteId != null && cita.tratamientoId != null },
                 directa = verClinico && atencionDirecta == pe.saniape.app.data.staff.OfertaAtencionDirecta.ATENDER,
                 evolucion = botonEvolucion?.takeIf { verClinico && atencionDirecta == pe.saniape.app.data.staff.OfertaAtencionDirecta.EVOLUCION },
+                noVino = noVino,
+                // Lo clínico (documentos de la atención) pide la historia clínica, como el resto.
+                documentos = if (verClinico) documentos else emptyList(),
             ))
 
             // Chips: costo, Web, Asignar (discretos, en una línea)

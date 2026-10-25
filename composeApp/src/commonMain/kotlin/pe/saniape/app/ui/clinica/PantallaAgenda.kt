@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.staff.CitaStaff
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.ui.hora12
+import pe.saniape.app.data.staff.zonaDeSede
 import pe.saniape.app.ui.clinica.agenda.AccionCita
 import pe.saniape.app.ui.clinica.agenda.AgendaViewModel
 import pe.saniape.app.data.staff.AccionTarjeta
@@ -181,8 +182,12 @@ fun PantallaAgenda(
     fun abrirPedido(p: pe.saniape.app.data.staff.PedidoRecepcion) {
         if (ctx.puede("pagos")) pedidoCobrar = p else pedidoEditar = null to p
     }
-    // "✗ No vino" de una vencida: confirmación con motivo + "📅 Reponer".
+    // "✗ No vino" de una vencida (o «🚫 No vino» del ⋯ de la de hoy): confirmación con motivo + "📅 Reponer".
     var noVino by remember { mutableStateOf<CitaStaff?>(null) }
+    // 📄 Informe / descanso / constancia del ⋯ de una cita atendida (prellenado con ESA atención).
+    var docCita by remember { mutableStateOf<Pair<CitaStaff, pe.saniape.app.data.staff.DocumentoCita>?>(null) }
+    // 🧮 Cerrar mi caja (quien cobra, hoy): la pestaña de cierre a pantalla completa.
+    var cerrandoCaja by remember { mutableStateOf(false) }
     // Derivación cuya evaluación se está agendando: se marca procesada SOLO si la
     // cita se guarda (antes se marcaba al abrir el form, aunque se cancelara).
     var derivacionPendiente by remember { mutableStateOf<String?>(null) }
@@ -214,6 +219,8 @@ fun PantallaAgenda(
     var fichaPie by remember { mutableStateOf<pe.saniape.app.ui.clinica.podologia.AperturaPie?>(null) }
     // «＋ Ampliar» / «✓ Dar de alta» desde la sesión que cerró el plan.
     var fichaAccionTratamiento by remember { mutableStateOf<pe.saniape.app.data.staff.AperturaAccionTratamiento?>(null) }
+    // 💉 «Mapa de aplicación» del ⋯: la ficha en la pestaña 💉 con el mapa de ESA cita.
+    var fichaAplicacionesCita by remember { mutableStateOf<String?>(null) }
     var cargandoFicha by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val acciones = pe.saniape.app.ui.recordarAcciones()
@@ -367,6 +374,22 @@ fun PantallaAgenda(
                 return@launch
             }
             fichaAccionTratamiento = pe.saniape.app.data.staff.AperturaAccionTratamiento(tid, accion)
+            fichaPaciente = pac
+        }
+    }
+    /** 💉 Estética: a la ficha en la pestaña 💉 con el mapa de ESA cita (gemelo de `rutaFichaAplicaciones`). */
+    fun abrirFichaAplicaciones(cita: CitaStaff) {
+        val pid = cita.pacienteId ?: return
+        if (cargandoFicha) return
+        cargandoFicha = true
+        scope.launch {
+            val pac = runCatching { PacientesRepo.porId(pid) }.getOrNull()
+            cargandoFicha = false
+            if (pac == null) {
+                pe.saniape.app.ui.Toaster.error("No se pudo abrir la ficha. Revisa tu conexión.")
+                return@launch
+            }
+            fichaAplicacionesCita = cita.id
             fichaPaciente = pac
         }
     }
@@ -719,6 +742,22 @@ fun PantallaAgenda(
                         }
                     }
                 }
+                // 💰 Lo atendido HOY sin cobrar (solo quien cobra; mismo criterio que Por cobrar).
+                if (ctx.puede("pagos") && vm.fechaSel == vm.hoy && vm.busqueda.isBlank() && !vm.verHistorial) {
+                    val sinCobrar = pe.saniape.app.data.staff.atendidasSinCobrar(vm.citasVisibles, vm.hoy).first
+                    if (sinCobrar.isNotEmpty()) item {
+                        Box(Modifier.padding(horizontal = Sania.dim.lg, vertical = Sania.dim.sm / 2)) {
+                            pe.saniape.app.ui.clinica.agenda.componentes.BannerSinCobrar(
+                                filas = sinCobrar,
+                                nombreTipo = { vm.flujoDe(it).nombreTipo(it.tipo) },
+                                onCobrar = { cobrar = it },
+                                onCerrarCaja = { cerrandoCaja = true }.takeIf {
+                                    pe.saniape.app.data.staff.ofreceCerrarMiCaja(ctx.puede("pagos"), ctx.puede("finanzas"), ctx.can("finanzas"))
+                                },
+                            )
+                        }
+                    }
+                }
                 // Banners (mañana / vencidas / derivaciones)
                 // Con el filtro de especialidad aplicado (sin filtro: los de siempre).
                 vm.bannersVisibles?.let { b ->
@@ -890,6 +929,13 @@ fun PantallaAgenda(
                                         AccionTarjeta.PlanAlimentario -> abrirFichaNutricion(cita, "plan", abrirFormulario = false)
                                         AccionTarjeta.Embarazo -> abrirFichaEmbarazo(cita)
                                         AccionTarjeta.AtenderDirecto, AccionTarjeta.Evolucion -> atencionDirectaId = cita.id
+                                        // 🚫 La falta del mismo día: el modal de siempre (motivo + reponer).
+                                        AccionTarjeta.NoVino -> noVino = cita
+                                        AccionTarjeta.DocInforme, AccionTarjeta.DocDescanso, AccionTarjeta.DocOrden, AccionTarjeta.DocConstancia ->
+                                            vm.documentosDe(cita, verHc)
+                                                .firstOrNull { pe.saniape.app.data.staff.accionDeDocumento(it.clave) == accion }
+                                                ?.let { docCita = cita to it }
+                                        AccionTarjeta.MapaAplicacion -> abrirFichaAplicaciones(cita)
                                     }
                                 },
                                 onVerResumen = { resumenDeCita = cita; resumenPacienteId = it },
@@ -940,6 +986,10 @@ fun PantallaAgenda(
                                 botonEvolucion = pe.saniape.app.data.staff.botonEvolucionCita(
                                     vm.atencionDirectaDe(cita), vm.evolucionPorCita[cita.id],
                                 ),
+                                // 🚫 No vino el mismo día (hoy ya empezada o días anteriores; permiso 'citas').
+                                noVino = vm.ofreceNoVinoEn(cita),
+                                // 📄 Documentos y 💉 mapa de ESTA atención (con sus permisos).
+                                documentos = vm.documentosDe(cita, verHc),
                                 sala = vm.etapaDe(cita)?.let { etapa ->
                                     val a = vm.atencionDe(cita)
                                     pe.saniape.app.ui.clinica.agenda.componentes.SalaTarjeta(
@@ -1301,6 +1351,30 @@ fun PantallaAgenda(
             onCancelar = { noVino = null },
             onMarcar = { motivo -> vm.noAsistio(cita, motivo) { ok -> if (ok) noVino = null } },
             onReponer = { noVino = null; editar = cita },
+        )
+    }
+    // 📄 Informe / descanso / constancia del ⋯: el formulario de la ficha, prellenado
+    // con la atención de ESA cita; emitido → la hoja para imprimir (como la web).
+    docCita?.takeIf { verHc }?.let { (cita, doc) ->
+        pe.saniape.app.ui.clinica.atencion.DialogoInformeMedico(
+            ctx = ctx,
+            tipoInicial = doc.tipo ?: pe.saniape.app.data.staff.DOC_INFORME,
+            pacienteId = cita.pacienteId.orEmpty(),
+            pacienteNombre = cita.pacienteNombre.orEmpty(),
+            prefill = null,
+            hoy = pe.saniape.app.data.staff.hoyEnIso(ctx.zonaDeSede(cita.sedeId)),
+            onCancelar = { docCita = null },
+            desdeFicha = true,
+            citaOrigenId = cita.id,
+            tituloInicial = doc.titulo,
+            psico = doc.psico,
+            onEmitido = { id, numero ->
+                docCita = null
+                if (id.isNotBlank()) scope.launch {
+                    pe.saniape.app.data.staff.AtencionRepo.htmlImprimible("informe", id)?.let { acciones.abrirHtml(it, numero) }
+                        ?: pe.saniape.app.ui.Toaster.error("Se emitió, pero no se pudo abrir la impresión. Reimprímelo desde la ficha.")
+                }
+            },
         )
     }
     // Cobro que no entró tras completar la sesión: reintentar SOLO el cobro.
@@ -1749,11 +1823,16 @@ fun PantallaAgenda(
         }
     }
 
+    if (cerrandoCaja) {
+        Box(Modifier.fillMaxSize().background(c.fondo)) {
+            pe.saniape.app.ui.clinica.finanzas.PantallaCerrarMiCaja(ctx) { cerrandoCaja = false }
+        }
+    }
     fichaPaciente?.let { pac ->
         Box(Modifier.fillMaxSize().background(c.fondo)) {
             pe.saniape.app.tutoriales.PantallaTutorial("Ficha") { PantallaFichaPaciente(
                 ctx = ctx, pacienteInicial = pac,
-                onCerrar = { fichaPaciente = null; fichaEjercicios = null; fichaNutricion = null; fichaEmbarazo = false; fichaEmbarazoCita = null; fichaIndicaciones = null; fichaOrtodoncia = null; fichaPresupuesto = false; fichaPresupuestoCita = null; fichaPie = null; fichaAccionTratamiento = null },
+                onCerrar = { fichaPaciente = null; fichaEjercicios = null; fichaNutricion = null; fichaEmbarazo = false; fichaEmbarazoCita = null; fichaIndicaciones = null; fichaOrtodoncia = null; fichaPresupuesto = false; fichaPresupuestoCita = null; fichaPie = null; fichaAccionTratamiento = null; fichaAplicacionesCita = null },
                 ejerciciosAlAbrir = fichaEjercicios,
                 nutricionAlAbrir = fichaNutricion,
                 embarazoAlAbrir = fichaEmbarazo,
@@ -1762,6 +1841,7 @@ fun PantallaAgenda(
                 ortodonciaAlAbrir = fichaOrtodoncia,
                 pieAlAbrir = fichaPie,
                 accionTratamientoAlAbrir = fichaAccionTratamiento,
+                aplicacionesCitaId = fichaAplicacionesCita,
                 presupuestoNuevoCitaId = fichaPresupuestoCita,
                 presupuestoNuevo = fichaPresupuesto,
             ) }
