@@ -33,12 +33,27 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
+import pe.saniape.app.data.staff.AccionSesion
+import pe.saniape.app.data.staff.AccionTratamiento
+import pe.saniape.app.data.staff.ACCIONES_ESTADO_SESION
+import pe.saniape.app.data.staff.ROJAS_SESION
+import pe.saniape.app.data.staff.ROJAS_TRATAMIENTO
+import pe.saniape.app.data.staff.estadoDeAccionSesion
+import pe.saniape.app.data.staff.repartirAccionesSesion
+import pe.saniape.app.data.staff.repartirAccionesTratamiento
+import pe.saniape.app.data.staff.textoAccionSesion
+import pe.saniape.app.ui.componentes.BotonTarjeta
+import pe.saniape.app.ui.componentes.DialogoConfirmar
+import pe.saniape.app.ui.componentes.MenuMas
 import pe.saniape.app.data.staff.AvisoRx
 import pe.saniape.app.data.staff.PacientesRepo
 import pe.saniape.app.data.staff.SesionFicha
@@ -49,9 +64,6 @@ import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.data.staff.FlujoClinica
 import pe.saniape.app.tutoriales.tourAncla
 import pe.saniape.app.data.staff.simboloMoneda
-
-/** Estado de sesión que se puede fijar desde el menú ⋯ (igual que la web). */
-private val ESTADOS_SESION = pe.saniape.app.data.staff.ESTADOS_MENU_SESION
 
 /** Aviso cuando se intenta registrar algo en la ficha de un paciente dado de baja. */
 private fun avisoBaja(t: pe.saniape.app.data.staff.TerminologiaPaciente) = "${t.Paciente} dado de baja: reactívalo para registrar sesiones, citas o pagos."
@@ -166,9 +178,9 @@ fun TarjetaTratamiento(
     // Lo pagado NETO que cargó la sección de pagos (null = aún no): decide el "💳 Cobrar" por sesión.
     var pagadoCargado by remember(t.id) { mutableStateOf<Double?>(null) }
     var accionando by remember { mutableStateOf(false) }
-    var menuDe by remember { mutableStateOf<SesionFicha?>(null) }   // sesión con menú ⋯ abierto
     var cambioToken by remember { mutableStateOf(0) }   // recarga la sección de pagos tras cobros
-    var menuTrat by remember { mutableStateOf(false) }   // menú ⋯ del tratamiento
+    // «⏸ Suspender» / «✗ Cancelar» del «⋯» esperan confirmación (estado al que pasaría, o null).
+    var confirmarEstadoTrat by remember { mutableStateOf<String?>(null) }
     // "🖨 Ver indicaciones" de una sesión en curso (un doble toque no abre dos visores).
     var abriendoReceta by remember { mutableStateOf(false) }
     val accionesNat = pe.saniape.app.ui.recordarAcciones()
@@ -202,6 +214,19 @@ fun TarjetaTratamiento(
             t = t,
             onCerrar = { eliminarAbierto = false },
             onTermino = { eliminarAbierto = false; onCambioRealizado() },
+        )
+    }
+    // «⏸ Suspender» / «✗ Cancelar»: antes de un toque, ahora con confirmación.
+    confirmarEstadoTrat?.let { nuevo ->
+        val cancelar = nuevo == "Cancelado"
+        DialogoConfirmar(
+            titulo = if (cancelar) "¿Cancelar este tratamiento?" else "¿Suspender este tratamiento?",
+            texto = "«${t.procedimiento ?: "Tratamiento"}» quedará ${if (cancelar) "cancelado" else "suspendido"}. " +
+                "El historial se conserva y puedes reactivarlo después.",
+            textoConfirmar = if (cancelar) "Sí, cancelar" else "Sí, suspender",
+            peligro = cancelar,
+            onCancelar = { confirmarEstadoTrat = null },
+            onConfirmar = { confirmarEstadoTrat = null; onCambiarEstadoTrat(t.id, nuevo) },
         )
     }
     // Fisio (M4): modal "No volvió" abierto (con cuántas citas/sesiones futuras tiene).
@@ -397,8 +422,13 @@ fun TarjetaTratamiento(
         bloqueEvaluacionPsico?.let { bloque -> Column(Modifier.tourAncla("ficha.evaluacion_psico")) { bloque() } }
 
         // Fisio (M3): al paquete le quedan 1–2 sesiones → ofrecer renovar.
-        if (esFisio) {
+        val restantesRenovacion = if (esFisio)
             pe.saniape.app.data.staff.avisoRenovacion(t.estado, t.modalidad, t.totalSesiones, t.sesionesCompletadas)
+        else null
+        // El aviso ya muestra «➕ Ampliar»: el ⋯ del tratamiento no lo repite.
+        val avisoRenovacionConAmpliar = restantesRenovacion != null && puedeSesionesEf
+        if (esFisio) {
+            restantesRenovacion
                 ?.let { restantes ->
                     Spacer(Modifier.height(8.dp))
                     pe.saniape.app.ui.clinica.fisio.AvisoRenovacion(
@@ -409,86 +439,120 @@ fun TarjetaTratamiento(
                 }
         }
 
-        // Acciones del tratamiento (⋯): editar / ampliar / suspender / cancelar / reactivar.
-        if (puedeSesionesEf) {
-            Spacer(Modifier.height(6.dp))
-            Box(Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                .clickable { menuTrat = !menuTrat }.padding(horizontal = 10.dp, vertical = 5.dp)) {
-                Text("⋯ Opciones del tratamiento", color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-            if (menuTrat) {
-                Spacer(Modifier.height(4.dp))
-                Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                        .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
-                ) {
-                    // (Agendar sesión está como botón visible arriba, no se repite aquí.)
-                    // Editar tratamiento solo en planes por sesiones: precio/n° sesiones.
-                    // En consultas todo (incl. costo) se registra en "Registrar atención" (paso Control).
-                    if (!t.esConsulta) {
-                        ItemMenu("✏ Editar tratamiento", c.texto) { menuTrat = false; onEditar(t) }
-                        // Evaluación psicológica: las citas se suman sin cobrar (botón propio).
-                        if (!esEvaluacionPsico) ItemMenu("➕ Ampliar (más sesiones)", c.navy) { menuTrat = false; onAmpliar(t) }
-                    }
-                    // 📝 Receta / indicaciones para el tratamiento (gemelo del "📝 Receta" de la web).
-                    if (receta != null) ItemMenu(receta.textoDar, c.purple) { menuTrat = false; receta.onDar(null) }
-                    // Derivar este tratamiento a otra especialidad (feature Premium).
-                    if (puedeDerivar && t.estado == "Activo")
-                        ItemMenu("↗ Derivar a otra especialidad", c.purple) { menuTrat = false; onDerivar(t) }
-                    when (t.estado) {
-                        "Activo" -> {
-                            ItemMenu("⏸ Suspender", c.pend) { menuTrat = false; onCambiarEstadoTrat(t.id, "Suspendido") }
-                            // Fisio (M4): cierre por abandono con motivo. No dental (libera piezas),
-                            // ni Unidades/Consulta (no tienen "sesiones que faltan").
-                            if (esFisio && !esDental && pe.saniape.app.data.staff.puedeMarcarNoVolvio(t.estado, t.modalidad, t.totalSesiones)) {
-                                ItemMenu("🚪 No volvió", c.pend) {
-                                    menuTrat = false
-                                    if (accionando) return@ItemMenu
-                                    scope.launch {
-                                        // Cuántas citas/sesiones futuras pendientes tiene (una sesión con
-                                        // su cita cuenta una vez). Las sesiones se piden solo si la
-                                        // tarjeta no las tenía cargadas.
-                                        val lista = sesiones ?: runCatching { PacientesRepo.sesionesDe(t.id) }.getOrNull().orEmpty()
-                                        val hoy = pe.saniape.app.data.staff.hoyClinicaIso()
-                                        val conCita = citasFuturasPendientes.filterNotNull().toSet()
-                                        noVolvioFuturas = citasFuturasPendientes.size +
-                                            lista.count { it.pendiente && it.fecha >= hoy && it.id !in conCita }
-                                    }
-                                }
-                            }
-                            ItemMenu("✗ Cancelar", c.error) { menuTrat = false; onCambiarEstadoTrat(t.id, "Cancelado") }
-                        }
-                        "Suspendido", "Cancelado" ->
-                            ItemMenu("↻ Reactivar", c.ok) { menuTrat = false; onCambiarEstadoTrat(t.id, "Activo") }
-                    }
-                    // Eliminar (borrado lógico): solo el Admin, como la ficha web. Antes de
-                    // eliminar se decide qué pasa con su dinero (caja y saldo a favor).
-                    if (esAdmin) ItemMenu("🗑 Eliminar tratamiento", c.error) { menuTrat = false; eliminarAbierto = true }
+        // Acciones del tratamiento: a la vista solo lo del MOMENTO del plan (en curso:
+        // Agendar · Editar; terminado: Dar de alta · Ampliar · Editar; pausado:
+        // Reactivar) y el resto en «⋯ Más», agrupado (repartirAccionesTratamiento,
+        // gemela de la web). Antes: la columna «⋯ Opciones del tratamiento» que crecía
+        // dentro de la tarjeta, «📅 + Agendar sesión» aparte y «✓ Dar de alta» abajo.
+        // Cada acción conserva su condición y su handler de siempre.
+        val accionesTrat = buildList {
+            if (puedeSesionesEf) {
+                // Agendar: tratamientos por sesiones activos (la consulta agenda su control en la nube).
+                if (!t.esConsulta && t.estado == "Activo") add(AccionTratamiento.Agendar)
+                // Editar solo en planes por sesiones: precio/n° sesiones. En consultas
+                // todo (incl. costo) se registra en "Registrar atención" (paso Control).
+                if (!t.esConsulta) {
+                    add(AccionTratamiento.Editar)
+                    // Evaluación psicológica: las citas se suman sin cobrar (botón propio).
+                    // Con el aviso de renovación a la vista, su «➕ Ampliar» no se repite en el ⋯.
+                    if (!esEvaluacionPsico && !avisoRenovacionConAmpliar) add(AccionTratamiento.Ampliar)
                 }
+                // 📝 Receta / indicaciones para el tratamiento (gemelo del "📝 Receta" de la web).
+                if (receta != null) add(AccionTratamiento.Receta)
+                // Derivar este tratamiento a otra especialidad (feature Premium).
+                if (puedeDerivar && t.estado == "Activo") add(AccionTratamiento.Derivar)
+                when (t.estado) {
+                    "Activo" -> {
+                        add(AccionTratamiento.Suspender)
+                        // Fisio (M4): cierre por abandono con motivo. No dental (libera piezas),
+                        // ni Unidades/Consulta (no tienen "sesiones que faltan").
+                        if (esFisio && !esDental && pe.saniape.app.data.staff.puedeMarcarNoVolvio(t.estado, t.modalidad, t.totalSesiones))
+                            add(AccionTratamiento.NoVolvio)
+                        add(AccionTratamiento.Cancelar)
+                    }
+                    "Suspendido", "Cancelado" -> add(AccionTratamiento.Reactivar)
+                }
+                // Eliminar (borrado lógico): solo el Admin, como la ficha web.
+                if (esAdmin) add(AccionTratamiento.Eliminar)
+                // Dar de alta (con confirmación) mientras siga en curso. El servicio único,
+                // una vez realizado (o En control: el alta cancela los controles que faltan).
+                if (!terminado && (!t.esServicioUnico || t.estado == "Completado" || tratEnControl)) add(AccionTratamiento.Alta)
+            } else if (soloLectura && esAdmin && puedeSesiones && !t.esConsulta) {
+                // Ficha dada de baja: nadie registra nada nuevo, pero el ADMIN puede CORREGIR
+                // el tratamiento (el servidor valida el rol). Los demás roles no ven nada nuevo.
+                add(AccionTratamiento.Editar)
             }
         }
-
-        // Ficha dada de baja: nadie registra nada nuevo, pero el ADMIN puede CORREGIR
-        // el tratamiento (el servidor valida el rol). Los demás roles no ven nada nuevo.
-        if (!puedeSesionesEf && soloLectura && esAdmin && puedeSesiones && !t.esConsulta) {
-            Spacer(Modifier.height(6.dp))
-            Box(Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                .clickable { onEditar(t) }.padding(horizontal = 10.dp, vertical = 5.dp)) {
-                Text("✏ Corregir tratamiento", color = c.texto, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        val planTrat = repartirAccionesTratamiento(
+            pe.saniape.app.data.staff.TratamientoParaTerminar(t.estado, t.totalSesiones, t.sesionesCompletadas),
+            accionesTrat,
+        )
+        fun textoTrat(a: AccionTratamiento, aLaVista: Boolean): String = when (a) {
+            AccionTratamiento.Agendar -> "📅 Agendar sesión"
+            AccionTratamiento.Editar -> when {
+                !puedeSesionesEf -> "✏ Corregir tratamiento"
+                aLaVista -> "✏ Editar"
+                else -> "✏ Editar tratamiento"
+            }
+            AccionTratamiento.Ampliar -> if (aLaVista) "➕ Ampliar" else "➕ Ampliar (más sesiones)"
+            AccionTratamiento.SesionPasada -> "🗂 Sesión pasada"
+            AccionTratamiento.Alta -> if (aLaVista) "✓ Dar de alta" else "✓ Dar de alta este tratamiento"
+            AccionTratamiento.Reactivar -> "↻ Reactivar"
+            AccionTratamiento.Suspender -> "⏸ Suspender"
+            AccionTratamiento.NoVolvio -> "🚪 No volvió"
+            AccionTratamiento.Cancelar -> "✗ Cancelar tratamiento"
+            AccionTratamiento.Receta -> receta?.textoDar ?: "📝 Receta"
+            AccionTratamiento.Derivar -> "↗ Derivar a otra especialidad"
+            AccionTratamiento.Eliminar -> "🗑 Eliminar tratamiento"
+        }
+        fun ejecutarTrat(a: AccionTratamiento) {
+            when (a) {
+                AccionTratamiento.Agendar -> onCrearSesion(t)
+                AccionTratamiento.Editar -> onEditar(t)
+                AccionTratamiento.Ampliar -> onAmpliar(t)
+                AccionTratamiento.SesionPasada -> Unit
+                // La tarjeta se abre para contar las sesiones pendientes en el aviso del alta.
+                AccionTratamiento.Alta -> if (!accionando) { expandido = true; confirmarAlta = true }
+                AccionTratamiento.Reactivar -> onCambiarEstadoTrat(t.id, "Activo")
+                // Suspender y cancelar se confirman (antes se ejecutaban de un toque).
+                AccionTratamiento.Suspender -> confirmarEstadoTrat = "Suspendido"
+                AccionTratamiento.Cancelar -> confirmarEstadoTrat = "Cancelado"
+                AccionTratamiento.NoVolvio -> {
+                    if (accionando) return
+                    scope.launch {
+                        // Cuántas citas/sesiones futuras pendientes tiene (una sesión con
+                        // su cita cuenta una vez). Las sesiones se piden solo si la
+                        // tarjeta no las tenía cargadas.
+                        val lista = sesiones ?: runCatching { PacientesRepo.sesionesDe(t.id) }.getOrNull().orEmpty()
+                        val hoy = pe.saniape.app.data.staff.hoyClinicaIso()
+                        val conCita = citasFuturasPendientes.filterNotNull().toSet()
+                        noVolvioFuturas = citasFuturasPendientes.size +
+                            lista.count { it.pendiente && it.fecha >= hoy && it.id !in conCita }
+                    }
+                }
+                AccionTratamiento.Receta -> receta?.onDar?.invoke(null)
+                AccionTratamiento.Derivar -> onDerivar(t)
+                // Antes de eliminar se decide qué pasa con su dinero (caja y saldo a favor).
+                AccionTratamiento.Eliminar -> eliminarAbierto = true
             }
         }
-
-        // Acción más usada a la vista: agendar sesión (tratamientos por sesiones activos).
-        if (!t.esConsulta && t.estado == "Activo" && puedeSesionesEf) {
+        if (planTrat.visibles.isNotEmpty() || planTrat.menu.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
-            Box(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                    .background(c.navy.copy(alpha = 0.10f))
-                    .border(1.dp, c.navy, RoundedCornerShape(Sania.shape.sm.dp))
-                    .clickable { onCrearSesion(t) }.padding(vertical = 9.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("📅 + Agendar sesión", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                planTrat.primaria?.let { a ->
+                    BotonTarjeta(textoTrat(a, true), colorAccionTrat(a), !accionando, lleno = true) { ejecutarTrat(a) }
+                }
+                planTrat.secundarias.forEach { a ->
+                    BotonTarjeta(textoTrat(a, true), colorAccionTrat(a), !accionando) { ejecutarTrat(a) }
+                }
+                MenuMas(
+                    grupos = planTrat.menu,
+                    texto = { textoTrat(it, false) },
+                    onAccion = { ejecutarTrat(it) },
+                    rojo = { it in ROJAS_TRATAMIENTO },
+                    habilitado = !accionando,
+                    descripcion = "Más acciones del tratamiento",
+                )
             }
         }
 
@@ -536,15 +600,9 @@ fun TarjetaTratamiento(
                     SeccionPagos(t = t, esAdmin = esAdmin, recargaToken = cambioToken, onCambio = { recargarSesiones() },
                         soloLectura = soloLectura, pacienteId = pacienteId, abrirRegistro = abrirPagoToken)
                 }
-                // Alta a la vista también sin sesiones (2026-10-02: "en algunos
-                // procedimientos no encontré dar de alta" — estaba solo dentro del
-                // paso "Control"). El servicio único se cierra una vez realizado.
-                // En control (realizado, con controles pendientes) también: el alta lo
-                // cierra y cancela los controles que faltan (como la web).
-                if (!terminado && puedeSesionesEf && (!t.esServicioUnico || t.estado == "Completado" || tratEnControl)) {
-                    Spacer(Modifier.height(Sania.dim.sm))
-                    BtnDarAlta(habilitado = !accionando) { confirmarAlta = true }
-                }
+                // «✓ Dar de alta» ya no va abajo: está en las acciones de arriba (a la
+                // vista cuando terminó; si no, en el «⋯»), también sin sesiones
+                // (2026-10-02: "en algunos procedimientos no encontré dar de alta").
             } else if (cargaFallo) {
                 // La carga falló (timeout/red). NO decir "sin sesiones": ofrecer reintentar.
                 BloqueReintentar("No se pudieron cargar las sesiones.") { sesiones = null; recargarSesiones() }
@@ -601,8 +659,6 @@ fun TarjetaTratamiento(
                                 puedePagos = puedeCobrarEf, esAdmin = esAdmin, accionando = accionando,
                                 sinSaldo = t.sinSaldoCon(pagadoCargado),
                                 avisoRxPrevia = ses.pendiente && AvisoRx.dejoRx(anteriorSes),
-                                menuAbierto = menuDe?.id == ses.id,
-                                onToggleMenu = { menuDe = if (menuDe?.id == ses.id) null else ses },
                                 onCompletar = {
                                     // Sesión anterior (numero-1) como referencia de evolución en el modal.
                                     val anterior = s.filter { it.numero < ses.numero }.maxByOrNull { it.numero }
@@ -611,15 +667,12 @@ fun TarjetaTratamiento(
                                 // Reprogramada / No asistió / Cancelada / Otro: primero el modal
                                 // (fecha+hora y motivo). Antes se mandaba en un toque, sin nada.
                                 onEstado = { nuevo ->
-                                    menuDe = null
                                     if (!accionando) cambioEstado = ses to nuevo
                                 },
                                 onEditar = {
-                                    menuDe = null
                                     if (correccion) corregirSesion = ses else editarSesion = ses
                                 },
                                 onRevertir = {
-                                    menuDe = null
                                     if (accionando) return@FilaSesion
                                     accionando = true
                                     scope.launch {
@@ -629,15 +682,14 @@ fun TarjetaTratamiento(
                                         accionando = false; recargarSesiones()
                                     }
                                 },
-                                onBorrar = { borrarSesion = ses; menuDe = null },
-                                onReasignar = { reasignarSesion = ses; menuDe = null },
-                                onCobrar = { cobrarSesion = ses; menuDe = null },
+                                onBorrar = { borrarSesion = ses },
+                                onReasignar = { reasignarSesion = ses },
+                                onCobrar = { cobrarSesion = ses },
                                 // 📝 Receta / indicaciones de la sesión atendida (o verla si ya tiene).
                                 textoReceta = receta?.textoDar?.takeIf { ses.estado == "Completada" && !soloLectura },
                                 recetaSesion = receta?.deSesion(ses),
-                                onReceta = { menuDe = null; receta?.onDar?.invoke(ses) },
+                                onReceta = { receta?.onDar?.invoke(ses) },
                                 onVerReceta = { r ->
-                                    menuDe = null
                                     if (!abriendoReceta) {
                                         abriendoReceta = true
                                         scope.launch {
@@ -672,12 +724,7 @@ fun TarjetaTratamiento(
                             soloLectura = soloLectura, pacienteId = pacienteId, abrirRegistro = abrirPagoToken,
                             onPagado = { pagadoCargado = it })
                     }
-
-                    // Dar de alta (si el tratamiento sigue en curso y puede sesiones) — con confirmación.
-                    if (!terminado && puedeSesionesEf) {
-                        Spacer(Modifier.height(Sania.dim.sm))
-                        BtnDarAlta(habilitado = !accionando) { confirmarAlta = true }
-                    }
+                    // (Dar de alta: en las acciones de arriba, con su confirmación.)
                 }
             }
         }
@@ -979,8 +1026,6 @@ private fun FilaSesion(
     /** Tratamiento pagado completo: sin "💳 Cobrar" (las que tienen pago siguen "✓ Pagada"). */
     sinSaldo: Boolean = false,
     avisoRxPrevia: Boolean,
-    menuAbierto: Boolean,
-    onToggleMenu: () -> Unit,
     onCompletar: () -> Unit,
     onEstado: (String) -> Unit,
     onEditar: () -> Unit,
@@ -1060,40 +1105,64 @@ private fun FilaSesion(
         }
 
         if (puedeSesiones) {
-            Spacer(Modifier.height(8.dp))
-            // Fila limpia: 1 acción principal + ✏ editar + ⋯ menú (resto). Como la web.
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                when {
-                    ses.pendiente -> MiniBtn("✓ Completar", c.navy, !accionando) { onCompletar() }
-                    // Completada: si ya tiene cobro → badge "✓ Pagada"; si no → "💳 Cobrar".
-                    completada && puedePagos && ses.pagada -> Box(
-                        Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.okBg)
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                    ) { Text("✓ Pagada", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                    completada && puedePagos && !sinSaldo -> MiniBtn("💳 Cobrar", c.teal, !accionando) { onCobrar() }
-                }
-                if (ses.pendiente) IconoBtn("✏", !accionando) { onEditar() }
-                IconoBtn("⋯", !accionando) { onToggleMenu() }
+            // 1 acción del momento (✓ Completar / 💳 Cobrar / la receta) + «⋯ Más» con el
+            // resto (repartirAccionesSesion, la misma regla que Sesiones). El ✏ suelto se
+            // fue: «✏ Editar sesión» ya estaba en el ⋯. Lo rojo (Canceló, Revertir,
+            // Borrar) va al final del menú.
+            val acciones = buildList {
+                if (ses.pendiente) add(AccionSesion.Completar)
+                // Completada: si ya tiene cobro → badge "✓ Pagada"; si no → "💳 Cobrar".
+                if (completada && puedePagos && !ses.pagada && !sinSaldo) add(AccionSesion.Cobrar)
+                add(AccionSesion.Editar)
+                if (ses.pendiente) addAll(ACCIONES_ESTADO_SESION)
+                // Receta / indicaciones de la sesión atendida: verla (si tiene) y dar una.
+                if (completada && recetaSesion != null) add(AccionSesion.VerReceta)
+                if (completada && textoReceta != null) add(AccionSesion.Receta)
+                if (completada) add(AccionSesion.Revertir)
+                add(AccionSesion.Reasignar)
+                // Borrar es destructivo: solo Admin (igual criterio que borrar pagos).
+                if (esAdmin) add(AccionSesion.Borrar)
             }
-            // Menú desplegable: estados (si pendiente) + revertir (si completada) + reasignar + borrar.
-            if (menuAbierto) {
-                Spacer(Modifier.height(6.dp))
-                Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                        .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
-                ) {
-                    ItemMenu("✏ Editar sesión", c.texto) { onEditar() }
-                    if (ses.pendiente) ESTADOS_SESION.forEach { e -> ItemMenu(e, c.texto) { onEstado(e) } }
-                    // Receta / indicaciones de la sesión atendida: verla (si tiene) y dar una.
-                    if (completada && recetaSesion != null) {
-                        ItemMenu("🖨 Ver ${recetaSesion.nombreHoja.lowercase()} ${recetaSesion.numeroTexto}", c.purple) { onVerReceta(recetaSesion) }
-                    }
-                    if (completada && textoReceta != null) ItemMenu(textoReceta, c.purple) { onReceta() }
-                    if (completada) ItemMenu("↩ Revertir", c.pend) { onRevertir() }
-                    ItemMenu("👤 Reasignar profesional", c.texto) { onReasignar() }
-                    // Borrar es destructivo: solo Admin (igual criterio que borrar pagos).
-                    if (esAdmin) ItemMenu("🗑 Borrar sesión", c.error) { onBorrar() }
+            val plan = repartirAccionesSesion(ses.estado, acciones)
+            fun texto(a: AccionSesion): String = when (a) {
+                AccionSesion.VerReceta -> recetaSesion?.let { "🖨 Ver ${it.nombreHoja.lowercase()} ${it.numeroTexto}" } ?: textoAccionSesion(a)
+                AccionSesion.Receta -> textoReceta ?: textoAccionSesion(a)
+                else -> textoAccionSesion(a)
+            }
+            fun ejecutar(a: AccionSesion) {
+                when (a) {
+                    AccionSesion.Completar -> onCompletar()
+                    AccionSesion.Cobrar -> onCobrar()
+                    AccionSesion.Editar -> onEditar()
+                    AccionSesion.VerReceta -> recetaSesion?.let { onVerReceta(it) }
+                    AccionSesion.Receta -> onReceta()
+                    AccionSesion.Revertir -> onRevertir()
+                    AccionSesion.Reasignar -> onReasignar()
+                    AccionSesion.Borrar -> onBorrar()
+                    // Reprogramar / No asistió / Canceló / Otro: el modal de siempre (fecha y motivo).
+                    else -> estadoDeAccionSesion(a)?.let { onEstado(it) }
                 }
+            }
+            Spacer(Modifier.height(8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                plan.primaria?.let { a ->
+                    BotonTarjeta(texto(a), colorAccionSesion(a), !accionando, lleno = true) { ejecutar(a) }
+                }
+                if (completada && puedePagos && ses.pagada) Box(
+                    Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.okBg)
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                ) { Text("✓ Pagada", color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                plan.secundarias.forEach { a ->
+                    BotonTarjeta(texto(a), colorAccionSesion(a), !accionando) { ejecutar(a) }
+                }
+                MenuMas(
+                    grupos = plan.menu,
+                    texto = { texto(it) },
+                    onAccion = { ejecutar(it) },
+                    rojo = { it in ROJAS_SESION },
+                    habilitado = !accionando,
+                    descripcion = "Más acciones de la sesión ${ses.numero}",
+                )
             }
         } else if (puedeCorregir) {
             // Ficha dada de baja: solo el Admin, y solo corregir (nada nuevo).
@@ -1156,23 +1225,43 @@ private fun BloqueReintentar(mensaje: String, onReintentar: () -> Unit) {
     }
 }
 
-/** Botón "Dar de alta este tratamiento" (verde). El alta SIEMPRE la declara el profesional. */
+/** El único botón de la fila de un pago (🧾 o ⋯): 36 dp, con nombre para el lector de pantalla. */
 @Composable
-private fun BtnDarAlta(habilitado: Boolean, onClick: () -> Unit) {
-    val c = Sania.colors
+private fun IconoFilaPago(icono: String, descripcion: String, onClick: () -> Unit) {
     Box(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-            .background(c.ok.copy(alpha = 0.12f)).border(1.dp, c.ok, RoundedCornerShape(Sania.shape.sm.dp))
-            .clickable(enabled = habilitado) { onClick() }.padding(vertical = 10.dp),
+        Modifier.size(36.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+            .semantics { contentDescription = descripcion; role = androidx.compose.ui.semantics.Role.Button }
+            .clickable { onClick() },
         contentAlignment = Alignment.Center,
-    ) { Text("✓ Dar de alta este tratamiento", color = c.ok, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+    ) { Text(icono, fontSize = 15.sp, color = Sania.colors.textoSuave, fontWeight = FontWeight.Bold) }
 }
 
-/** Fila de un menú desplegable. */
+/** Color de cada acción del tratamiento a la vista (el alta SIEMPRE la declara el profesional: verde). */
 @Composable
-private fun ItemMenu(texto: String, color: Color, onClick: () -> Unit) {
-    Text(texto, color = color, fontSize = 12.sp, fontWeight = FontWeight.Medium,
-        modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 12.dp, vertical = 10.dp))
+private fun colorAccionTrat(a: AccionTratamiento): Color {
+    val c = Sania.colors
+    return when (a) {
+        AccionTratamiento.Agendar, AccionTratamiento.Ampliar -> c.navy
+        AccionTratamiento.Alta, AccionTratamiento.Reactivar -> c.ok
+        AccionTratamiento.Receta, AccionTratamiento.Derivar -> c.purple
+        AccionTratamiento.Suspender, AccionTratamiento.NoVolvio -> c.pend
+        AccionTratamiento.Cancelar, AccionTratamiento.Eliminar -> c.error
+        else -> c.textoSuave
+    }
+}
+
+/** Color de cada acción de la fila de sesión a la vista. */
+@Composable
+private fun colorAccionSesion(a: AccionSesion): Color {
+    val c = Sania.colors
+    return when (a) {
+        AccionSesion.Completar -> c.navy
+        AccionSesion.Cobrar -> c.teal
+        AccionSesion.VerReceta, AccionSesion.Receta -> c.purple
+        AccionSesion.Alta -> c.ok
+        AccionSesion.Ampliar -> c.info
+        else -> c.textoSuave
+    }
 }
 
 /** Métodos de pago (igual que la web). */
@@ -1372,29 +1461,37 @@ fun SeccionPagos(
                     Spacer(Modifier.width(8.dp))
                     Text(p.fecha, color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.weight(1f))
                     Text("${simboloMoneda(moneda)} ${formato2(p.monto)}", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    // 🧾 Comprobante (PDF): quien ve los pagos lo puede reimprimir o compartir.
-                    if (p.saldoTipo != "consumo") {
-                        Spacer(Modifier.width(10.dp))
-                        Text("🧾", fontSize = 14.sp, modifier = Modifier.clickable { reciboDe = if (reciboDe == p.id) null else p.id })
-                    }
-                    // Editar / borrar (solo Admin, y no en una ficha dada de baja)
-                    if (esAdmin && !soloLectura) {
+                    // Un solo botón: 🧾 (o ⋯ si el pago no tiene recibo) abre el menú con el
+                    // comprobante (A4 / ticket), ✏ Editar y 🗑 Borrar (estos dos solo Admin y
+                    // no en una ficha dada de baja). Antes: 🧾 ✏ 🗑 sueltos + otra fila de recibo.
+                    val conRecibo = p.saldoTipo != "consumo"
+                    val corregir = esAdmin && !soloLectura
+                    val planPago = pe.saniape.app.data.staff.accionesPago(conRecibo, editar = corregir, borrar = corregir)
+                    if (bajandoRecibo && reciboDe == p.id) {
                         Spacer(Modifier.width(8.dp))
-                        Text("✏", fontSize = 14.sp, modifier = Modifier.clickable {
-                            editando = p.id; editMonto = formato2(p.monto); editMetodo = p.metodo; borrarId = null
-                        })
-                        Spacer(Modifier.width(10.dp))
-                        Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable { borrarId = p.id })
+                        Text("Generando…", color = c.textoSuave, fontSize = 10.sp)
                     }
-                }
-                if (reciboDe == p.id) {
-                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (bajandoRecibo) "Generando…" else "🧾 Comprobante:", color = c.textoSuave, fontSize = 11.sp)
-                        MiniBtn("🧾 A4", c.navy, !bajandoRecibo) { abrirRecibo(p.id, "a4") }
-                        MiniBtn("🎫 Ticket 80 mm", c.navy, !bajandoRecibo) { abrirRecibo(p.id, "ticket") }
-                        MiniBtn("Cancelar", c.textoSuave, !bajandoRecibo) { reciboDe = null }
-                    }
+                    Spacer(Modifier.width(6.dp))
+                    MenuMas(
+                        grupos = planPago.menu,
+                        texto = { pe.saniape.app.data.staff.textoAccionPago(it) },
+                        rojo = { it == pe.saniape.app.data.staff.AccionPago.Borrar },
+                        habilitado = !bajandoRecibo && !guardando,
+                        descripcion = if (conRecibo) "Comprobante y acciones del pago" else "Acciones del pago",
+                        onAccion = { a ->
+                            when (a) {
+                                pe.saniape.app.data.staff.AccionPago.ComprobanteA4 -> { reciboDe = p.id; abrirRecibo(p.id, "a4") }
+                                pe.saniape.app.data.staff.AccionPago.Ticket -> { reciboDe = p.id; abrirRecibo(p.id, "ticket") }
+                                pe.saniape.app.data.staff.AccionPago.Editar -> {
+                                    editando = p.id; editMonto = formato2(p.monto); editMetodo = p.metodo; borrarId = null
+                                }
+                                pe.saniape.app.data.staff.AccionPago.Borrar -> borrarId = p.id
+                            }
+                        },
+                        disparador = { abrir ->
+                            IconoFilaPago(if (conRecibo) "🧾" else "⋯", if (conRecibo) "Comprobante y acciones del pago" else "Acciones del pago", abrir)
+                        },
+                    )
                 }
                 // Observación del pago (la ve quien cobre la próxima vez).
                 p.notas?.takeIf { it.isNotBlank() }?.let {

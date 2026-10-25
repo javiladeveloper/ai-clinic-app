@@ -272,16 +272,28 @@ fun FilaPagoAgrupado(
                 Text(g.fecha, color = c.textoSuave, fontSize = 10.sp)
             }
             if (esAdmin && !soloLectura) {
-                if (uso != null) {
-                    Spacer(Modifier.width(8.dp))
-                    Text("✏", fontSize = 14.sp, modifier = Modifier.clickable(enabled = !guardando) {
-                        editandoSaldo = true; confirmarBorrar = false; montoEdit = pe.saniape.app.data.staff.textoMonto(uso.monto)
-                    })
-                }
-                Spacer(Modifier.width(10.dp))
-                Text("🗑", fontSize = 14.sp, modifier = Modifier.clickable(enabled = !guardando) {
-                    confirmarBorrar = true; editandoSaldo = false
-                })
+                // Un solo ⋯ (como la fila de un pago simple): ✏ Editar (la parte de saldo,
+                // si la hay) y 🗑 Borrar al final en rojo. Antes, ✏ y 🗑 sueltos.
+                Spacer(Modifier.width(6.dp))
+                pe.saniape.app.ui.componentes.MenuMas(
+                    grupos = pe.saniape.app.data.staff.accionesPago(comprobante = false, editar = uso != null, borrar = true).menu,
+                    texto = { pe.saniape.app.data.staff.textoAccionPago(it) },
+                    rojo = { it == pe.saniape.app.data.staff.AccionPago.Borrar },
+                    habilitado = !guardando,
+                    descripcion = "Acciones del pago",
+                    onAccion = { a ->
+                        when (a) {
+                            pe.saniape.app.data.staff.AccionPago.Editar -> if (uso != null) {
+                                editandoSaldo = true; confirmarBorrar = false; montoEdit = pe.saniape.app.data.staff.textoMonto(uso.monto)
+                            }
+                            pe.saniape.app.data.staff.AccionPago.Borrar -> { confirmarBorrar = true; editandoSaldo = false }
+                            else -> Unit
+                        }
+                    },
+                    disparador = { abrir ->
+                        pe.saniape.app.ui.componentes.BotonMas(habilitado = !guardando, descripcion = "Acciones del pago", texto = "⋯", onClick = abrir)
+                    },
+                )
             }
         }
         g.partes.mapNotNull { it.notas?.takeIf { n -> n.isNotBlank() } }.firstOrNull()?.let {
