@@ -1,0 +1,8 @@
+Del primer contacto a las sesiones en menos pasos: al cerrar la evaluación armas el plan, agendas todas las sesiones y cobras en la misma hoja. Además, paciente nuevo desde «Nueva cita» con su DNI.
+---
+Menos pasos:
+• Evaluación → plan → sesiones → cobro en una sola hoja.
+• Cobro con botones «Todo / 50 % / Saldo», sin teclear.
+• Paciente nuevo desde «Nueva cita»: DNI, nombre automático y teléfono.
+• «✓ Se realizó en esta visita» para servicios de una sola vez.
+• Al elegir un paciente con plan, la sesión y su tratamiento se eligen solos.
