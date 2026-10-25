@@ -113,6 +113,15 @@ fun DialogoInformeMedico(
      * /api/staff/informe/prefill, el mismo de la web). Con [prefill] no se usa.
      */
     desdeFicha: Boolean = false,
+    /**
+     * Desde «⋯ Más» de una cita de la agenda (con [desdeFicha]): prellena con la
+     * atención de ESA cita y, si no hay, el documento queda ligado a ella igual.
+     */
+    citaOrigenId: String? = null,
+    /** El título que se imprime ("Constancia de atención psicológica"); null = el de su tipo. */
+    tituloInicial: String? = null,
+    /** Atención psicológica: títulos psicológicos (informe / constancia). */
+    psico: Boolean = false,
     onEmitido: (id: String, numeroTexto: String) -> Unit,
 ) {
     val c = Sania.colors
@@ -139,7 +148,7 @@ fun DialogoInformeMedico(
     }
 
     var fecha by remember { mutableStateOf(hoy) }
-    var titulo by remember { mutableStateOf("") }
+    var titulo by remember { mutableStateOf(tituloInicial.orEmpty()) }
     var dirigidoA by remember { mutableStateOf("") }
     var motivo by remember { mutableStateOf(p.motivo.orEmpty()) }
     var antecedentes by remember { mutableStateOf(p.antecedentes.orEmpty()) }
@@ -174,7 +183,7 @@ fun DialogoInformeMedico(
     fun cargarOrigen(atencionId: String?) {
         cargandoOrigen = true
         scope.launch {
-            val r = AtencionRepo.prefillFicha(pacienteId, atencionId)
+            val r = AtencionRepo.prefillFicha(pacienteId, atencionId, citaOrigenId)
             cargandoOrigen = false
             if (r == null) { if (origenes == null) origenes = emptyList(); return@launch }
             origenes = r.atenciones
@@ -202,7 +211,7 @@ fun DialogoInformeMedico(
     // la clínica, o quien firma. Desde la ficha, sin esto, el Admin (que no atiende)
     // veía el informe sin examen mental ni escalas.
     val psiq = p.psiq || psiqFicha || origen?.psiq == true || firmante?.psiquiatra == true
-    val titulos = titulosSugeridos(tipo, psiq)
+    val titulos = titulosSugeridos(tipo, psiq, psico)
 
     // Exámenes: lo aprendido por la clínica + la base del rubro (una consulta, solo en la orden).
     var aprendidos by remember { mutableStateOf<List<ExamenAprendido>?>(null) }
@@ -228,7 +237,8 @@ fun DialogoInformeMedico(
             examenMental = examenMental, escalas = escalas, tratamiento = tratamiento, recomendaciones = recomendaciones,
             diagnosticos = dx, ocultarDiagnostico = ocultarDx, descansoDesde = desde, descansoHasta = hasta,
             examenes = examenes, indicaciones = indicaciones,
-            citaId = (prefill ?: origen)?.citaId, atencionId = (prefill ?: origen)?.atencionId,
+            // Desde la agenda sin atención de esa cita: el documento queda ligado a la cita igual.
+            citaId = (prefill ?: origen)?.citaId ?: citaOrigenId, atencionId = (prefill ?: origen)?.atencionId,
             tratamientoId = (prefill ?: origen)?.tratamientoId,
             visiblePaciente = visiblePaciente,
         )

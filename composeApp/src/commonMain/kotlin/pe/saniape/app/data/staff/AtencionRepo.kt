@@ -184,13 +184,15 @@ object AtencionRepo {
      * (""). null = no se pudo (sin red, o un servidor que aún no lo tiene): el
      * formulario queda en blanco, como antes.
      */
-    suspend fun prefillFicha(pacienteId: String, atencionId: String?): PrefillFichaDoc? {
+    suspend fun prefillFicha(pacienteId: String, atencionId: String?, citaId: String? = null): PrefillFichaDoc? {
         val tk = token() ?: return null
         return try {
             val resp = http.get("${Supabase.SITE_URL}/api/staff/informe/prefill") {
                 header("Authorization", "Bearer $tk")
                 parameter("paciente", pacienteId)
                 if (atencionId != null) parameter("atencion", atencionId)
+                // Desde «⋯ Más» de una cita: la atención de ESA cita (solo si no se eligió otra).
+                else if (!citaId.isNullOrBlank()) parameter("cita", citaId)
             }
             if (resp.status.value !in 200..299) null
             else (Json.parseToJsonElement(resp.bodyAsText()) as? JsonObject)?.let { parsearPrefillFicha(it) }

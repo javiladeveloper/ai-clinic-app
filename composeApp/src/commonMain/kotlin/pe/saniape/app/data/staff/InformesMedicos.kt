@@ -62,10 +62,12 @@ fun formatearNumeroInforme(tipo: String, n: Int?): String {
 }
 
 /** Títulos que se ofrecen (el médico puede escribir otro). */
-fun titulosSugeridos(tipo: String, psiq: Boolean = false): List<String> = when (tipo) {
+fun titulosSugeridos(tipo: String, psiq: Boolean = false, psico: Boolean = false): List<String> = when (tipo) {
     DOC_DESCANSO -> listOf("Certificado de descanso médico", "Certificado médico", "Constancia de atención")
     DOC_ORDEN -> listOf("Orden de exámenes auxiliares", "Orden de laboratorio")
-    else -> if (psiq) listOf("Informe psiquiátrico", "Informe médico", "Certificado de salud mental")
+    // Atención psicológica (gemelo de la web): informe y constancia psicológicos, nada "médico".
+    else -> if (psico && !psiq) listOf(TITULO_INFORME_PSICOLOGICO, TITULO_CONSTANCIA_PSICOLOGICA, "Constancia de atención")
+    else if (psiq) listOf("Informe psiquiátrico", "Informe médico", "Certificado de salud mental")
     else listOf("Informe médico", "Certificado médico", "Constancia de atención")
 }
 
