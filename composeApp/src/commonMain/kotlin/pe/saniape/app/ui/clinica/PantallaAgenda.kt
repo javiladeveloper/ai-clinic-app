@@ -1513,6 +1513,9 @@ fun PantallaAgenda(
     resumenPacienteId?.takeIf { verHc }?.let { pid ->
         ResumenClinicoSheet(
             pacienteId = pid,
+            // «🗒 La última vez» en la especialidad de la cita tocada (sin contarla a ella).
+            especialidadId = resumenDeCita?.especialidadId ?: resumenDeCita?.especialidadServicioId,
+            citaId = resumenDeCita?.id,
             onCerrar = { resumenPacienteId = null; resumenDeCita = null },
             onVerFicha = {
                 resumenPacienteId = null

@@ -3,10 +3,13 @@ package pe.saniape.app.data.staff
 import io.github.jan.supabase.auth.auth
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import pe.saniape.app.data.Supabase
@@ -46,6 +49,11 @@ data class ResumenClinico(
     val tratamientoActivo: TratamientoResumen?,
     val tratamientos: List<TratamientoResumen>,
     val ultimaSesion: UltimaSesionResumen? = null,
+    /**
+     * «🗒 La última vez» (2026-10-24, opcional): la atención anterior (médicos) o
+     * el contexto del caso (psicología). Solo con «Historia clínica»; null = no hay.
+     */
+    val laUltimaVez: LaUltimaVezApp? = null,
 )
 
 /**
@@ -73,6 +81,11 @@ object ResumenClinicoRepo {
     private fun JsonObject.int(k: String): Int? =
         (this[k] as? JsonPrimitive)?.content?.takeIf { it != "null" }?.toIntOrNull()
 
+    /** `laUltimaVez` del JSON (null, ausente o ilegible → null: el resumen sale igual). */
+    internal fun parsearLaUltimaVez(e: JsonElement?): LaUltimaVezApp? =
+        if (e == null || e is JsonNull) null
+        else runCatching { json.decodeFromJsonElement(LaUltimaVezApp.serializer(), e) }.getOrNull()?.takeIf { it.tieneDatos }
+
     private fun tratamiento(o: JsonObject): TratamientoResumen = TratamientoResumen(
         id = o.str("id") ?: "",
         servicio = o.str("servicio") ?: "Tratamiento",
@@ -83,14 +96,22 @@ object ResumenClinicoRepo {
         diagnostico = o.str("diagnostico"),
     )
 
-    /** GET al endpoint (con cache de 2 min). Devuelve null si falla (sin sesión, red, HTTP no OK). */
-    suspend fun cargar(pacienteId: String): ResumenClinico? {
+    /**
+     * GET al endpoint (con cache de 2 min). Devuelve null si falla (sin sesión, red, HTTP no OK).
+     * [especialidadId]/[citaId]: la cita desde la que se abre («la última vez» en su
+     * especialidad, sin contarla a ella). Opcionales.
+     */
+    suspend fun cargar(pacienteId: String, especialidadId: String? = null, citaId: String? = null): ResumenClinico? {
         val ahora = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
-        cache[pacienteId]?.let { (ts, r) -> if (ahora - ts < TTL_MS) return r }
+        val clave = "$pacienteId|${especialidadId.orEmpty()}|${citaId.orEmpty()}"
+        cache[clave]?.let { (ts, r) -> if (ahora - ts < TTL_MS) return r }
         val tk = token() ?: return null
         val resp = try {
-            http.get("${Supabase.SITE_URL}/api/staff/paciente/resumen-clinico?pacienteId=$pacienteId") {
+            http.get("${Supabase.SITE_URL}/api/staff/paciente/resumen-clinico") {
                 header("Authorization", "Bearer $tk")
+                parameter("pacienteId", pacienteId)
+                especialidadId?.takeIf { it.isNotBlank() }?.let { parameter("especialidadId", it) }
+                citaId?.takeIf { it.isNotBlank() }?.let { parameter("citaId", it) }
             }
         } catch (_: Exception) {
             return null
@@ -118,8 +139,9 @@ object ResumenClinicoRepo {
                     rxPendiente = (u["rxPendiente"] as? JsonPrimitive)?.content == "true",
                 )
             },
+            laUltimaVez = parsearLaUltimaVez(o["laUltimaVez"]),
         )
-        cache[pacienteId] = ahora to resumen
+        cache[clave] = ahora to resumen
         return resumen
     }
 }

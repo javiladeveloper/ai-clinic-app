@@ -47,15 +47,19 @@ fun ResumenClinicoSheet(
     pacienteId: String,
     onCerrar: () -> Unit,
     onVerFicha: () -> Unit,
+    /** La especialidad de la cita desde la que se abre («🗒 La última vez» en esa especialidad). */
+    especialidadId: String? = null,
+    /** Esa cita no cuenta como «la última vez». */
+    citaId: String? = null,
 ) {
     val c = Sania.colors
     var cargando by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf(false) }
     var dato by remember { mutableStateOf<ResumenClinico?>(null) }
 
-    LaunchedEffect(pacienteId) {
+    LaunchedEffect(pacienteId, especialidadId, citaId) {
         cargando = true; error = false
-        val r = ResumenClinicoRepo.cargar(pacienteId)
+        val r = ResumenClinicoRepo.cargar(pacienteId, especialidadId, citaId)
         dato = r
         error = r == null
         cargando = false
@@ -114,6 +118,14 @@ fun ResumenClinicoSheet(
 @Composable
 private fun Contenido(r: ResumenClinico) {
     val c = Sania.colors
+
+    // 🗒 LA ÚLTIMA VEZ de la atención (médicos: diagnóstico, receta, control;
+    // psicología: el contexto del caso). Solo lectura. Lo decide el servidor
+    // (lib/ultima-atencion.ts); sin «Historia clínica» no viene.
+    r.laUltimaVez?.let {
+        Spacer(Modifier.height(Sania.dim.sm))
+        pe.saniape.app.ui.clinica.atencion.BloqueUltimaVez(it)
+    }
 
     // LA ÚLTIMA VEZ — va PRIMERO: es lo que el profesional necesita en los 10
     // segundos antes de que el paciente entre (qué le hice, cómo iba, si dejó RX).
