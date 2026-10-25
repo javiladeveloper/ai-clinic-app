@@ -868,6 +868,31 @@ object AgendaRepo {
             Json.parseToJsonElement(crudo).jsonArray.map { it.jsonObject }
         }
 
+    /**
+     * Cuánto dura cada tipo de cita en esta clínica (y por especialidad), de
+     * `configuracion`: la MISMA fuente que la web (DuracionCita.kt). Sin red, lo
+     * último leído; sin nada, el respaldo por tipo.
+     */
+    suspend fun duracionesCita(): DuracionesCita = try {
+        val filas = filasConRespaldo(CacheLectura.claveCatalogo("duraciones-cita")) {
+            Supabase.client.postgrest["configuracion"]
+                .select(Columns.list("clave, valor")) {
+                    filter { isIn("clave", CLAVES_DURACION.values.toList() + CLAVE_DURACIONES_ESPECIALIDAD) }
+                }
+                .decodeList<JsonObject>()
+        }
+        // `valor` puede venir como texto o como JSON (el de las especialidades).
+        val porClave = filas.mapNotNull { o ->
+            val k = o.str("clave") ?: return@mapNotNull null
+            k to (o.str("valor") ?: (o["valor"] as? JsonObject)?.toString())
+        }.toMap()
+        DuracionesCita(leerDuraciones(porClave), leerDuracionesEspecialidad(porClave[CLAVE_DURACIONES_ESPECIALIDAD]))
+    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        DuracionesCita()
+    }
+
     /** Precios por defecto (consulta/evaluación) de la configuración. */
     suspend fun precios(): Pair<Double, Double> {
         val filas = filasConRespaldo(CacheLectura.claveCatalogo("precios-cita")) {
@@ -1045,7 +1070,11 @@ fun EspecialidadRef.aChips() = pe.saniape.app.ui.clinica.EspecialidadChips(nombr
  * [dni] solo lo trae el selector de pacientes (buscar por documento). [sedeId]:
  * la sede del paciente, solo con "pacientes por sede" (fuerza la sede de la cita).
  */
-data class RefNombre(val id: String, val nombre: String, val dni: String? = null, val sedeId: String? = null)
+data class RefNombre(
+    val id: String, val nombre: String, val dni: String? = null, val sedeId: String? = null,
+    /** Solo el recién registrado desde la cita: el teléfono que se dio en la tarjeta del alta. */
+    val telefono: String? = null,
+)
 /** Terapeuta con sus especialidades (para filtrar por especialidad en el form). */
 data class TerapeutaRef(val id: String, val nombre: String, val especialidadIds: List<String>)
 data class TratamientoRef(

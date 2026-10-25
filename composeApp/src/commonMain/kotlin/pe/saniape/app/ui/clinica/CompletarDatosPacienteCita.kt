@@ -74,6 +74,8 @@ internal fun DialogoCompletarDatosPaciente(
     onListo: () -> Unit,
     /** El DNI se agregó (y quizá el nombre oficial del padrón). */
     onDniGuardado: (dni: String, nombre: String) -> Unit,
+    /** El teléfono que ya se dio al registrarlo (la tarjeta del alta rápida). */
+    telefonoInicial: String? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -82,7 +84,7 @@ internal fun DialogoCompletarDatosPaciente(
     var dniAbierto by remember { mutableStateOf(false) }
     var fechaNacimiento by remember { mutableStateOf("") }
     var verFecha by remember { mutableStateOf(false) }
-    var telefono by remember { mutableStateOf("") }
+    var telefono by remember { mutableStateOf(telefonoInicial.orEmpty()) }
     var email by remember { mutableStateOf("") }
     var ocupacion by remember { mutableStateOf("") }
     var direccion by remember { mutableStateOf("") }

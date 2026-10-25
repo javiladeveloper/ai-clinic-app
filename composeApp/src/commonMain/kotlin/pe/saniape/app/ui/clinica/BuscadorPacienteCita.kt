@@ -93,6 +93,8 @@ internal fun SelectorPacienteBuscable(
     items: List<RefNombre>, elegido: RefNombre?, onElegir: (RefNombre) -> Unit, termino: String = "paciente",
     /** ¿Se ofrece registrar al paciente que no está? (ver `altaRapidaPermitida`) */
     altaRapida: Boolean = false,
+    /** El alta solo por DOCUMENTO, sin «registrar sin DNI» (ver `altaSoloConDocumento`). */
+    altaSoloConDocumento: Boolean = false,
     /** País de la sede de la cita: RENIEC solo en Perú. */
     pais: String? = null,
     /** `puede("datos_personales")`: reactivar y ver DNI/teléfono (enmascarados). */
@@ -242,8 +244,8 @@ internal fun SelectorPacienteBuscable(
             }
             // Registrar SIN DNI: lo escrito es un nombre válido (nombre y apellido).
             // Se ofrece SIEMPRE al final, también con coincidencias ("si no coincide o no sabemos").
-            val nombreAlta = if (altaRapida && entrada is EntradaBusqueda.Nombre) nombreParaAlta(query) else null
-            val faltaApellido = altaRapida && entrada is EntradaBusqueda.Nombre && nombreAlta == null &&
+            val nombreAlta = if (altaRapida && !altaSoloConDocumento && entrada is EntradaBusqueda.Nombre) nombreParaAlta(query) else null
+            val faltaApellido = altaRapida && !altaSoloConDocumento && entrada is EntradaBusqueda.Nombre && nombreAlta == null &&
                 filtrados.isEmpty() && query.none { it in '0'..'9' } && entrada.palabras.joinToString("").length >= 3
 
             /** Antes de crear: ¿hay fichas con un nombre muy parecido? (activas y de baja). */

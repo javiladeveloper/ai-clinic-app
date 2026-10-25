@@ -181,12 +181,22 @@ fun PantallaCrearCita(
     // (nombres cortos vía import: `pe` es también el destructure de precios más abajo)
     var campanias by remember { mutableStateOf<List<CampaniaApp>>(emptyList()) }
     var promoAplicada by remember { mutableStateOf<CampaniaApp?>(null) }
+    // Cuánto dura cada tipo de cita en esta clínica (DuracionCita.kt, como la web) y
+    // los servicios de una vez (el paciente nuevo que viene directo al procedimiento).
+    var duracionesCfg by remember { mutableStateOf(pe.saniape.app.data.staff.DuracionesCita()) }
+    var serviciosUnaVez by remember { mutableStateOf<List<pe.saniape.app.data.staff.ServicioUnaVez>>(emptyList()) }
+    LaunchedEffect(Unit) { duracionesCfg = AgendaRepo.duracionesCita() }
+    LaunchedEffect(Unit) {
+        if (ctx.puede("sesiones")) serviciosUnaVez = pe.saniape.app.data.staff.ServicioEnVisitaRepo.servicios()
+    }
 
     var tipo by remember { mutableStateOf(prefill?.tipo ?: "Consulta") }
     // ¿Quien agenda tocó el tipo? Entonces la atención directa ya no se lo cambia.
     var tipoTocado by remember { mutableStateOf(false) }
     // El tipo lo puso solo el paciente (Sesión de su tratamiento vigente): se dice en una línea.
     var tipoAuto by remember { mutableStateOf(false) }
+    // El tipo que tenía el formulario antes de pasar solo a Sesión (elegir otro paciente lo devuelve).
+    var tipoAntesAuto by remember { mutableStateOf<String?>(null) }
     // Duración EDITABLE (antes era fija 15/60 y una sesión de 30 no se podía agendar).
     // Default por tipo (igual que la web: Consulta 15, resto 60); si el usuario la
     // tocó, cambiar de tipo ya no se la pisa.
@@ -222,6 +232,9 @@ fun PantallaCrearCita(
     var mensaje by remember { mutableStateOf<String?>(null) }
     // Recién registrado desde el buscador: "Completar datos de…" (paciente, ¿sin DNI?).
     var completarDatos by remember { mutableStateOf<Pair<RefNombre, Boolean>?>(null) }
+    // Registrado POR DOCUMENTO aquí: el diálogo ya no se abre solo (nombre, DNI y
+    // teléfono quedaron en la tarjeta del alta); «✎ Completar su ficha» a un toque.
+    var recienRegistrado by remember { mutableStateOf<RefNombre?>(null) }
 
     // Clínica multi-especialidad → mostrar selector que filtra los profesionales.
     val multiEspecialidad = especialidadesClinica.size > 1
@@ -251,9 +264,14 @@ fun PantallaCrearCita(
         // Atención directa PRIMERO (aunque el flujo no tenga Consulta); lo demás detrás.
         pe.saniape.app.data.staff.tiposConAtencionDirecta(base, atencionDirectaForm, TIPO_ATENCION_DIRECTA_INFO) { it.valor }
     }
-    // La atención directa dura lo que una sesión, no lo que una consulta de entrada.
-    LaunchedEffect(tipo, atencionDirectaForm) {
-        if (!duracionTocada) duracion = if (tipo == "Consulta" && !atencionDirectaForm) 15 else 60
+    // La duración de la configuración (la de la especialidad de la cita → la de la
+    // clínica → el respaldo del tipo), como la web; antes 15 / 60 fijos. La atención
+    // directa dura lo que una sesión, no lo que una consulta de entrada.
+    val espDuracion = tratamiento?.especialidadId ?: especialidad?.id
+    LaunchedEffect(tipo, atencionDirectaForm, duracionesCfg, espDuracion) {
+        if (!duracionTocada) duracion = pe.saniape.app.data.staff.duracionSugerida(
+            if (atencionDirectaForm && tipo == "Consulta") "Sesión" else tipo, duracionesCfg, espDuracion,
+        )
     }
     // Psicología (sin Consulta ni Evaluación): la Sesión es la primera cita, así que
     // ahí también se ofrece el alta rápida del paciente. Con Consulta/Evaluación el
@@ -465,6 +483,43 @@ fun PantallaCrearCita(
         prefill?.tratamientoId?.let { tid -> tratamiento = tratamientos.find { it.id == tid } }
     }
 
+    // Tipo y tratamiento según el paciente (PrefillCita.kt, gemelo de
+    // lib/prefill-cita.ts): con un plan activo por sesiones pasa SOLO a Sesión, y con
+    // un único tratamiento activo, ese queda elegido. Nunca pisa un tipo que quien
+    // agenda tocó ni uno prefijado; en psicología lo decide la atención directa.
+    LaunchedEffect(paciente?.id, tratamientosDe, especialidad?.id, tiposVisibles) {
+        if (atencionDirectaForm) return@LaunchedEffect
+        val p = paciente
+        if (p == null) {
+            // Se quitó el paciente: si el tipo lo había puesto la regla, se deshace.
+            if (tipoAuto) { tipoAntesAuto?.let { tipo = it }; tipoAuto = false; tipoAntesAuto = null }
+            return@LaunchedEffect
+        }
+        if (tratamientosDe != p.id) return@LaunchedEffect
+        val deseado = pe.saniape.app.data.staff.tipoSegunPaciente(
+            pe.saniape.app.data.staff.tratamientosQueDecidenTipo(tratamientos, especialidad?.id).map { it.modalidad },
+            tipoInicial = tipoAntesAuto ?: tipo,
+            tiposVisibles = tiposVisibles.map { it.valor },
+            tocadoAMano = tipoTocado, prefijado = prefill != null,
+        ) ?: return@LaunchedEffect
+        if (deseado == "Sesión") {
+            if (tipo != "Sesión") tipoAntesAuto = tipo
+            tipoAuto = true
+        } else {
+            tipoAuto = false; tipoAntesAuto = null
+        }
+        tipo = deseado
+    }
+    LaunchedEffect(tipo, tratamientosDe, tratamientos) {
+        if (tipo != "Sesión" || tratamiento != null) return@LaunchedEffect
+        val p = paciente ?: return@LaunchedEffect
+        if (tratamientosDe != p.id) return@LaunchedEffect
+        val id = pe.saniape.app.data.staff.tratamientoInicial(
+            prefill?.tratamientoId, tratamientos.filter { it.estado == "Activo" }.map { it.id },
+        )
+        tratamientos.firstOrNull { it.id == id }?.let { tratamiento = it }
+    }
+
     // «＋ Crear tratamiento» abierto: el tratamiento que se está armando ahí.
     val enCurso = if (crearTratamiento) tratEnCurso else null
     LaunchedEffect(enCurso?.procedimientoId) {
@@ -561,6 +616,7 @@ fun PantallaCrearCita(
             chipsTipos = remember(especialidadesClinica) { chipsDeClinica(especialidadesClinica.map { it.aChips() }).tipos },
             chipsSintomas = remember(especialidadesClinica) { chipsDeClinica(especialidadesClinica.map { it.aChips() }).sintomas },
             onListo = { completarDatos = null },
+            telefonoInicial = nuevo.telefono,
             onDniGuardado = { dni, nombre ->
                 // El DNI (y quizá el nombre del padrón) a la lista y al elegido.
                 val act = nuevo.copy(nombre = nombre, dni = dni)
@@ -956,7 +1012,8 @@ fun PantallaCrearCita(
             }
             Spacer(Modifier.height(8.dp))
             Etiqueta("Duración")
-            pe.saniape.app.ui.clinica.pacientes.ChipsDuracion(duracion, onChange = { duracion = it; duracionTocada = true })
+            pe.saniape.app.ui.clinica.pacientes.ChipsDuracion(duracion, onChange = { duracion = it; duracionTocada = true },
+                opciones = pe.saniape.app.data.staff.opcionesDuracion(duracion))
             if (horaPasada) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -1150,12 +1207,15 @@ fun PantallaCrearCita(
                 }
                 // Atención directa: el paciente tiene un tratamiento vigente y por eso
                 // arrancó en Sesión. Una línea: por qué, y cuál tocar si no.
-                if (atencionDirectaForm && tipoAuto && tipo == "Sesión") {
+                if (tipoAuto && tipo == "Sesión") {
                     val nombres = tratamientos.filter { it.estado == "Activo" && pe.saniape.app.data.staff.vaPorSesiones(it.modalidad) }
                         .map { it.procedimiento }.distinct()
+                    val activos = if (nombres.isNotEmpty()) " (${nombres.joinToString(", ")})" else ""
                     Text(
-                        "Tiene un tratamiento activo" + (if (nombres.isNotEmpty()) " (${nombres.joinToString(", ")})" else "") +
-                            ". ¿Viene por otra cosa? Elige ${TIPO_ATENCION_DIRECTA_INFO.etiqueta}.",
+                        if (atencionDirectaForm) "Tiene un tratamiento activo$activos. ¿Viene por otra cosa? Elige ${TIPO_ATENCION_DIRECTA_INFO.etiqueta}."
+                        // Como la web: el tipo cambió solo al elegir al paciente; se dice por qué.
+                        else "⚠ Se cambió a ${flujoEfectivo.nombreTipo("Sesión")} porque tiene un tratamiento activo$activos." +
+                            (entradaClinica?.let { " Si viene por algo nuevo, elige $it." } ?: ""),
                         color = c.texto, fontSize = 12.sp,
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
                             .background(c.pendBg).border(1.dp, c.pend.copy(alpha = 0.4f), RoundedCornerShape(Sania.shape.sm.dp))
@@ -1168,14 +1228,24 @@ fun PantallaCrearCita(
                 Etiqueta(ctx.terminologiaPaciente.Paciente)
                 // Tutoriales: "cita_form.paciente" mientras se busca; "…paciente_elegido" ya elegido.
                 Column(Modifier.tourAncla(if (paciente != null) "cita_form.paciente_elegido" else "cita_form.paciente")) {
+                    // El tipo que eligió quien agenda (no el que puso el paciente anterior).
+                    val tipoBuscador = if (tipoAuto) tipoAntesAuto ?: tipo else tipo
+                    // ¿Vende un servicio de una vez (uña encarnada, bótox)? Entonces la Sesión
+                    // también registra al paciente nuevo que viene directo a él (solo por DNI).
+                    val servicioDeUnaVez = pe.saniape.app.data.staff.hayServicioDeUnaVez(serviciosUnaVez, especialidad?.id)
                     SelectorPacienteBuscable(
                         termino = ctx.terminologiaPaciente.paciente,
                         items = pacientes, elegido = paciente,
                         onElegir = { paciente = it; terapeuta = null; tratamiento = null; terapeutaAMano = false; precargado = null },
-                        // Alta al vuelo (DNI → RENIEC → registrar), como la web: en
-                        // Consulta/Evaluación (y en la Sesión de psicología, que es la
-                        // primera cita) y para quien agenda. Con el país de la sede.
-                        altaRapida = pe.saniape.app.data.staff.altaRapidaPermitida(tipo, ctx.puede("agendar"), soloSesion),
+                        // Alta al vuelo (DNI → RENIEC → teléfono → registrar), como la web: en
+                        // Consulta/Evaluación, en la Sesión de psicología (la primera cita) y en
+                        // la de un servicio de una vez; para quien agenda. Con el país de la sede.
+                        altaRapida = pe.saniape.app.data.staff.altaRapidaPermitida(
+                            tipoBuscador, ctx.puede("agendar"), soloSesion, servicioDeUnaVez, ctx.puede("sesiones"),
+                        ),
+                        altaSoloConDocumento = pe.saniape.app.data.staff.altaSoloConDocumento(
+                            tipoBuscador, soloSesion, servicioDeUnaVez, ctx.puede("sesiones"),
+                        ),
                         pais = pe.saniape.app.data.staff.paisDeFila(sedeId),
                         verDatosPersonales = ctx.puede("datos_personales"),
                         onRegistrado = { nuevo, como ->
@@ -1183,12 +1253,28 @@ fun PantallaCrearCita(
                             // tendría elegido un id que su copia desconoce).
                             pacientes = listOf(nuevo) + pacientes.filter { it.id != nuevo.id }
                             paciente = nuevo; terapeuta = null; tratamiento = null; terapeutaAMano = false; precargado = null
-                            // Ficha NUEVA (por DNI o solo con el nombre): ofrecer completar sus
-                            // datos, como la web. Opcional: con cola, "Ahora no" y a seguir.
-                            // Reactivada: no (ya los tiene y el popup los pisaría con vacíos).
-                            if (como != AltaEnCita.REACTIVADO) completarDatos = nuevo to (como == AltaEnCita.SIN_DNI)
+                            // Sin DNI: ofrecer completar su ficha (y agregar el DNI), como la web.
+                            // Por documento: nombre, DNI y teléfono ya quedaron; el resto a un toque
+                            // («✎ Completar su ficha»). Reactivada: nada (ya tiene sus datos).
+                            when (como) {
+                                AltaEnCita.SIN_DNI -> completarDatos = nuevo to true
+                                AltaEnCita.POR_DOCUMENTO -> recienRegistrado = nuevo
+                                AltaEnCita.REACTIVADO -> Unit
+                            }
+                            // Sesión: el recién registrado no tiene tratamiento y es lo único que
+                            // falta → «Crear tratamiento y agendar cita» se abre solo (CitaUnPaso.kt).
+                            if (como != AltaEnCita.REACTIVADO && pe.saniape.app.data.staff.abrirTratamientoTrasAlta(
+                                    tipoBuscador, ctx.puede("sesiones"), prefill?.tratamientoId != null)
+                            ) crearTratamiento = true
                         },
                     )
+                    recienRegistrado?.takeIf { it.id == paciente?.id && completarDatos == null }?.let { nuevo ->
+                        Text(
+                            "✎ Completar su ficha (opcional)" + if (nuevo.telefono == null) " · sin teléfono" else "",
+                            color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 6.dp).clickable { completarDatos = nuevo to false },
+                        )
+                    }
                 }
 
                 // Sesión con un paciente sin tratamiento: decirlo y ofrecer crearlo (o a quién pedírselo).
@@ -1254,7 +1340,7 @@ fun PantallaCrearCita(
                 Etiqueta("Duración")
                 pe.saniape.app.ui.clinica.pacientes.ChipsDuracion(duracion, onChange = {
                     duracion = it; duracionTocada = true
-                })
+                }, opciones = pe.saniape.app.data.staff.opcionesDuracion(duracion))
                 // Regularización: "esta cita ya ocurrió" (salta validación de disponibilidad)
                 Row(verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(top = Sania.dim.sm).clickable { esRegularizacion = !esRegularizacion }) {

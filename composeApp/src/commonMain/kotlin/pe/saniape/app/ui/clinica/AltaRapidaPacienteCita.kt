@@ -43,7 +43,9 @@ import pe.saniape.app.ui.theme.Sania
 /**
  * "No hay ningún paciente con documento X" dentro del buscador de Crear cita —
  * gemelo del bloque `dniNuevo` de BuscadorPaciente (web):
- *  - DNI de 8 dígitos en sede de Perú → "🔍 Buscar en RENIEC" → "✓ Es correcto, registrar".
+ *  - DNI de 8 dígitos en sede de Perú → se busca SOLO en RENIEC (una vez revisado que
+ *    no es una ficha de baja: [consultarPadronSolo]) → teléfono (opcional) → "✓ Es correcto, registrar".
+ *    El botón "🔍 Buscar" queda para reintentar.
  *  - RENIEC sin datos, documento extranjero o sede de otro país → nombre a mano → "✓ Registrar".
  *  - Si el documento es de una ficha DADA DE BAJA → se ofrece reactivarla (con su historial).
  * Al registrar/reactivar, el paciente queda elegido en la cita ([onListo]).
@@ -64,6 +66,9 @@ internal fun PanelAltaRapida(
     var nombreManual by remember(documento) { mutableStateOf("") }
     var baja by remember(documento) { mutableStateOf<FichaDeBaja?>(null) }
     var reactivando by remember(documento) { mutableStateOf(false) }
+    // Teléfono (opcional) en la MISMA tarjeta del alta: queda en la ficha desde el
+    // primer guardado (recordatorio de WhatsApp), sin el diálogo de después.
+    var telefono by remember(documento) { mutableStateOf("") }
     val conPadron = consultaPadron(documento, pais)
     // Documento que no es un DNI peruano: su tipo se elige. Se MUESTRA el que se
     // deduce (RUT en Perú como siempre, CI en Bolivia…), pero solo se guarda si
@@ -77,16 +82,22 @@ internal fun PanelAltaRapida(
 
     // ¿Es alguien que se dio de baja y vuelve? Consulta chica a la base propia
     // (no al padrón), con pausa para no disparar una por tecla.
+    // Revisado eso, el DNI peruano se consulta SOLO en el padrón («escribir DNI →
+    // autocompleta el nombre»): un toque menos. Si es de baja, se reactiva.
     LaunchedEffect(documento) {
         delay(400)
         baja = ReactivarRepo.porDocumento(documento)
+        if (pe.saniape.app.data.staff.consultarPadronSolo(documento, pais, hayHallazgo = hallazgo != null, bajasRevisadas = true, esDeBaja = baja != null)) {
+            hallazgo = HallazgoPadron.Buscando
+            hallazgo = AltaRapidaRepo.consultarPadron(documento)
+        }
     }
 
     fun registrar(nombre: String, tipo: String?) {
         if (nombre.isBlank() || hallazgo == HallazgoPadron.Creando) return
         hallazgo = HallazgoPadron.Creando
         scope.launch {
-            val r = AltaRapidaRepo.registrar(nombre, documento, tipo)
+            val r = AltaRapidaRepo.registrar(nombre, documento, tipo, telefono)
             when {
                 !r.ok -> hallazgo = HallazgoPadron.Error(r.error ?: "No se pudo registrar.")
                 r.inactivo -> {
@@ -98,7 +109,7 @@ internal fun PanelAltaRapida(
                 }
                 else -> {
                     Toaster.exito("${tpl.Paciente} registrado")
-                    onListo(RefNombre(r.id!!, nombre.trim(), documento, sedeId = r.sedeId), true)
+                    onListo(RefNombre(r.id!!, nombre.trim(), documento, sedeId = r.sedeId, telefono = pe.saniape.app.data.staff.telefonoDeAlta(telefono)), true)
                 }
             }
         }
@@ -157,6 +168,7 @@ internal fun PanelAltaRapida(
                     pe.saniape.app.ui.clinica.ajustes.ChipsEleccion(tiposAlta, tipoManual) { tipoElegido = it }
                     Spacer(Modifier.height(6.dp))
                     CampoNombreManual(nombreManual) { nombreManual = it }
+                    CampoTelefonoAlta(telefono) { telefono = it }
                     BotonPanel("✓ Registrar $documento", c.ok, habilitado = nombreManual.isNotBlank()) { registrar(nombreManual, tipoElegido) }
                 }
             }
@@ -166,6 +178,7 @@ internal fun PanelAltaRapida(
                 Text("ENCONTRADO", color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Text(h.nombre, color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 Text("DNI $documento", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+                CampoTelefonoAlta(telefono) { telefono = it }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     BotonPanel("✓ Es correcto, registrar", c.ok, modifier = Modifier.weight(1f)) { registrar(h.nombre, null) }
                     BotonPanel("Cancelar", null) { hallazgo = null }
@@ -175,6 +188,7 @@ internal fun PanelAltaRapida(
                 Text("RENIEC no devolvió datos para $documento.", color = c.pend, fontSize = 13.sp,
                     fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
                 CampoNombreManual(nombreManual) { nombreManual = it }
+                CampoTelefonoAlta(telefono) { telefono = it }
                 BotonPanel("✓ Registrar con este nombre", c.ok, habilitado = nombreManual.isNotBlank()) { registrar(nombreManual, null) }
             }
             is HallazgoPadron.Error -> Text(h.mensaje, color = c.error, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -188,6 +202,18 @@ private fun CampoNombreManual(valor: String, onCambio: (String) -> Unit) {
         value = valor, onValueChange = onCambio,
         placeholder = { Text("Nombre y apellidos", color = Sania.colors.textoSuave) },
         singleLine = true, modifier = Modifier.fillMaxWidth(),
+    )
+    Spacer(Modifier.height(8.dp))
+}
+
+/** Teléfono (opcional) del alta, con el teclado de teléfono. */
+@Composable
+private fun CampoTelefonoAlta(valor: String, onCambio: (String) -> Unit) {
+    OutlinedTextField(
+        value = valor, onValueChange = { onCambio(it.take(30)) },
+        placeholder = { Text("Teléfono (opcional)", color = Sania.colors.textoSuave) },
+        singleLine = true, modifier = Modifier.fillMaxWidth(),
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone),
     )
     Spacer(Modifier.height(8.dp))
 }

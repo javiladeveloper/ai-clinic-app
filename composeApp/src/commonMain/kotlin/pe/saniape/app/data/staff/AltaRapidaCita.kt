@@ -58,8 +58,57 @@ fun consultaPadron(documento: String, pais: String?): Boolean =
  * ([soloSesion], psicología; ver [entraSoloPorSesion]): ahí la Sesión ES la primera cita y no hay
  * otra puerta para un paciente nuevo.
  */
-fun altaRapidaPermitida(tipo: String, puedeAgendar: Boolean, soloSesion: Boolean = false): Boolean =
-    puedeAgendar && (tipo == "Consulta" || tipo == "Evaluación" || (tipo == "Sesión" && soloSesion))
+fun altaRapidaPermitida(
+    tipo: String, puedeAgendar: Boolean, soloSesion: Boolean = false,
+    /**
+     * La clínica (o la especialidad de la cita) vende un servicio de UNA vez
+     * (pago único con precio o por unidades: uña encarnada, bótox) — [hayServicioDeUnaVez].
+     * Con [puedeSesiones], la Sesión también registra al paciente nuevo que viene
+     * directo a ese servicio, solo por documento ([altaSoloConDocumento]), y su
+     * tratamiento se crea en el mismo paso. `reglasBuscadorCita` de la web.
+     */
+    servicioDeUnaVez: Boolean = false,
+    puedeSesiones: Boolean = false,
+): Boolean =
+    puedeAgendar && (tipo == "Consulta" || tipo == "Evaluación" ||
+        (tipo == "Sesión" && (soloSesion || (servicioDeUnaVez && puedeSesiones))))
+
+/**
+ * ¿El alta de la Sesión va solo por DOCUMENTO (sin «registrar sin DNI»)? En la
+ * Sesión de un servicio de una vez (no en psicología, donde la Sesión es la
+ * puerta de entrada de siempre): sin documento no hay con qué atajar el
+ * duplicado de quien ya está registrado. `soloConDocumento` de la web.
+ */
+fun altaSoloConDocumento(tipo: String, soloSesion: Boolean, servicioDeUnaVez: Boolean, puedeSesiones: Boolean): Boolean =
+    tipo == "Sesión" && !soloSesion && servicioDeUnaVez && puedeSesiones
+
+/**
+ * ¿Se abre «＋ Crear tratamiento» solo apenas se registra al paciente? En una
+ * Sesión el recién registrado no tiene tratamiento y es lo único que falta para
+ * agendarle. `abrirTratamientoTrasAlta` de la web.
+ */
+fun abrirTratamientoTrasAlta(tipo: String, puedeSesiones: Boolean, tratamientoPrefijado: Boolean): Boolean =
+    tipo == "Sesión" && puedeSesiones && !tratamientoPrefijado
+
+/**
+ * ¿Se consulta el padrón SOLO, sin el toque de «🔍 Buscar»? (2026-10-24: «escribir
+ * DNI → autocompleta el nombre»). DNI peruano de 8 en sede de Perú, sin hallazgo a
+ * la vista y ya revisado que no es una ficha DADA DE BAJA ([bajasRevisadas]: si lo
+ * es, se reactiva, nunca se crea otra). El botón queda para reintentar.
+ * `consultarPadronSolo` de la web.
+ */
+fun consultarPadronSolo(documento: String, pais: String?, hayHallazgo: Boolean, bajasRevisadas: Boolean, esDeBaja: Boolean): Boolean =
+    consultaPadron(documento, pais) && !hayHallazgo && bajasRevisadas && !esDeBaja
+
+/**
+ * El teléfono del alta rápida, listo para guardarse (tal cual lo escribió
+ * recepción, sin espacios de más); sin dígitos → null (no se manda).
+ * `telefonoDeAlta` de la web.
+ */
+fun telefonoDeAlta(t: String?): String? {
+    val v = t.orEmpty().trim().replace(Regex("\\s+"), " ")
+    return if (v.any { it.isDigit() }) v.take(30) else null
+}
 
 /** Estado de la consulta al padrón / del registro (el `Hallazgo` de la web). */
 sealed interface HallazgoPadron {
@@ -129,7 +178,7 @@ object AltaRapidaRepo {
      * agendarle la cita ya). Directo, no por la cola: sin id real no hay cita.
      * El endpoint deduplica por DNI: si otro lo creó entre medias, devuelve ese.
      */
-    suspend fun registrar(nombre: String, documento: String, tipoDocumento: String? = null): ResultadoAltaRapida = try {
+    suspend fun registrar(nombre: String, documento: String, tipoDocumento: String? = null, telefono: String? = null): ResultadoAltaRapida = try {
         val tk = token() ?: return ResultadoAltaRapida(null, error = "Sesión vencida. Vuelve a entrar.")
         // Pacientes por sede: nace en la sede activa (igual que el alta completa).
         val sede = SedeActiva.estado.value.let { sedeParaPacienteNuevo(it.pacientesPorSede, it.filtro?.sedeId) }
@@ -139,6 +188,8 @@ object AltaRapidaRepo {
             // Tipo del documento: solo si se eligió a mano (lo decide la pantalla);
             // si no, ni la clave (null = el del país).
             normalizarTipoDocumento(tipoDocumento)?.let { put("tipo_documento", it) }
+            // El teléfono de la MISMA tarjeta del alta (recordatorio de WhatsApp desde ya).
+            telefonoDeAlta(telefono)?.let { put("telefono", it) }
             put("fecha_ingreso", hoyClinicaIso())
             if (sede != null) put("sede_id", sede)
             put("idempotency_key", "alta-rapida:${documento.trim()}:${nuevaIdemKey()}")
