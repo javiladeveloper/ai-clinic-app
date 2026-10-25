@@ -45,6 +45,23 @@ enum class AccionTarjeta {
     AtenderDirecto,
     /** ⚡ Atención directa ya atendida: «📝 Anotar evolución» / «📝 Evolución» (no completa ni cobra). */
     Evolucion,
+    /** «🚫 No vino» el mismo día: registra la falta (no cancela; la sesión no se borra). */
+    NoVino,
+    /** Documentos de la atención completada: 📄 informe, 🛌 descanso, 🧪 orden, 📄 constancia. */
+    DocInforme, DocDescanso, DocOrden, DocConstancia,
+    /** 💉 Mapa de aplicación (estética): la ficha en la pestaña con ESA cita. */
+    MapaAplicacion,
+}
+
+/** La acción de la tarjeta para cada documento (lib/agenda-dia → AgendaDia.kt). null = no hay en la app. */
+fun accionDeDocumento(clave: ClaveDocumentoCita): AccionTarjeta? = when (clave) {
+    ClaveDocumentoCita.INFORME -> AccionTarjeta.DocInforme
+    ClaveDocumentoCita.DESCANSO -> AccionTarjeta.DocDescanso
+    ClaveDocumentoCita.ORDEN -> AccionTarjeta.DocOrden
+    ClaveDocumentoCita.CONSTANCIA -> AccionTarjeta.DocConstancia
+    ClaveDocumentoCita.MAPA -> AccionTarjeta.MapaAplicacion
+    // La emisión del consentimiento fuera de la atención guiada todavía no está en la app.
+    ClaveDocumentoCita.CONSENTIMIENTO -> null
 }
 
 /** Color de la acción, sin Compose (la tarjeta lo traduce a la paleta). */
@@ -121,6 +138,10 @@ data class EntradaAccionesCita(
     val directa: Boolean = false,
     /** Atención directa ya atendida: el botón de su evolución. */
     val evolucion: BotonEvolucionCita? = null,
+    /** «🚫 No vino» (ofreceNoVino + permiso 'citas'): lo decide la pantalla. */
+    val noVino: Boolean = false,
+    /** Documentos de la atención (documentosDeCita, ya con sus permisos). */
+    val documentos: List<DocumentoCita> = emptyList(),
 )
 
 /**
@@ -195,6 +216,8 @@ fun accionesCita(e: EntradaAccionesCita): List<AccionCitaItem> {
     }
     // Gineco-obstetricia: el carné perinatal de la paciente (no en la cancelada).
     if (e.embarazo && estado != "Cancelada") add("🤰 Embarazo", AccionTarjeta.Embarazo, TonoAccion.TEAL)
+    // 📄 Informe / descanso / constancia y 💉 mapa de ESTA atención (AgendaDia.kt).
+    e.documentos.forEach { d -> accionDeDocumento(d.clave)?.let { add(d.texto, it, TonoAccion.PURPLE) } }
     // 🧾 Productos que se lleva o un servicio extra de esta atención (o cobrarlo).
     if (e.pedido != null) add(e.pedido, AccionTarjeta.Pedido, TonoAccion.TEAL)
     // Crear el plan desde la cita que evalúa (no cancelada), como la web.
@@ -205,6 +228,8 @@ fun accionesCita(e: EntradaAccionesCita): List<AccionCitaItem> {
     if (e.anularCobro && estado != "Cancelada") add("↺ Anular cobro", AccionTarjeta.AnularCobro, TonoAccion.ERROR)
     if (estado != "Cancelada" && estado != "Completada") {
         add("✏ Editar o reprogramar", AccionTarjeta.Editar, TonoAccion.SUAVE)
+        // La falta, no la cancelación: en una Sesión, cancelar borraba la sesión.
+        if (e.noVino) add("🚫 No vino", AccionTarjeta.NoVino, TonoAccion.PEND)
         add("✕ Cancelar", AccionTarjeta.Cancelar, TonoAccion.ERROR)
     }
     return lista
@@ -233,7 +258,7 @@ fun grupoDe(a: AccionTarjeta): GrupoAccion = when (a) {
     AccionTarjeta.Cobrar, AccionTarjeta.AbonarPaquete, AccionTarjeta.PonerPrecio,
     AccionTarjeta.Comprobante, AccionTarjeta.AnularCobro -> GrupoAccion.COBRO
     AccionTarjeta.Confirmar, AccionTarjeta.Editar, AccionTarjeta.Repetir,
-    AccionTarjeta.Revertir, AccionTarjeta.Cancelar -> GrupoAccion.CITA
+    AccionTarjeta.Revertir, AccionTarjeta.NoVino, AccionTarjeta.Cancelar -> GrupoAccion.CITA
     else -> GrupoAccion.ATENCION
 }
 
@@ -243,6 +268,7 @@ private fun ordenCita(a: AccionTarjeta): Int = when (a) {
     AccionTarjeta.Editar -> 1
     AccionTarjeta.Repetir -> 2
     AccionTarjeta.Revertir -> 3
+    AccionTarjeta.NoVino -> 8
     AccionTarjeta.Cancelar -> 9
     else -> 5
 }
