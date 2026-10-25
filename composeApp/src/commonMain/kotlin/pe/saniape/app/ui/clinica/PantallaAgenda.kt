@@ -189,6 +189,9 @@ fun PantallaAgenda(
     // «✓ Se realizó en esta visita» (ServicioEnVisita.kt): la cita y los servicios de
     // una vez de la clínica (solo para quien puede crear tratamientos; DALU no vende ninguno).
     var servicioEnVisitaCita by remember { mutableStateOf<CitaStaff?>(null) }
+    // Abierto desde la hoja del plan del cierre de la evaluación: el servicio elegido
+    // (y el cobro de la evaluación ya decidido al cerrarla).
+    var servicioEnVisitaDesdePlan by remember { mutableStateOf<String?>(null) }
     var serviciosUnaVez by remember { mutableStateOf<List<pe.saniape.app.data.staff.ServicioUnaVez>>(emptyList()) }
     LaunchedEffect(Unit) {
         if (ctx.puede("sesiones")) serviciosUnaVez = pe.saniape.app.data.staff.ServicioEnVisitaRepo.servicios()
@@ -1408,8 +1411,10 @@ fun PantallaAgenda(
             moneda = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId),
             nombreCita = vm.flujoDe(cita).nombreTipo(cita.tipo),
             puedeCobrar = ctx.puede("pagos"), verClinico = verHc,
-            onCerrar = { servicioEnVisitaCita = null },
+            onCerrar = { servicioEnVisitaCita = null; servicioEnVisitaDesdePlan = null },
             onRegistrado = { vm.refrescar() },
+            servicioInicialId = servicioEnVisitaDesdePlan,
+            consultaResuelta = servicioEnVisitaDesdePlan != null,
         )
     }
     // "✗ No vino": confirmar la falta (con motivo) o reponerla en otra fecha.
@@ -1791,6 +1796,21 @@ fun PantallaAgenda(
                 if (agendar) planEnteroAgenda = pe.saniape.app.ui.clinica.pacientes.PlanEnteroInicial(
                     plan.tratamientoId, plan.nombre, plan.desde, plan.hora, plan.terapeutaId, plan.faltan,
                 )
+            },
+            // El MISMO «✓ Se realizó en esta visita» de la tarjeta (un solo camino,
+            // toque recepción primero «✓ Completar» o esa acción).
+            enVisita = pe.saniape.app.data.staff.ofreceServicioEnVisita(
+                tipo = cita.tipo, estado = "Completada", fecha = cita.fecha, hoy = vm.hoy,
+                dental = vm.esDental(cita), puedeSesiones = ctx.puede("sesiones"), soloLectura = false,
+                pacienteInactivo = pe.saniape.app.data.staff.fichaInactiva(cita.pacienteEstado),
+                hayServicios = pe.saniape.app.data.staff.hayServicioDeUnaVez(
+                    serviciosUnaVez, cita.especialidadId ?: cita.especialidadServicioId),
+            ),
+            serviciosUnaVez = serviciosUnaVez,
+            onServicioEnVisita = { servicioId ->
+                planEval = null
+                servicioEnVisitaDesdePlan = servicioId
+                servicioEnVisitaCita = cita.copy(estado = "Completada")
             },
         )
     }

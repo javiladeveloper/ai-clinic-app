@@ -190,6 +190,30 @@ class AgendarMenosToquesTest {
         assertTrue((dalu.visibles + dalu.enMenu).none { it.accion == AccionTarjeta.ServicioEnVisita })
     }
 
+    // ── Integración T3: el cierre de la evaluación ofrece el MISMO «Se realizó» ──
+    @Test
+    fun pasoDeLaHojaDelPlanSegunElServicio() {
+        assertEquals(PasoPlanTrasEvaluacion.PLAN, pasoPlanTrasEvaluacion(null, true))
+        assertEquals(PasoPlanTrasEvaluacion.PLAN, pasoPlanTrasEvaluacion(paquete, true))       // DALU
+        assertEquals(PasoPlanTrasEvaluacion.PLAN, pasoPlanTrasEvaluacion(heredado, false))
+        assertEquals(PasoPlanTrasEvaluacion.EN_VISITA, pasoPlanTrasEvaluacion(unaEncarnada, true)) // podología
+        assertEquals(PasoPlanTrasEvaluacion.EN_VISITA, pasoPlanTrasEvaluacion(botox, true))        // estética
+        assertEquals(PasoPlanTrasEvaluacion.EN_VISITA, pasoPlanTrasEvaluacion(limpieza, true))
+        assertEquals(PasoPlanTrasEvaluacion.FORMULARIO, pasoPlanTrasEvaluacion(unaEncarnada, false))
+        assertEquals(PasoPlanTrasEvaluacion.FORMULARIO, pasoPlanTrasEvaluacion(consultaGratis, true)) // medicina
+        assertEquals(PasoPlanTrasEvaluacion.FORMULARIO, pasoPlanTrasEvaluacion(laEvaluacion, true))
+        assertEquals(PasoPlanTrasEvaluacion.FORMULARIO, pasoPlanTrasEvaluacion(evalPsico, true))
+    }
+
+    @Test
+    fun laHojaDelPlanSoloSeSaltaSiNoHayQueOfrecer() {
+        assertTrue(hojaPlanTieneQueOfrecer(listOf(paquete, heredado), false))
+        assertTrue(hojaPlanTieneQueOfrecer(listOf(unaEncarnada, laEvaluacion), true))
+        assertFalse(hojaPlanTieneQueOfrecer(listOf(unaEncarnada, laEvaluacion), false))
+        assertFalse(hojaPlanTieneQueOfrecer(listOf(consultaGratis), true))
+        assertFalse(hojaPlanTieneQueOfrecer(emptyList(), true))
+    }
+
     @Test
     fun precioDeListaYCuerpoDelPedido() {
         assertEquals(80.0, precioListaServicioEnVisita(unaEncarnada, 1))

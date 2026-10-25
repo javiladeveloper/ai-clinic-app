@@ -35,6 +35,11 @@ import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.MODALIDAD_PAQUETE
 import pe.saniape.app.data.staff.MODALIDAD_SUELTA
 import pe.saniape.app.data.staff.PacientesRepo
+import pe.saniape.app.data.staff.PasoPlanTrasEvaluacion
+import pe.saniape.app.data.staff.ServicioUnaVez
+import pe.saniape.app.data.staff.aServicioUnaVez
+import pe.saniape.app.data.staff.hojaPlanTieneQueOfrecer
+import pe.saniape.app.data.staff.pasoPlanTrasEvaluacion
 import pe.saniape.app.data.staff.PlanTrasEvaluacionRepo
 import pe.saniape.app.data.staff.ProcedimientoRef
 import pe.saniape.app.data.staff.ResultadoValoresPlan
@@ -81,6 +86,9 @@ data class PlanCreadoTrasEvaluacion(
  * Lo que no cabe acá (plantilla, campaña, presupuesto, servicio único, unidades,
  * otra moneda) va a [onMasOpciones]: el formulario de siempre. Si el paciente ya
  * tiene un plan abierto, [onYaTienePlan] (la lista de siempre).
+ * Un servicio de una vez (pago único / unidades) que la cita permite registrar
+ * realizado ([enVisita]) ofrece «✓ Se realizó en esta visita» ([onServicioEnVisita]:
+ * el mismo diálogo y POST de la tarjeta), como la web: un solo camino.
  */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -93,6 +101,11 @@ fun HojaPlanTrasEvaluacion(
     onYaTienePlan: () -> Unit,
     onCerrar: (cambio: Boolean) -> Unit,
     onCreado: (plan: PlanCreadoTrasEvaluacion, agendar: Boolean) -> Unit,
+    /** La cita permite «✓ Se realizó en esta visita» (ofreceServicioEnVisita). */
+    enVisita: Boolean = false,
+    /** El catálogo de una vez de la agenda (con tipo_clinico); si falta, se deduce del servicio. */
+    serviciosUnaVez: List<ServicioUnaVez> = emptyList(),
+    onServicioEnVisita: ((servicioId: String) -> Unit)? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -115,6 +128,8 @@ fun HojaPlanTrasEvaluacion(
     var metodo by rememberMetodoPagoInicial(pid)
     var guardando by remember(cita.id) { mutableStateOf(false) }
     var error by remember(cita.id) { mutableStateOf<String?>(null) }
+    val puedeEnVisita = enVisita && onServicioEnVisita != null
+    fun unaVezDe(p: ProcedimientoRef): ServicioUnaVez = serviciosUnaVez.find { it.id == p.id } ?: p.aServicioUnaVez()
 
     fun elegir(p: ProcedimientoRef) {
         servicio = p
@@ -142,8 +157,12 @@ fun HojaPlanTrasEvaluacion(
             ?.let { id -> procedimientos.find { it.id == id } }
         // Lo que no va por sesiones (servicio único, consulta, unidades) se arma en el
         // formulario de siempre: abrir esta hoja ahí sería un toque de más (como la web).
-        if (sugerido != null && modoDeServicioPlan(sugerido.aServicioPlan()) != "sesiones") { onMasOpciones(sugerido.id, null); return@LaunchedEffect }
-        if (candidatos.none { modoDeServicioPlan(it.aServicioPlan()) == "sesiones" }) { onMasOpciones(null, null); return@LaunchedEffect }
+        // Salvo lo de una vez que la cita permite registrar realizado: la hoja se queda
+        // y ofrece «✓ Se realizó en esta visita».
+        if (sugerido != null && pasoPlanTrasEvaluacion(unaVezDe(sugerido), puedeEnVisita) == PasoPlanTrasEvaluacion.FORMULARIO) {
+            onMasOpciones(sugerido.id, null); return@LaunchedEffect
+        }
+        if (!hojaPlanTieneQueOfrecer(candidatos.map { unaVezDe(it) }, puedeEnVisita)) { onMasOpciones(null, null); return@LaunchedEffect }
         sugerido?.let { elegir(it) }
         cargando = false
     }
@@ -211,18 +230,28 @@ fun HojaPlanTrasEvaluacion(
     }
 
     val enSesiones = s != null && modo == "sesiones"
+    val enVisitaAhora = !enSesiones &&
+        servicio?.let { pasoPlanTrasEvaluacion(unaVezDe(it), puedeEnVisita) } == PasoPlanTrasEvaluacion.EN_VISITA
     DialogoForm(
         titulo = "🩺 Plan de tratamiento",
         subtitulo = cita.pacienteNombre,
         textoAccion = when {
             guardando -> "Creando…"
+            enVisitaAhora -> "✓ Se realizó en esta visita"
             s != null && !enSesiones -> "Continuar en el formulario"
             else -> "Crear plan y agendar"
         },
         accionHabilitada = !guardando && !cargando && s != null,
         textoCancelar = "Ahora no",
         onCancelar = { if (!guardando) onCerrar(false) },
-        onAccion = { if (enSesiones) crear(true) else onMasOpciones(servicio?.id, null) },
+        onAccion = {
+            val sid = servicio?.id
+            when {
+                enSesiones -> crear(true)
+                enVisitaAhora && sid != null -> onServicioEnVisita?.invoke(sid)
+                else -> onMasOpciones(sid, null)
+            }
+        },
     ) {
         if (cargando) {
             Text("Preparando el plan…", color = c.textoSuave, fontSize = 13.sp)
@@ -245,7 +274,14 @@ fun HojaPlanTrasEvaluacion(
                 placeholder = "Elige el servicio…", onElegir = { elegir(it) },
                 detalle = { p -> p.precio.takeIf { it > 0 }?.let { pe.saniape.app.data.staff.formatearDinero(it, moneda) } },
             )
-            if (s != null && !enSesiones) {
+            if (enVisitaAhora) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Se hace de una vez. Si se le hizo hoy, regístralo realizado" + (if (cobra) " y cóbralo" else "") +
+                        " en un paso; si es para otro día, prográmalo en el formulario.",
+                    color = c.textoSuave, fontSize = 12.sp,
+                )
+            } else if (s != null && !enSesiones) {
                 Spacer(Modifier.height(6.dp))
                 Text("Este servicio no va por sesiones: se arma en el formulario completo.", color = c.textoSuave, fontSize = 12.sp)
             }
@@ -332,7 +368,7 @@ fun HojaPlanTrasEvaluacion(
                 Text("Solo crear plan", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.clickable(enabled = !guardando) { crear(false) }.padding(vertical = 6.dp))
             }
-            Text("Más opciones →", color = c.textoSuave, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+            Text(if (enVisitaAhora) "Programarlo →" else "Más opciones →", color = c.textoSuave, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable(enabled = !guardando) { onMasOpciones(servicio?.id, if (enSesiones) modalidad else null) }.padding(vertical = 6.dp))
         }
     }

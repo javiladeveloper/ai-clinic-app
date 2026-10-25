@@ -97,6 +97,38 @@ fun ofreceServicioEnVisita(
     return !dental && puedeSesiones && !soloLectura && !pacienteInactivo && hayServicios
 }
 
+/**
+ * Qué ofrece la hoja «🩺 Plan de tratamiento» del cierre de la evaluación
+ * (HojaPlanTrasEvaluacion) según el servicio sugerido o elegido, para que
+ * recepción tenga UN solo camino al servicio hecho en la visita, toque primero
+ * «✓ Completar» o «✓ Se realizó en esta visita». Gemelo de
+ * `pasoPlanTrasEvaluacion` (lib/servicio-en-visita.ts, web).
+ *  - PLAN: por sesiones (o aún sin elegir) → crear el plan y agendar.
+ *  - EN_VISITA: de una vez y la cita lo permite ([ofreceServicioEnVisita]) →
+ *    «✓ Se realizó en esta visita» (el mismo POST), con el formulario como
+ *    alternativa (programarlo para otro día).
+ *  - FORMULARIO: lo demás que no va por sesiones → el formulario de siempre.
+ */
+enum class PasoPlanTrasEvaluacion { PLAN, EN_VISITA, FORMULARIO }
+
+fun pasoPlanTrasEvaluacion(servicio: ServicioUnaVez?, enVisitaPermitido: Boolean): PasoPlanTrasEvaluacion = when {
+    servicio == null -> PasoPlanTrasEvaluacion.PLAN
+    modoCobroEfectivo(servicio.modoCobro, servicio.usaSesiones) == "sesiones" -> PasoPlanTrasEvaluacion.PLAN
+    enVisitaPermitido && modoServicioDeUnaVez(servicio) != null -> PasoPlanTrasEvaluacion.EN_VISITA
+    else -> PasoPlanTrasEvaluacion.FORMULARIO
+}
+
+/** ¿La hoja del plan tiene qué ofrecer, o salta al formulario? `hojaPlanTieneQueOfrecer` de la web. */
+fun hojaPlanTieneQueOfrecer(candidatos: List<ServicioUnaVez>, enVisitaPermitido: Boolean): Boolean =
+    candidatos.any { pasoPlanTrasEvaluacion(it, enVisitaPermitido) != PasoPlanTrasEvaluacion.FORMULARIO }
+
+/** Un servicio del catálogo del plan, con lo que decide si se hace de una vez. */
+fun ProcedimientoRef.aServicioUnaVez(): ServicioUnaVez = ServicioUnaVez(
+    id = id, nombre = nombre, precio = precio, precioUnitarioSugerido = precioUnitarioSugerido,
+    especialidadId = especialidadId, modoCobro = modoCobro, usaSesiones = usaSesiones,
+    tipoCita = tipoCita, unidadLabel = unidadLabel,
+)
+
 /** El precio de lista: el del servicio; por unidades, cantidad × el unitario sugerido (o el precio). */
 fun precioListaServicioEnVisita(s: ServicioUnaVez, cantidad: Int): Double =
     if (modoServicioDeUnaVez(s) == ModoUnaVez.UNIDADES) {

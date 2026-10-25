@@ -67,11 +67,15 @@ internal fun DialogoServicioEnVisita(
     verClinico: Boolean,
     onCerrar: () -> Unit,
     onRegistrado: () -> Unit,
+    /** Viene elegido (desde la hoja del plan del cierre de la evaluación). */
+    servicioInicialId: String? = null,
+    /** El cobro de la evaluación ya se decidió al cerrarla: aquí no se pregunta ni se cobra. */
+    consultaResuelta: Boolean = false,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     val opciones = remember(servicios, cita.especialidadId) { serviciosDeUnaVez(servicios, cita.especialidadId) }
-    var elegidoId by remember { mutableStateOf<String?>(null) }
+    var elegidoId by remember { mutableStateOf(servicioInicialId) }
     // Uno solo: no es una pregunta, viene elegido.
     val servicio = opciones.firstOrNull { it.id == elegidoId } ?: opciones.singleOrNull()
     val modo = servicio?.let { modoServicioDeUnaVez(it) }
@@ -84,7 +88,8 @@ internal fun DialogoServicioEnVisita(
     val precioFinal = if (lectura.ok) (lectura.valor ?: lista ?: 0.0) else null
     var nota by remember { mutableStateOf("") }
 
-    val consulta = if (cita.pagadaAt == null) cita.costo ?: 0.0 else 0.0
+    val consulta = if (!consultaResuelta && cita.pagadaAt == null) cita.costo ?: 0.0 else 0.0
+    val yaCompletada = cita.estado == "Completada"
     var cobrarConsulta by remember { mutableStateOf(true) }
     // Encendido: el paciente está saliendo. Se apaga si no paga ahora.
     var cobrarAhora by remember { mutableStateOf(true) }
@@ -115,12 +120,12 @@ internal fun DialogoServicioEnVisita(
                         citaId = cita.id, procedimientoId = s.id, precio = p,
                         cantidad = if (modo == ModoUnaVez.UNIDADES) nCantidad else null,
                         nota = nota.takeIf { verClinico }, terapeutaId = cita.terapeutaId,
-                        cobrarConsulta = cobrarConsulta, metodo = if (cobra) metodo else null,
+                        cobrarConsulta = if (consultaResuelta) false else cobrarConsulta, metodo = if (cobra) metodo else null,
                     ),
                     idem,
                 )
                 r.onSuccess { res ->
-                    val hecho = "${s.nombre} registrado · $nombreCita completada"
+                    val hecho = if (yaCompletada) "${s.nombre} registrado" else "${s.nombre} registrado · $nombreCita completada"
                     when {
                         res.errorCobro != null -> Toaster.error("$hecho, pero el cobro no entró: ${res.errorCobro} Cóbralo desde 💰 o la ficha.")
                         res.cobrado > 0 -> {
@@ -156,8 +161,8 @@ internal fun DialogoServicioEnVisita(
         onAccion = { guardar() },
     ) {
         Text(
-            "El servicio que se le hizo hoy. Al guardar queda su tratamiento realizado y la " +
-                "${nombreCita.lowercase()} completada" + (if (puedeCobrar) ", con su cobro." else "."),
+            "El servicio que se le hizo hoy. Al guardar queda su tratamiento realizado" +
+                (if (yaCompletada) "" else " y la ${nombreCita.lowercase()} completada") + (if (puedeCobrar) ", con su cobro." else "."),
             color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(bottom = 10.dp),
         )
         error?.let {
@@ -221,7 +226,7 @@ internal fun DialogoServicioEnVisita(
                 Spacer(Modifier.width(6.dp))
                 Text(
                     "La ${nombreCita.lowercase()} se cobra (${textoSoles(consulta, moneda)})" +
-                        if (!cobrarConsulta) " · queda en ${textoSoles(0.0, moneda)}" else "",
+                        if (!cobrarConsulta) (if (yaCompletada) " · queda por cobrar" else " · queda en ${textoSoles(0.0, moneda)}") else "",
                     color = c.texto, fontSize = 13.sp,
                 )
             }
