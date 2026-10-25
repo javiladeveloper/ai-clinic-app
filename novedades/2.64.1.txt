@@ -1,0 +1,6 @@
+Eliges la especialidad de la cita aunque atiendas más de una, y ves el motivo de la consulta sin abrir el detalle.
+---
+• Nueva cita: si atiendes varias especialidades, eliges en cuál va la cita.
+• Agenda: el motivo que anotó recepción aparece en la tarjeta de la consulta.
+• Al cerrar la evaluación ves el motivo antes de escribir el diagnóstico.
+---
