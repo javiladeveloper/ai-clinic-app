@@ -238,6 +238,12 @@ fun PantallaCrearCita(
 
     // Clínica multi-especialidad → mostrar selector que filtra los profesionales.
     val multiEspecialidad = especialidadesClinica.size > 1
+    // Las que se ofrecen en el selector: todas, o las del profesional que agenda
+    // lo suyo. Con varias (OMER: ozonoterapia y estética) también elige; con una
+    // sola se deduce y no se pregunta. Sin ninguna asignada, todas (como la web).
+    val misEspecialidadIds = ctx.miTerapeutaId?.let { yo -> terapeutas.find { it.id == yo }?.especialidadIds }.orEmpty()
+    val especialidadesElegibles = if (misEspecialidadIds.isEmpty()) especialidadesClinica
+        else especialidadesClinica.filter { it.id in misEspecialidadIds }
 
     // El flujo que rige ESTA cita: el de la especialidad elegida si tiene uno
     // propio, si no el de la clínica. Es lo que permite que en una misma
@@ -755,6 +761,7 @@ fun PantallaCrearCita(
             // Especialidad: la elegida, o la del profesional si solo tiene una.
             val espId = especialidad?.id
                 ?: terapeuta?.especialidadIds?.singleOrNull()
+                ?: misEspecialidadIds.singleOrNull()
             val r = AgendaRepo.crearCitaDetalle(
                 pacienteId = p.id, tipo = tipo, fecha = fecha, hora = hora,
                 terapeutaId = terId, tratamientoId = ov?.id ?: tratamiento?.id,
@@ -1177,11 +1184,11 @@ fun PantallaCrearCita(
                     }
                 }
 
-                if (multiEspecialidad && ctx.miTerapeutaId == null) {
+                if (multiEspecialidad && especialidadesElegibles.size > 1) {
                     Spacer(Modifier.height(Sania.dim.md))
                     Etiqueta("Especialidad")
                     SelectorLista(
-                        items = especialidadesClinica, elegido = especialidad, etiqueta = { it.nombre },
+                        items = especialidadesElegibles, elegido = especialidad, etiqueta = { it.nombre },
                         onElegir = { esp ->
                             especialidad = esp
                             // Si el profesional elegido ya no pertenece a la especialidad, lo quitamos.
