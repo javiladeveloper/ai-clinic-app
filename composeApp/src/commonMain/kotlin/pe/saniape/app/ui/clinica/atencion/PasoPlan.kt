@@ -126,10 +126,12 @@ internal fun PasoPlan(
     soloLectura: Boolean,
     acciones: AccionesNativas,
     onNuevaReceta: () -> Unit,
+    /** «↻ Repetir receta» (🗒 La última vez). null = no hay receta anterior. */
+    onRepetirReceta: (() -> Unit)? = null,
 ) {
     val esProc = d.flags.esProcedimiento
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (d.flags.recetasAplica) BloqueReceta(vm, d, soloLectura, acciones, onNuevaReceta)
+        if (d.flags.recetasAplica) BloqueReceta(vm, d, soloLectura, acciones, onNuevaReceta, onRepetirReceta)
         if (!esProc) BloqueExamenes(vm, d, soloLectura)
         if (!esProc) BloqueProcedimiento(vm, d, soloLectura)
         BloqueControl(vm, d, soloLectura)
@@ -163,6 +165,7 @@ private fun BloqueReceta(
     soloLectura: Boolean,
     acciones: AccionesNativas,
     onNuevaReceta: () -> Unit,
+    onRepetirReceta: (() -> Unit)? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -193,6 +196,10 @@ private fun BloqueReceta(
                     }
                 }
             }
+        }
+        if (!soloLectura && onRepetirReceta != null) {
+            Spacer(Modifier.height(6.dp))
+            BotonChico("↻ Repetir receta anterior", c.navy, c.superficie, borde = c.borde, habilitado = vm.accionando == null, onClick = onRepetirReceta)
         }
         Spacer(Modifier.height(8.dp))
         if (d.recetas.isEmpty()) {

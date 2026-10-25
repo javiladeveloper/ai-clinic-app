@@ -61,7 +61,7 @@ fun recordarContextoCaso(
 
 /** Bloque plegable: el título se toca para abrir/cerrar (con ▾). */
 @Composable
-private fun BloquePlegable(
+internal fun BloquePlegable(
     titulo: String, detalle: String?, abiertoInicial: Boolean, fondo: Color, borde: Color,
     contenido: @Composable () -> Unit,
 ) {
@@ -95,7 +95,7 @@ private fun BloquePlegable(
 
 /** Si es largo, 4 líneas y «Ver más». */
 @Composable
-private fun TextoPlegable(texto: String, color: Color = Sania.colors.texto) {
+internal fun TextoPlegable(texto: String, color: Color = Sania.colors.texto) {
     val c = Sania.colors
     var abierto by remember(texto) { mutableStateOf(false) }
     val largo = pe.saniape.app.data.staff.esTextoLargo(texto)
@@ -113,7 +113,7 @@ private fun TextoPlegable(texto: String, color: Color = Sania.colors.texto) {
 }
 
 @Composable
-private fun EtiquetaCaso(texto: String, color: Color = Sania.colors.textoSuave) {
+internal fun EtiquetaCaso(texto: String, color: Color = Sania.colors.textoSuave) {
     Text(texto.uppercase(), color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp)
 }
 

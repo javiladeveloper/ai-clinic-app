@@ -410,7 +410,7 @@ private fun fechaCorta(iso: String): String {
  * [onEmitida] recibe el id de la receta (el toast con el número ya lo muestra el diálogo).
  */
 @Composable
-fun DialogoReceta(
+internal fun DialogoReceta(
     ctx: ContextoStaff,
     pacienteId: String,
     profesionales: List<ProfesionalPlan>,
@@ -433,6 +433,12 @@ fun DialogoReceta(
      * null (receta sin atención) → se decide por las especialidades del prescriptor.
      */
     psiquiatria: Boolean? = null,
+    /**
+     * «↻ Repetir receta» (2026-10-24): los medicamentos de la receta anterior
+     * como filas editables (itemsParaRepetir). Vacío = una fila en blanco. Solo
+     * prellena: se revisa y se emite como siempre.
+     */
+    itemsIniciales: List<ItemRecetaForm> = emptyList(),
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -459,7 +465,7 @@ fun DialogoReceta(
     var indicacionesGen by remember { mutableStateOf(indicaciones.orEmpty()) }
     var infoQf by remember { mutableStateOf("") }
     var verInfoQf by remember { mutableStateOf(false) }
-    val items = remember { mutableStateListOf(ItemRecetaForm()) }
+    val items = remember { mutableStateListOf(*itemsIniciales.ifEmpty { listOf(ItemRecetaForm()) }.toTypedArray()) }
     var errores by remember { mutableStateOf<List<String>>(emptyList()) }
     var emitiendo by remember { mutableStateOf(false) }
     var banco by remember { mutableStateOf(BancoMedicamentos()) }
@@ -540,6 +546,9 @@ fun DialogoReceta(
             // Errores del servidor (422 de validarReceta, prescriptor ajeno…): arriba y en rojo.
             if (errores.isNotEmpty()) {
                 CajaAviso(errores.joinToString("\n") { "• $it" }, c.error, c.errorBg)
+            }
+            if (itemsIniciales.isNotEmpty()) {
+                CajaAviso("↻ Copiada de la receta anterior: revisa cada medicamento (dosis, duración y cantidad) antes de emitir.", c.texto, c.fondo)
             }
             // La medicación escrita en la consulta (texto libre), para transcribirla.
             medicacionRef?.trim()?.takeIf { it.isNotEmpty() }?.let { ref ->

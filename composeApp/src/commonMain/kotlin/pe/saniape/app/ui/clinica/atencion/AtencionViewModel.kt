@@ -212,6 +212,15 @@ class AtencionViewModel(
         triajeUsado = true
     }
     fun diagnosticos(l: List<DiagnosticoCie>) = editar { it.copy(diagnosticos = l) }
+    /**
+     * «↻ Mismos diagnósticos» (🗒 La última vez): agrega los anteriores marcados
+     * como «Repetido», sin duplicar (repetirDiagnosticos). Devuelve cuántos agregó.
+     */
+    fun repetirDiagnosticos(marcados: List<DiagnosticoCie>): Int {
+        val (lista, agregados) = pe.saniape.app.data.staff.repetirDiagnosticos(borrador.diagnosticos, marcados)
+        if (agregados > 0) diagnosticos(lista)
+        return agregados
+    }
     /** Psiquiatría: examen mental. Sin psiquiatría no hace nada (no se manda). */
     fun examenMental(v: String) { if (psiq) editar { it.copy(examenMental = v) } }
     fun escalas(l: List<EscalaAplicadaApp>) { if (psiq) editar { it.copy(escalas = l.take(MAX_ESCALAS)) } }

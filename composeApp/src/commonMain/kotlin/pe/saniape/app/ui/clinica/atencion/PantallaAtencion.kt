@@ -218,6 +218,18 @@ private fun ColumnScope.ContenidoAtencion(
     val pacienteId = d.cita.paciente_id ?: d.cita.paciente?.id
     var verFiliacion by remember { mutableStateOf(false) }
     var verReceta by remember { mutableStateOf(false) }
+    // «↻ Repetir receta»: los medicamentos de la anterior (vacío = receta en blanco).
+    var itemsReceta by remember { mutableStateOf<List<ItemRecetaForm>>(emptyList()) }
+    val ultima = d.laUltimaVez?.takeIf { !d.flags.esProcedimiento }
+    val recetaAnterior = ultima?.anterior?.receta.orEmpty()
+    val repetirReceta: (() -> Unit)? = if (!soloLectura && d.flags.recetasAplica && recetaAnterior.isNotEmpty() && pacienteId != null) {
+        {
+            // Guarda antes (como "Emitir receta"): la receta se prellena con el diagnóstico de hoy.
+            vm.lanzar("receta") {
+                if (vm.guardarAntes()) { itemsReceta = itemsParaRepetir(recetaAnterior); verReceta = true }
+            }
+        }
+    } else null
     Cabecera(
         d = d,
         accionTeclado = if (tecladoAbierto && vm.sucio && !soloLectura) {
@@ -244,6 +256,22 @@ private fun ColumnScope.ContenidoAtencion(
             Aviso(textoSoloLectura(d), c.textoSuave, c.chipBg)
         }
         FranjaPaciente(d)
+        // 🗒 La última vez: abierta de entrada (se lee sin pedir toques), plegable.
+        if (ultima?.tieneDatos == true) {
+            Spacer(Modifier.height(Sania.dim.sm))
+            BloqueUltimaVez(
+                u = ultima, diagnosticosHoy = vm.borrador.diagnosticos,
+                onRepetirDiagnosticos = if (soloLectura) null else { marcados ->
+                    val n = vm.repetirDiagnosticos(marcados)
+                    if (n == 0) Toaster.info("Esos diagnósticos ya están en la atención de hoy")
+                    else Toaster.exito(
+                        (if (n == 1) "Diagnóstico copiado" else "$n diagnósticos copiados") +
+                            " como «Repetido»: revísalos en el paso Diagnóstico",
+                    )
+                },
+                onRepetirReceta = repetirReceta,
+            )
+        }
         Spacer(Modifier.height(Sania.dim.md))
         BarraPasos(vm)
         Spacer(Modifier.height(Sania.dim.md))
@@ -257,7 +285,11 @@ private fun ColumnScope.ContenidoAtencion(
                 "examen" -> PasoExamen(vm, d, soloLectura)
                 "procedimiento" -> PasoProcedimiento(vm, d, soloLectura, acciones)
                 "diagnostico" -> PasoDiagnostico(vm, d, soloLectura)
-                "plan" -> PasoPlan(vm, d, soloLectura, acciones, onNuevaReceta = { if (pacienteId != null) verReceta = true })
+                "plan" -> PasoPlan(
+                    vm, d, soloLectura, acciones,
+                    onNuevaReceta = { if (pacienteId != null) { itemsReceta = emptyList(); verReceta = true } },
+                    onRepetirReceta = repetirReceta,
+                )
                 "cierre" -> PasoCierre(
                     vm, d, soloLectura, acciones, ctx,
                     onVerFicha = { (d.cita.paciente?.id ?: d.cita.paciente_id)?.let(onVerFicha) },
@@ -303,6 +335,7 @@ private fun ColumnScope.ContenidoAtencion(
             terapeutaSugerido = vm.borrador.terapeutaId ?: d.cita.terapeuta_id,
             indicaciones = vm.borrador.textos["tratamiento"],
             psiquiatria = vm.psiq,
+            itemsIniciales = itemsReceta,
         )
     }
     // Informe / descanso / orden de exámenes, prellenado con la atención (cierre).
