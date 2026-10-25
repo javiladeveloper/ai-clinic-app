@@ -109,7 +109,7 @@ fun ContenidoExamenes(
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         // ── Exámenes externos (Plus) ──
         // (Las derivaciones NO van aquí: nacen de un TRATAMIENTO concreto → se derivan
-        //  desde el menú "··· Opciones del tratamiento" en la pestaña Atenciones.)
+        //  desde el menú «⋯ Más» del tratamiento en la pestaña Atenciones.)
         SeccionExamenes(
             titulo = "🔬 Exámenes externos",
             subtitulo = "Solicita lab/imágenes; al volver, registra el resultado.",
@@ -587,7 +587,7 @@ private fun ModalResultado(
  * Derivar UN tratamiento a otra especialidad (la derivación nace del tratamiento, no del
  * paciente). [especialidadActual] = la del tratamiento (origen informativo); [destinos] =
  * las OTRAS especialidades de la clínica (excluyendo la actual). Reusable desde el menú
- * "··· Opciones del tratamiento".
+ * «⋯ Más» del tratamiento.
  */
 @Composable
 fun ModalDerivar(
