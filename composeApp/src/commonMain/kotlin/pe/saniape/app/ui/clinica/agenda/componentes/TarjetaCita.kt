@@ -325,7 +325,10 @@ fun TarjetaCita(
                 crearTratamientoPrincipal = crearTratamiento && cita.pacienteId != null &&
                     !odontologia && !medica && !nutricion,
                 sala = salaEf?.takeIf { cita.pacienteId != null }?.let {
-                    SalaAcciones(it.etapa, it.triajeOn, it.medica, it.marcando, triajeHecho = it.atencion?.triajeAt != null)
+                    SalaAcciones(it.etapa, it.triajeOn, it.medica, it.marcando, triajeHecho = it.atencion?.triajeAt != null,
+                        // El dato de la CLÍNICA (no el recortado por permiso): recepción sin
+                        // historia clínica es justo quien marca la llegada.
+                        clinicaConTriaje = sala?.triajeOn == true)
                 },
                 // Sin el permiso, la cita médica se cierra con "✓ Completar" (sin la consulta guiada).
                 medica = verClinico && medica && cita.pacienteId != null,

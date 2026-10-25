@@ -89,6 +89,14 @@ data class SalaAcciones(
     val marcando: Boolean = false,
     /** El triaje ya se tomó (el botón dice "corregir"). */
     val triajeHecho: Boolean = false,
+    /**
+     * La CLÍNICA toma triaje (`modulosClinicos.triaje`), aunque quien mira no vea
+     * lo clínico ([triajeOn] llega en false sin 'historia_clinica'). Decide que
+     * «🔔 Llegó» sea la principal de la cita de hoy por llegar: con triaje, la
+     * llegada es el primer paso de la sala (Llegó → Triaje → Atender). Sin
+     * triaje (DALU, RENOVA, o solo el flujo médico) Llegó sigue en «⋯ Más».
+     */
+    val clinicaConTriaje: Boolean = false,
 )
 
 /**
@@ -284,16 +292,19 @@ private fun ordenCita(a: AccionTarjeta): Int = when (a) {
  * Reparte [accionesCita] entre primaria, secundaria, 💰 y «⋯ Más».
  *
  * Primaria según la etapa:
- * - Pendiente/Confirmada → el cierre (▶ Atender / ✓ Completar). «🔔 Llegó» casi
- *   no se usa: nunca es primaria, va al menú. «🩺 Triaje» es primaria solo si el
- *   paciente ya llegó, la clínica toma triaje y aún falta tomarlo.
+ * - Pendiente/Confirmada → el cierre (▶ Atender / ✓ Completar). «🔔 Llegó» va
+ *   al menú, SALVO en la clínica con triaje ([SalaAcciones.clinicaConTriaje]):
+ *   ahí la cita de hoy que aún no llegó tiene «🔔 Llegó» de principal (el cierre
+ *   queda de secundaria: el profesional puede atender aunque nadie la marque).
+ *   «🩺 Triaje» es primaria solo si el paciente ya llegó, la clínica toma
+ *   triaje y aún falta tomarlo.
  * - Completada → «📝 Anotar evolución» si falta; si la sesión cerró el plan,
  *   «✓ Dar de alta» (o «＋ Ampliar»); la cita que evalúa, «🩺 Crear tratamiento»
  *   (si [EntradaAccionesCita.crearTratamientoPrincipal]). Si no, nada.
  * - Cancelada u otro estado → nada (todo en el menú).
  *
- * Secundaria (una): ✓ Confirmar (Pendiente) › el cierre si la primaria es
- * Triaje › → Evaluación › 🧠 Evaluación; en la Completada, la otra opción del
+ * Secundaria (una): el cierre si la primaria es Llegó › ✓ Confirmar
+ * (Pendiente) › el cierre si la primaria es Triaje › → Evaluación › 🧠 Evaluación; en la Completada, la otra opción del
  * plan terminado o 🔁 Repetir (agendar la siguiente, muy usado).
  */
 fun planAccionesCita(e: EntradaAccionesCita): PlanAccionesCita {
@@ -305,8 +316,13 @@ fun planAccionesCita(e: EntradaAccionesCita): PlanAccionesCita {
     val primaria: AccionCitaItem? = when {
         activa -> {
             val sala = e.sala
+            val porLlegarConTriaje = sala != null && sala.etapa == EtapaLlegada.POR_LLEGAR && sala.clinicaConTriaje
             val faltaTriaje = sala != null && sala.etapa == EtapaLlegada.LLEGO && sala.triajeOn
-            if (faltaTriaje) de(AccionTarjeta.Triaje) ?: cierre else cierre
+            when {
+                porLlegarConTriaje -> de(AccionTarjeta.Llego) ?: cierre
+                faltaTriaje -> de(AccionTarjeta.Triaje) ?: cierre
+                else -> cierre
+            }
         }
         e.estado == "Completada" ->
             de(AccionTarjeta.Evolucion)?.takeIf { e.evolucion?.resaltado == true }
@@ -317,6 +333,9 @@ fun planAccionesCita(e: EntradaAccionesCita): PlanAccionesCita {
 
     val candidatasSecundaria: List<AccionCitaItem?> = when {
         activa -> listOf(
+            // Con «🔔 Llegó» de principal, el cierre va a la vista antes que confirmar:
+            // el profesional atiende aunque recepción no haya marcado la llegada.
+            cierre?.takeIf { primaria?.accion == AccionTarjeta.Llego },
             de(AccionTarjeta.Confirmar),
             cierre?.takeIf { primaria?.accion == AccionTarjeta.Triaje },
             de(AccionTarjeta.PasarEvaluacion),

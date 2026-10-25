@@ -32,7 +32,7 @@ class AccionesCitaTest {
         assertTrue(p.menuDe(GrupoAccion.COBRO).isEmpty())   // el 💰 ya está visible
     }
 
-    // ── «🔔 Llegó» casi no se usa: nunca es primaria ni secundaria ──
+    // ── «🔔 Llegó» sin triaje casi no se usa: ni primaria ni secundaria ──
 
     @Test
     fun porLlegarLaPrimariaEsAtenderYLlegoVaAlMenu() {
@@ -52,6 +52,110 @@ class AccionesCitaTest {
             sala = SalaAcciones(EtapaLlegada.POR_LLEGAR, triajeOn = false, medica = false, marcando = true),
         ))
         assertEquals("…", p.enMenu.first { it.accion == AccionTarjeta.Llego }.texto)
+    }
+
+    // ── Clínica CON triaje (OMER): la cita de hoy por llegar tiene «🔔 Llegó» de principal ──
+
+    @Test
+    fun conTriajePorLlegarLaPrimariaEsLlegoYAtenderQuedaASegunda() {
+        val p = planAccionesCita(EntradaAccionesCita(
+            estado = "Confirmada", tipo = "Consulta",
+            sala = SalaAcciones(EtapaLlegada.POR_LLEGAR, triajeOn = true, medica = true, clinicaConTriaje = true),
+        ))
+        assertEquals(AccionTarjeta.Llego, p.primaria?.accion)
+        assertEquals("🔔 Llegó", p.primaria?.texto)
+        // El médico atiende aunque recepción no marque la llegada.
+        assertEquals(AccionTarjeta.Atender, p.secundaria?.accion)
+        assertEquals(listOf(AccionTarjeta.Triaje), p.menuDe(GrupoAccion.ATENCION))
+    }
+
+    @Test
+    fun conTriajePorLlegarPendienteDejaConfirmarEnElMenu() {
+        val p = planAccionesCita(EntradaAccionesCita(
+            estado = "Pendiente", tipo = "Sesión",
+            sala = SalaAcciones(EtapaLlegada.POR_LLEGAR, triajeOn = true, medica = false, clinicaConTriaje = true),
+        ))
+        assertEquals(AccionTarjeta.Llego, p.primaria?.accion)
+        assertEquals(AccionTarjeta.Completar, p.secundaria?.accion)
+        assertEquals(listOf(AccionTarjeta.Confirmar, AccionTarjeta.Editar, AccionTarjeta.Cancelar), p.menuDe(GrupoAccion.CITA))
+    }
+
+    @Test
+    fun conTriajeMarcandoLaPrimariaMuestraSusPuntos() {
+        val p = planAccionesCita(EntradaAccionesCita(
+            estado = "Confirmada", tipo = "Consulta",
+            sala = SalaAcciones(EtapaLlegada.POR_LLEGAR, triajeOn = true, medica = false, marcando = true, clinicaConTriaje = true),
+        ))
+        assertEquals(AccionTarjeta.Llego, p.primaria?.accion)
+        assertEquals("…", p.primaria?.texto)
+    }
+
+    @Test
+    fun conTriajeQuienNoVeLoClinicoIgualTieneLlegoDePrincipal() {
+        // Recepción sin 'historia_clinica': la tarjeta le apaga triajeOn, pero la
+        // clínica sí toma triaje → Llegó principal; luego cierra con ✓ Completar.
+        val porLlegar = planAccionesCita(EntradaAccionesCita(
+            estado = "Confirmada", tipo = "Consulta",
+            sala = SalaAcciones(EtapaLlegada.POR_LLEGAR, triajeOn = false, medica = false, clinicaConTriaje = true),
+        ))
+        assertEquals(AccionTarjeta.Llego, porLlegar.primaria?.accion)
+        assertEquals(AccionTarjeta.Completar, porLlegar.secundaria?.accion)
+        assertTrue(AccionTarjeta.Triaje !in porLlegar.enMenu.map { it.accion })
+        val llego = planAccionesCita(EntradaAccionesCita(
+            estado = "Confirmada", tipo = "Consulta",
+            sala = SalaAcciones(EtapaLlegada.LLEGO, triajeOn = false, medica = false, clinicaConTriaje = true),
+        ))
+        assertEquals(AccionTarjeta.Completar, llego.primaria?.accion)
+        assertTrue(AccionTarjeta.Llego !in llego.enMenu.map { it.accion })
+    }
+
+    @Test
+    fun conTriajeDespuesDeLlegarSigueTriajeYLuegoAtender() {
+        val llego = planAccionesCita(EntradaAccionesCita(
+            estado = "Confirmada", tipo = "Consulta",
+            sala = SalaAcciones(EtapaLlegada.LLEGO, triajeOn = true, medica = true, clinicaConTriaje = true),
+        ))
+        assertEquals(AccionTarjeta.Triaje, llego.primaria?.accion)
+        assertEquals(AccionTarjeta.Atender, llego.secundaria?.accion)
+        val triaje = planAccionesCita(EntradaAccionesCita(
+            estado = "Confirmada", tipo = "Consulta",
+            sala = SalaAcciones(EtapaLlegada.TRIAJE, triajeOn = true, medica = true, triajeHecho = true, clinicaConTriaje = true),
+        ))
+        assertEquals(AccionTarjeta.Atender, triaje.primaria?.accion)
+    }
+
+    @Test
+    fun conTriajeLaCitaCerradaNoOfreceLlego() {
+        // Completada o cancelada: no hay sala que recorrer.
+        for (estado in listOf("Completada", "Cancelada")) {
+            val p = planAccionesCita(EntradaAccionesCita(
+                estado = estado, tipo = "Consulta",
+                sala = SalaAcciones(EtapaLlegada.POR_LLEGAR, triajeOn = true, medica = false, clinicaConTriaje = true),
+            ))
+            assertTrue(p.primaria?.accion != AccionTarjeta.Llego, estado)
+            assertTrue(AccionTarjeta.Llego !in p.enMenu.map { it.accion }, estado)
+        }
+    }
+
+    @Test
+    fun sinTriajeConFlujoMedicoLlegoSigueEnElMenu() {
+        // Sala de espera solo por el flujo médico (sin triaje): como en la 2.62.8.
+        val p = planAccionesCita(EntradaAccionesCita(
+            estado = "Confirmada", tipo = "Consulta",
+            sala = SalaAcciones(EtapaLlegada.POR_LLEGAR, triajeOn = false, medica = true, clinicaConTriaje = false),
+        ))
+        assertEquals(AccionTarjeta.Atender, p.primaria?.accion)
+        assertTrue(AccionTarjeta.Llego in p.menuDe(GrupoAccion.ATENCION))
+    }
+
+    @Test
+    fun daluSinSalaDeEsperaNoCambiaNada() {
+        // DALU: sin triaje ni flujo médico la tarjeta no lleva sala (null): ni rastro de Llegó.
+        for (estado in listOf("Pendiente", "Confirmada")) {
+            val p = planAccionesCita(EntradaAccionesCita(estado = estado, tipo = "Sesión"))
+            assertEquals(AccionTarjeta.Completar, p.primaria?.accion, estado)
+            assertTrue(AccionTarjeta.Llego !in p.enMenu.map { it.accion }, estado)
+        }
     }
 
     // ── Triaje: primaria solo si llegó, la clínica lo toma y falta ──
@@ -183,7 +287,13 @@ class AccionesCitaTest {
     fun elRepartoConservaExactamenteLasAccionesDeSiempre() {
         val estados = listOf("Pendiente", "Confirmada", "Completada", "Cancelada", "No asistió")
         val salas = listOf(null) + EtapaLlegada.entries.flatMap { e ->
-            listOf(true, false).map { t -> SalaAcciones(e, triajeOn = t, medica = !t, triajeHecho = e != EtapaLlegada.POR_LLEGAR && e != EtapaLlegada.LLEGO) }
+            listOf(true, false).flatMap { t ->
+                // La clínica con triaje, vista también por quien no ve lo clínico (triajeOn apagado).
+                listOf(t to t, false to true).distinct().map { (verTriaje, clinica) ->
+                    SalaAcciones(e, triajeOn = verTriaje, medica = !t, triajeHecho = e != EtapaLlegada.POR_LLEGAR && e != EtapaLlegada.LLEGO,
+                        clinicaConTriaje = clinica)
+                }
+            }
         }
         for (estado in estados) for (sala in salas) for (todo in listOf(false, true)) {
             val e = EntradaAccionesCita(
@@ -201,7 +311,11 @@ class AccionesCitaTest {
             val ctx = "$estado / $sala / $todo"
             assertEquals(todas.sortedBy { it.accion }, repartidas.sortedBy { it.accion }, ctx)
             assertTrue(p.visibles.size <= 2, ctx)
-            assertTrue(p.visibles.none { it.accion == AccionTarjeta.Llego }, "Llegó nunca visible: $ctx")
+            // Llegó solo se ve (y de principal) en la clínica con triaje, hoy, por llegar y activa.
+            val llegoVisible = sala != null && sala.clinicaConTriaje && sala.etapa == EtapaLlegada.POR_LLEGAR &&
+                (estado == "Pendiente" || estado == "Confirmada")
+            if (llegoVisible) assertEquals(AccionTarjeta.Llego, p.primaria?.accion, ctx)
+            else assertTrue(p.visibles.none { it.accion == AccionTarjeta.Llego }, "Llegó no visible: $ctx")
             assertTrue(p.cobro == null || p.cobro.accion in setOf(AccionTarjeta.Cobrar, AccionTarjeta.AbonarPaquete), ctx)
             p.menuDe(GrupoAccion.CITA).let { cita ->
                 if (AccionTarjeta.Cancelar in cita) assertEquals(AccionTarjeta.Cancelar, cita.last(), ctx)

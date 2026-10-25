@@ -864,7 +864,9 @@ fun PantallaAgenda(
                             when {
                                 vm.mirandoHoy && vm.soloEspera -> pe.saniape.app.ui.clinica.EstadoVacio(
                                     emoji = "🪑", titulo = "Nadie en sala de espera ahora",
-                                    subtitulo = "Marca \"🔔 Llegó\" (en ⋯ Más de la cita) cuando el ${LocalTerminologiaPaciente.current.paciente} llegue.",
+                                    // Con triaje, «🔔 Llegó» es el botón principal de la cita; sin él, va en ⋯ Más.
+                                    subtitulo = if (vm.triajeOn) "Marca \"🔔 Llegó\" en la cita cuando el ${LocalTerminologiaPaciente.current.paciente} llegue."
+                                    else "Marca \"🔔 Llegó\" (en ⋯ Más de la cita) cuando el ${LocalTerminologiaPaciente.current.paciente} llegue.",
                                 )
                                 vm.citas.isEmpty() && vm.verHistorial -> pe.saniape.app.ui.clinica.EstadoVacio(
                                     emoji = "🗂", titulo = "Historial vacío",
