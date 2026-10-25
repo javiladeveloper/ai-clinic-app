@@ -1,0 +1,8 @@
+Menos botones y menos pasos: cada pantalla muestra lo que toca ahora y el resto en «⋯ Más». Además: «La última vez» en la consulta, «No vino» en la agenda y la próxima cita propuesta sola.
+---
+Más simple:
+• Ficha y tratamiento con menos botones; el saldo se toca para ver los pagos.
+• Consulta: «La última vez» con «Repetir receta» y «Mismos diagnósticos».
+• Agenda: «🚫 No vino» el mismo día y documentos desde la cita.
+• Al terminar una atención: «📅 Agendar próxima» en un toque.
+• Agendar todas las sesiones de un plan de una vez.
