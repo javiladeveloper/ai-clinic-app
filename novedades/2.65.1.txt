@@ -1,0 +1,5 @@
+El administrador que también atiende ya puede agendar a cualquier profesional y ver la agenda completa.
+---
+• Nueva cita, sesión y tratamiento: si eres administrador, eliges al profesional (vienes tú precargado).
+• Agenda: el administrador vinculado a un profesional ve las citas de todo el equipo.
+---

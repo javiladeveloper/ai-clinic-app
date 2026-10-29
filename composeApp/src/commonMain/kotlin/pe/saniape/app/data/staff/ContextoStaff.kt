@@ -306,13 +306,24 @@ data class ContextoStaff(
 
     /**
      * ¿El elemento (cita/sesión de terapeutaIdElemento) está en MI scope?
-     * Si soy profesional vinculado, solo lo mío; si no, todo.
+     * Si mi agenda está fijada a mí ([profesionalFijo]), solo lo mío; si no, todo.
      */
     fun enScope(terapeutaIdElemento: String?): Boolean =
-        miTerapeutaId == null || terapeutaIdElemento == miTerapeutaId
+        profesionalFijo == null || terapeutaIdElemento == profesionalFijo
 
-    /** ¿Puedo filtrar por personal? Solo si no estoy vinculado a una agenda. */
-    val puedeFiltrarPorPersonal: Boolean get() = miTerapeutaId == null
+    /**
+     * Profesional al que queda FIJADO lo mío (agenda que veo; cita, sesión y
+     * tratamiento que creo): el mío si estoy vinculado, salvo que sea Admin. El
+     * Admin que además atiende ve la agenda de todos y elige a cualquiera, con él
+     * mismo precargado — como la web. Antes todo se fijaba con [miTerapeutaId]:
+     * OMER, 29/10/2026, el admin-médico no podía agendarle a otro profesional.
+     * Solo Admin (no todo gestor): la app no tiene filtro «mis citas», y un fisio
+     * con permiso de pacientes (DALU) pasaría a ver la agenda de toda la clínica.
+     */
+    val profesionalFijo: String? get() = if (esAdmin) null else miTerapeutaId
+
+    /** ¿Puedo filtrar por personal? Solo si mi agenda no está fijada a mí ([profesionalFijo]). */
+    val puedeFiltrarPorPersonal: Boolean get() = profesionalFijo == null
 
     /**
      * Scope para listar PACIENTES (lista y buscador). Si tengo permiso de pacientes

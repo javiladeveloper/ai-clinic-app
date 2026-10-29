@@ -149,6 +149,9 @@ fun PantallaCrearCita(
     // Formulario a pantalla completa: la barra "📝 Dar indicaciones" no va encima.
     pe.saniape.app.ui.clinica.recetas.OcultarOfertaReceta()
 
+    // El profesional queda fijado salvo al Admin (ContextoStaff.profesionalFijo).
+    val profFijo = ctx.profesionalFijo
+
     var pacientes by remember { mutableStateOf<List<RefNombre>>(emptyList()) }
     var terapeutas by remember { mutableStateOf<List<TerapeutaRef>>(emptyList()) }
     var especialidadesClinica by remember { mutableStateOf<List<EspecialidadRef>>(emptyList()) }
@@ -241,7 +244,7 @@ fun PantallaCrearCita(
     // Las que se ofrecen en el selector: todas, o las del profesional que agenda
     // lo suyo. Con varias (OMER: ozonoterapia y estética) también elige; con una
     // sola se deduce y no se pregunta. Sin ninguna asignada, todas (como la web).
-    val misEspecialidadIds = ctx.miTerapeutaId?.let { yo -> terapeutas.find { it.id == yo }?.especialidadIds }.orEmpty()
+    val misEspecialidadIds = profFijo?.let { yo -> terapeutas.find { it.id == yo }?.especialidadIds }.orEmpty()
     val especialidadesElegibles = if (misEspecialidadIds.isEmpty()) especialidadesClinica
         else especialidadesClinica.filter { it.id in misEspecialidadIds }
 
@@ -258,7 +261,7 @@ fun PantallaCrearCita(
     // la del profesional → la de la clínica. Otro rubro (DALU, RENOVA): el
     // formulario de siempre. Gemelo de `atencionRapidaForm` (CitaForm web).
     val atencionDirectaForm = remember(especialidadesClinica, especialidad?.id, terapeuta?.id, terapeutas) {
-        val prof = (terapeuta?.id ?: ctx.miTerapeutaId)?.let { id -> terapeutas.find { it.id == id } }
+        val prof = (terapeuta?.id ?: profFijo)?.let { id -> terapeutas.find { it.id == id } }
         pe.saniape.app.data.staff.atencionDirectaAplica(pe.saniape.app.data.staff.atencionEsPsicologia(
             especialidadesClinica.map { Triple(it.id, it.rubro, it.nombre) }, especialidad?.id, prof?.especialidadIds.orEmpty(),
         ))
@@ -403,7 +406,7 @@ fun PantallaCrearCita(
     // Depende también de paciente?.id: si no, el aviso de "el paciente ya tiene otra cita"
     // no se recalcula al cambiar de paciente (quedaba obsoleto).
     LaunchedEffect(terapeuta?.id, fecha, hora, tipo, paciente?.id, duracion) {
-        val terId = terapeuta?.id ?: ctx.miTerapeutaId
+        val terId = terapeuta?.id ?: profFijo
         disponibilidad = if (terId != null) {
             runCatching {
                 pe.saniape.app.data.staff.DisponibilidadRepo.verificar(
@@ -441,6 +444,11 @@ fun PantallaCrearCita(
                 // mismo médico) → no se fuerza, recepción/el médico lo asigna si aplica.
                 especialidad = pf.especialidadId?.let { espId -> especialidadesClinica.find { it.id == espId } }
                     ?: ter?.especialidadIds?.singleOrNull()?.let { espId -> especialidadesClinica.find { it.id == espId } }
+            }
+            // Admin que también atiende: él mismo precargado,
+            // pero lo puede cambiar. Como la web.
+            if (profFijo == null && prefill?.terapeutaId == null) {
+                ctx.miTerapeutaId?.let { yo -> terapeutas.find { it.id == yo } }?.let { terapeuta = it }
             }
         } catch (_: Exception) {}
     }
@@ -551,7 +559,7 @@ fun PantallaCrearCita(
     // tratamiento → el que hizo su evaluación/diagnóstico → lo de siempre.
     // Gemelo de la web (ProfesionalSugerido.kt). El profesional vinculado queda
     // fijado a sí mismo, así que ahí no se consulta nada.
-    val quiereSugerencia = tipo == "Sesión" && ctx.miTerapeutaId == null
+    val quiereSugerencia = tipo == "Sesión" && profFijo == null
     LaunchedEffect(paciente?.id, quiereSugerencia) {
         val p = paciente
         evaluaciones = if (p != null && quiereSugerencia) {
@@ -728,7 +736,7 @@ fun PantallaCrearCita(
         // que la web. El profesional agenda lo suyo (su especialidad
         // sale de él) y la sesión la toma de su tratamiento.
         val mixtaDental = ctx.mapaDental.ids.isNotEmpty() && !ctx.mapaDental.solo
-        if (mixtaDental && multiEspecialidad && ctx.miTerapeutaId == null && tipo != "Sesión" &&
+        if (mixtaDental && multiEspecialidad && profFijo == null && tipo != "Sesión" &&
             especialidad == null && terapeuta?.especialidadIds?.singleOrNull() == null
         ) {
             return fallar("Elige la especialidad: la clínica atiende odontología y otras, y cada una se atiende distinto.")
@@ -757,7 +765,7 @@ fun PantallaCrearCita(
                 val okOrigen = runCatching { AgendaRepo.completar(origenId) }.getOrDefault(false)
                 if (!okOrigen) return fallar("No se pudo cerrar la consulta previa. Intenta de nuevo.")
             }
-            val terId = if (ctx.miTerapeutaId != null) ctx.miTerapeutaId else terapeuta?.id
+            val terId = profFijo ?: terapeuta?.id
             // Especialidad: la elegida, o la del profesional si solo tiene una.
             val espId = especialidad?.id
                 ?: terapeuta?.especialidadIds?.singleOrNull()
@@ -873,7 +881,7 @@ fun PantallaCrearCita(
         )
         if (e.estado != pe.saniape.app.data.staff.EstadoCitaUnPaso.Estado.LISTO) return e.motivo ?: "Revisa la cita"
         // Regularización (ya ocurrió) o sin profesional: no hay horario que verificar.
-        val terId = terapeuta?.id ?: ctx.miTerapeutaId
+        val terId = terapeuta?.id ?: profFijo
         if ((pasada && esRegularizacion) || terId == null) return null
         // Igual que la verificación de pantalla: un fallo de red no frena.
         val r = runCatching {
@@ -1009,7 +1017,7 @@ fun PantallaCrearCita(
                 Column(Modifier.weight(1f)) { Etiqueta("Fecha"); SelectorBoton(fecha) { verFecha = true } }
                 Column(Modifier.weight(1f)) { Etiqueta("Hora"); SelectorBoton(hora) { verHora = true } }
             }
-            if (ctx.miTerapeutaId == null) {
+            if (profFijo == null) {
                 Spacer(Modifier.height(8.dp))
                 Etiqueta("Profesional")
                 SelectorLista(
@@ -1057,7 +1065,7 @@ fun PantallaCrearCita(
     if (crearTratamiento && pacTrat != null) {
         pe.saniape.app.ui.clinica.pacientes.ModalCrearTratamiento(
             pacienteId = pacTrat.id,
-            miTerapeutaId = ctx.miTerapeutaId,
+            miTerapeutaId = profFijo,
             diagnosticoPrevio = null,
             terapeutaInicialId = terapeuta?.id,
             especialidadInicialId = especialidad?.id ?: terapeuta?.especialidadIds?.singleOrNull(),
@@ -1360,13 +1368,13 @@ fun PantallaCrearCita(
                 // Profesional (fijado si es profesional vinculado)
                 Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                     Etiqueta("Profesional")
-                    if (ctx.miTerapeutaId == null) {
+                    if (profFijo == null) {
                         Text("Ver horarios", color = c.navy, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                             modifier = Modifier.clickable { mostrarHorarios = true })
                     }
                 }
-                if (ctx.miTerapeutaId != null) {
-                    val miNombre = terapeutas.find { it.id == ctx.miTerapeutaId }?.nombre ?: "Tú"
+                if (profFijo != null) {
+                    val miNombre = terapeutas.find { it.id == profFijo }?.nombre ?: "Tú"
                     SelectorBoton("$miNombre (tú)", bloqueado = true) {}
                 } else {
                     SelectorLista(
@@ -1391,7 +1399,7 @@ fun PantallaCrearCita(
                     valor = virt,
                     onChange = { virt = it },
                     meetPlan = meetPlan,
-                    terapeutaId = if (ctx.miTerapeutaId != null) ctx.miTerapeutaId else terapeuta?.id,
+                    terapeutaId = profFijo ?: terapeuta?.id,
                     habilitado = !guardando,
                 )
 

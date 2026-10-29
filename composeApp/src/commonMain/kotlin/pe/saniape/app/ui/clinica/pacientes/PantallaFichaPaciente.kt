@@ -1717,7 +1717,7 @@ private fun PantallaFichaPacienteContenido(
     if (creandoTratamiento || renovar != null) {
         ModalCrearTratamiento(
             pacienteId = paciente.id,
-            miTerapeutaId = ctx.miTerapeutaId,
+            miTerapeutaId = ctx.profesionalFijo, terapeutaInicialId = ctx.miTerapeutaId,
             diagnosticoPrevio = renovar?.diagnostico ?: paciente.diagnostico,
             renovacion = renovar,
             onCancelar = { creandoTratamiento = false; renovarDesde = null },
@@ -1749,7 +1749,7 @@ private fun PantallaFichaPacienteContenido(
     planPsico?.let { (evId, prefill) ->
         ModalCrearTratamiento(
             pacienteId = paciente.id,
-            miTerapeutaId = ctx.miTerapeutaId,
+            miTerapeutaId = ctx.profesionalFijo, terapeutaInicialId = ctx.miTerapeutaId,
             diagnosticoPrevio = prefill.diagnostico ?: paciente.diagnostico,
             prefillPlan = prefill,
             onCancelar = { planPsico = null },
@@ -1776,7 +1776,7 @@ private fun PantallaFichaPacienteContenido(
     crearSesionEn?.let { t ->
         ModalCrearSesion(
             t = t,
-            miTerapeutaId = ctx.miTerapeutaId,
+            miTerapeutaId = ctx.profesionalFijo,
             puedePagos = ctx.puede("pagos"),
             pacienteId = paciente.id,
             onCancelar = { crearSesionEn = null },

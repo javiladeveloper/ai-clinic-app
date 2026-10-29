@@ -1105,7 +1105,7 @@ fun PantallaAgenda(
         if (pid != null) {
             pe.saniape.app.ui.clinica.pacientes.ModalCrearTratamiento(
                 pacienteId = pid,
-                miTerapeutaId = ctx.miTerapeutaId,
+                miTerapeutaId = ctx.profesionalFijo, terapeutaInicialId = ctx.miTerapeutaId,
                 diagnosticoPrevio = prefill.diagnostico,
                 prefillPlan = prefill,
                 onCancelar = { planPsico = null },
@@ -1681,9 +1681,9 @@ fun PantallaAgenda(
                 scope.launch {
                     val leida = try {
                         val cita = pe.saniape.app.data.staff.AgendaRepo.citaPorId(p.id)
-                        val equipo = if (pe.saniape.app.data.staff.hayQueLeerEquipo(cita, ctx.miTerapeutaId))
+                        val equipo = if (pe.saniape.app.data.staff.hayQueLeerEquipo(cita, ctx.profesionalFijo))
                             pe.saniape.app.data.staff.AgendaRepo.equipoDeCita(p.id) else emptyList()
-                        pe.saniape.app.data.staff.destinoCitaLeida(cita, ctx.miTerapeutaId, equipo)
+                        pe.saniape.app.data.staff.destinoCitaLeida(cita, ctx.profesionalFijo, equipo)
                     } catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e }
                     catch (_: Exception) {
                         pe.saniape.app.data.staff.DestinoCitaLeida.Avisar(pe.saniape.app.data.staff.AVISO_CITA_SIN_CONEXION)
@@ -1756,7 +1756,7 @@ fun PantallaAgenda(
     if (citaTrat != null && pidTrat != null && tratForm) {
         pe.saniape.app.ui.clinica.pacientes.ModalCrearTratamiento(
             pacienteId = pidTrat,
-            miTerapeutaId = ctx.miTerapeutaId,
+            miTerapeutaId = ctx.profesionalFijo,
             diagnosticoPrevio = tratDiag ?: tratPac?.diagnostico,
             citaOrigenId = citaTrat.id,
             terapeutaInicialId = citaTrat.terapeutaId,

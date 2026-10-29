@@ -74,7 +74,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     val miTerapeutaId: String? get() = ctx.miTerapeutaId
     val esGestor: Boolean get() = ctx.esGestor
     /** El gestor sin scope propio puede filtrar por profesional. */
-    val puedeFiltrarPorPersonal: Boolean get() = ctx.miTerapeutaId == null
+    val puedeFiltrarPorPersonal: Boolean get() = ctx.profesionalFijo == null
 
     /**
      * Filtro por especialidad: solo si la clínica tiene 2+ especialidades y quien
@@ -661,7 +661,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     private val necesitaServicioMes: Boolean get() = seleccionEspecialidades.isNotEmpty()
 
     private fun claveMes(mes: pe.saniape.app.data.staff.MesAgenda): String =
-        mes.clave + (ctx.miTerapeutaId?.let { ":$it" } ?: "") + sedeClaveMes +
+        mes.clave + (ctx.profesionalFijo?.let { ":$it" } ?: "") + sedeClaveMes +
             (if (necesitaServicioMes) ":srv" else "")
 
     /** Lo leído del mes visible (null = aún nada). */
@@ -754,7 +754,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         mesJobClave = clave
         cargandoMes = true; errorMes = false
         mesJob = viewModelScope.launch {
-            val r = runCatching { AgendaRepo.filasDelMes(mes, ctx.miTerapeutaId, conServicio) }
+            val r = runCatching { AgendaRepo.filasDelMes(mes, ctx.profesionalFijo, conServicio) }
             val activo = kotlinx.coroutines.currentCoroutineContext().isActive
             val fresco = cacheMes.terminar(clave, turno, if (activo) r.getOrNull() else null)
             versionCacheMes++
@@ -834,7 +834,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             coroutineScope {
                 // Las llegadas de hoy van EN PARALELO con la agenda (sin cascada).
                 val lleg = async { recargarLlegadas() }
-                val lista = runCatching { AgendaRepo.citasDelDia(fecha, ctx.miTerapeutaId) }.getOrDefault(emptyList())
+                val lista = runCatching { AgendaRepo.citasDelDia(fecha, ctx.profesionalFijo) }.getOrDefault(emptyList())
                 // Una carga vieja que llega tarde no pisa el día elegido: al abrir por
                 // un aviso, la carga de hoy (init) y la del día del aviso corren a la
                 // vez, y si la de hoy terminaba última la agenda mostraba hoy.
@@ -852,7 +852,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         viewModelScope.launch {
             if (citas.isEmpty()) cargando = true else recargando = true
             val r = runCatching {
-                AgendaRepo.citasPaginadas(verHistorial, pagina, ctx.miTerapeutaId, hoy)
+                AgendaRepo.citasPaginadas(verHistorial, pagina, ctx.profesionalFijo, hoy)
             }.getOrDefault(emptyList())
             ponerCitas(r)
             hayMasPaginas = r.size >= AgendaRepo.PAGE_SIZE
@@ -900,8 +900,8 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         vencerMeses(pe.saniape.app.data.staff.MesAgenda.de(fechaSel)?.let { setOf(it.clave) })
         recargarLlegadas()
         ponerCitas(runCatching {
-            if (verHistorial) AgendaRepo.citasPaginadas(verHistorial, pagina, ctx.miTerapeutaId, hoy)
-            else AgendaRepo.citasDelDia(fechaSel, ctx.miTerapeutaId)
+            if (verHistorial) AgendaRepo.citasPaginadas(verHistorial, pagina, ctx.profesionalFijo, hoy)
+            else AgendaRepo.citasDelDia(fechaSel, ctx.profesionalFijo)
         }.getOrDefault(citas))
     }
 
