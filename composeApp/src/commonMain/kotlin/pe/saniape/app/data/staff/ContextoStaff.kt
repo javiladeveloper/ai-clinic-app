@@ -315,8 +315,8 @@ data class ContextoStaff(
      * Profesional al que queda FIJADO lo mío (agenda que veo; cita, sesión y
      * tratamiento que creo): el mío si estoy vinculado, salvo que sea Admin. El
      * Admin que además atiende ve la agenda de todos y elige a cualquiera, con él
-     * mismo precargado — como la web. Antes todo se fijaba con [miTerapeutaId]:
-     * OMER, 29/10/2026, el admin-médico no podía agendarle a otro profesional.
+     * mismo precargado — como la web. Una clínica puede tener varios Admin que
+     * atienden y se asignan citas entre ellos (antes quedaban fijados a sí mismos).
      * Solo Admin (no todo gestor): la app no tiene filtro «mis citas», y un fisio
      * con permiso de pacientes (DALU) pasaría a ver la agenda de toda la clínica.
      */
