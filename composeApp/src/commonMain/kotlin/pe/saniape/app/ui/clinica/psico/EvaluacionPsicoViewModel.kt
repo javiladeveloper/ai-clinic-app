@@ -94,6 +94,12 @@ class EvaluacionPsicoViewModel(
      * tratamiento; el servidor lo resuelve. El id del tratamiento sale de la respuesta.
      */
     private val citaId: String? = null,
+    /**
+     * MODO PACIENTE (29/10/2026): (pacienteId, citaId de la atención). Solo la
+     * sección de tests, fuera de una evaluación: «🧪 Aplicar un test» de ▶ Atender.
+     * Editar, responder, fotos y comparar van por el test (sirven igual).
+     */
+    private val pacienteTests: Pair<String, String?>? = null,
 ) : ViewModel() {
 
     /** Se conoce al abrir (o llega en la primera respuesta, si se abrió por la cita). */
@@ -182,6 +188,16 @@ class EvaluacionPsicoViewModel(
     /** GET (y POST abrir la primera vez). También es el "Reintentar". */
     fun cargar() {
         if (instrumentos == null) cargarInstrumentos()
+        pacienteTests?.let { (pacienteId, _) ->
+            viewModelScope.launch {
+                cargando = true
+                error = null
+                val r = EvaluacionPsicoRepo.testsPaciente(pacienteId)
+                if (r == null) error = "No se pudieron leer los tests" else { tests = r.first; fotos = r.second }
+                cargando = false
+            }
+            return
+        }
         viewModelScope.launch {
             cargando = true
             error = null
@@ -228,6 +244,10 @@ class EvaluacionPsicoViewModel(
 
     /** Recarga todo SIN tocar lo que se está escribiendo (tras emitir, agregar test…). */
     private suspend fun refrescar() {
+        pacienteTests?.let { (pacienteId, _) ->
+            EvaluacionPsicoRepo.testsPaciente(pacienteId)?.let { (t, f) -> if (testsPendientes.isEmpty()) tests = t; fotos = f }
+            return
+        }
         val r = leerEspacio()
         if (r is EvaluacionPsicoRepo.Carga.Ok && r.espacio.evaluacion != null) {
             val hayPendientes = pendientes.isNotEmpty() || testsPendientes.isNotEmpty()
@@ -358,15 +378,21 @@ class EvaluacionPsicoViewModel(
     private val temporizadoresTest = mutableMapOf<String, Job>()
 
     fun agregarTest(t: TestCatalogoPsico, alListo: (String?) -> Unit) {
-        val evId = ev?.id ?: return
+        val evId = ev?.id
+        val pac = pacienteTests
+        if (evId == null && pac == null) return
         if (accionando != null) return
         accionando = "test"
         viewModelScope.launch {
-            val r = conIndicador { EvaluacionPsicoRepo.crearTest(evId, t.id) }
+            val r = conIndicador {
+                if (evId != null) EvaluacionPsicoRepo.crearTest(evId, t.id)
+                else EvaluacionPsicoRepo.crearTestPaciente(pac!!.first, t.id, pac.second)
+            }
             accionando = null
             val nuevo = testDeRespuesta(r.cuerpo)
             if (r.registrada && nuevo != null) {
-                tests = tests + nuevo
+                // Fuera de la evaluación la lista va de lo más nuevo a lo más viejo.
+                tests = if (evId != null) tests + nuevo else listOf(nuevo) + tests
                 alListo(nuevo.id)
                 refrescarEstados()
             } else {
@@ -460,6 +486,7 @@ class EvaluacionPsicoViewModel(
 
     /** Los chips sin pisar lo escrito (el GET los trae calculados). */
     private suspend fun refrescarEstados() {
+        if (pacienteTests != null) return
         val r = leerEspacio()
         if (r is EvaluacionPsicoRepo.Carga.Ok) estados = r.espacio.estados
     }
@@ -472,7 +499,8 @@ class EvaluacionPsicoViewModel(
      * [alSubir] recibe la foto registrada (o null si falló).
      */
     fun subirFoto(archivo: ArchivoSeleccionado, uso: String, testAplicadoId: String? = null, alSubir: (FotoPsico?) -> Unit = {}) {
-        val evId = ev?.id ?: return
+        val evId = ev?.id
+        if (evId == null && (pacienteTests == null || testAplicadoId == null)) return
         if (soloLectura) return
         if (accionando != null) { Toaster.error("Espera a que termine lo anterior"); return }
         accionando = "foto:$uso:${testAplicadoId.orEmpty()}"

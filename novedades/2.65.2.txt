@@ -1,0 +1,7 @@
+Psicología: primera consulta guiada, «¿Qué sigue?» y tests en la misma atención.
+---
+• «Consulta» en vez de «Atención directa» al agendar en psicología.
+• Primera consulta: se registra como historia inicial (motivo, historia, antecedentes…).
+• «¿Qué sigue?»: terapia, evaluación con informe, derivar o solo esta consulta; con recepción se le deja el pedido.
+• «🧪 Aplicar un test» dentro de ▶ Atender, sin abrir una evaluación.
+---

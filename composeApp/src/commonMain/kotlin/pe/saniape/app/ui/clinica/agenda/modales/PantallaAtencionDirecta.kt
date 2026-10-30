@@ -120,6 +120,8 @@ fun PantallaAtencionDirecta(
     var siguiente by remember(citaId) { mutableStateOf<String?>(null) }
     var firmo by remember(citaId) { mutableStateOf<Boolean?>(null) }
     var servicioEvalId by remember(citaId) { mutableStateOf<String?>(null) }
+    var verTests by remember(citaId) { mutableStateOf(false) }
+    val acciones = pe.saniape.app.ui.recordarAcciones()
 
     ManejarAtras(activo = true) { if (!guardando) onCerrar() }
 
@@ -344,6 +346,35 @@ fun PantallaAtencionDirecta(
                             }
                             CampoEvolucion("Plan para la próxima sesión", valor.plan, "Opcional", 2, habilitado) {
                                 valor = valor.copy(plan = it)
+                            }
+                        }
+
+                        // 🧪 Un test en esta misma atención (PHQ-9, 16PF…): queda en la historia
+                        // del paciente, sin abrir una evaluación. Se guarda solo (gemelo de la web).
+                        if (ctx.puede("historia_clinica") && (ctx.esAdmin || ctx.miTerapeutaId != null) && !d.soloLectura) {
+                            if (verTests) {
+                                val vmTests: pe.saniape.app.ui.clinica.psico.EvaluacionPsicoViewModel =
+                                    androidx.lifecycle.viewmodel.compose.viewModel(key = "tests-paciente:${cita.pacienteId}:${cita.id}") {
+                                        pe.saniape.app.ui.clinica.psico.EvaluacionPsicoViewModel(null, null, pacienteTests = cita.pacienteId to cita.id)
+                                    }
+                                val forma = RoundedCornerShape(Sania.shape.md.dp)
+                                Column(
+                                    Modifier.fillMaxWidth().clip(forma).border(1.5.dp, c.borde, forma).padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("🧪 Tests", color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                        Text("Ocultar", color = c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.clickable { verTests = false })
+                                    }
+                                    when {
+                                        vmTests.cargando -> Text("Cargando tests…", color = c.textoSuave, fontSize = 12.sp)
+                                        vmTests.error != null -> Text(vmTests.error!!, color = c.error, fontSize = 12.sp)
+                                        else -> pe.saniape.app.ui.clinica.psico.SeccionTests(vmTests, acciones)
+                                    }
+                                }
+                            } else {
+                                BotonSecundario("🧪 Aplicar un test", habilitado = !guardando) { verTests = true }
                             }
                         }
 

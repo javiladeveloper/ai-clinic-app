@@ -349,6 +349,36 @@ object EvaluacionPsicoRepo {
             putJsonArray("escalas") { escalas.forEach { add(JsonPrimitive(it)) } }
         }).also { if (it.registrada) catalogoCache = null }
 
+    /**
+     * Tests del PACIENTE (29/10/2026, gemelo de /api/staff/evaluacion-psico/paciente):
+     * los de la primera consulta o una sesión, y los de sus evaluaciones que la RLS
+     * deja ver. (tests, fotos); null = no se pudo leer.
+     */
+    suspend fun testsPaciente(pacienteId: String): Pair<List<TestAplicadoPsico>, List<FotoPsico>>? {
+        val tk = token() ?: return null
+        return try {
+            val resp = http.get("${Supabase.SITE_URL}$BASE/paciente") {
+                header("Authorization", "Bearer $tk")
+                parameter("pacienteId", pacienteId)
+            }
+            if (resp.status.value !in 200..299) return null
+            val o = Json.parseToJsonElement(resp.bodyAsText()) as? JsonObject ?: return null
+            val tests = (o["tests"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { leerTestAplicado(it as? JsonObject) }
+            val fotos = (o["fotos"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { leerFoto(it as? JsonObject) }
+            tests to fotos
+        } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+    }
+
+    /** Un test del paciente fuera de una evaluación (en la atención [citaId]). No idempotente: lleva clave. */
+    suspend fun crearTestPaciente(pacienteId: String, testId: String, citaId: String?): ResultadoEscritura =
+        postJson("$BASE/paciente", buildJsonObject {
+            put("accion", "crear")
+            put("pacienteId", pacienteId)
+            put("testId", testId)
+            if (citaId != null) put("citaId", citaId)
+            put("idempotency_key", nuevaIdemKey())
+        })
+
     /** Agrega un test aplicado (precarga escalas, fecha de hoy y edad). No idempotente: lleva clave. */
     suspend fun crearTest(evaluacionId: String, testId: String): ResultadoEscritura =
         postJson("$BASE/test", buildJsonObject {
@@ -401,14 +431,15 @@ object EvaluacionPsicoRepo {
      * genograma o fuente. `cuerpo.foto` = la foto registrada.
      */
     suspend fun subirFoto(
-        evaluacionId: String, bytes: ByteArray, nombre: String, mime: String?, uso: String, testAplicadoId: String?,
+        evaluacionId: String?, bytes: ByteArray, nombre: String, mime: String?, uso: String, testAplicadoId: String?,
     ): ResultadoEscritura {
         val tk = token() ?: return sinSesion
         return try {
             val resp = http.post("${Supabase.SITE_URL}$BASE/foto") {
                 header("Authorization", "Bearer $tk")
                 setBody(MultiPartFormDataContent(formData {
-                    append("evaluacionId", evaluacionId)
+                    // Sin evaluación: la foto de un test del paciente (solo con testAplicadoId).
+                    if (evaluacionId != null) append("evaluacionId", evaluacionId)
                     append("uso", uso)
                     if (testAplicadoId != null) append("testAplicadoId", testAplicadoId)
                     append("nombre", nombre)
