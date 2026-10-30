@@ -273,11 +273,20 @@ internal fun resultadoDeResponder(o: JsonObject?): ResultadoInstrumentoPsico? =
  */
 fun instrumentosDeTest(test: TestRefPsico?, instrumentos: List<InstrumentoPsico>?): List<InstrumentoPsico> {
     if (test == null || instrumentos.isNullOrEmpty()) return emptyList()
-    if (test.clinicaId != null) return emptyList()
     val k = test.nombreCorto.trim().lowercase()
     if (k.isEmpty()) return emptyList()
-    return instrumentos.filter { it.catalogo.trim().lowercase() == k }
+    // Test de la clínica: solo la ESCALA PROPIA del mismo nombre corto (29/10/2026,
+    // Especialidades → 📋 Escalas; el servidor la puntúa). Un test propio cualquiera
+    // que se llame como uno de fábrica NO se puntúa: puede ser otra versión.
+    if (test.clinicaId != null) {
+        if (test.categoria != CATEGORIA_ESCALA_PROPIA) return emptyList()
+        return instrumentos.filter { it.id.startsWith("propia:") && it.corto.trim().lowercase() == k }
+    }
+    return instrumentos.filter { !it.id.startsWith("propia:") && it.catalogo.trim().lowercase() == k }
 }
+
+/** Categoría del test del catálogo que representa una escala propia (gemelo de la web). */
+const val CATEGORIA_ESCALA_PROPIA = "Escala propia"
 
 /** El instrumento con que se abre "Responder ítems": el ya respondido o el primero. */
 fun instrumentoInicial(disponibles: List<InstrumentoPsico>, previo: RespuestasTestPsico?): InstrumentoPsico? =

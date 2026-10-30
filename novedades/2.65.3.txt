@@ -1,0 +1,5 @@
+Psicología: tus escalas propias se aplican como tests y se calculan solas.
+---
+• Las escalas que creas en Especialidades → 📋 Escalas aparecen en «Agregar test».
+• «📝 Responder ítems» calcula el puntaje, la interpretación y las alertas.
+---
