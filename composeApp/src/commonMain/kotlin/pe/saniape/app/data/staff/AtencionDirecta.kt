@@ -242,9 +242,54 @@ data class DatosAtencionDirecta(
     /** La última evolución anterior del paciente: (fecha, evolución). */
     val anterior: Pair<String, EvolucionSesionPsico>?,
     val soloLectura: Boolean,
+    /**
+     * PRIMERA CONSULTA (29/10/2026, gemelo de la web): el paciente todavía no
+     * tiene historia psicológica → se pide la historia inicial. Servidor viejo
+     * (sin `modo`) = evolución, como siempre.
+     */
+    val modo: String = "evolucion",
+    /** La historia inicial ya guardada de ESTA cita (clave de [CAMPOS_PSICO_INICIAL] → texto). */
+    val inicial: Map<String, String>? = null,
+    /** El «Motivo» de la ficha, para arrancar escrito. */
+    val motivoPaciente: String? = null,
 ) {
     /** Se atiende ahora (completa la cita) o ya se atendió (solo la evolución). */
     val atender: Boolean get() = cita.estado != "Completada"
+    val esInicial: Boolean get() = modo == "inicial"
+}
+
+/** Los campos de la HISTORIA INICIAL: (clave, etiqueta, ayuda). Gemelo de ETIQUETAS_PSICO_INICIAL (web). */
+val CAMPOS_PSICO_INICIAL: List<Triple<String, String, String>> = listOf(
+    Triple("motivo_consulta", "Motivo de consulta", "Por qué viene, en sus palabras…"),
+    Triple("relato", "Historia del problema", "Desde cuándo, cómo empezó, qué lo empeora o alivia…"),
+    Triple("observaciones", "Antecedentes personales y familiares", "Familia, salud, estudios o trabajo… (opcional)"),
+    Triple("examen_mental", "Estado emocional / examen mental", "Cómo se presenta: ánimo, discurso, riesgo… (opcional)"),
+    Triple("plan_trabajo", "Plan terapéutico", "¿Sesiones? ¿Evaluación? ¿Derivación? (opcional)"),
+    Triple("tratamiento", "Tareas e indicaciones", "Lo que se lleva para casa (opcional)"),
+)
+
+/** «¿Qué sigue?» al cerrar la primera consulta: (valor, texto). */
+val SIGUIENTES_PRIMERA_CONSULTA: List<Pair<String, String>> = listOf(
+    "terapia" to "🏃 Terapia (sesiones)",
+    "evaluacion" to "🧠 Evaluación con informe",
+    "derivar" to "↗️ Derivar",
+    "solo" to "✅ Solo esta consulta",
+)
+
+/** Qué pasa al guardar con esa elección (quien cobra arma el paquete; si no, recepción). */
+fun ayudaSiguiente(valor: String, cobra: Boolean): String = when (valor) {
+    "terapia", "evaluacion" -> if (cobra)
+        "Al guardar se abre ${if (valor == "terapia") "el paquete de terapia" else "el paquete de la evaluación"}, listo para cobrar y agendar."
+    else "Al guardar le dejas el pedido a recepción: lo cobra y agenda las citas."
+    "derivar" -> "Anota a quién y por qué en «Plan terapéutico». El documento de derivación se emite desde su ficha."
+    else -> "Queda registrada la consulta, sin más pasos."
+}
+
+/** La decisión queda escrita en la historia inicial: «Siguiente paso: …» al inicio del plan. */
+fun planConSiguiente(plan: String, valor: String?): String {
+    val nombre = SIGUIENTES_PRIMERA_CONSULTA.firstOrNull { it.first == valor }?.second?.substringAfter(' ') ?: return plan
+    if (plan.startsWith("Siguiente paso:")) return plan
+    return "Siguiente paso: $nombre." + if (plan.isNotBlank()) "\n${plan.trim()}" else ""
 }
 
 private fun JsonObject.txt(k: String): String? =
@@ -273,6 +318,9 @@ fun parsearAtencionDirecta(raiz: JsonObject?): DatosAtencionDirecta? {
         evolucion = evolucionDe(raiz["evolucion"] as? JsonObject),
         anterior = if (ant != null && antEvo != null) (ant.txt("fecha").orEmpty() to antEvo) else null,
         soloLectura = raiz.txt("soloLectura") == "true",
+        modo = raiz.txt("modo") ?: "evolucion",
+        inicial = (raiz["inicial"] as? JsonObject)?.let { o -> CAMPOS_PSICO_INICIAL.associate { (k, _, _) -> k to o.txt(k).orEmpty() } },
+        motivoPaciente = raiz.txt("motivoPaciente"),
     )
 }
 

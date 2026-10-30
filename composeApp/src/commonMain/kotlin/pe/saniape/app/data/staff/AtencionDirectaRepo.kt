@@ -64,10 +64,12 @@ object AtencionDirectaRepo {
      * atiende tiene que ver el resultado. [cobrara] = la pantalla cobra enseguida
      * con /api/staff/cita/cobrar (el servidor no auto-cobra).
      */
-    suspend fun guardar(citaId: String, e: EvolucionSesionPsico, cobrara: Boolean): Guardado {
+    suspend fun guardar(citaId: String, e: EvolucionSesionPsico, cobrara: Boolean, inicial: Map<String, String>? = null): Guardado {
         val cuerpo = buildJsonObject {
             put("citaId", citaId)
-            put("evolucion", buildJsonObject {
+            // Primera consulta: la historia inicial; si no, la evolución.
+            if (inicial != null) put("inicial", buildJsonObject { inicial.forEach { (k, v) -> put(k, v) } })
+            else put("evolucion", buildJsonObject {
                 put("evolucion", e.evolucion); put("estado", e.estado); put("tareas", e.tareas); put("plan", e.plan)
             })
             put("cobrara", cobrara)
@@ -113,6 +115,17 @@ object AtencionDirectaRepo {
         } catch (_: Exception) {
             null
         }
+    }
+
+    /** ¿Firmó algún consentimiento informado? null = no se pudo leer (no se avisa nada). */
+    suspend fun firmoConsentimiento(pacienteId: String): Boolean? = try {
+        Supabase.client.postgrest["consentimientos"]
+            .select(Columns.list("id")) { filter { eq("paciente_id", pacienteId) }; limit(1) }
+            .decodeList<JsonObject>().isNotEmpty()
+    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
     }
 
     /**

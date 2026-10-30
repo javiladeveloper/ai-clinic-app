@@ -178,6 +178,7 @@ fun PantallaAgenda(
     // 🧾 Pedido para recepción: armarlo / corregirlo (cita, pedido) y cobrarlo.
     var pedidoEditar by remember { mutableStateOf<Pair<CitaStaff?, pe.saniape.app.data.staff.PedidoRecepcion?>?>(null) }
     var pedidoCobrar by remember { mutableStateOf<pe.saniape.app.data.staff.PedidoRecepcion?>(null) }
+    var pedidoNotas by remember { mutableStateOf<String?>(null) }
     // Quien cobra lo abre para cobrar; el profesional, para revisarlo o corregirlo.
     fun abrirPedido(p: pe.saniape.app.data.staff.PedidoRecepcion) {
         if (ctx.puede("pagos")) pedidoCobrar = p else pedidoEditar = null to p
@@ -1083,6 +1084,26 @@ fun PantallaAgenda(
             ctx = ctx, citaId = id,
             onCerrar = { atencionDirectaId = null },
             onGuardado = { con -> vm.trasAtencionDirecta(id, con) },
+            onSiguiente = { tipo, cId, servicioId ->
+                val ci = vm.citas.firstOrNull { it.id == cId }
+                when {
+                    ci == null -> Unit
+                    // Quien cobra arma el paquete aquí mismo (el mismo form de la ficha).
+                    ctx.puede("pagos") -> {
+                        tratCita = ci
+                        tratPrefill = if (tipo == "evaluacion" && servicioId != null)
+                            pe.saniape.app.data.staff.PrefillPlanPsico(procedimientoId = servicioId, terapeutaId = ci.terapeutaId, respetarModalidad = true)
+                        else null
+                        tratForm = true
+                    }
+                    // Con recepción: el pedido, con la indicación escrita.
+                    else -> {
+                        pedidoNotas = if (tipo == "evaluacion") "Indicado en la primera consulta: evaluación psicológica con informe."
+                            else "Indicado en la primera consulta: terapia (sesiones)."
+                        pedidoEditar = ci to null
+                    }
+                }
+            },
         )
     }
 
@@ -1499,8 +1520,9 @@ fun PantallaAgenda(
     pedidoEditar?.let { (cita, pedido) ->
         pe.saniape.app.ui.clinica.pedidos.DialogoPedidoRecepcion(
             citaId = cita?.id, pacienteId = null, pacienteNombre = cita?.pacienteNombre, pedido = pedido,
-            onCerrar = { pedidoEditar = null; vm.recargarPedidos() },
-            onGuardado = { pedidoEditar = null; vm.recargarPedidos() },
+            onCerrar = { pedidoEditar = null; pedidoNotas = null; vm.recargarPedidos() },
+            onGuardado = { pedidoEditar = null; pedidoNotas = null; vm.recargarPedidos() },
+            notasIniciales = pedidoNotas,
         )
     }
     pedidoCobrar?.let { p ->

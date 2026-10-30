@@ -47,6 +47,10 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import pe.saniape.app.data.staff.AgendaRepo
 import pe.saniape.app.data.staff.AtencionDirectaRepo
+import pe.saniape.app.data.staff.CAMPOS_PSICO_INICIAL
+import pe.saniape.app.data.staff.SIGUIENTES_PRIMERA_CONSULTA
+import pe.saniape.app.data.staff.ayudaSiguiente
+import pe.saniape.app.data.staff.planConSiguiente
 import pe.saniape.app.data.staff.CobroRepo
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.DatosAtencionDirecta
@@ -95,6 +99,12 @@ fun PantallaAtencionDirecta(
     citaId: String,
     onCerrar: () -> Unit,
     onGuardado: (conEvolucion: Boolean) -> Unit,
+    /**
+     * Primera consulta con «¿Qué sigue?» = terapia o evaluación: la agenda abre el
+     * paquete (quien cobra) o el pedido para recepción. [servicioId] = el de la
+     * evaluación psicológica (null en terapia).
+     */
+    onSiguiente: (tipo: String, citaId: String, servicioId: String?) -> Unit = { _, _, _ -> },
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -106,6 +116,10 @@ fun PantallaAtencionDirecta(
     var monto by remember(citaId) { mutableStateOf("") }
     var guardando by remember(citaId) { mutableStateOf(false) }
     var errorGuardar by remember(citaId) { mutableStateOf<String?>(null) }
+    var inicial by remember(citaId) { mutableStateOf(CAMPOS_PSICO_INICIAL.associate { it.first to "" }) }
+    var siguiente by remember(citaId) { mutableStateOf<String?>(null) }
+    var firmo by remember(citaId) { mutableStateOf<Boolean?>(null) }
+    var servicioEvalId by remember(citaId) { mutableStateOf<String?>(null) }
 
     ManejarAtras(activo = true) { if (!guardando) onCerrar() }
 
@@ -119,6 +133,9 @@ fun PantallaAtencionDirecta(
                 // guardado a medias, lo que se escribió en pantalla se conserva.
                 if (primera) {
                     valor = r.datos.evolucion ?: EvolucionSesionPsico()
+                    inicial = CAMPOS_PSICO_INICIAL.associate { (k, _, _) ->
+                        k to (r.datos.inicial?.get(k) ?: if (k == "motivo_consulta") r.datos.motivoPaciente.orEmpty() else "")
+                    }
                     monto = r.datos.cita.costo?.takeIf { it > 0 }?.let { textoPrecioCampo(it) }.orEmpty()
                 }
             }
@@ -138,18 +155,29 @@ fun PantallaAtencionDirecta(
         precioSugeridoAtencionDirecta(AtencionDirectaRepo.serviciosPrecio(), ci.especialidadId)
             ?.let { if (monto.isBlank()) monto = textoPrecioCampo(it) }
     }
+    val esInicial = d?.esInicial == true
+    // Primera consulta: ¿firmó el consentimiento? y el servicio de la evaluación (si la clínica lo tiene).
+    LaunchedEffect(cita?.id, esInicial) {
+        val ci = cita ?: return@LaunchedEffect
+        if (!esInicial) return@LaunchedEffect
+        firmo = AtencionDirectaRepo.firmoConsentimiento(ci.pacienteId)
+        val evals = AtencionDirectaRepo.serviciosPrecio().filter { it.tipoClinico == "evaluacion_psicologica" }
+        servicioEvalId = (evals.firstOrNull { it.especialidadId == ci.especialidadId } ?: evals.firstOrNull { it.especialidadId == null } ?: evals.firstOrNull())?.id
+    }
     val metodo = rememberMetodoPagoInicial(cita?.pacienteId)
     val lectura = leerPrecio(monto, moneda)
     val montoValido = lectura.valor?.takeIf { lectura.ok && it > 0 }
-    val conTexto = evolucionConContenido(valor)
+    val conTexto = if (esInicial) inicial.values.any { it.isNotBlank() } else evolucionConContenido(valor)
     val bloqueo = if (d == null) null else bloqueoAtencionDirecta(
-        soloLectura = d.soloLectura, atender = atender, conTexto = conTexto, yaTeniaEvolucion = d.evolucion != null,
+        soloLectura = d.soloLectura, atender = atender, conTexto = conTexto, yaTeniaEvolucion = (if (esInicial) d.inicial else d.evolucion) != null,
         pago = ofrecePago && pago, montoValido = montoValido != null, montoError = lectura.error,
     )
     val cobrara = ofrecePago && pago && montoValido != null
     val textoBoton = when {
         guardando -> "Guardando…"
         d == null -> "Guardar"
+        esInicial && !atender -> "Guardar primera consulta"
+        esInicial && !conTexto && !cobrara -> "✓ Completar sin anotar"
         else -> textoBotonAtencionDirecta(atender, conTexto, if (cobrara) textoSoles(montoValido!!, moneda) else null)
     }
 
@@ -185,7 +213,8 @@ fun PantallaAtencionDirecta(
         errorGuardar = null
         scope.launch {
             try {
-                val r = AtencionDirectaRepo.guardar(dd.cita.id, valor, cobrara)
+                val ini = if (dd.esInicial) inicial + ("plan_trabajo" to planConSiguiente(inicial["plan_trabajo"].orEmpty(), siguiente)) else null
+                val r = AtencionDirectaRepo.guardar(dd.cita.id, valor, cobrara, ini)
                 if (!r.ok) {
                     errorGuardar = r.error
                     // La evolución pudo quedar aunque la cita no se completó: se relee.
@@ -193,9 +222,13 @@ fun PantallaAtencionDirecta(
                     return@launch
                 }
                 if (cobrara) cobrarAtencion(dd.cita, montoValido!!, conTexto)
-                else Toaster.exito(avisoGuardadoAtencionDirecta(dd.atender, conTexto))
-                onGuardado(conTexto || dd.evolucion != null)
+                else Toaster.exito(if (dd.esInicial && conTexto) "Listo: primera consulta guardada en su historia" else avisoGuardadoAtencionDirecta(dd.atender, conTexto))
+                onGuardado(conTexto || dd.evolucion != null || dd.inicial != null)
+                val sig = siguiente
                 onCerrar()
+                if (dd.esInicial && (sig == "terapia" || sig == "evaluacion")) {
+                    onSiguiente(sig, dd.cita.id, if (sig == "evaluacion") servicioEvalId else null)
+                }
             } finally {
                 guardando = false
             }
@@ -210,7 +243,9 @@ fun PantallaAtencionDirecta(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    if (d == null) "▶ Atender" else tituloAtencionDirecta(atender, d.evolucion != null, cita?.pacienteNombre),
+                    if (d == null) "▶ Atender"
+                    else if (d.esInicial) "${if (atender) "▶" else "📝"} Primera consulta · ${cita?.pacienteNombre?.takeIf { it.isNotBlank() } ?: "Paciente"}"
+                    else tituloAtencionDirecta(atender, d.evolucion != null, cita?.pacienteNombre),
                     color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f),
                 )
@@ -255,21 +290,61 @@ fun PantallaAtencionDirecta(
                             activo = ctx.puede("historia_clinica"), pacienteId = cita.pacienteId,
                             tratamientoId = null, especialidadId = cita.especialidadId,
                         )
-                        BloqueContextoCaso(contexto, abiertoInicial = d.anterior == null)
-                        d.anterior?.let { (fecha, evo) -> BloqueEvolucionAnterior(fecha, camposEvolucionAnterior(evo)) }
+                        if (!d.esInicial) {
+                            BloqueContextoCaso(contexto, abiertoInicial = d.anterior == null)
+                            d.anterior?.let { (fecha, evo) -> BloqueEvolucionAnterior(fecha, camposEvolucionAnterior(evo)) }
+                        }
 
                         val habilitado = !guardando && !d.soloLectura
-                        CampoEvolucion("Temas trabajados y evolución", valor.evolucion, "Qué se trabajó hoy y cómo se encuentra…", 4, habilitado) {
-                            valor = valor.copy(evolucion = it)
-                        }
-                        CampoEvolucion("Estado emocional / examen mental", valor.estado, "Opcional", 2, habilitado) {
-                            valor = valor.copy(estado = it)
-                        }
-                        CampoEvolucion("Tareas e indicaciones", valor.tareas, "Opcional", 2, habilitado) {
-                            valor = valor.copy(tareas = it)
-                        }
-                        CampoEvolucion("Plan para la próxima sesión", valor.plan, "Opcional", 2, habilitado) {
-                            valor = valor.copy(plan = it)
+                        if (d.esInicial) {
+                            Text("Es su primera vez: lo que escribas queda como la historia inicial del paciente.",
+                                color = c.textoSuave, fontSize = 12.sp)
+                            CAMPOS_PSICO_INICIAL.forEach { (k, etiqueta, ayuda) ->
+                                CampoEvolucion(etiqueta, inicial[k].orEmpty(), ayuda, if (k == "relato") 4 else 2, habilitado) {
+                                    inicial = inicial + (k to it)
+                                }
+                            }
+                            // ¿Qué sigue? (terapia / evaluación / derivar / solo esta consulta)
+                            val forma = RoundedCornerShape(Sania.shape.md.dp)
+                            Column(
+                                Modifier.fillMaxWidth().clip(forma).border(1.5.dp, c.borde, forma).padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text("¿QUÉ SIGUE?", color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                SIGUIENTES_PRIMERA_CONSULTA.filter { it.first != "evaluacion" || servicioEvalId != null }.chunked(2).forEach { fila ->
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                        fila.forEach { (v, texto) ->
+                                            val sel = siguiente == v
+                                            Box(
+                                                Modifier.weight(1f).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                                    .background(if (sel) c.navy.copy(alpha = 0.12f) else c.superficie)
+                                                    .border(1.5.dp, if (sel) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                                    .clickable(enabled = habilitado) { siguiente = if (sel) null else v }
+                                                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                                            ) { Text(texto, color = if (sel) c.navy else c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                                        }
+                                        if (fila.size == 1) Spacer(Modifier.weight(1f))
+                                    }
+                                }
+                                siguiente?.let { Text(ayudaSiguiente(it, ctx.puede("pagos")), color = c.textoSuave, fontSize = 12.sp) }
+                                if (firmo == false) {
+                                    Text("⚠ Aún no firmó el consentimiento informado: fírmalo desde su ficha.",
+                                        color = c.pend, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        } else {
+                            CampoEvolucion("Temas trabajados y evolución", valor.evolucion, "Qué se trabajó hoy y cómo se encuentra…", 4, habilitado) {
+                                valor = valor.copy(evolucion = it)
+                            }
+                            CampoEvolucion("Estado emocional / examen mental", valor.estado, "Opcional", 2, habilitado) {
+                                valor = valor.copy(estado = it)
+                            }
+                            CampoEvolucion("Tareas e indicaciones", valor.tareas, "Opcional", 2, habilitado) {
+                                valor = valor.copy(tareas = it)
+                            }
+                            CampoEvolucion("Plan para la próxima sesión", valor.plan, "Opcional", 2, habilitado) {
+                                valor = valor.copy(plan = it)
+                            }
                         }
 
                         if (ofrecePago) {

@@ -78,6 +78,8 @@ fun DialogoPedidoRecepcion(
     pedido: PedidoRecepcion?,
     onCerrar: () -> Unit,
     onGuardado: () -> Unit,
+    /** Nota para recepción al crear uno nuevo (psicología: «Indicado: terapia»). */
+    notasIniciales: String? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -92,7 +94,7 @@ fun DialogoPedidoRecepcion(
             )
         })
     }
-    var notas by remember { mutableStateOf(pedido?.notas.orEmpty()) }
+    var notas by remember { mutableStateOf(pedido?.notas ?: notasIniciales.orEmpty()) }
     // El pedido que se edita: el que llegó o, si esta cita ya tiene uno Pendiente
     // (p. ej. el envío anterior llegó aunque la respuesta se perdió), ese.
     var actual by remember { mutableStateOf(pedido) }
