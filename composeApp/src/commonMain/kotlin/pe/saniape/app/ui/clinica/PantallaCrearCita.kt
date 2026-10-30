@@ -85,16 +85,18 @@ private val TIPOS = listOf("Consulta", "Evaluación", "Sesión")
 /** Info visual de cada tipo de cita (icono + descripción), como las tarjetas de la web. */
 private data class TipoInfo(
     val valor: String, val icono: String, val desc: String,
-    /** Nombre fijo (la «Atención directa»); null = el del flujo de la clínica. */
+    /** Nombre fijo; null = el del flujo de la clínica. */
     val etiqueta: String? = null,
 )
 
 /**
  * ⚡ La atención directa de psicología (AtencionDirecta.kt): se guarda como
- * Consulta, sin tratamiento; se atiende con «▶ Atender».
+ * Consulta, sin tratamiento; se atiende con «▶ Atender». Se llama como la cita
+ * de entrada de la clínica («Consulta» por defecto), no «Atención directa»
+ * (29/10/2026, igual que la web).
  */
 private val TIPO_ATENCION_DIRECTA_INFO = TipoInfo(
-    pe.saniape.app.data.staff.TIPO_ATENCION_DIRECTA, "📝", "Atender y anotar evolución", etiqueta = "Atención directa",
+    pe.saniape.app.data.staff.TIPO_ATENCION_DIRECTA, "💬", "Primera vez o cita suelta: atiendes y anotas la evolución",
 )
 private val TIPOS_INFO = listOf(
     TipoInfo("Consulta", "💬", "El @ explica su caso"),
@@ -1227,7 +1229,7 @@ fun PantallaCrearCita(
                         .map { it.procedimiento }.distinct()
                     val activos = if (nombres.isNotEmpty()) " (${nombres.joinToString(", ")})" else ""
                     Text(
-                        if (atencionDirectaForm) "Tiene un tratamiento activo$activos. ¿Viene por otra cosa? Elige ${TIPO_ATENCION_DIRECTA_INFO.etiqueta}."
+                        if (atencionDirectaForm) "Tiene un tratamiento activo$activos. ¿Viene por otra cosa? Elige ${flujoEfectivo.nombreTipo(pe.saniape.app.data.staff.TIPO_ATENCION_DIRECTA)}."
                         // Como la web: el tipo cambió solo al elegir al paciente; se dice por qué.
                         else "⚠ Se cambió a ${flujoEfectivo.nombreTipo("Sesión")} porque tiene un tratamiento activo$activos." +
                             (entradaClinica?.let { " Si viene por algo nuevo, elige $it." } ?: ""),
