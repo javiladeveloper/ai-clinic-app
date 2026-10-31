@@ -78,13 +78,17 @@ internal fun PasoMotivo(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura:
         CampoTextoClinico(
             label = "Motivo de consulta",
             valor = t["motivo_consulta"].orEmpty(), onChange = { vm.texto("motivo_consulta", it) },
-            frases = frasesDe(d, "motivo", vm.pediatria, vm.derma), soloLectura = soloLectura, minLineas = 2,
-            placeholder = if (dental) "Ej. Dolor dental al masticar" else "Ej. Dolor de garganta y fiebre",
+            frases = frasesDe(d, "motivo", vm.pediatria, vm.derma, vm.oftalmo), soloLectura = soloLectura, minLineas = 2,
+            placeholder = when {
+                dental -> "Ej. Dolor dental al masticar"
+                vm.oftalmo -> "Ej. Ve borroso de cerca, le cuesta leer"
+                else -> "Ej. Dolor de garganta y fiebre"
+            },
         )
         CampoTextoClinico(
             label = if (dental) "Tiempo de enfermedad (opcional)" else "Tiempo de enfermedad",
             valor = t["tiempo_enfermedad"].orEmpty(), onChange = { vm.texto("tiempo_enfermedad", it) },
-            frases = frasesDe(d, "tiempo", vm.pediatria, vm.derma), soloLectura = soloLectura, minLineas = 1,
+            frases = frasesDe(d, "tiempo", vm.pediatria, vm.derma, vm.oftalmo), soloLectura = soloLectura, minLineas = 1,
             placeholder = "Ej. 3 días · inicio brusco · curso progresivo",
         )
         CampoTextoClinico(
@@ -93,7 +97,16 @@ internal fun PasoMotivo(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura:
             frases = emptyList(), soloLectura = soloLectura, minLineas = 4,
             placeholder = "Relato cronológico…",
         )
-        if (!dental) {
+        // Oftalmología: «Antecedentes oftalmológicos» (en `observaciones`, como la web) en vez de funciones biológicas.
+        if (vm.oftalmo) {
+            CampoTextoClinico(
+                label = "Antecedentes oftalmológicos",
+                valor = t["observaciones"].orEmpty(), onChange = { vm.texto("observaciones", it) },
+                frases = emptyList(), soloLectura = soloLectura, minLineas = 2,
+                placeholder = "Uso de lentes desde…, cirugías o golpes en los ojos, glaucoma en la familia, diabetes, hipertensión…",
+            )
+        }
+        if (!dental && !vm.oftalmo) {
             CampoTextoClinico(
                 label = "Funciones biológicas",
                 valor = t["funciones_biologicas"].orEmpty(), onChange = { vm.texto("funciones_biologicas", it) },
@@ -163,10 +176,17 @@ internal fun PasoVitales(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura
  * "📋 Escalas"; el examen físico pasa a opcional (como ConsultaGuiada.tsx).
  */
 @Composable
-internal fun PasoExamen(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura: Boolean) {
+internal fun PasoExamen(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura: Boolean, acciones: AccionesNativas) {
     val dental = d.flags.dental
     val psiq = vm.psiq
+    val examenOft = vm.borrador.examenOftalmo
+    val oftalmo = vm.examenOftalmoActivo && examenOft != null
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Oftalmología (2026-10-30): el examen estructurado primero; el campo de texto queda para "otros hallazgos".
+        if (oftalmo && examenOft != null) {
+            ExamenOftalmologico(valor = examenOft, onChange = { vm.examenOftalmo(it) }, soloLectura = soloLectura)
+            BotonRecetaLentes(vm, d, examenOft, acciones)
+        }
         if (psiq) {
             CampoTextoClinico(
                 label = "Examen mental",
@@ -189,10 +209,11 @@ internal fun PasoExamen(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura:
             label = when {
                 dental -> "Examen clínico estomatológico (extra e intraoral)"
                 psiq -> "Examen físico (opcional)"
+                oftalmo -> "Otros hallazgos del examen (opcional)"
                 else -> "Examen físico: general y regional"
             },
             valor = vm.borrador.textos["examen_fisico"].orEmpty(), onChange = { vm.texto("examen_fisico", it) },
-            frases = frasesDe(d, "examen", vm.pediatria, vm.derma), soloLectura = soloLectura, minLineas = if (psiq) 3 else 6,
+            frases = frasesDe(d, "examen", vm.pediatria, vm.derma, vm.oftalmo), soloLectura = soloLectura, minLineas = if (psiq || oftalmo) 3 else 6,
             placeholder = if (dental) "Ej. Tejidos blandos sin alteraciones; pieza 36 con cavidad profunda…"
             else "Ej. BEG, LOTEP. Orofaringe congestiva, amígdalas hipertróficas con exudado…",
             porLinea = true,
@@ -558,7 +579,7 @@ internal fun BotonChico(
  * PEDIATRÍA y DERMATOLOGÍA (varianteFrases de la web): su base delante, y lo
  * aprendido en las mismas claves que medicina (frasesConBase).
  */
-internal fun frasesDe(d: DatosConsultaApp, campo: String, pediatria: Boolean = false, derma: Boolean = false): List<FraseFrecuenteApp> {
+internal fun frasesDe(d: DatosConsultaApp, campo: String, pediatria: Boolean = false, derma: Boolean = false, oftalmo: Boolean = false): List<FraseFrecuenteApp> {
     val clave = if (d.flags.dental) "odonto_$campo" else campo
     val aprendidas = d.frases.filter { it.campo == clave && it.texto.isNotBlank() }
         .distinctBy { normalizarFrase(it.texto) }
@@ -568,6 +589,7 @@ internal fun frasesDe(d: DatosConsultaApp, campo: String, pediatria: Boolean = f
         d.flags.dental -> emptyList()
         derma -> FRASES_BASE_DERMA[campo].orEmpty()
         pediatria -> FRASES_BASE_PEDIATRIA[campo].orEmpty()
+        oftalmo -> FRASES_BASE_OFTALMO[campo].orEmpty()
         else -> emptyList()
     }
     return frasesConBase(base, aprendidas)

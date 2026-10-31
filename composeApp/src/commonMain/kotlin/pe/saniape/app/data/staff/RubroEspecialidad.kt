@@ -11,6 +11,9 @@ internal val PALABRAS_RUBRO: List<Pair<String, List<String>>> = listOf(
     // psiquiatría. Va DESPUÉS de estética: "Dermatología estética",
     // "Dermocosmética" o "Cosmiatría" siguen siendo estética.
     "medicina_general" to listOf("dermat"),
+    // Oftalmología y optometría (2026-10-30): médicas, como dermatología. Sin
+    // esto una "Oftalmología" quedaba sin rubro (gemelo de lib/flujo.ts).
+    "medicina_general" to listOf("oftalm", "optometr"),
     "nutricion" to listOf("nutri"),
     // Psiquiatría es MÉDICA (2026-10-09): antes de psicología para que
     // "Psiquiatría y Psicología" o "Neuropsiquiatría" no caigan en psicología.

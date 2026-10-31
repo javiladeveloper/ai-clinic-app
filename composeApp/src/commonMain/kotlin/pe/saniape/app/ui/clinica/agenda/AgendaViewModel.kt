@@ -408,6 +408,14 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     /** Permiso 'historia_clinica': sin él no se ofrece nada clínico tras completar (receta, medidas, pie, indicaciones). */
     private val verHc: Boolean get() = pe.saniape.app.data.staff.verHistoriaClinica(ctx)
     val triajeOn: Boolean get() = modulos.triaje
+
+    /**
+     * ¿Esta cita pasa por el triaje? (gemelo de `triajeEnCita` de /citas web):
+     * la clínica lo usa y la cita NO es de oftalmología — ahí no se toman
+     * signos vitales: tras «Llegó» va directo a ▶ Atender (2026-10-30).
+     */
+    fun triajeEnCita(cita: CitaStaff): Boolean =
+        triajeOn && !pe.saniape.app.data.staff.esOftalmologia(especialidades.find { it.id == (cita.especialidadId ?: cita.especialidadServicioId) }?.nombre)
     val salaEsperaOn: Boolean get() = modulos.salaEspera
     /** Campos que mide la clínica en su triaje. */
     val camposTriaje: List<String> get() = modulos.camposTriaje
@@ -486,7 +494,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             }
             if (!r.encolada) {
                 val quien = cita.pacienteNombre ?: ctx.terminologiaPaciente.Paciente
-                pe.saniape.app.ui.Toaster.exito(if (triajeOn) "$quien en sala de espera — falta el triaje" else "$quien en sala de espera")
+                pe.saniape.app.ui.Toaster.exito(if (triajeEnCita(cita)) "$quien en sala de espera — falta el triaje" else "$quien en sala de espera")
                 recargarLlegadas()
             }
         }

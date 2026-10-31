@@ -104,6 +104,14 @@ class AtencionViewModel(
     var pediatria by mutableStateOf(false); private set
     /** GINECOLOGÍA: solo cambia el ejemplo del buscador CIE-10 (ejemploCie10). */
     var gineco by mutableStateOf(false); private set
+    /**
+     * OFTALMOLOGÍA (atencionEsOftalmologia de la web, 2026-10-30): CIE-10 y
+     * frases del ojo; en una consulta (no procedimiento), además el examen
+     * oftalmológico estructurado, sin paso de vitales y con la receta de lentes.
+     */
+    var oftalmo by mutableStateOf(false); private set
+    /** El examen oftalmológico va en esta atención (oftalmología y no es un procedimiento). */
+    val examenOftalmoActivo: Boolean get() = oftalmo && datos?.flags?.esProcedimiento == false
     /** Definiciones de las escalas (PHQ-9, GAD-7…). null = cargando o no disponibles. */
     var instrumentos by mutableStateOf<List<InstrumentoPsico>?>(null); private set
     /** Pidiendo las definiciones (la pantalla muestra "Cargando…", no un error). */
@@ -119,6 +127,7 @@ class AtencionViewModel(
     var certificadoDisponible by mutableStateOf<Boolean?>(null); private set
 
     val pasos: List<PasoAtencion> get() = pasosConPsiquiatria(datos?.flags?.pasos ?: emptyList(), psiq)
+        .let { if (examenOftalmoActivo) pasosOftalmologia(it) else it }
     val pasoActual: PasoAtencion? get() = pasos.getOrNull(paso)
     /** Sin datos todavía = solo lectura (no se edita lo que no cargó). */
     val soloLectura: Boolean get() = datos?.flags?.soloLectura ?: true
@@ -164,7 +173,8 @@ class AtencionViewModel(
                     derma = variantes.derma
                     pediatria = variantes.pediatria
                     gineco = variantes.gineco
-                    borrador = borradorDesde(d, miTerapeutaId, psiq)
+                    oftalmo = variantes.oftalmo
+                    borrador = borradorDesde(d, miTerapeutaId, psiq, oftalmo = variantes.oftalmo && !d.flags.esProcedimiento)
                     if (psiq && instrumentos == null) cargarInstrumentos()
                     if (psiq && certificadoDisponible != true) {
                         viewModelScope.launch { certificadoDisponible = pe.saniape.app.data.staff.CertificadoRepo.disponible() }
@@ -224,6 +234,8 @@ class AtencionViewModel(
     /** Psiquiatría: examen mental. Sin psiquiatría no hace nada (no se manda). */
     fun examenMental(v: String) { if (psiq) editar { it.copy(examenMental = v) } }
     fun escalas(l: List<EscalaAplicadaApp>) { if (psiq) editar { it.copy(escalas = l.take(MAX_ESCALAS)) } }
+    /** Oftalmología: el examen oftalmológico. Sin oftalmología no hace nada (no se manda). */
+    fun examenOftalmo(e: pe.saniape.app.data.staff.ExamenOftalmo) { if (borrador.examenOftalmo != null) editar { it.copy(examenOftalmo = e) } }
 
     /** Definiciones de las escalas (las mismas de la evaluación psicológica). */
     fun cargarInstrumentos() {
@@ -395,7 +407,10 @@ class AtencionViewModel(
             val base = prefillDesdeAtencion(
                 FuenteAtencion(
                     motivoConsulta = b.textos["motivo_consulta"], tiempoEnfermedad = b.textos["tiempo_enfermedad"],
-                    relato = b.textos["relato"], examenFisico = b.textos["examen_fisico"],
+                    relato = b.textos["relato"],
+                    // Oftalmología: el examen estructurado en texto, después de "otros hallazgos" (como la web).
+                    examenFisico = listOf(b.textos["examen_fisico"].orEmpty(), b.examenOftalmo?.let { pe.saniape.app.data.staff.textoExamenOftalmo(it) }.orEmpty())
+                        .filter { it.isNotBlank() }.joinToString("\n").ifBlank { null },
                     examenMental = if (psiq) b.examenMental else null, escalasTexto = escalasTexto,
                     diagnosticos = b.diagnosticos, tratamiento = b.textos["tratamiento"], planTrabajo = b.textos["plan_trabajo"],
                     examenes = b.examenes.map { ExamenOrden(it.nombre, it.indicacion) },
@@ -496,7 +511,7 @@ internal fun motivoSugeridoAplica(d: DatosConsultaApp): Boolean =
  * vitales) porque `guardar` reemplaza la atención completa. El profesional que
  * atiende, como la web: el de la atención → el de la cita → [miTerapeutaId].
  */
-internal fun borradorDesde(d: DatosConsultaApp, miTerapeutaId: String? = null, psiq: Boolean = false): BorradorAtencion {
+internal fun borradorDesde(d: DatosConsultaApp, miTerapeutaId: String? = null, psiq: Boolean = false, oftalmo: Boolean = false): BorradorAtencion {
     val a = d.atencion
     val textos = mapOf(
         "motivo_consulta" to (a?.motivo_consulta ?: ""),
@@ -530,5 +545,15 @@ internal fun borradorDesde(d: DatosConsultaApp, miTerapeutaId: String? = null, p
         // Psiquiatría: siempre presentes (aunque vacíos) para que viajen al guardar.
         examenMental = if (psiq) a?.examen_mental.orEmpty() else null,
         escalas = if (psiq) leerEscalasAtencion(a?.escalas) else null,
+        // Oftalmología: siempre presente (aunque vacío) para que viaje al guardar.
+        examenOftalmo = if (oftalmo) pe.saniape.app.data.staff.examenOftalmoDesdeJson(a?.examen_oftalmologico)
+            ?: pe.saniape.app.data.staff.examenVacio() else null,
     )
 }
+
+/**
+ * Oftalmología (ConsultaGuiada.tsx): sin el paso de funciones vitales y el
+ * examen se llama "Examen oftalmológico".
+ */
+internal fun pasosOftalmologia(pasos: List<PasoAtencion>): List<PasoAtencion> =
+    pasos.filter { it.clave != "vitales" }.map { if (it.clave == "examen") it.copy(titulo = "Examen oftalmológico") else it }

@@ -1034,7 +1034,7 @@ fun PantallaAgenda(
                                 sala = vm.etapaDe(cita)?.let { etapa ->
                                     val a = vm.atencionDe(cita)
                                     pe.saniape.app.ui.clinica.agenda.componentes.SalaTarjeta(
-                                        etapa = etapa, atencion = a, triajeOn = vm.triajeOn,
+                                        etapa = etapa, atencion = a, triajeOn = vm.triajeEnCita(cita),
                                         medica = vm.esMedicaGuiada(cita),
                                         marcando = vm.marcandoLlegada == cita.id,
                                         minutos = if (pe.saniape.app.data.staff.enSalaDeEspera(etapa))

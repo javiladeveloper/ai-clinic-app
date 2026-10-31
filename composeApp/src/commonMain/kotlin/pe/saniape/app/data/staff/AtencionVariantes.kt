@@ -25,6 +25,13 @@ private fun plegado(nombre: String?): String = plegarTildes(nombre.orEmpty()).lo
  */
 fun esDermatologia(nombre: String?): Boolean = plegado(nombre).contains("dermat")
 
+/**
+ * ¿Esta especialidad es de oftalmología (u optometría)? Por el NOMBRE, como
+ * pediatría (gemelo de `esOftalmologia`, lib/flujo.ts, 2026-10-30): trae el
+ * examen oftalmológico y la receta de lentes.
+ */
+fun esOftalmologia(nombre: String?): Boolean = plegado(nombre).let { it.contains("oftalm") || it.contains("optometr") }
+
 /** ¿Esta especialidad es de pediatría? Por el NOMBRE. "Odontopediatría" es dental, no cuenta. */
 fun esPediatria(nombre: String?): Boolean {
     val n = plegado(nombre)
@@ -49,6 +56,10 @@ fun atencionEsDermatologia(esps: List<EspecialidadNombre>, especialidadId: Strin
 fun atencionEsPediatria(esps: List<EspecialidadNombre>, especialidadId: String?): Boolean =
     atencionPorNombre(esps, especialidadId, ::esPediatria)
 
+/** ¿La atención es de oftalmología? (examen oftalmológico, receta de lentes, sin vitales ni triaje). */
+fun atencionEsOftalmologia(esps: List<EspecialidadNombre>, especialidadId: String?): Boolean =
+    atencionPorNombre(esps, especialidadId, ::esOftalmologia)
+
 /** ¿La atención es de ginecología? Por el RUBRO de la especialidad (esGineco de ConsultaGuiada.tsx). */
 fun atencionEsGineco(esps: List<EspecialidadNombre>, especialidadId: String?): Boolean {
     if (!especialidadId.isNullOrBlank()) return esps.firstOrNull { it.id == especialidadId }?.rubro == "ginecologia"
@@ -60,7 +71,11 @@ fun atencionEsGineco(esps: List<EspecialidadNombre>, especialidadId: String?): B
  * Dermatología y pediatría de una atención (gineco y psiquiatría mandan antes).
  * [gineco]: la atención es de ginecología (solo para el ejemplo del CIE-10).
  */
-data class VariantesAtencion(val derma: Boolean = false, val pediatria: Boolean = false, val gineco: Boolean = false)
+data class VariantesAtencion(
+    val derma: Boolean = false, val pediatria: Boolean = false, val gineco: Boolean = false,
+    /** OFTALMOLOGÍA (2026-10-30): no excluye a pediatría ("Oftalmología pediátrica"): las frases van por varianteFrases. */
+    val oftalmo: Boolean = false,
+)
 
 /**
  * Como ConsultaGuiada.tsx: `derma = !dental && !gineco && !psiq && atencionEsDermatologia`,
@@ -74,6 +89,7 @@ fun variantesAtencion(esps: List<EspecialidadNombre>, flags: FlagsConsulta, psiq
     return VariantesAtencion(
         derma = atencionEsDermatologia(esps, flags.especialidadId),
         pediatria = atencionEsPediatria(esps, flags.especialidadId),
+        oftalmo = atencionEsOftalmologia(esps, flags.especialidadId),
     )
 }
 
@@ -116,8 +132,13 @@ val FRECUENTES_DERMATOLOGIA: List<Pair<String, String>> = listOf(
  * al servidor (medicina, odontología y psiquiatría ya los manda; dermatología,
  * un servidor viejo no la conoce, por eso viaja en la app).
  */
-fun frecuentesCie10Locales(dental: Boolean, psiq: Boolean, derma: Boolean): List<DiagnosticoCie>? =
-    if (!dental && !psiq && derma) FRECUENTES_DERMATOLOGIA.map { (c, d) -> DiagnosticoCie(codigo = c, descripcion = d) } else null
+fun frecuentesCie10Locales(dental: Boolean, psiq: Boolean, derma: Boolean, oftalmo: Boolean = false): List<DiagnosticoCie>? = when {
+    dental || psiq -> null
+    derma -> FRECUENTES_DERMATOLOGIA.map { (c, d) -> DiagnosticoCie(codigo = c, descripcion = d) }
+    // Oftalmología (2026-10-30): FRECUENTES_OFTALMOLOGIA viaja en la app (un servidor viejo no la conoce).
+    oftalmo -> FRECUENTES_OFTALMOLOGIA.map { (c, d) -> DiagnosticoCie(codigo = c, descripcion = d) }
+    else -> null
+}
 
 /**
  * Ejemplo del buscador CIE-10 según la atención (gemelo de `ejemploCie10` de
@@ -125,10 +146,11 @@ fun frecuentesCie10Locales(dental: Boolean, psiq: Boolean, derma: Boolean): List
  * faringitis aguda". Gana el primero que aplica, como los frecuentes.
  * Devuelve (código, palabras).
  */
-fun ejemploCie10(dental: Boolean = false, gineco: Boolean = false, psiq: Boolean = false, derma: Boolean = false): Pair<String, String> = when {
+fun ejemploCie10(dental: Boolean = false, gineco: Boolean = false, psiq: Boolean = false, derma: Boolean = false, oftalmo: Boolean = false): Pair<String, String> = when {
     dental -> "K02.1" to "caries de la dentina"
     gineco -> "N76.0" to "vaginitis aguda"
     psiq -> "F41.1" to "ansiedad generalizada"
     derma -> "L70.0" to "acné vulgar"
+    oftalmo -> "H52.4" to "presbicia"
     else -> "J06.9" to "faringitis aguda"
 }

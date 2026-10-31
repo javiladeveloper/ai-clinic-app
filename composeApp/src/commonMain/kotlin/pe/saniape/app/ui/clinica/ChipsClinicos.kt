@@ -42,6 +42,18 @@ private val CAPILAR = ChipsEspecialidad(
     sintomas = listOf("Caída de cabello", "Debilitamiento", "Miniaturización", "Picazón", "Descamación", "Zonas despobladas", "Seborrea", "Enrojecimiento"),
 )
 
+// Medicina general / familiar / interna: el mismo set ("Medicina Interna" caía al genérico).
+private val MEDICINA = ChipsEspecialidad(
+    tipos = listOf("Respiratoria", "Digestiva", "Cardiovascular", "Metabólica", "Infecciosa", "Urinaria", "Dermatológica", "Osteomuscular", "Neurológica", "Alérgica", "Salud mental", "Chequeo preventivo"),
+    sintomas = listOf("Fiebre", "Dolor", "Mareo", "Náuseas", "Tos", "Dolor de garganta", "Dolor de cabeza", "Dolor abdominal", "Diarrea", "Cansancio"),
+)
+
+// Oftalmología y optometría (2026-10-30): CHIPS_OFTALMO de lib/chipsClinicos.ts.
+private val OFTALMO = ChipsEspecialidad(
+    tipos = listOf("Refractiva", "Presbicia", "Ojo seco", "Conjuntivitis", "Glaucoma", "Catarata", "Retina", "Retinopatía diabética", "Párpados", "Pterigión", "Estrabismo", "Trauma ocular", "Control preventivo"),
+    sintomas = listOf("Visión borrosa", "Dificultad para leer de cerca", "Ojo rojo", "Ardor", "Picazón", "Lagrimeo", "Sensación de arena", "Dolor ocular", "Dolor de cabeza al leer", "Moscas volantes", "Destellos", "Visión doble", "Sensibilidad a la luz", "Secreción"),
+)
+
 /** Claves sin tildes, en minúscula. El ORDEN importa: gana la primera que calce. */
 internal val CHIPS_POR_ESPECIALIDAD: List<Pair<String, ChipsEspecialidad>> = listOf(
     "fisio" to FISIO,
@@ -51,6 +63,9 @@ internal val CHIPS_POR_ESPECIALIDAD: List<Pair<String, ChipsEspecialidad>> = lis
     "terapia fisica" to FISIO,
     "kinesi" to FISIO,
     "masoterap" to FISIO,
+    // Antes que 'pediatr': "Oftalmología pediátrica" sigue siendo del ojo.
+    "oftalm" to OFTALMO,
+    "optometr" to OFTALMO,
     // Psicología (2026-10-15): eran 5 y 5. Mismos textos que el pool compartido.
     "psico" to ChipsEspecialidad(
         tipos = listOf("Ansiedad", "Depresión", "Estrés", "Familiar", "Conductual", "Pareja", "Duelo", "Infantil", "Adolescente", "Aprendizaje", "Autoestima"),
@@ -92,10 +107,10 @@ internal val CHIPS_POR_ESPECIALIDAD: List<Pair<String, ChipsEspecialidad>> = lis
         sintomas = listOf("Fatiga", "Ansiedad por comida", "Digestión pesada", "Hinchazón abdominal", "Estreñimiento", "Reflujo", "Antojos de dulce", "Retención de líquidos", "Sueño después de comer"),
     ),
     // Medicina general, pediatría y podología (2026-10-15): eran 4 y 4-5.
-    "medicina general" to ChipsEspecialidad(
-        tipos = listOf("Respiratoria", "Digestiva", "Cardiovascular", "Metabólica", "Infecciosa", "Urinaria", "Dermatológica", "Osteomuscular", "Neurológica", "Alérgica", "Salud mental", "Chequeo preventivo"),
-        sintomas = listOf("Fiebre", "Dolor", "Mareo", "Náuseas", "Tos", "Dolor de garganta", "Dolor de cabeza", "Dolor abdominal", "Diarrea", "Cansancio"),
-    ),
+    "medicina general" to MEDICINA,
+    "medicina fam" to MEDICINA,
+    "medicina interna" to MEDICINA,
+    "medico general" to MEDICINA,
     "pediatr" to ChipsEspecialidad(
         tipos = listOf("Respiratoria", "Digestiva", "Del desarrollo", "Infecciosa", "Control CRED", "Nutricional", "Anemia", "Alérgica", "Dermatológica", "Recién nacido", "Vacunas"),
         sintomas = listOf("Fiebre", "Tos", "Vómitos", "Diarrea", "Llanto persistente", "Secreción nasal", "Falta de apetito", "Dificultad para respirar", "Dolor de oído", "Erupción en la piel"),

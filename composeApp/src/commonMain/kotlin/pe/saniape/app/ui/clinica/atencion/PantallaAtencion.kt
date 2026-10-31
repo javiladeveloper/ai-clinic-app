@@ -282,7 +282,7 @@ private fun ColumnScope.ContenidoAtencion(
             when (vm.pasoActual?.clave) {
                 "motivo" -> PasoMotivo(vm, d, soloLectura)
                 "vitales" -> PasoVitales(vm, d, soloLectura)
-                "examen" -> PasoExamen(vm, d, soloLectura)
+                "examen" -> PasoExamen(vm, d, soloLectura, acciones)
                 "procedimiento" -> PasoProcedimiento(vm, d, soloLectura, acciones)
                 "diagnostico" -> PasoDiagnostico(vm, d, soloLectura)
                 "plan" -> PasoPlan(

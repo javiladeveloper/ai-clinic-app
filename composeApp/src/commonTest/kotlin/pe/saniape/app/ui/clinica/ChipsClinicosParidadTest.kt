@@ -52,6 +52,30 @@ class ChipsClinicosParidadTest {
     }
 
     @Test
+    fun oftalmologiaIgualQueLaWeb() {
+        val ch = chipsDeEspecialidad("Oftalmología")
+        assertEquals(
+            listOf("Refractiva", "Presbicia", "Ojo seco", "Conjuntivitis", "Glaucoma", "Catarata", "Retina", "Retinopatía diabética", "Párpados", "Pterigión", "Estrabismo", "Trauma ocular", "Control preventivo"),
+            ch.tipos,
+        )
+        assertEquals(
+            listOf("Visión borrosa", "Dificultad para leer de cerca", "Ojo rojo", "Ardor", "Picazón", "Lagrimeo", "Sensación de arena", "Dolor ocular", "Dolor de cabeza al leer", "Moscas volantes", "Destellos", "Visión doble", "Sensibilidad a la luz", "Secreción"),
+            ch.sintomas,
+        )
+        // Antes que 'pediatr' (como la web); optometría igual.
+        assertEquals(ch, chipsDeEspecialidad("Oftalmología pediátrica"))
+        assertEquals(ch, chipsDeEspecialidad("Optometría"))
+    }
+
+    @Test
+    fun medicinaInternaYFamiliarComoMedicinaGeneral() {
+        val mg = chipsDeEspecialidad("Medicina General")
+        assertEquals(mg, chipsDeEspecialidad("Medicina Interna"))
+        assertEquals(mg, chipsDeEspecialidad("Medicina familiar"))
+        assertEquals(mg, chipsDeEspecialidad("Médico general"))
+    }
+
+    @Test
     fun podologiaIgualQueLaWeb() {
         val ch = chipsDeEspecialidad("Podología")
         assertEquals(
@@ -93,8 +117,9 @@ class ChipsClinicosParidadTest {
     fun ordenDeClavesIgualQueLaWeb() {
         assertEquals(
             listOf(
-                "fisio", "rehabilit", "terapia fisica", "kinesi", "masoterap", "psico", "odonto", "dental", "ortodon",
-                "dermato", "gineco", "obstet", "fertilidad", "psiquiatr", "nutri", "medicina general", "pediatr", "podo",
+                "fisio", "rehabilit", "terapia fisica", "kinesi", "masoterap", "oftalm", "optometr", "psico", "odonto", "dental", "ortodon",
+                "dermato", "gineco", "obstet", "fertilidad", "psiquiatr", "nutri",
+                "medicina general", "medicina fam", "medicina interna", "medico general", "pediatr", "podo",
                 "capilar", "trasplante", "trico", "alopecia", "estetic",
             ),
             CHIPS_POR_ESPECIALIDAD.map { it.first },

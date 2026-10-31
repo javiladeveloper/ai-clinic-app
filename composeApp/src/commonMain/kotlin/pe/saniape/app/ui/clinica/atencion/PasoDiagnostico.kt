@@ -44,7 +44,10 @@ import kotlinx.coroutines.delay
 import pe.saniape.app.data.staff.AtencionRepo
 import pe.saniape.app.data.staff.DatosConsultaApp
 import pe.saniape.app.data.staff.DiagnosticoCie
+import pe.saniape.app.data.staff.ExamenOftalmo
+import pe.saniape.app.data.staff.SugerenciaDx
 import pe.saniape.app.data.staff.ejemploCie10
+import pe.saniape.app.data.staff.sugerirDiagnosticos
 import pe.saniape.app.ui.clinica.pacientes.coloresCampoForm
 import pe.saniape.app.ui.theme.Sania
 
@@ -67,15 +70,58 @@ private val TIPOS_DIAGNOSTICO = listOf(
 
 @Composable
 internal fun PasoDiagnostico(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura: Boolean) {
-    EditorDiagnosticosCie(
-        lista = vm.borrador.diagnosticos,
-        onLista = { vm.diagnosticos(it) },
-        soloLectura = soloLectura,
-        dental = d.flags.dental,
-        psiq = vm.psiq,
-        derma = vm.derma,
-        gineco = vm.gineco,
-    )
+    Column {
+        // Oftalmología: lo que el examen sugiere (reglas fijas); el médico decide con un toque.
+        val examen = vm.borrador.examenOftalmo
+        if (vm.examenOftalmoActivo && examen != null && !soloLectura) {
+            SugeridosPorExamen(
+                sugerencias = sugerenciasNuevas(examen, d.flags.edad, vm.borrador.diagnosticos),
+                onAgregar = { s -> vm.diagnosticos(vm.borrador.diagnosticos + DiagnosticoCie(codigo = s.codigo, descripcion = s.descripcion, tipo = s.tipo)) },
+            )
+        }
+        EditorDiagnosticosCie(
+            lista = vm.borrador.diagnosticos,
+            onLista = { vm.diagnosticos(it) },
+            soloLectura = soloLectura,
+            dental = d.flags.dental,
+            psiq = vm.psiq,
+            derma = vm.derma,
+            gineco = vm.gineco,
+            oftalmo = vm.oftalmo,
+        )
+    }
+}
+
+/** Las sugerencias del examen que todavía no están entre los diagnósticos (por código). */
+internal fun sugerenciasNuevas(examen: ExamenOftalmo, edad: Int?, actuales: List<DiagnosticoCie>): List<SugerenciaDx> {
+    val ya = actuales.mapNotNull { it.codigo?.uppercase() }.toSet()
+    return sugerirDiagnosticos(examen, edad).filter { it.codigo.uppercase() !in ya }
+}
+
+/** «💡 Sugeridos por el examen» (gemelo del bloque de ConsultaGuiada.tsx). Vacío = no se muestra. */
+@Composable
+private fun SugeridosPorExamen(sugerencias: List<SugerenciaDx>, onAgregar: (SugerenciaDx) -> Unit) {
+    if (sugerencias.isEmpty()) return
+    val c = Sania.colors
+    Column(
+        Modifier.fillMaxWidth().padding(bottom = 12.dp).clip(RoundedCornerShape(Sania.shape.md.dp))
+            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).background(c.infoBg).padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text("💡 Sugeridos por el examen", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text("Revísalos: el diagnóstico lo decides tú. Tócalo para agregarlo.", color = c.textoSuave, fontSize = 11.sp)
+        for (s in sugerencias) {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.superficie)
+                    .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                    .clickable { onAgregar(s) }.padding(horizontal = 10.dp, vertical = 7.dp),
+            ) {
+                Text("+ ${s.codigo} ${s.descripcion}  (${if (s.tipo == "D") "definitivo" else "presuntivo"})",
+                    color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text(s.motivo, color = c.textoSuave, fontSize = 11.sp)
+            }
+        }
+    }
 }
 
 /**
@@ -96,6 +142,8 @@ internal fun EditorDiagnosticosCie(
     derma: Boolean = false,
     /** Ginecología: solo cambia el ejemplo del buscador (ejemploCie10). */
     gineco: Boolean = false,
+    /** Oftalmología: los frecuentes del capítulo H (viajan en la app) y su ejemplo. */
+    oftalmo: Boolean = false,
     /** La nota de arriba (la de la consulta cita la NTS 139). */
     nota: String = "CIE-10 con tipo: Presuntivo, Definitivo o Repetido (NTS 139, 4.2.9). Sin siglas.",
 ) {
@@ -109,8 +157,8 @@ internal fun EditorDiagnosticosCie(
     val consulta = q.trim()
     val editable = !soloLectura && !lleno
     // Los frecuentes del rubro (el servidor los manda con q vacío): una vez.
-    LaunchedEffect(dental, psiq, derma, editable) {
-        if (editable && frecuentesRubro.isEmpty()) frecuentesRubro = AtencionRepo.buscarCie10("", dental, psiq, derma)
+    LaunchedEffect(dental, psiq, derma, oftalmo, editable) {
+        if (editable && frecuentesRubro.isEmpty()) frecuentesRubro = AtencionRepo.buscarCie10("", dental, psiq, derma, oftalmo)
     }
     // Búsqueda con debounce de 300 ms (cada letra nueva cancela la anterior).
     LaunchedEffect(consulta, dental, editable) {
@@ -167,7 +215,7 @@ internal fun EditorDiagnosticosCie(
                 placeholder = {
                     Text(
                         if (lista.isNotEmpty()) "Agregar otro diagnóstico (código o palabras)…"
-                        else ejemploCie10(dental, gineco, psiq, derma).let { (cod, pal) -> "Busca por código ($cod) o por palabras ($pal)…" },
+                        else ejemploCie10(dental, gineco, psiq, derma, oftalmo).let { (cod, pal) -> "Busca por código ($cod) o por palabras ($pal)…" },
                         fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 },

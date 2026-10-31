@@ -139,7 +139,7 @@ internal fun PasoPlan(
             CampoTextoClinico(
                 label = "Indicaciones para el ${LocalTerminologiaPaciente.current.paciente}",
                 valor = vm.borrador.textos["tratamiento"].orEmpty(), onChange = { vm.texto("tratamiento", it) },
-                frases = frasesDe(d, "indicaciones", vm.pediatria, vm.derma), soloLectura = soloLectura, minLineas = 3,
+                frases = frasesDe(d, "indicaciones", vm.pediatria, vm.derma, vm.oftalmo), soloLectura = soloLectura, minLineas = 3,
                 placeholder = "Medidas generales: reposo, dieta, signos de alarma… (los medicamentos van en la receta)",
                 porLinea = true,
             )
@@ -237,6 +237,8 @@ private fun BloqueExamenes(vm: AtencionViewModel, d: DatosConsultaApp, soloLectu
         d.flags.dental -> EXAMENES_FRECUENTES_ODONTOLOGIA
         // Psiquiatría: laboratorio basal y de control de psicofármacos (PlanAtencion.tsx).
         vm.psiq -> pe.saniape.app.data.staff.EXAMENES_FRECUENTES_PSIQUIATRIA
+        // Oftalmología (2026-10-30): imágenes y pruebas del ojo (PlanAtencion.tsx).
+        vm.oftalmo -> pe.saniape.app.data.staff.EXAMENES_FRECUENTES_OFTALMOLOGIA
         else -> EXAMENES_FRECUENTES_MEDICINA
     }
 

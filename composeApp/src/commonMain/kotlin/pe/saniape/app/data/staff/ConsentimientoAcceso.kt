@@ -26,7 +26,8 @@ fun esPodologia(nombre: String?): Boolean {
  * podología → "podologia"; dermatología clínica → "dermatologia".
  */
 fun rubroBibliotecaConsentimiento(nombre: String?, rubro: String?): String? {
-    if (esPsiquiatria(nombre)) return null
+    // Oftalmología (2026-10-30): la biblioteca de medicina general (nebulización, ECG) no es del ojo.
+    if (esPsiquiatria(nombre) || esOftalmologia(nombre)) return null
     if (esPodologia(nombre)) return "podologia"
     val r = rubro ?: rubroPorNombre(nombre)
     if (r == "medicina_general" && esDermatologia(nombre)) return "dermatologia"

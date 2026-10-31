@@ -84,6 +84,8 @@ data class AtencionClinicaApp(
     val nota_procedimiento: String? = null,
     val control_cita_id: String? = null,
     val control: ControlAtencion? = null,
+    /** Oftalmología (2026-10-30): el examen estructurado (jsonb, ver Oftalmologia.kt). */
+    val examen_oftalmologico: kotlinx.serialization.json.JsonElement? = null,
 )
 
 @Serializable
@@ -417,6 +419,11 @@ data class BorradorAtencion(
      */
     val examenMental: String? = null,
     val escalas: List<EscalaAplicadaApp>? = null,
+    /**
+     * Oftalmología: el examen oftalmológico. null = la atención NO es de
+     * oftalmología: no se manda y el servidor no toca la columna (como la web).
+     */
+    val examenOftalmo: ExamenOftalmo? = null,
 )
 
 // ── Reglas puras (gemelas de lib/atencion-medica.ts) ─────────────────────────
