@@ -868,7 +868,17 @@ fun PantallaCrearCita(
     )
     // Lo que dijo la verificación fresca deja de valer al cambiar la cita.
     LaunchedEffect(fecha, hora, terapeuta?.id, duracion, esRegularizacion) { errorUnPaso = null }
-    LaunchedEffect(crearTratamiento) { if (!crearTratamiento) { tratEnCurso = null; errorUnPaso = null } }
+    // La cita la atiende el profesional que se elige en el tratamiento (un solo campo,
+    // como la web, OMER 01/11). otroEnCita = en esta cita atiende otro (la excepción).
+    var otroEnCita by remember { mutableStateOf(false) }
+    val terapeutaDelTrat = enCurso?.terapeutaId?.let { id -> terapeutas.find { it.id == id } }
+    LaunchedEffect(crearTratamiento, otroEnCita, terapeutaDelTrat?.id) {
+        val t = terapeutaDelTrat
+        if (crearTratamiento && !otroEnCita && t != null && t.id != terapeuta?.id) {
+            terapeuta = t; terapeutaAMano = true; precargado = null
+        }
+    }
+    LaunchedEffect(crearTratamiento) { if (!crearTratamiento) { tratEnCurso = null; errorUnPaso = null; otroEnCita = false } }
 
     /**
      * Antes de crear el tratamiento: ¿la cita se puede agendar? Con una
@@ -1022,10 +1032,21 @@ fun PantallaCrearCita(
             if (profFijo == null) {
                 Spacer(Modifier.height(8.dp))
                 Etiqueta("Profesional")
-                SelectorLista(
-                    items = terapeutasFiltrados, elegido = terapeuta, etiqueta = { it.nombre },
-                    onElegir = { elegirProfesional(it) }, placeholder = "Sin asignar",
-                )
+                val delTrat = terapeutaDelTrat
+                if (delTrat != null && !otroEnCita) {
+                    // El del tratamiento (se elige arriba). La excepción, a un toque.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(delTrat.nombre, color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(" · el del tratamiento", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                        Text("Atiende otro", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable { otroEnCita = true }.padding(4.dp))
+                    }
+                } else {
+                    SelectorLista(
+                        items = terapeutasFiltrados, elegido = terapeuta, etiqueta = { it.nombre },
+                        onElegir = { elegirProfesional(it) }, placeholder = "Sin asignar",
+                    )
+                }
             }
             Spacer(Modifier.height(8.dp))
             Etiqueta("Duración")
