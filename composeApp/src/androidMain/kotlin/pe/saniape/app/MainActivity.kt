@@ -39,6 +39,7 @@ class MainActivity : ComponentActivity() {
             intent?.getStringExtra(SaniaFcmService.EXTRA_CITA),
             intent?.getStringExtra(SaniaFcmService.EXTRA_CITA_FECHA),
         )
+        abrirConversacionSiToca(intent)
         enableEdgeToEdge()
         // En onCreate y no después: el launcher interno del flujo de Play se
         // registra al construir, y eso tiene que pasar antes de RESUMED.
@@ -64,6 +65,22 @@ class MainActivity : ComponentActivity() {
             intent.getStringExtra(SaniaFcmService.EXTRA_CITA),
             intent.getStringExtra(SaniaFcmService.EXTRA_CITA_FECHA),
         )
+        abrirConversacionSiToca(intent)
+    }
+
+    /**
+     * El aviso de «un paciente pide hablar con alguien» trae la conversación
+     * (`/mensajes?lead=…`): se abre en la web, donde vive la bandeja de Sani. El
+     * extra se consume para que girar la pantalla o volver no la reabra.
+     */
+    private fun abrirConversacionSiToca(intent: Intent?) {
+        val ruta = intent?.getStringExtra(SaniaFcmService.EXTRA_URL) ?: return
+        intent.removeExtra(SaniaFcmService.EXTRA_URL)
+        if (!SaniaFcmService.esUrlConversacion(ruta)) return
+        runCatching {
+            startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("${pe.saniape.app.data.Supabase.SITE_URL}$ruta"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
     }
 
     /**

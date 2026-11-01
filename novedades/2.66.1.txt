@@ -1,0 +1,4 @@
+Avisos de Sani que llevan directo a la conversación.
+---
+• Cuando un paciente pide hablar con alguien, tocar el aviso abre esa conversación.
+---

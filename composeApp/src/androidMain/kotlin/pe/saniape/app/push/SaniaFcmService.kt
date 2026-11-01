@@ -35,7 +35,8 @@ class SaniaFcmService : FirebaseMessagingService() {
         // Qué abrir al tocar: el recordatorio de cita lleva a ESA cita, con el
         // botón Confirmar a la vista. Un aviso que solo abre la app deja al
         // paciente buscando qué hacer.
-        mostrar(titulo, cuerpo, msg.data["citaId"], msg.data["citaFecha"])
+        // Un paciente pide hablar con alguien (Sani escaló): lleva a ESA conversación.
+        mostrar(titulo, cuerpo, msg.data["citaId"], msg.data["citaFecha"], msg.data["url"]?.takeIf { esUrlConversacion(it) })
     }
 
     override fun onNewToken(token: String) {
@@ -70,14 +71,16 @@ class SaniaFcmService : FirebaseMessagingService() {
         cuerpo: String,
         citaId: String? = null,
         citaFecha: String? = null,
+        urlConversacion: String? = null,
     ) {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         crearCanal(this)
         val abrir = PendingIntent.getActivity(
-            this, citaId?.hashCode() ?: 0,
+            this, citaId?.hashCode() ?: urlConversacion?.hashCode() ?: 0,
             Intent(this, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 if (citaId != null) putExtra(EXTRA_CITA, citaId)
+                if (urlConversacion != null) putExtra(EXTRA_URL, urlConversacion)
                 // La fecha viaja aparte: con ella la agenda del STAFF se posiciona
                 // en el dia de la cita. Sin fecha caeria en hoy, y una cita de la
                 // semana que viene no se veria (reportado 2026-09-13).
@@ -119,6 +122,20 @@ class SaniaFcmService : FirebaseMessagingService() {
         const val EXTRA_CITA = "cita_id"
         /** Fecha (ISO) de esa cita: posiciona la agenda del staff en su día. */
         const val EXTRA_CITA_FECHA = "cita_fecha"
+        /**
+         * La ruta de la web a abrir (`/mensajes?lead=…`). Es también la clave `url`
+         * del push: con la app cerrada, Android pone los `data` del FCM como extras
+         * del intent con su mismo nombre, sin pasar por onMessageReceived.
+         */
+        const val EXTRA_URL = "url"
+
+        /**
+         * Solo la bandeja de Sani (`/mensajes`, con o sin `?lead=`): la app no tiene
+         * conversaciones nativas, así que se abren en la web (2026-11-01, Centro OMER:
+         * «la notificación que los lleve directo al chat»). Otras rutas, no.
+         */
+        fun esUrlConversacion(url: String?): Boolean =
+            url != null && Regex("^/mensajes(\\?lead=[A-Za-z0-9]{1,120})?$").matches(url)
 
         /**
          * Crea el canal de avisos. Se llama al ARRANCAR la app, no solo al recibir
