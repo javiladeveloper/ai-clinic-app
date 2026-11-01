@@ -604,6 +604,8 @@ private fun PantallaFichaPacienteContenido(
     var evalPsicoAbierta by remember { mutableStateOf<Pair<String, Long>?>(null) }
     // 📂 Historia clínica nativa (por especialidad) a pantalla completa.
     var historiaAbierta by remember { mutableStateOf(false) }
+    // 🩺 Una consulta guiada abierta desde la tarjeta del tratamiento (su cita de origen).
+    var consultaAbierta by remember { mutableStateOf<String?>(null) }
     var planPsico by remember { mutableStateOf<Pair<String, pe.saniape.app.data.staff.PrefillPlanPsico>?>(null) }
     // Cuándo empezó la última carga (reloj monótono) y la ráfaga de Realtime que
     // quedó esperando mientras estaba abierto el cierre de sesión. Sin estado de
@@ -772,6 +774,17 @@ private fun PantallaFichaPacienteContenido(
                 planPsico = evId to prefill
             } else null,
         ) }
+        return
+    }
+
+    // 🩺 La consulta que indicó un plan, a pantalla completa (encima de la ficha).
+    consultaAbierta?.takeIf { verHc }?.let { citaId ->
+        pe.saniape.app.ui.clinica.atencion.PantallaAtencion(
+            ctx = ctx, citaId = citaId, apertura = 0L, acciones = acciones,
+            onSalir = { consultaAbierta = null; recargar() },
+            onVerFicha = { consultaAbierta = null },
+            onOdontograma = {},
+        )
         return
     }
 
@@ -1195,6 +1208,7 @@ private fun PantallaFichaPacienteContenido(
                     "atenciones" -> ContenidoAtenciones(
                         ctx = ctx, paciente = paciente, hitos = hitos,
                         recargaToken = recargarToken,
+                        onVerConsulta = { consultaAbierta = it },
                         tratEsDental = tratEsDental,
                         tratEsFisio = tratEsFisio,
                         onNuevoPaquete = { renovarDesde = it },
@@ -3285,6 +3299,8 @@ private fun ContenidoAtenciones(
     paciente: PacienteStaff,
     hitos: pe.saniape.app.data.staff.HitosPaciente?,
     recargaToken: Int,
+    /** «🩺 Ver la consulta»: abre la consulta guiada de esa cita (solo lectura si ya se cerró). */
+    onVerConsulta: (citaId: String) -> Unit = {},
     tratEsDental: (TratamientoPaciente) -> Boolean = { false },
     tratEsFisio: (TratamientoPaciente) -> Boolean = { false },
     onNuevoPaquete: (TratamientoPaciente) -> Unit = {},
@@ -3358,7 +3374,12 @@ private fun ContenidoAtenciones(
                 ?: lista?.firstOrNull { t.especialidadId != null && it.especialidadId == t.especialidadId }
         val citaC = citaDeEste(hitos?.consultas)
         val citaE = citaDeEste(hitos?.evaluaciones)
+        // La cita que ORIGINÓ el plan, si fue una consulta médica (consulta guiada).
+        val origen = t.citaOrigenId?.let { id ->
+            (hitos?.consultas.orEmpty() + hitos?.evaluaciones.orEmpty()).firstOrNull { it.id == id }
+        }?.takeIf { pe.saniape.app.data.staff.citaEsMedicaGuiada(ctx.modulosClinicos.mapaMedico, false, it.especialidadId, null, null) }
         TarjetaTratamiento(
+            consultaOrigen = origen, onVerConsulta = onVerConsulta,
             t = t, flujo = flujoDe(t), verPagos = ctx.puede("pagos"), esAdmin = ctx.esAdmin,
             puedeSesiones = ctx.puede("sesiones"),
             pacienteId = paciente.id, pacienteNombre = paciente.nombre, puedeFotos = ctx.can("fotosEvolutivas"),
@@ -4089,32 +4110,70 @@ internal fun ModalPlanEntero(
         ) { Box(Modifier.fillMaxWidth().padding(Sania.dim.lg), Alignment.Center) { androidx.compose.material3.TimePicker(state = estadoP) } }
     }
 
+    // Las fechas se arman SOLAS al cambiar el patrón (2026-10-31, como la web: el
+    // botón «Ver fechas» era un paso que nadie entendía). Cambiar el patrón cancela
+    // el pedido anterior (LaunchedEffect), así una respuesta vieja no pisa la nueva.
+    var errorFechas by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(dias, hora, desde, cantidad) {
+        filas = null; errorFechas = null
+        if (dias.isEmpty() || desde.isBlank() || hora.isBlank()) return@LaunchedEffect
+        kotlinx.coroutines.delay(350)
+        trabajando = true
+        try {
+            when (val r = pe.saniape.app.data.staff.ProximaCitaRepo.previsualizarPlan(
+                inicial.tratamientoId, inicial.terapeutaId, hora, desde, dias.toList().sorted(),
+                (cantidad.toIntOrNull() ?: inicial.faltan).coerceIn(1, 40),
+            )) {
+                is pe.saniape.app.data.staff.ProximaCitaRepo.Previa.Ok -> filas = r.filas
+                is pe.saniape.app.data.staff.ProximaCitaRepo.Previa.Error -> errorFechas = r.mensaje
+            }
+        } finally { trabajando = false }
+    }
+    // Hora de UNA fecha: el patrón pone la misma a todas, pero un día puede ir a otra.
+    var editandoHora by remember { mutableStateOf<Int?>(null) }
+    var horasCambiadas by remember { mutableStateOf(setOf<Int>()) }
+    editandoHora?.let { idx ->
+        val fila = filas?.getOrNull(idx)
+        if (fila == null) { editandoHora = null } else {
+            val partes = fila.hora.split(":")
+            val estadoP = androidx.compose.material3.rememberTimePickerState(
+                initialHour = partes.getOrNull(0)?.toIntOrNull() ?: 9,
+                initialMinute = partes.getOrNull(1)?.toIntOrNull() ?: 0,
+                is24Hour = false,
+            )
+            androidx.compose.material3.DatePickerDialog(
+                onDismissRequest = { editandoHora = null },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = {
+                        val h = "${estadoP.hour.toString().padStart(2, '0')}:${estadoP.minute.toString().padStart(2, '0')}"
+                        // Los avisos (cupo, otra cita…) eran de la hora anterior: el servidor vuelve a mirar al guardar.
+                        filas = filas?.mapIndexed { j, x -> if (j == idx) x.copy(hora = h, conflictos = emptyList()) else x }
+                        horasCambiadas = horasCambiadas + idx
+                        editandoHora = null
+                    }) { Text("Aceptar", color = c.navy) }
+                },
+                dismissButton = { androidx.compose.material3.TextButton(onClick = { editandoHora = null }) { Text("Cancelar", color = c.textoSuave) } },
+            ) { Box(Modifier.fillMaxWidth().padding(Sania.dim.lg), Alignment.Center) { androidx.compose.material3.TimePicker(state = estadoP) } }
+        }
+    }
+
     val marcadas = filas?.count { it.incluida } ?: 0
     DialogoForm(
         titulo = "Agendar las ${inicial.faltan} restantes",
         subtitulo = inicial.nombre,
         textoAccion = when {
-            trabajando -> if (filas == null) "Calculando…" else "Agendando…"
-            filas == null -> "Ver fechas"
+            filas == null -> if (trabajando) "Armando las fechas…" else "Agendar"
+            trabajando -> "Agendando…"
             marcadas == 1 -> "Agendar 1 sesión"
             else -> "Agendar $marcadas sesiones"
         },
-        accionHabilitada = !trabajando && dias.isNotEmpty() && (filas == null || marcadas > 0),
+        accionHabilitada = !trabajando && dias.isNotEmpty() && filas != null && marcadas > 0,
         onCancelar = onCancelar,
         onAccion = {
             val actuales = filas
-            trabajando = true
-            scope.launch {
-                if (actuales == null) {
-                    when (val r = pe.saniape.app.data.staff.ProximaCitaRepo.previsualizarPlan(
-                        inicial.tratamientoId, inicial.terapeutaId, hora, desde, dias.toList().sorted(),
-                        (cantidad.toIntOrNull() ?: inicial.faltan).coerceIn(1, 40),
-                    )) {
-                        is pe.saniape.app.data.staff.ProximaCitaRepo.Previa.Ok -> filas = r.filas
-                        is pe.saniape.app.data.staff.ProximaCitaRepo.Previa.Error -> pe.saniape.app.ui.Toaster.error(r.mensaje)
-                    }
-                    trabajando = false
-                } else {
+            if (actuales != null) {
+                trabajando = true
+                scope.launch {
                     val elegidas = actuales.filter { it.incluida }
                     val res = pe.saniape.app.data.staff.ProximaCitaRepo.agendarPlan(
                         inicial.tratamientoId, inicial.terapeutaId, elegidas, claveEnvio.para(inicial.tratamientoId, elegidas),
@@ -4132,8 +4191,12 @@ internal fun ModalPlanEntero(
             }
         },
     ) {
+        Text(
+            "Marca qué días de la semana viene y a qué hora: Sania arma las fechas y las revisas abajo antes de guardar.",
+            color = c.texto, fontSize = 13.sp, modifier = Modifier.padding(bottom = 10.dp),
+        )
         TarjetaForm(titulo = "Patrón", icono = "📅") {
-            EtqForm("Días")
+            EtqForm("¿Qué días viene?")
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 pe.saniape.app.data.staff.CHIPS_DIAS_PLAN.forEach { (dia, letra) ->
                     val activo = dia in dias
@@ -4141,7 +4204,7 @@ internal fun ModalPlanEntero(
                         Modifier.size(36.dp).clip(RoundedCornerShape(Sania.shape.pill.dp))
                             .background(if (activo) c.navy else c.superficie)
                             .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
-                            .clickable { dias = if (activo) dias - dia else dias + dia; filas = null },
+                            .clickable { dias = if (activo) dias - dia else dias + dia; horasCambiadas = emptySet() },
                         contentAlignment = Alignment.Center,
                     ) { Text(letra, color = if (activo) c.sobreNavy else c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
                 }
@@ -4152,29 +4215,45 @@ internal fun ModalPlanEntero(
                 Column(Modifier.weight(1f)) { EtqForm("Hora"); SelectorBoxFicha(hora12(hora)) { mostrarHora = true } }
             }
             Spacer(Modifier.height(10.dp))
-            EtqForm("¿Cuántas?")
-            CampoFicha("", cantidad, soloNumero = true) { cantidad = it; filas = null }
+            EtqForm("Sesiones")
+            CampoFicha("", cantidad, soloNumero = true) { cantidad = it; horasCambiadas = emptySet() }
+            val frase = pe.saniape.app.data.staff.fraseDelPatron(dias, hora12(hora), desde)
+            if (frase.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Text("📅 $frase", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
         }
-        filas?.let { lista ->
-            Spacer(Modifier.height(12.dp))
-            TarjetaForm(titulo = "$marcadas de ${lista.size} fechas", icono = "🗓") {
+        Spacer(Modifier.height(12.dp))
+        val lista = filas
+        when {
+            dias.isEmpty() -> Text("Marca al menos un día de la semana.", color = c.error, fontSize = 12.sp)
+            errorFechas != null -> Text(errorFechas.orEmpty(), color = c.error, fontSize = 12.sp)
+            lista == null -> Text(if (trabajando) "Armando las fechas…" else "", color = c.textoSuave, fontSize = 12.sp)
+            else -> TarjetaForm(
+                titulo = "Estas son las fechas · $marcadas de ${lista.size}" + if (lista.any { it.conflictos.isNotEmpty() }) " · desmarca las que no van" else "",
+                icono = "🗓",
+            ) {
                 lista.forEachIndexed { i, f ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable {
-                            filas = lista.mapIndexed { j, x -> if (j == i) x.copy(incluida = !x.incluida) else x }
-                        }.padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.Top,
-                    ) {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.Top) {
                         Box(
-                            Modifier.size(20.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                            Modifier.size(22.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
                                 .background(if (f.incluida) c.navy else c.superficie)
-                                .border(1.dp, if (f.incluida) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
+                                .border(1.dp, if (f.incluida) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { filas = lista.mapIndexed { j, x -> if (j == i) x.copy(incluida = !x.incluida) else x } },
                             contentAlignment = Alignment.Center,
                         ) { if (f.incluida) Text("✓", color = c.sobreNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                         Spacer(Modifier.width(8.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("${pe.saniape.app.data.staff.fechaLegibleCorta(f.fecha)} · ${hora12(f.hora)}",
-                                color = if (f.incluida) c.texto else c.textoSuave, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("${pe.saniape.app.data.staff.fechaLegibleCorta(f.fecha)} · ",
+                                    color = if (f.incluida) c.texto else c.textoSuave, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                // Tocar la hora la cambia solo para esta fecha.
+                                Text("${hora12(f.hora)} ✎",
+                                    color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp)).clickable { editandoHora = i }
+                                        .padding(horizontal = 4.dp, vertical = 2.dp))
+                            }
+                            if (i in horasCambiadas) Text("Hora cambiada: el cupo se confirma al guardar.", color = c.textoSuave, fontSize = 11.sp)
                             if (f.conflictos.isNotEmpty()) Text(f.conflictos.joinToString(" · ") { it.mensaje },
                                 color = c.error, fontSize = 11.sp)
                         }

@@ -1,0 +1,7 @@
+Oftalmología en la app y agendar el plan entero más fácil.
+---
+• Oftalmología: examen del ojo, diagnósticos sugeridos y receta de lentes al atender.
+• Plan entero: las fechas salen solas y cada una puede ir a otra hora.
+• Plan tras la evaluación: elige el paquete del servicio con un toque.
+• En la ficha, «🩺 Ver la consulta» abre la consulta que indicó el plan.
+---

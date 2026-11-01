@@ -403,6 +403,38 @@ fun lineasExamenOftalmo(e: ExamenOftalmo?): List<Pair<String, String>> {
 
 fun textoExamenOftalmo(e: ExamenOftalmo?): String = lineasExamenOftalmo(e).joinToString("\n") { (t, v) -> "$t: $v" }
 
+/**
+ * El examen en pocas líneas, para el resumen del Cierre (gemelo de
+ * resumenExamenOftalmo de lib/oftalmologia.ts): agudeza visual, presión,
+ * refracción y lo que NO es normal; lo normal de anexos, biomicroscopía y fondo
+ * de ojo va en una sola línea. El examen entero sigue en la HC.
+ */
+fun resumenExamenOftalmo(e: ExamenOftalmo?): List<String> {
+    if (e == null) return emptyList()
+    val lineas = lineasExamenOftalmo(e).toMap()
+    val out = mutableListOf<String>()
+    for (t in listOf("AV lejos", "AV cerca", "PIO", "Refracción subjetiva", "BUT", "Test de Schirmer", "Conclusión de gonioscopía")) {
+        lineas[t]?.let { out.add("$t: $it") }
+    }
+    val grupos = listOf(
+        Triple(ANEXOS, mapOf("orbita" to e.anexos.orbita, "lagrimal" to e.anexos.lagrimal), NORMAL_ANEXOS),
+        Triple(BIOMICROSCOPIA, e.bio, NORMAL_BIO),
+        Triple(FONDO_OJO, e.fondo, NORMAL_FONDO),
+    )
+    var normales = 0
+    var alterados = 0
+    for ((claves, valores, normal) in grupos) {
+        for ((k, t) in claves) {
+            val o = valores[k] ?: continue
+            if (o.od == null && o.oi == null) continue
+            if ((o.od == null || o.od == normal[k]) && (o.oi == null || o.oi == normal[k])) normales++
+            else { alterados++; out.add("$t: ${par(o)}") }
+        }
+    }
+    if (normales > 0) out.add(if (alterados > 0) "Lo demás de anexos, biomicroscopía y fondo de ojo: normal" else "Anexos, biomicroscopía y fondo de ojo: normales")
+    return out
+}
+
 // ── Diagnósticos sugeridos por el examen (reglas FIJAS, no IA) ───────────────
 
 data class SugerenciaDx(val codigo: String, val descripcion: String, /** D definitivo · P presuntivo */ val tipo: String, val motivo: String)

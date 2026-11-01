@@ -170,6 +170,20 @@ fun firmaEnvioPlan(tratamientoId: String, filas: List<FilaPlanSesion>): String =
 /** Chips de días, lunes primero: (día 0=dom…6=sáb, letra). Gemelo de CHIPS_DIAS (lib/proxima-cita). */
 val CHIPS_DIAS_PLAN: List<Pair<Int, String>> = listOf(1 to "L", 2 to "M", 3 to "X", 4 to "J", 5 to "V", 6 to "S", 0 to "D")
 
+/**
+ * El patrón del plan dicho en una frase (gemelo de fraseDelPatron de
+ * lib/proxima-cita.ts): «Cada lunes, miércoles y viernes a las 9:00 a. m.,
+ * desde el lun 02/11.». Los días en el orden de la semana (L → D).
+ */
+fun fraseDelPatron(dias: Collection<Int>, horaTexto: String, desde: String): String {
+    val plural = mapOf(1 to "lunes", 2 to "martes", 3 to "miércoles", 4 to "jueves", 5 to "viernes", 6 to "sábado", 0 to "domingo")
+    val nombres = CHIPS_DIAS_PLAN.map { it.first }.filter { it in dias }.mapNotNull { plural[it] }
+    if (nombres.isEmpty()) return ""
+    val lista = if (nombres.size == 1) nombres[0] else nombres.dropLast(1).joinToString(", ") + " y " + nombres.last()
+    val frase = "Cada $lista a las $horaTexto" + if (desde.isNotBlank()) ", desde el ${fechaLegibleCorta(desde)}" else ""
+    return if (frase.endsWith(".")) frase else "$frase."
+}
+
 /** 0 = domingo … 6 = sábado (como Date.getDay de la web). */
 fun diaSemanaPlan(fecha: String): Int = runCatching { (LocalDate.parse(fecha.take(10)).dayOfWeek.ordinal + 1) % 7 }.getOrDefault(1)
 

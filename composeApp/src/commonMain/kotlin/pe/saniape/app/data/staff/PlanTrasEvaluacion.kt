@@ -89,6 +89,17 @@ fun precioListaPaquete(s: ServicioDelPlan?, n: Int?): Double? {
     return s.precioPaquete?.takeIf { it > 0 }
 }
 
+/**
+ * Los paquetes del catálogo del servicio, de menor a mayor: (sesiones, precio).
+ * Sin tarifario, el «precio paquete» del servicio es de 10 sesiones. Gemelo de
+ * paquetesDelServicio (lib/presupuestos.ts).
+ */
+fun paquetesDelPlan(s: ServicioDelPlan?): List<Pair<Int, Double>> {
+    if (s == null) return emptyList()
+    if (s.tarifarios.isNotEmpty()) return s.tarifarios.filter { it.first > 0 }.sortedBy { it.first }
+    return s.precioPaquete?.takeIf { it > 0 }?.let { listOf(10 to it) } ?: emptyList()
+}
+
 /** El precio de LISTA del plan: el paquete de N, o una sesión. */
 fun listaDelPlan(s: ServicioDelPlan?, modalidad: String, sesiones: Int): Double? {
     if (s == null) return null

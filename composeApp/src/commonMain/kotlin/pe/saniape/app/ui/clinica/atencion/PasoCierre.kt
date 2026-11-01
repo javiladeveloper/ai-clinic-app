@@ -106,6 +106,11 @@ internal fun PasoCierre(
         Text("Resumen de la atención", color = c.navy, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (!esProc) FilaResumen("Motivo", t["motivo_consulta"])
+            // Oftalmología: el examen corto (AV, PIO, refracción y lo alterado), como la web.
+            if (vm.examenOftalmoActivo) {
+                val ex = pe.saniape.app.data.staff.resumenExamenOftalmo(vm.borrador.examenOftalmo)
+                if (ex.isNotEmpty()) FilaResumen("Examen oftalmológico", ex.joinToString("\n"))
+            }
             if (esProc) FilaResumen("Procedimiento", t["nota_procedimiento"])
             // Psiquiatría: examen mental y escalas (como el resumen de la web).
             if (vm.psiq && !esProc) {

@@ -159,6 +159,12 @@ fun TarjetaTratamiento(
     citasTrat: List<pe.saniape.app.data.staff.CitaCtl> = emptyList(),
     /** ¿Ya llegaron los hitos (y con ellos [citasTrat])? Mientras no, no se afirma "Por hacer". */
     hitosCargados: Boolean = true,
+    /**
+     * La consulta médica que indicó este plan (cita de origen con consulta guiada):
+     * «🩺 Ver la consulta» la abre a un toque, como la web (2026-10-30). null = no aplica.
+     */
+    consultaOrigen: pe.saniape.app.data.staff.CitaHito? = null,
+    onVerConsulta: (citaId: String) -> Unit = {},
 ) {
     val tpl = LocalTerminologiaPaciente.current
     // Permiso 'historia_clinica': sin él la tarjeta queda operativa (servicio,
@@ -326,6 +332,13 @@ fun TarjetaTratamiento(
                         Text("📋 $it", color = c.info, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
                             maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             modifier = Modifier.padding(top = 2.dp))
+                    }
+                    // La consulta que indicó este plan: examen, diagnóstico, plan e impresiones a un toque.
+                    if (verClinico) consultaOrigen?.let { o ->
+                        val f = o.fecha.take(10).split("-").takeIf { it.size == 3 }?.let { (_, m, d) -> "$d/$m" } ?: o.fecha
+                        Text("🩺 Ver la consulta del $f →", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 4.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { onVerConsulta(o.id) }.padding(vertical = 4.dp))
                     }
                     // M4: por qué y cuándo se cerró por abandono (solo si se marcó así).
                     if (pe.saniape.app.data.staff.esNoVolvio(t.estado, t.noVolvio)) {

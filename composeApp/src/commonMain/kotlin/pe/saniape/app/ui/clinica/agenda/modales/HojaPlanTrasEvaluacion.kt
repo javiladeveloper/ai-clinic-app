@@ -325,6 +325,39 @@ fun HojaPlanTrasEvaluacion(
                         )
                     }
                 }
+                // Los paquetes del catálogo (5 sesiones a S/ X, 10 a S/ Y…): un toque pone
+                // sesiones y precio, como en la web. Otra cantidad se escribe a mano.
+                val paquetes = if (modalidad == MODALIDAD_PAQUETE) pe.saniape.app.data.staff.paquetesDelPlan(s) else emptyList()
+                if (paquetes.isNotEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    EtqForm("Paquetes del servicio")
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        paquetes.forEach { (ses, pr) ->
+                            val on = n == ses
+                            Box(
+                                Modifier.clip(RoundedCornerShape(50))
+                                    .background(if (on) c.navy else c.superficie)
+                                    .border(1.dp, if (on) c.navy else c.borde, RoundedCornerShape(50))
+                                    .clickable(enabled = !guardando) {
+                                        sesiones = ses.toString()
+                                        precio = textoPrecioCampo(pr)
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                            ) {
+                                Text(
+                                    "$ses sesiones · ${pe.saniape.app.data.staff.formatearDinero(pr, moneda)}",
+                                    color = if (on) c.sobreNavy else c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
+                    if (n > 0 && paquetes.none { it.first == n }) {
+                        Text("$n sesiones no es un paquete del catálogo: escribe el precio.", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
                 Spacer(Modifier.height(10.dp))
                 CampoPrecioPresu(
                     etiqueta = if (modalidad == MODALIDAD_PAQUETE) "Precio del paquete" else "Precio por sesión",
