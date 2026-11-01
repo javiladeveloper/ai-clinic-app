@@ -417,7 +417,10 @@ fun PantallaSesiones(
         // fisio, con permiso de sesiones y con paciente al que abrirle la ficha.
         val dejarEjercicios = remember(sg.id) { mutableStateOf(false) }
         val ofreceEjercicios = esFisio && ctx.puede("sesiones") && !sg.pacienteId.isNullOrBlank()
+        // 📋 Escalas marcadas en el cierre: se guardan tras completar.
+        val escalasCierre = remember(sg.id) { mutableStateOf<Map<String, List<Int?>>>(emptyMap()) }
         pe.saniape.app.ui.clinica.pacientes.ModalCompletarSesion(
+            escalas = if (verHc && !sg.pacienteId.isNullOrBlank()) escalasCierre else null,
             fotosSesion = if (conFotos) fotosSesion else null,
             dejarEjercicios = if (ofreceEjercicios) dejarEjercicios else null,
             ses = cc.ses,
@@ -434,6 +437,7 @@ fun PantallaSesiones(
                 completar = null
                 if (accionando) return@ModalCompletarSesion
                 accionando = true
+                val escalasMarcadas = if (verHc) escalasCierre.value else emptyMap()
                 val fotosElegidas = if (conFotos) fotosSesion.copia() else emptyList()
                 val fotosVisibles = fotosSesion.visiblePaciente
                 val conEjercicios = ofreceEjercicios && dejarEjercicios.value
@@ -479,6 +483,10 @@ fun PantallaSesiones(
                             pe.saniape.app.ui.clinica.pacientes.fotosTrasCompletar(
                                 false, false, sg.pacienteId.orEmpty(), tratId, fotosElegidas, fotosVisibles) { sg.id }
                         }
+                    }
+                    sg.pacienteId?.takeIf { it.isNotBlank() }?.let { pacId ->
+                        pe.saniape.app.ui.clinica.escalas.escalasTrasCompletar(r.registrada, r.encolada, pacId, null,
+                            cc.especialidadId, escalasMarcadas)
                     }
                     accionando = false
                     recargar()

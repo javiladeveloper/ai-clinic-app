@@ -136,6 +136,12 @@ fun ModalCompletar(
      * derivación ni la referencia de la sesión anterior: todo eso viaja en null.
      */
     verClinico: Boolean = pe.saniape.app.data.staff.LocalVerHistoriaClinica.current,
+    /**
+     * 📋 Escalas de la especialidad (EVA, Fitzpatrick, Glogau…), marcadas a un toque
+     * en el mismo cierre (gemelo de EscalasEnCierre web). Quien llama las guarda tras
+     * completar (EscalasCierreRepo.guardar). null = no aparece.
+     */
+    escalas: androidx.compose.runtime.MutableState<Map<String, List<Int?>>>? = null,
 ) {
     val c = Sania.colors
     var terapeutaElegido by remember { mutableStateOf<String?>(null) }
@@ -335,6 +341,10 @@ fun ModalCompletar(
                             pe.saniape.app.ui.clinica.fisio.BotonDictar(dictado, "mejorias")
                         }
                     }
+                }
+                if (verClinico && escalas != null && !psicoSesion) {
+                    // Sin escalas en la especialidad, el bloque no ocupa nada.
+                    pe.saniape.app.ui.clinica.escalas.BloqueEscalasCierre(especialidadId, cita.pacienteId, escalas)
                 }
                 if (esEvaluacion && profesionales != null) {
                     Spacer(Modifier.height(Sania.dim.lg))

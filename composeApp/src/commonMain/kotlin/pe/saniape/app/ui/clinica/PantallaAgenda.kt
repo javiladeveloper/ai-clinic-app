@@ -1286,6 +1286,19 @@ fun PantallaAgenda(
                     }
                 }
             }
+            // 📋 Escalas marcadas en el cierre: se guardan tras completar, ligadas a la cita.
+            val escalasCierre = remember(cita.id) { mutableStateOf<Map<String, List<Int?>>>(emptyMap()) }
+            fun alCompletar(): ((Boolean, Boolean) -> Unit)? {
+                val fotos = alCompletarConFotos()
+                val marcadas = escalasCierre.value
+                val pacId = cita.pacienteId
+                if (!verHc || marcadas.isEmpty() || pacId == null) return fotos
+                val espId = vm.especialidadDeCita(cita)
+                return { ok, encolada ->
+                    fotos?.invoke(ok, encolada)
+                    pe.saniape.app.ui.clinica.escalas.escalasTrasCompletar(ok, encolada, pacId, cita.id, espId, marcadas)
+                }
+            }
             // 🏠 "¿Le dejas ejercicios de apoyo?" (como la web y la ficha): solo en una sesión
             // de fisio, con permiso de sesiones y con paciente al que abrirle la ficha.
             val dejarEjercicios = remember(cita.id) { mutableStateOf(false) }
@@ -1293,6 +1306,7 @@ fun PantallaAgenda(
             ModalCompletar(
                 fotosSesion = if (conFotos) fotosSesion else null,
                 dejarEjercicios = if (ofreceEjercicios) dejarEjercicios else null,
+                escalas = if (verHc && cita.pacienteId != null) escalasCierre else null,
                 cita = cita, especialidades = vm.especialidades, flujo = flujoCita,
                 especialidadId = vm.especialidadDeCita(cita),
                 esDental = verHc && vm.esDental(cita),
@@ -1318,7 +1332,7 @@ fun PantallaAgenda(
                         ofrecerSiguienteSesion = !conEjercicios,
                         otraEntrega = conEjercicios,
                         alTerminar = if (conEjercicios) ({ ok -> if (ok) abrirFichaConEjercicios(cita) }) else null,
-                        alCompletarSesion = alCompletarConFotos())
+                        alCompletarSesion = alCompletar())
                 },
                 diagnosticoInicial = revisada?.takeIf { it.citaId == cita.id }?.diagnostico ?: "",
                 onCancelar = { completar = null; revisada = null },
@@ -1335,7 +1349,7 @@ fun PantallaAgenda(
                         // Cerrada por la ventana de la evaluación: se ofrece el plan (no el control).
                         evaluada = evalua,
                         alTerminar = cobrarEvalTrasCompletar(),
-                        alCompletarSesion = alCompletarConFotos(),
+                        alCompletarSesion = alCompletar(),
                     )
                 },
                 // Recepción completando una evaluación SIN profesional: se pide quién
@@ -1358,7 +1372,7 @@ fun PantallaAgenda(
                         // Cerrada por la ventana de la evaluación: se ofrece el plan (no el control).
                         evaluada = evalua,
                         alTerminar = cobrarEvalTrasCompletar(),
-                        alCompletarSesion = alCompletarConFotos(),
+                        alCompletarSesion = alCompletar(),
                     )
                 },
             )

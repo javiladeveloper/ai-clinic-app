@@ -2119,9 +2119,13 @@ private fun PantallaFichaPacienteContenido(
         // sesión de fisioterapia y con permiso de sesiones (y de historia clínica).
         val dejarEjercicios = remember(ses.id) { mutableStateOf(false) }
         val ofreceEjercicios = verHc && esPacienteFisio && tratEsFisio(req.trat) && ctx.puede("sesiones")
+        // 📋 Escalas marcadas en el cierre: se guardan tras completar, ligadas a la cita.
+        val escalasCierre = remember(ses.id) { mutableStateOf<Map<String, List<Int?>>>(emptyMap()) }
+        val citaDeSesion = hitos?.citaPorSesion?.get(ses.id)
         ModalCompletarSesion(
             ses = ses,
             anterior = anterior,
+            escalas = if (verHc) escalasCierre else null,
             fotosSesion = if (conFotos) fotosSesion else null,
             tecnicasSugeridas = req.tecnicasSugeridas,
             // Paquete ya pagado completo: no se pregunta "¿pagó esta sesión?". En una
@@ -2133,11 +2137,12 @@ private fun PantallaFichaPacienteContenido(
             esDental = tratEsDental(req.trat),
             esFisio = tratEsFisio(req.trat),
             especialidadId = req.trat.especialidadId,
-            citaId = hitos?.citaPorSesion?.get(ses.id),
+            citaId = citaDeSesion,
             dejarEjercicios = if (ofreceEjercicios) dejarEjercicios else null,
             onCancelar = { completarSesion = null },
             onConfirmar = { tecnicas, mejorias, dejoRx, pago, piezas, eva ->
                 completarSesion = null
+                val escalasMarcadas = if (verHc) escalasCierre.value else emptyMap()
                 val fotosElegidas = if (conFotos) fotosSesion.copia() else emptyList()
                 val fotosVisibles = fotosSesion.visiblePaciente
                 val conEjercicios = ofreceEjercicios && dejarEjercicios.value
@@ -2165,6 +2170,8 @@ private fun PantallaFichaPacienteContenido(
                     // tratamiento. Sin señal (encolada) o sin completar: se avisa.
                     fotosTrasCompletar(ok, r.encolada, paciente.id, req.trat.id, fotosElegidas, fotosVisibles,
                         sesionIdOffline = ses.id) { ses.id }
+                    pe.saniape.app.ui.clinica.escalas.escalasTrasCompletar(ok, r.encolada, paciente.id, citaDeSesion,
+                        req.trat.especialidadId, escalasMarcadas)
                     // Cobro en el mismo paso (si lo activó): vinculado a la sesión. No hay un
                     // endpoint que haga las dos cosas juntas, así que si el cobro falla se
                     // dice claro y se ofrece reintentar SOLO el cobro (no volver a completar).
@@ -2367,6 +2374,11 @@ internal fun ModalCompletarSesion(
      * la referencia de la sesión anterior: [onConfirmar] devuelve null en todo eso.
      */
     verClinico: Boolean = pe.saniape.app.data.staff.LocalVerHistoriaClinica.current,
+    /**
+     * 📋 Escalas marcadas en el cierre (como la agenda). Quien llama las guarda tras
+     * completar (escalasTrasCompletar). null = no aparece.
+     */
+    escalas: androidx.compose.runtime.MutableState<Map<String, List<Int?>>>? = null,
     onCancelar: () -> Unit,
     // pago = (monto, método) si activó "¿pagó esta sesión?" — el cobro sale en el
     // MISMO paso que el completar, como la web (antes eran 2 viajes: ✓ y luego 💳).
@@ -2639,6 +2651,11 @@ internal fun ModalCompletarSesion(
             Text("⚕️", fontSize = 16.sp)
         }
 
+        }
+
+        // 📋 Escalas de la especialidad (EVA, Fitzpatrick, Glogau…): sin escalas no ocupa nada.
+        if (escalas != null && !esPsico && verClinico && pacienteId.isNotBlank()) {
+            pe.saniape.app.ui.clinica.escalas.BloqueEscalasCierre(especialidadId, pacienteId, escalas)
         }
 
         // 📷 Fotos de la sesión (como la web): se suben al completar.
