@@ -989,13 +989,15 @@ object AgendaRepo {
         // Cita virtual: null = no se manda nada (presencial de siempre, o la base
         // hereda la del servicio del tratamiento). Ver [virtualParaCrear].
         virtual: VirtualParaCrear? = null,
+        // Salón (atención directa): el servicio elegido («Manicura semipermanente»).
+        procedimientoId: String? = null,
     ): pe.saniape.app.data.offline.ResultadoEscritura {
         if (token() == null) return pe.saniape.app.data.offline.ResultadoEscritura(
             registrada = false, rechazo = pe.saniape.app.data.offline.RechazoServidor("Tu sesión expiró. Vuelve a entrar."),
         )
         return enviarOEncolarDetalle("cita:crear", "/api/staff/cita/crear", cuerpoCrearCita(
             pacienteId, tipo, fecha, hora, terapeutaId, tratamientoId, costo, duracion, notas,
-            especialidadId, diagnostico, campaniaId, sedeId, citaOrigenId, virtual,
+            especialidadId, diagnostico, campaniaId, sedeId, citaOrigenId, virtual, procedimientoId,
         ))
     }
 
@@ -1004,7 +1006,7 @@ object AgendaRepo {
         terapeutaId: String?, tratamientoId: String?, costo: Double, duracion: Int, notas: String?,
         especialidadId: String?, diagnostico: String?, campaniaId: String?,
         sedeId: String? = null, citaOrigenId: String? = null,
-        virtual: VirtualParaCrear? = null,
+        virtual: VirtualParaCrear? = null, procedimientoId: String? = null,
     ): JsonObject = buildJsonObject {
         put("pacienteId", pacienteId)
         put("tipo", tipo)
@@ -1020,6 +1022,7 @@ object AgendaRepo {
         if (!campaniaId.isNullOrBlank()) put("campaniaId", campaniaId)
         if (!sedeId.isNullOrBlank()) put("sedeId", sedeId)
         if (!citaOrigenId.isNullOrBlank()) put("citaOrigenId", citaOrigenId)
+        if (!procedimientoId.isNullOrBlank()) put("procedimientoId", procedimientoId)
         if (virtual != null) {
             put("modalidad", virtual.modalidad)
             if (!virtual.enlaceVirtual.isNullOrBlank()) put("enlaceVirtual", virtual.enlaceVirtual)

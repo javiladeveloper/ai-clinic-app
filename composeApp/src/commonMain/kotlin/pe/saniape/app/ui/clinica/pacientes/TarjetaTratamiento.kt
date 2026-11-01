@@ -1406,6 +1406,27 @@ fun SeccionPagos(
                 color = c.teal, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
     }
+    // Por qué se cobró distinto, y las ampliaciones con su motivo: junto a las
+    // cifras, como la PagoCard web (DALU, 01/11: 5 + 5 sesiones a otro precio).
+    t.motivoPrecio?.takeIf { it.isNotBlank() }?.let { motivo ->
+        Spacer(Modifier.height(6.dp))
+        Text("Precio negociado: $motivo", color = c.texto, fontSize = 11.sp,
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                .background(c.pendBg).padding(horizontal = 10.dp, vertical = 6.dp))
+    }
+    val ampliaciones = remember(t.notas) { pe.saniape.app.data.staff.ampliacionesDeNotas(t.notas) }
+    if (ampliaciones.isNotEmpty()) {
+        Spacer(Modifier.height(6.dp))
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+            .background(c.purpleBg).padding(horizontal = 10.dp, vertical = 6.dp)) {
+            ampliaciones.forEach { a ->
+                Text("Ampliación ${pe.saniape.app.data.staff.fechaCortaAmpliacion(a.fecha)}: +${a.sesiones} " +
+                    (if (a.sesiones == 1) "sesión" else "sesiones") + " por ${simboloMoneda(moneda)} ${formato2(a.monto)}" +
+                    (a.motivo?.let { " — $it" } ?: " (sin motivo)"),
+                    color = c.texto, fontSize = 11.sp)
+            }
+        }
+    }
     Spacer(Modifier.height(6.dp))
     Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.chipBg)) {
         Box(Modifier.fillMaxWidth(frac).height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.ok))

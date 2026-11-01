@@ -54,6 +54,12 @@ private val OFTALMO = ChipsEspecialidad(
     sintomas = listOf("Visión borrosa", "Dificultad para leer de cerca", "Ojo rojo", "Ardor", "Picazón", "Lagrimeo", "Sensación de arena", "Dolor ocular", "Dolor de cabeza al leer", "Moscas volantes", "Destellos", "Visión doble", "Sensibilidad a la luz", "Secreción"),
 )
 
+// Salón de uñas, cejas y pestañas (2026-11-01): CHIPS_BELLEZA de lib/chipsClinicos.ts.
+private val BELLEZA = ChipsEspecialidad(
+    tipos = listOf("Manicura", "Pedicura", "Uñas esculpidas", "Nail art", "Cejas", "Pestañas", "Evento especial", "Mantenimiento"),
+    sintomas = listOf("Uñas quebradizas", "Uñas débiles", "Uñas mordidas", "Cutícula seca", "Uñas manchadas", "Piel sensible", "Alergia a algún producto", "Cejas despobladas", "Pestañas cortas", "Quiere un cambio de look"),
+)
+
 /** Claves sin tildes, en minúscula. El ORDEN importa: gana la primera que calce. */
 internal val CHIPS_POR_ESPECIALIDAD: List<Pair<String, ChipsEspecialidad>> = listOf(
     "fisio" to FISIO,
@@ -119,6 +125,9 @@ internal val CHIPS_POR_ESPECIALIDAD: List<Pair<String, ChipsEspecialidad>> = lis
         tipos = listOf("Uña encarnada", "Hongos", "Pie diabético", "Callosidades", "Verruga plantar", "Pie de atleta", "Juanete", "Pie plano", "Talón doloroso", "Grietas en talones", "Biomecánica"),
         sintomas = listOf("Dolor al caminar", "Picazón", "Mal olor", "Engrosamiento de uña", "Uña enterrada", "Inflamación del dedo", "Ardor en los pies", "Durezas", "Sudoración excesiva", "Adormecimiento"),
     ),
+    // Salón: DESPUÉS de podología (lo médico de las uñas es de la podóloga).
+    "manicur" to BELLEZA, "pedicur" to BELLEZA, "unas" to BELLEZA, "ceja" to BELLEZA,
+    "pestan" to BELLEZA, "belleza" to BELLEZA, "nail" to BELLEZA, "lash" to BELLEZA,
     // Trasplante capilar / tricología (varias claves para distintos nombres).
     "capilar" to CAPILAR, "trasplante" to CAPILAR, "trico" to CAPILAR, "alopecia" to CAPILAR,
     // Estética caía al set genérico (Traumatológica, Fiebre…): ahora tiene el suyo.

@@ -120,6 +120,7 @@ class ChipsClinicosParidadTest {
                 "fisio", "rehabilit", "terapia fisica", "kinesi", "masoterap", "oftalm", "optometr", "psico", "odonto", "dental", "ortodon",
                 "dermato", "gineco", "obstet", "fertilidad", "psiquiatr", "nutri",
                 "medicina general", "medicina fam", "medicina interna", "medico general", "pediatr", "podo",
+                "manicur", "pedicur", "unas", "ceja", "pestan", "belleza", "nail", "lash",
                 "capilar", "trasplante", "trico", "alopecia", "estetic",
             ),
             CHIPS_POR_ESPECIALIDAD.map { it.first },

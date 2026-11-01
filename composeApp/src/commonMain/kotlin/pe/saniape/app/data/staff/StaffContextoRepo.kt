@@ -240,6 +240,7 @@ object StaffContextoRepo {
                     labelEvaluacion = f.str("label_evaluacion") ?: "Evaluación",
                     labelSesiones = f.str("label_sesiones") ?: "Sesiones",
                     labelAlta = f.str("label_alta") ?: "Alta",
+                    atencionDirecta = f.boolOrNull("atencion_directa") ?: false,
                 )
             } ?: FlujoClinica(),
             clinicas = (o["clinicas"]?.jsonArray ?: emptyList()).mapNotNull {

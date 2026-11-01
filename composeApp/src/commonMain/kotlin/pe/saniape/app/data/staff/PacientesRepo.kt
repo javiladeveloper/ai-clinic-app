@@ -85,6 +85,10 @@ data class TratamientoPaciente(
     val procedimientoId: String? = null,
     /** Tamaño del paquete ORIGINAL (no null = se amplió): el "Nuevo paquete" lo repite. */
     val sesionesBase: Int? = null,
+    /** Notas del tratamiento: de acá salen las ampliaciones (ampliacionesDeNotas). */
+    val notas: String? = null,
+    /** Por qué se cobró distinto al precio de lista («Precio negociado»). */
+    val motivoPrecio: String? = null,
     val citaOrigenId: String? = null,
     /**
      * Escalera de controles post-tratamiento: arranca al completarse la atención
@@ -619,6 +623,7 @@ object PacientesRepo {
             cantidad_unidades, precio_unitario,
             diagnostico, medicacion, proximo_control, nota_recepcion, tecnicas_sugeridas,
             procedimiento_id, sesiones_base, cita_origen_id, no_volvio, motivo_cierre, cerrado_at,
+            notas, motivo_precio,
             fecha_inicio, created_at, saldo_liberado_at, saldo_liberado_por, control_anclaje, control_indice, sede_id,
             ses_estados:sesiones!sesiones_tratamiento_id_fkey(id, estado, costo, numero, fecha),
             pagos_dev:pagos_tratamiento(sesion_id, monto),
@@ -2071,6 +2076,8 @@ object PacientesRepo {
                 unidadLabel = procObj?.str("unidad_label"),
                 procedimientoId = t.str("procedimiento_id"),
                 sesionesBase = t.int("sesiones_base"),
+                notas = t.str("notas"),
+                motivoPrecio = t.str("motivo_precio"),
                 citaOrigenId = t.str("cita_origen_id"),
                 controlAnclaje = t.str("control_anclaje"),
                 controlIndice = t.int("control_indice") ?: 0,

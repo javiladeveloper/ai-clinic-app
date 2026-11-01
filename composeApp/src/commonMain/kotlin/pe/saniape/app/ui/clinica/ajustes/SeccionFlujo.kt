@@ -51,6 +51,8 @@ internal data class Flujo(
     val labelEvaluacion: String = "Evaluación",
     val labelSesiones: String = "Sesiones",
     val labelAlta: String = "Alta",
+    /** Salón (atención directa): no se edita aquí, solo se conserva al guardar. */
+    val atencionDirecta: Boolean = false,
 ) {
     /** "dos" | "una" | "ninguna" (cómo empieza la atención). */
     val modo: String get() = if (usaConsulta && usaEvaluacion) "dos" else if (!usaConsulta && !usaEvaluacion) "ninguna" else "una"
@@ -72,6 +74,7 @@ internal data class Flujo(
         put("usa_consulta", usaConsulta); put("usa_evaluacion", usaEvaluacion)
         put("label_consulta", labelConsulta); put("label_evaluacion", labelEvaluacion)
         put("label_sesiones", labelSesiones); put("label_alta", labelAlta)
+        if (atencionDirecta) put("atencion_directa", true)
     }
 
     companion object {
@@ -79,6 +82,7 @@ internal data class Flujo(
             o.bn("usa_consulta") ?: true, o.bn("usa_evaluacion") ?: true,
             o.s("label_consulta") ?: "Consulta", o.s("label_evaluacion") ?: "Evaluación",
             o.s("label_sesiones") ?: "Sesiones", o.s("label_alta") ?: "Alta",
+            o.bn("atencion_directa") == true,
         )
 
         /** Gemelo de flujoDeEspecialidad (web): sin las dos banderas, la especialidad sigue a la clínica. */
@@ -88,7 +92,8 @@ internal data class Flujo(
             val e = propio.bn("usa_evaluacion") ?: return base
             fun txt(k: String, d: String) = propio.s(k)?.takeIf { it.isNotBlank() } ?: d
             return Flujo(c, e, txt("label_consulta", base.labelConsulta), txt("label_evaluacion", base.labelEvaluacion),
-                txt("label_sesiones", base.labelSesiones), txt("label_alta", base.labelAlta))
+                txt("label_sesiones", base.labelSesiones), txt("label_alta", base.labelAlta),
+                propio.bn("atencion_directa") == true)
         }
     }
 }

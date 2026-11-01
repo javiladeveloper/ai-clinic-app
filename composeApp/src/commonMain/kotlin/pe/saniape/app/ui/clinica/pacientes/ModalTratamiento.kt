@@ -1454,7 +1454,13 @@ fun ModalAmpliarTratamiento(
     var sesiones by remember { mutableStateOf("") }
     var monto by remember { mutableStateOf("") }
     var nota by remember { mutableStateOf("") }
-    val valido = (sesiones.toIntOrNull() ?: 0) > 0
+    // Precio de lista de la ampliación (como la web): N × el precio de la sesión.
+    val n = sesiones.toIntOrNull() ?: 0
+    val unitario = (if (t.esSuelta) t.precioPorSesion else t.precioBase)?.takeIf { it > 0 }
+    val lista = if (n > 0 && (t.modalidad == "Paquete" || t.esSuelta)) unitario?.let { kotlin.math.round(it * n * 100) / 100 } else null
+    // A un precio distinto al de lista, el motivo es obligatorio (DALU, 01/11).
+    val motivoObligatorio = pe.saniape.app.data.staff.motivoAmpliacionObligatorio(lista, monto.toDoubleOrNull() ?: 0.0)
+    val valido = n > 0 && !(motivoObligatorio && nota.isBlank())
     DialogoForm(
         titulo = "Ampliar tratamiento",
         subtitulo = t.procedimiento ?: "Tratamiento",
@@ -1482,7 +1488,7 @@ fun ModalAmpliarTratamiento(
             Spacer(Modifier.height(10.dp))
             EtqForm("Monto adicional (${simboloMoneda(moneda)}) — opcional"); CampoNum(monto) { monto = it }
             Spacer(Modifier.height(10.dp))
-            EtqForm("Motivo / acuerdo — opcional")
+            EtqForm(if (motivoObligatorio) "Motivo / acuerdo — obligatorio (no es el precio de lista; se verá en los pagos)" else "Motivo / acuerdo — opcional")
             OutlinedTextField(colors = coloresCampoForm(), value = nota, onValueChange = { nota = it }, minLines = 2,
                 modifier = Modifier.fillMaxWidth())
         }

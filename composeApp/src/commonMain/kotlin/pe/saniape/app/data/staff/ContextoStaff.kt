@@ -26,6 +26,12 @@ data class FlujoClinica(
     val labelEvaluacion: String = "Evaluación",
     val labelSesiones: String = "Sesiones",
     val labelAlta: String = "Alta",
+    /**
+     * La cita de entrada ES el servicio (salón de uñas, cejas y pestañas,
+     * 2026-11-01): no evalúa, no pide diagnóstico ni ofrece plan. Gemelo de
+     * `atencion_directa` (lib/flujo.ts). Sin la marca, todo como siempre.
+     */
+    val atencionDirecta: Boolean = false,
 ) {
     /** El nombre que esta clínica le da a un tipo de cita. */
     fun nombreTipo(tipo: String?): String = when (tipo) {
@@ -42,7 +48,7 @@ data class FlujoClinica(
      * Gemelo de `esCitaQueEvalua()` en la web (lib/flujo.ts).
      */
     fun esCitaQueEvalua(tipo: String?): Boolean =
-        tipo == "Evaluación" || (tipo == "Consulta" && usaConsulta && !usaEvaluacion)
+        tipo == "Evaluación" || (tipo == "Consulta" && usaConsulta && !usaEvaluacion && !atencionDirecta)
 
     /**
      * Al completar una cita, ¿se ofrece crear el plan de tratamiento? Gemelo de
@@ -112,6 +118,8 @@ data class FlujoClinica(
             labelEvaluacion = txt("label_evaluacion", labelEvaluacion),
             labelSesiones = txt("label_sesiones", labelSesiones),
             labelAlta = txt("label_alta", labelAlta),
+            // De la especialidad, nunca heredada (como la web).
+            atencionDirecta = (propio["atencion_directa"] as? JsonPrimitive)?.booleanOrNull == true,
         )
     }
 }

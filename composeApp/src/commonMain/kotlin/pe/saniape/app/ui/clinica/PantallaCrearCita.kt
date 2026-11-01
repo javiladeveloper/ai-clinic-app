@@ -256,6 +256,15 @@ fun PantallaCrearCita(
     val flujoEfectivo = remember(ctx.flujo, especialidad) {
         ctx.flujo.paraEspecialidad(especialidad?.flujoPreset, especialidad?.nombre)
     }
+    // 💅 Salón (atención directa): la «Atención» ES el servicio. Se elige de la
+    // especialidad, agrupado por categoría, y el precio sale de él (como la web).
+    val salonDirecto = flujoEfectivo.atencionDirecta && tipo == "Consulta"
+    var serviciosSalon by remember { mutableStateOf<List<pe.saniape.app.data.staff.ServicioSalon>>(emptyList()) }
+    var servicioSalon by remember { mutableStateOf<pe.saniape.app.data.staff.ServicioSalon?>(null) }
+    LaunchedEffect(salonDirecto, especialidad?.id) {
+        serviciosSalon = if (salonDirecto) pe.saniape.app.data.staff.ServiciosSalonRepo.deEspecialidad(especialidad?.id) else emptyList()
+        if (servicioSalon?.let { sv -> serviciosSalon.none { it.id == sv.id } } == true) servicioSalon = null
+    }
     // Los tipos que se ofrecen de verdad. Antes se mostraban los tres SIEMPRE:
     // a RENOVA, que no hace consultas, se le ofrecía "Consulta"; y con los
     // nombres internos, no los suyos.
@@ -743,6 +752,7 @@ fun PantallaCrearCita(
         ) {
             return fallar("Elige la especialidad: la clínica atiende odontología y otras, y cada una se atiende distinto.")
         }
+        if (salonDirecto && serviciosSalon.isNotEmpty() && servicioSalon == null) return fallar("Elige el servicio para saber cuánto se cobra.")
         if (multiSede && sedeId == null) return fallar("Elige la sede de la cita")
         // Disponibilidad bloquea solo si NO es regularización (igual que la web).
         // Con [ov] ya se verificó fresca antes de crear el tratamiento.
@@ -797,6 +807,7 @@ fun PantallaCrearCita(
                 sedeId = if (multiSede) sedeId else null,
                 citaOrigenId = if (tipo == "Evaluación") origenId else null,
                 virtual = virtualCrear,
+                procedimientoId = if (salonDirecto) servicioSalon?.id else null,
             )
             if (!r.registrada) {
                 // El motivo real del servidor (cupo lleno, paciente de baja,
@@ -1456,8 +1467,18 @@ fun PantallaCrearCita(
                     )
                 }
 
+                if (salonDirecto && serviciosSalon.isNotEmpty()) {
+                    Spacer(Modifier.height(Sania.dim.md))
+                    Etiqueta("Servicio")
+                    SelectorLista(
+                        items = serviciosSalon, elegido = servicioSalon,
+                        etiqueta = { sv -> "${sv.categoria?.let { "$it · " } ?: ""}${sv.nombre} — ${simboloMoneda(moneda)} ${pe.saniape.app.data.staff.precioSalonTexto(sv.precio)}" },
+                        onElegir = { sv -> servicioSalon = sv; costo = sv.precio.toString() },
+                        placeholder = "— Elige el servicio —",
+                    )
+                }
                 if (ctx.puede("pagos") && tipo != "Sesión") {
-                    val precioBase = if (tipo == "Evaluación") precioEvaluacion else precioConsultaEf
+                    val precioBase = if (tipo == "Evaluación") precioEvaluacion else servicioSalon?.takeIf { salonDirecto }?.precio ?: precioConsultaEf
                     // Con promo, "Restablecer" vuelve al precio PROMOCIONAL (es el vigente).
                     val precioDefault = promoAplicada?.precioCon(precioBase) ?: precioBase
                     Spacer(Modifier.height(Sania.dim.md))

@@ -152,7 +152,8 @@ fun ModalCompletar(
     // cuando el flujo no tiene Evaluación aparte (estética: su "Evaluación" es
     // una Consulta con otro nombre). Antes García la cerraba como sesión sin
     // poder poner diagnóstico (reporte de Jonathan, demo 2026-09-05).
-    val esEvaluacion = cita.tipo == "Evaluación" || (cita.tipo == "Consulta" && !flujo.usaEvaluacion)
+    // La misma regla de toda la app (salón: la «Atención» no evalúa).
+    val esEvaluacion = flujo.esCitaQueEvalua(cita.tipo)
     var texto by remember { mutableStateOf(diagnosticoInicial) }
     var derivar by remember { mutableStateOf(false) }
     var espElegida by remember { mutableStateOf<EspecialidadRef?>(null) }
