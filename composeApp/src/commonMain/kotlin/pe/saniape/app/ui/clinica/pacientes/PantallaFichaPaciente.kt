@@ -2125,7 +2125,7 @@ private fun PantallaFichaPacienteContenido(
         ModalCompletarSesion(
             ses = ses,
             anterior = anterior,
-            escalas = if (verHc) escalasCierre else null,
+            escalas = if (verHc && ctx.can("escalas")) escalasCierre else null,
             fotosSesion = if (conFotos) fotosSesion else null,
             tecnicasSugeridas = req.tecnicasSugeridas,
             // Paquete ya pagado completo: no se pregunta "¿pagó esta sesión?". En una

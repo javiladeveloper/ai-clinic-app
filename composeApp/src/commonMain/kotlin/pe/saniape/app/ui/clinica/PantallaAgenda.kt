@@ -1306,7 +1306,7 @@ fun PantallaAgenda(
             ModalCompletar(
                 fotosSesion = if (conFotos) fotosSesion else null,
                 dejarEjercicios = if (ofreceEjercicios) dejarEjercicios else null,
-                escalas = if (verHc && cita.pacienteId != null) escalasCierre else null,
+                escalas = if (verHc && ctx.can("escalas") && cita.pacienteId != null) escalasCierre else null,
                 cita = cita, especialidades = vm.especialidades, flujo = flujoCita,
                 especialidadId = vm.especialidadDeCita(cita),
                 esDental = verHc && vm.esDental(cita),

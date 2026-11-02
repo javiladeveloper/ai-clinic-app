@@ -300,6 +300,7 @@ data class ContextoStaff(
         "calendarioSync" -> planEstado.features.calendarioSync
         "citasVirtualesMeet" -> planEstado.features.citasVirtualesMeet
         "presupuestos" -> planEstado.features.presupuestos
+        "escalas" -> planEstado.features.escalas
         else -> false
     }
 
@@ -420,6 +421,12 @@ data class PlanFeatures(
      * responde 403 PLAN_REQUERIDO. Backend sin el campo → false (candado).
      */
     val presupuestos: Boolean = false,
+    /**
+     * 📊 Escalas del paciente (Premium, Plus y prueba; lib/plan.ts `escalas`).
+     * Básico o vencido: no aparecen al completar y el servidor responde 403
+     * PLAN_REQUERIDO. Backend sin el campo → false.
+     */
+    val escalas: Boolean = false,
 )
 
 data class ClinicaRef(val id: String, val nombre: String)

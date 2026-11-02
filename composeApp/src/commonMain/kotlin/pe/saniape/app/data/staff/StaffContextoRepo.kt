@@ -76,6 +76,7 @@ object StaffContextoRepo {
         calendarioSync = o?.boolOrNull("calendarioSync") ?: true,
         citasVirtualesMeet = o?.boolOrNull("citasVirtualesMeet") ?: false,
         presupuestos = o?.boolOrNull("presupuestos") ?: false,
+        escalas = o?.boolOrNull("escalas") ?: false,
     )
 
     /** Módulos clínicos. Sin el objeto (backend viejo) → todo apagado, como siempre. */

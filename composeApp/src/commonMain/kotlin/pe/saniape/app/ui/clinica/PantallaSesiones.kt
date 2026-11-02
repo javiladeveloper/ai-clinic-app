@@ -420,7 +420,7 @@ fun PantallaSesiones(
         // 📋 Escalas marcadas en el cierre: se guardan tras completar.
         val escalasCierre = remember(sg.id) { mutableStateOf<Map<String, List<Int?>>>(emptyMap()) }
         pe.saniape.app.ui.clinica.pacientes.ModalCompletarSesion(
-            escalas = if (verHc && !sg.pacienteId.isNullOrBlank()) escalasCierre else null,
+            escalas = if (verHc && ctx.can("escalas") && !sg.pacienteId.isNullOrBlank()) escalasCierre else null,
             fotosSesion = if (conFotos) fotosSesion else null,
             dejarEjercicios = if (ofreceEjercicios) dejarEjercicios else null,
             ses = cc.ses,
