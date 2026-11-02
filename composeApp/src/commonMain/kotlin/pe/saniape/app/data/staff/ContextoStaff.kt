@@ -279,6 +279,7 @@ data class ContextoStaff(
         "ajustes" -> permisos.ajustes
         "reportes" -> permisos.reportes
         "marketing" -> permisos.marketing
+        "sani" -> permisos.sani
         "datos_personales" -> permisos.datosPersonales
         "historia_clinica" -> permisos.historiaClinica
         else -> false
@@ -360,6 +361,8 @@ data class Permisos(
     val reportes: Boolean = false,
     /** Marketing (campañas): junto con "servicios" abre Campañas, como la web. */
     val marketing: Boolean = false,
+    /** Sani (conversaciones del bot). Default false: un backend sin la clave no abre la bandeja. */
+    val sani: Boolean = false,
     /**
      * Datos personales (DNI, teléfono, contacto): verlos y editarlos. Default
      * false: un backend sin la clave no los muestra (antes la app no leía la

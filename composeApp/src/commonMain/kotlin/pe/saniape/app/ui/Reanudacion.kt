@@ -2,6 +2,7 @@ package pe.saniape.app.ui
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
 /**
@@ -29,6 +30,16 @@ object Reanudacion {
     var contador by mutableIntStateOf(0)
         private set
 
+    /**
+     * ¿La app está a la vista? Los sondeos (bandeja de Sani) se PARAN en segundo
+     * plano: nadie está mirando y gastaría batería y datos.
+     */
+    var enFrente by mutableStateOf(true)
+        private set
+
     /** Lo llama la capa nativa (MainActivity.onResume en Android). */
-    fun volvioAlFrente() { contador++ }
+    fun volvioAlFrente() { enFrente = true; contador++ }
+
+    /** Lo llama la capa nativa (MainActivity.onStop en Android). */
+    fun seFueAlFondo() { enFrente = false }
 }

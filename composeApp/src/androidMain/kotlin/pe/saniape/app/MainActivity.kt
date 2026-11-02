@@ -102,6 +102,12 @@ class MainActivity : ComponentActivity() {
         if (::actualizador.isInitialized) actualizador.alVolverAPrimerPlano()
     }
 
+    /** Sin la app a la vista se paran los sondeos (bandeja de Sani). */
+    override fun onStop() {
+        super.onStop()
+        pe.saniape.app.ui.Reanudacion.seFueAlFondo()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         if (::actualizador.isInitialized) actualizador.soltar()
