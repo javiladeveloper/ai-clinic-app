@@ -1341,6 +1341,16 @@ fun SeccionPagos(
     LaunchedEffect(t.id, recargaToken) {
         pagos = runCatching { PacientesRepo.pagosDe(t.id) }.getOrDefault(emptyList())
     }
+    // Boletas/facturas SUNAT de estos pagos (add-on de facturación): UNA lectura para
+    // toda la lista, como PagoCard web. Con la facturación activa la boleta REEMPLAZA
+    // al recibo interno: el chip va en la fila canónica del cobro.
+    val sunat = pe.saniape.app.ui.clinica.comprobante.FacturacionSunat.activa
+    var comprobantesSunat by remember { mutableStateOf<List<pe.saniape.app.data.staff.ComprobanteSunat>?>(null) }
+    LaunchedEffect(pagos, sunat, pe.saniape.app.ui.clinica.comprobante.FacturacionSunat.cambios) {
+        val lista = pagos
+        comprobantesSunat = if (!sunat || lista.isNullOrEmpty()) null
+        else pe.saniape.app.data.staff.FacturacionSunatRepo.dePagos(lista.map { it.id })
+    }
 
     // Sesión suelta: el acordado suma lo atendido + lo cobrado por adelantado
     // (data/SesionesSueltas.kt), con los pagos recién leídos (su sesion_id).
@@ -1442,7 +1452,16 @@ fun SeccionPagos(
         Spacer(Modifier.height(8.dp))
         pe.saniape.app.data.staff.agruparPagos(lista, moneda).forEach { g ->
             if (g.agrupado) {
-                FilaPagoAgrupado(g, esAdmin, soloLectura, onCambio)
+                FilaPagoAgrupado(g, esAdmin, soloLectura, onCambio, chipSunat = {
+                    // Pago mixto: la boleta va por su parte de id MENOR (origenDePago del servidor).
+                    val canon = g.partes.minByOrNull { it.id }
+                    if (sunat && canon != null && pe.saniape.app.data.staff.pagoLlevaSunat(canon, lista)) {
+                        pe.saniape.app.ui.clinica.comprobante.ChipSunat(
+                            "pago", canon.id, compacto = true,
+                            comprobantes = comprobantesSunat?.filter { it.origenId == canon.id },
+                        )
+                    }
+                })
                 return@forEach
             }
             val p = g.partes.first()
@@ -1495,10 +1514,18 @@ fun SeccionPagos(
                     Spacer(Modifier.width(8.dp))
                     Text(p.fecha, color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.weight(1f))
                     Text("${simboloMoneda(moneda)} ${formato2(p.monto)}", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    if (sunat && pe.saniape.app.data.staff.pagoLlevaSunat(p, lista)) {
+                        Spacer(Modifier.width(6.dp))
+                        pe.saniape.app.ui.clinica.comprobante.ChipSunat(
+                            "pago", p.id, compacto = true,
+                            comprobantes = comprobantesSunat?.filter { it.origenId == p.id },
+                        )
+                    }
                     // Un solo botón: 🧾 (o ⋯ si el pago no tiene recibo) abre el menú con el
                     // comprobante (A4 / ticket), ✏ Editar y 🗑 Borrar (estos dos solo Admin y
                     // no en una ficha dada de baja). Antes: 🧾 ✏ 🗑 sueltos + otra fila de recibo.
-                    val conRecibo = p.saldoTipo != "consumo"
+                    // Facturación SUNAT activa: la boleta/factura reemplaza al recibo (chip abajo).
+                    val conRecibo = !sunat && p.saldoTipo != "consumo"
                     val corregir = esAdmin && !soloLectura
                     val planPago = pe.saniape.app.data.staff.accionesPago(conRecibo, editar = corregir, borrar = corregir)
                     if (bajandoRecibo && reciboDe == p.id) {
@@ -1644,7 +1671,10 @@ fun SeccionPagos(
                             is pe.saniape.app.data.staff.ResultadoPagoSaldo.Ok -> {
                                 if (filasResto == null && v.partes.size > 1) pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(pacienteId, metodo)
                                 monto = ""; notaPago = ""; agregando = false; limpiarSaldo()
-                                pe.saniape.app.ui.Toaster.exito("Pago registrado: ${pe.saniape.app.data.staff.resumenPartes(v.partes, moneda)}")
+                                val aviso = "Pago registrado: ${pe.saniape.app.data.staff.resumenPartes(v.partes, moneda)}"
+                                // Facturación SUNAT activa: la boleta del pago (su parte de id menor, como la web).
+                                val origen = r.pagoIds.minOrNull()
+                                if (origen == null || !pe.saniape.app.ui.clinica.comprobante.FacturacionSunat.ofrecer("pago", origen, aviso)) pe.saniape.app.ui.Toaster.exito(aviso)
                                 onCambio()
                             }
                             is pe.saniape.app.data.staff.ResultadoPagoSaldo.Rechazo -> {
@@ -1665,7 +1695,8 @@ fun SeccionPagos(
                     if (ok) {
                         pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(pacienteId, metodo)
                         monto = ""; notaPago = ""; agregando = false
-                        pe.saniape.app.ui.Toaster.exito("Pago registrado")
+                        // Con la facturación SUNAT activa, «¿Boleta o factura?» del pago recién hecho.
+                        pe.saniape.app.ui.clinica.comprobante.ofrecerPagoSunat("Pago registrado", t.id, m)
                         // NO recargamos pagos aquí: onCambio() → cambioToken++ ya re-dispara
                         // el LaunchedEffect que recarga pagosDe (evita la doble query).
                         onCambio()

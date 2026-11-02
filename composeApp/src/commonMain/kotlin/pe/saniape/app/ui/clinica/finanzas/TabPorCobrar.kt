@@ -117,7 +117,9 @@ internal fun TabPorCobrar() {
                                         r.encolada -> { Toaster.info("Sin señal: el cobro se enviará al volver la conexión"); filas = lista.filter { it.citaId != p.citaId } }
                                         r.registrada -> {
                                             MetodoPagoPreferido.recordar(p.pacienteId, metodo)
-                                            Toaster.exito(if (r.yaEstaba) "Ya estaba cobrada — ${p.paciente}" else "Cobrado ${dineroDeFila(p.costo, p.sedeId)} — ${p.paciente}")
+                                            val aviso = if (r.yaEstaba) "Ya estaba cobrada — ${p.paciente}" else "Cobrado ${dineroDeFila(p.costo, p.sedeId)} — ${p.paciente}"
+                                            // Facturación SUNAT activa: «¿Boleta o factura?» de la cita (PorCobrar web).
+                                            if (r.yaEstaba || !pe.saniape.app.ui.clinica.comprobante.FacturacionSunat.ofrecer("cita", p.citaId, aviso)) Toaster.exito(aviso)
                                             recarga++
                                         }
                                         else -> Toaster.error(r.rechazo?.error ?: "No se pudo cobrar")

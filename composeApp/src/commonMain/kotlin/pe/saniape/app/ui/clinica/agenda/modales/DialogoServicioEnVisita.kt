@@ -130,7 +130,9 @@ internal fun DialogoServicioEnVisita(
                         res.errorCobro != null -> Toaster.error("$hecho, pero el cobro no entró: ${res.errorCobro} Cóbralo desde 💰 o la ficha.")
                         res.cobrado > 0 -> {
                             MetodoPagoPreferido.recordar(cita.pacienteId, metodo)
-                            Toaster.exito("$hecho · cobrado ${textoSoles(res.cobrado, moneda)} ($metodo)")
+                            val aviso = "$hecho · cobrado ${textoSoles(res.cobrado, moneda)} ($metodo)"
+                            // Facturación SUNAT activa: la boleta de la visita (origen 'atencion', como la web).
+                            if (!pe.saniape.app.ui.clinica.comprobante.FacturacionSunat.ofrecer("atencion", cita.id, aviso)) Toaster.exito(aviso)
                         }
                         else -> Toaster.exito(hecho)
                     }
