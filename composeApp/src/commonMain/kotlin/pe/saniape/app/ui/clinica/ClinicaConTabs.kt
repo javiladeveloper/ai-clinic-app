@@ -140,7 +140,10 @@ fun ClinicaConTabs(
 
     // Al salir del panel de clínica (al portal, cerrar sesión): nada de recetas pendiente.
     androidx.compose.runtime.DisposableEffect(Unit) {
-        onDispose { pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.reiniciar() }
+        onDispose {
+            pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.reiniciar()
+            pe.saniape.app.ui.clinica.comprobante.FacturacionSunat.reiniciar()
+        }
     }
     LaunchedEffect(intento) {
         cargando = true; error = null
@@ -651,6 +654,9 @@ fun ClinicaConTabs(
     // "📝 Dar receta / indicaciones" tras completar una atención (agenda, ficha,
     // Sesiones): la barra de la oferta y la emisión, para todas las pantallas.
     pe.saniape.app.ui.clinica.recetas.HostRecetaTrasAtencion(contexto, oculta = pantallaCompleta)
+    // 🧾 Boleta / factura SUNAT tras un cobro (add-on de facturación): la oferta y
+    // la hoja de emisión, para todas las pantallas. Sin el add-on no pinta nada.
+    pe.saniape.app.ui.clinica.comprobante.HostFacturacionSunat(contexto)
     // Al navegar (otra pestaña, un módulo de "Más", la ficha del buscador) la oferta
     // de la pantalla anterior ya no corresponde: se descarta (sigue en el menú).
     val claveNavegacion = Triple(tab, hayOverlay, fichaBuscada?.id)
