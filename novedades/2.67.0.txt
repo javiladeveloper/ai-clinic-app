@@ -1,0 +1,6 @@
+Boleta electrónica al cobrar y la bandeja de Sani en la app.
+---
+• Con la facturación activa, al cobrar sale la boleta o factura: emitir, reintentar, ver el PDF y mandarla por WhatsApp.
+• En los pagos se ve si el cobro ya tiene boleta.
+• Más → Sani: las conversaciones del bot, el chat, la ficha del contacto y lo que Sani te trajo en el mes.
+---
