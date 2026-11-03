@@ -132,6 +132,8 @@ fun nombreRubroIndicaciones(rubro: String): String = when (rubro) {
     "pediatria" -> "Pediatría"
     "ginecologia" -> "Ginecología y obstetricia"
     "nutricion" -> "Nutrición"
+    "oftalmologia" -> "Oftalmología"
+    "otorrinolaringologia" -> "Otorrinolaringología"
     else -> rubro.replace('_', ' ').replaceFirstChar { it.uppercase() }
 }
 

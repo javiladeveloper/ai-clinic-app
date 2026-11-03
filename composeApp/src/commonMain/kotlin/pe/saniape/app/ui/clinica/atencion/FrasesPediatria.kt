@@ -72,9 +72,16 @@ private fun lineas(texto: String): List<String> = texto.split('\n').map { it.tri
  * Base + aprendidas (chipsYOpciones de la web): la base se reordena por uso
  * (estable), los bloques de varias líneas ("Examen normal") van primero, y las
  * aprendidas que no están en la base se mezclan con los simples por uso.
+ *
+ * Especialidad ACOTADA (otorrino, oftalmología; 2026-11-03): [ajenas] = frases
+ * base de OTRAS variantes (normalizadas), que no salen como chip aprendido; y
+ * [baseAntes] = lo aprendido va DESPUÉS de la base, sin mezclarse por uso.
  */
-internal fun frasesConBase(base: List<FraseFrecuenteApp>, aprendidas: List<FraseFrecuenteApp>): List<FraseFrecuenteApp> {
-    if (base.isEmpty()) return aprendidas
+internal fun frasesConBase(
+    base: List<FraseFrecuenteApp>, aprendidas: List<FraseFrecuenteApp>,
+    ajenas: Set<String> = emptySet(), baseAntes: Boolean = false,
+): List<FraseFrecuenteApp> {
+    if (base.isEmpty()) return if (ajenas.isEmpty()) aprendidas else aprendidas.filter { normalizarFrase(it.texto) !in ajenas }
     val usos = HashMap<String, Int>()
     for (f in aprendidas) usos[normalizarFrase(f.texto)] = (usos[normalizarFrase(f.texto)] ?: 0) + f.usos
     val baseOrden = base.map { b -> b.copy(usos = if (lineas(b.texto).size > 1) 0 else usos[normalizarFrase(b.texto)] ?: 0) }
@@ -83,9 +90,10 @@ internal fun frasesConBase(base: List<FraseFrecuenteApp>, aprendidas: List<Frase
     val bloques = baseOrden.filter { lineas(it.texto).size > 1 }
     val simples = baseOrden.filter { lineas(it.texto).size <= 1 }
     val enBase = base.flatMap { lineas(it.texto) }.map { normalizarFrase(it) }.toSet()
-    val propias = aprendidas.filter { normalizarFrase(it.texto) !in enBase }
+    val propias = aprendidas.filter { normalizarFrase(it.texto) !in enBase && normalizarFrase(it.texto) !in ajenas }
         .sortedByDescending { it.usos }
         .distinctBy { normalizarFrase(it.texto) }
+    if (baseAntes) return bloques + simples + propias
     val mezcla = (simples + propias).withIndex()
         .sortedWith(compareByDescending<IndexedValue<FraseFrecuenteApp>> { it.value.usos }.thenBy { it.index })
         .map { it.value }

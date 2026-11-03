@@ -75,8 +75,16 @@ import pe.saniape.app.data.staff.FlujoClinica
 import pe.saniape.app.tutoriales.tourAncla
 import pe.saniape.app.data.staff.simboloMoneda
 
-/** Petición de subir un archivo: documento suelto o resultado de una solicitud. */
-data class SubidaDoc(val categoria: String, val solicitudId: String?, val tratamientoId: String? = null)
+/**
+ * Petición de subir un archivo: documento suelto o resultado de una solicitud. [tipo] = el tipo de documento elegido (Audiometría…;
+ * null = sin tipo); [camara] = «📸 Tomar foto». [intento] distingue dos toques iguales
+ * seguidos (si la cámara o el selector se cancelaron, el segundo toque vuelve a abrir).
+ */
+data class SubidaDoc(
+    val categoria: String, val solicitudId: String?, val tratamientoId: String? = null,
+    val tipo: String? = null, val camara: Boolean = false,
+    val intento: Long = kotlin.random.Random.nextLong(),
+)
 
 /** Datos para el modal de completar sesión: la sesión, la anterior (evolución), las técnicas del plan y el tratamiento (para ofrecer agendar la próxima). */
 data class CompletarSesionReq(val ses: SesionFicha, val anterior: SesionFicha?, val tecnicasSugeridas: String?, val trat: TratamientoPaciente)
@@ -810,8 +818,9 @@ private fun PantallaFichaPacienteContenido(
     // Selector de archivo nativo para subir documentos/resultados. Al elegir: sube al
     // bucket privado (vía endpoint) y registra el documento o lo adjunta a la solicitud.
     val pedido = subirDoc
-    val abrirSelector = pe.saniape.app.ui.recordarSelectorArchivo { archivo ->
-        val p = pedido ?: return@recordarSelectorArchivo
+    // Archivo elegido o foto tomada: sube y registra (o adjunta al examen).
+    val alElegir: (pe.saniape.app.ui.ArchivoSeleccionado) -> Unit = alElegir@{ archivo ->
+        val p = pedido ?: return@alElegir
         subirDoc = null
         scope.launch {
             subiendo = true
@@ -829,8 +838,11 @@ private fun PantallaFichaPacienteContenido(
                         pe.saniape.app.data.staff.SolicitudesRepo.registrarResultado(p.solicitudId, null, subido.path)
                         null
                     } else {
+                        // Con tipo: «Audiometría 02-11-2026.jpg» y la categoría del tipo (como la web).
+                        val ext = pe.saniape.app.data.staff.extensionDe(archivo.nombre) ?: subido.tipo.takeIf { it.isNotBlank() }
+                        val (nombre, categoria) = pe.saniape.app.data.staff.nombreYCategoriaDocumento(p.tipo, archivo.nombre, ext)
                         pe.saniape.app.data.staff.SolicitudesRepo.registrarDocumentoDetalle(
-                            paciente.id, archivo.nombre, subido.path, subido.tipo, tratamientoId = p.tratamientoId)
+                            paciente.id, nombre, subido.path, subido.tipo, tratamientoId = p.tratamientoId, categoria = categoria)
                     }
                     if (error == null) pe.saniape.app.ui.Toaster.exito("Documento subido")
                     else pe.saniape.app.ui.Toaster.error(error)
@@ -841,7 +853,9 @@ private fun PantallaFichaPacienteContenido(
             recargar()
         }
     }
-    LaunchedEffect(subirDoc) { if (subirDoc != null) abrirSelector() }
+    val abrirSelector = pe.saniape.app.ui.recordarSelectorArchivo(onElegido = alElegir)
+    val abrirCamara = pe.saniape.app.ui.recordarCamaraFoto(alElegir)
+    LaunchedEffect(subirDoc) { subirDoc?.let { if (it.camara) abrirCamara() else abrirSelector() } }
 
     // = !accesoClinico de la web (app/(app)/pacientes/[id]/page.tsx): sin el permiso
     // 'datos_personales' (Fisios, Médico, Enfermera por defecto) la ficha es CLÍNICA:
@@ -1272,7 +1286,7 @@ private fun PantallaFichaPacienteContenido(
                         }
                         ContenidoExamenes(
                             ctx = ctx, paciente = paciente, acciones = acciones,
-                            onAbrirSubida = { categoria, solId, tratId -> subirDoc = SubidaDoc(categoria, solId, tratId) },
+                            onAbrirSubida = { categoria, solId, tratId, tipo, camara -> subirDoc = SubidaDoc(categoria, solId, tratId, tipo, camara) },
                             recargaToken = recargarToken,
                         )
                     }

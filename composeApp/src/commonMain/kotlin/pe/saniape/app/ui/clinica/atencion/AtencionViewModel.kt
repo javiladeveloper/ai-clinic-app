@@ -112,6 +112,12 @@ class AtencionViewModel(
     var oftalmo by mutableStateOf(false); private set
     /** El examen oftalmológico va en esta atención (oftalmología y no es un procedimiento). */
     val examenOftalmoActivo: Boolean get() = oftalmo && datos?.flags?.esProcedimiento == false
+    /**
+     * OTORRINOLARINGOLOGÍA (atencionEsOtorrino de la web, 2026-11-03): frases
+     * (otoscopía, rinoscopía…), CIE-10 y exámenes del oído, nariz y garganta. La
+     * consulta es la médica de siempre: con vitales, sin examen estructurado.
+     */
+    var otorrino by mutableStateOf(false); private set
     /** Definiciones de las escalas (PHQ-9, GAD-7…). null = cargando o no disponibles. */
     var instrumentos by mutableStateOf<List<InstrumentoPsico>?>(null); private set
     /** Pidiendo las definiciones (la pantalla muestra "Cargando…", no un error). */
@@ -174,6 +180,7 @@ class AtencionViewModel(
                     pediatria = variantes.pediatria
                     gineco = variantes.gineco
                     oftalmo = variantes.oftalmo
+                    otorrino = variantes.otorrino
                     borrador = borradorDesde(d, miTerapeutaId, psiq, oftalmo = variantes.oftalmo && !d.flags.esProcedimiento)
                     if (psiq && instrumentos == null) cargarInstrumentos()
                     if (psiq && certificadoDisponible != true) {

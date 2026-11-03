@@ -164,6 +164,24 @@ object SolicitudesRepo {
     }
 
     /** Documentos clínicos del paciente. */
+    /**
+     * Los tipos de DOCUMENTO activos de la clínica (Configuración → Tipos de
+     * imagen, contexto «documento»: Audiometría, Radiografía…), para elegir al
+     * subir. Como `activosDe('documento')` de la web (useTiposImagen). Vacío =
+     * sin selector (sin tipos, sin red o sin la tabla): se sube como siempre.
+     */
+    suspend fun tiposDocumento(): List<String> = try {
+        Supabase.client.postgrest["tipos_imagen"]
+            .select(Columns.list("nombre, contexto, estado, orden")) {
+                filter { eq("contexto", "documento"); eq("estado", "Activo") }
+                order("orden", Order.ASCENDING)
+                order("nombre", Order.ASCENDING)
+            }
+            .decodeList<JsonObject>()
+            .mapNotNull { it.str("nombre")?.trim()?.takeIf { n -> n.isNotEmpty() } }
+            .distinct()
+    } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { emptyList() }
+
     suspend fun documentosDe(pacienteId: String): List<DocumentoFicha> {
         suspend fun leer(columnas: String) = Supabase.client.postgrest["documentos_paciente"]
             .select(Columns.list(columnas)) {
@@ -313,8 +331,10 @@ object SolicitudesRepo {
     suspend fun registrarDocumentoDetalle(
         pacienteId: String, nombre: String, archivoPath: String, tipo: String,
         tratamientoId: String? = null,
+        /** El tipo elegido al subir (Audiometría…) o «Documento» (lo de siempre). */
+        categoria: String = CATEGORIA_DOCUMENTO,
     ): String? = try {
-        registrarDocumentoInsert(pacienteId, nombre, archivoPath, tipo, tratamientoId)
+        registrarDocumentoInsert(pacienteId, nombre, archivoPath, tipo, tratamientoId, categoria)
         null
     } catch (e: Exception) {
         val m = e.message.orEmpty()
@@ -330,13 +350,14 @@ object SolicitudesRepo {
 
     private suspend fun registrarDocumentoInsert(
         pacienteId: String, nombre: String, archivoPath: String, tipo: String, tratamientoId: String?,
+        categoria: String = CATEGORIA_DOCUMENTO,
     ) {
         Supabase.client.postgrest["documentos_paciente"].insert(buildJsonObject {
             put("paciente_id", pacienteId)
             // Anclado a un tratamiento (null = General). No se manda clinica_id: DEFAULT.
             if (tratamientoId != null) put("tratamiento_id", tratamientoId)
             put("nombre", nombre)
-            put("categoria", "Documento")
+            put("categoria", categoria)
             put("archivo_url", archivoPath)
             put("tipo_archivo", tipo)
         })

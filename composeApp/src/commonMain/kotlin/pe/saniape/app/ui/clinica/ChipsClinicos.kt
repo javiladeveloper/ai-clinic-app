@@ -54,6 +54,12 @@ private val OFTALMO = ChipsEspecialidad(
     sintomas = listOf("Visión borrosa", "Dificultad para leer de cerca", "Ojo rojo", "Ardor", "Picazón", "Lagrimeo", "Sensación de arena", "Dolor ocular", "Dolor de cabeza al leer", "Moscas volantes", "Destellos", "Visión doble", "Sensibilidad a la luz", "Secreción"),
 )
 
+// Otorrinolaringología (2026-11-03): CHIPS_ORL de lib/chipsClinicos.ts (mismos textos que el pool compartido).
+private val ORL = ChipsEspecialidad(
+    tipos = listOf("Otológica", "Hipoacusia", "Vértigo", "Tinnitus", "Rinosinusal", "Rinitis alérgica", "Desviación septal", "Faringoamigdalina", "Laríngea / voz", "Ronquido / apnea", "Epistaxis", "Cuerpo extraño", "Control auditivo"),
+    sintomas = listOf("Dolor de oído", "Oído tapado", "Secreción del oído", "Baja de audición", "Zumbido", "Mareo / vértigo", "Congestión nasal", "Sangrado nasal", "Estornudos", "Dolor de garganta", "Ronquera", "Ronquido", "Dificultad para tragar", "Picazón de oído"),
+)
+
 // Salón de uñas, cejas y pestañas (2026-11-01): CHIPS_BELLEZA de lib/chipsClinicos.ts.
 private val BELLEZA = ChipsEspecialidad(
     tipos = listOf("Manicura", "Pedicura", "Uñas esculpidas", "Nail art", "Cejas", "Pestañas", "Evento especial", "Mantenimiento"),
@@ -72,6 +78,9 @@ internal val CHIPS_POR_ESPECIALIDAD: List<Pair<String, ChipsEspecialidad>> = lis
     // Antes que 'pediatr': "Oftalmología pediátrica" sigue siendo del ojo.
     "oftalm" to OFTALMO,
     "optometr" to OFTALMO,
+    "otorrino" to ORL,
+    "otolaring" to ORL,
+    "audiolog" to ORL,
     // Psicología (2026-10-15): eran 5 y 5. Mismos textos que el pool compartido.
     "psico" to ChipsEspecialidad(
         tipos = listOf("Ansiedad", "Depresión", "Estrés", "Familiar", "Conductual", "Pareja", "Duelo", "Infantil", "Adolescente", "Aprendizaje", "Autoestima"),

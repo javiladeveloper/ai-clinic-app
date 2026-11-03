@@ -1,0 +1,7 @@
+Otorrinolaringología en la app y documentos con tipo.
+---
+• Otorrino: frases de otoscopía, rinoscopía y diapasones, sus diagnósticos CIE-10 y exámenes (audiometría, nasofibroscopía…) en la consulta.
+• Otorrino y oftalmología: lo aprendido en otras especialidades ya no tapa sus frases rápidas.
+• «Niega alergias» o «Ninguna» ya no salen como alerta roja.
+• Exámenes → Documentos: elige el tipo (Audiometría, Radiografía…) y usa «📸 Tomar foto»; el archivo queda como «Audiometría 03-11-2026.jpg».
+---

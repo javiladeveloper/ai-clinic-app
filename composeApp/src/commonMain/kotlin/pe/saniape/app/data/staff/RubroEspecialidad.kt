@@ -14,6 +14,9 @@ internal val PALABRAS_RUBRO: List<Pair<String, List<String>>> = listOf(
     // Oftalmología y optometría (2026-10-30): médicas, como dermatología. Sin
     // esto una "Oftalmología" quedaba sin rubro (gemelo de lib/flujo.ts).
     "medicina_general" to listOf("oftalm", "optometr"),
+    // Otorrinolaringología (2026-11-03): médica (receta, CIE-10, consulta guiada).
+    // La separa de medicina general el nombre (esOtorrino).
+    "medicina_general" to listOf("otorrino", "otolaring", "audiolog"),
     "nutricion" to listOf("nutri"),
     // Psiquiatría es MÉDICA (2026-10-09): antes de psicología para que
     // "Psiquiatría y Psicología" o "Neuropsiquiatría" no caigan en psicología.

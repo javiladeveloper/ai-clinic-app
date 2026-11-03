@@ -60,6 +60,10 @@ fun atencionEsPediatria(esps: List<EspecialidadNombre>, especialidadId: String?)
 fun atencionEsOftalmologia(esps: List<EspecialidadNombre>, especialidadId: String?): Boolean =
     atencionPorNombre(esps, especialidadId, ::esOftalmologia)
 
+/** ¿La atención es de otorrinolaringología? (frases, CIE-10 y exámenes del oído, nariz y garganta; con vitales). */
+fun atencionEsOtorrino(esps: List<EspecialidadNombre>, especialidadId: String?): Boolean =
+    atencionPorNombre(esps, especialidadId, ::esOtorrino)
+
 /** ¿La atención es de ginecología? Por el RUBRO de la especialidad (esGineco de ConsultaGuiada.tsx). */
 fun atencionEsGineco(esps: List<EspecialidadNombre>, especialidadId: String?): Boolean {
     if (!especialidadId.isNullOrBlank()) return esps.firstOrNull { it.id == especialidadId }?.rubro == "ginecologia"
@@ -75,6 +79,11 @@ data class VariantesAtencion(
     val derma: Boolean = false, val pediatria: Boolean = false, val gineco: Boolean = false,
     /** OFTALMOLOGÍA (2026-10-30): no excluye a pediatría ("Oftalmología pediátrica"): las frases van por varianteFrases. */
     val oftalmo: Boolean = false,
+    /**
+     * OTORRINOLARINGOLOGÍA (2026-11-03): como la web, `!oftalmo && atencionEsOtorrino`.
+     * Solo cambia frases, CIE-10 y exámenes; la consulta sigue con sus signos vitales.
+     */
+    val otorrino: Boolean = false,
 )
 
 /**
@@ -86,10 +95,12 @@ fun variantesAtencion(esps: List<EspecialidadNombre>, flags: FlagsConsulta, psiq
     if (flags.dental || psiq) return VariantesAtencion()
     if (esps.isEmpty()) return VariantesAtencion(derma = flags.derma == true, pediatria = flags.pediatria == true)
     if (atencionEsGineco(esps, flags.especialidadId)) return VariantesAtencion(gineco = true)
+    val oftalmo = atencionEsOftalmologia(esps, flags.especialidadId)
     return VariantesAtencion(
         derma = atencionEsDermatologia(esps, flags.especialidadId),
         pediatria = atencionEsPediatria(esps, flags.especialidadId),
-        oftalmo = atencionEsOftalmologia(esps, flags.especialidadId),
+        oftalmo = oftalmo,
+        otorrino = !oftalmo && atencionEsOtorrino(esps, flags.especialidadId),
     )
 }
 
@@ -132,11 +143,13 @@ val FRECUENTES_DERMATOLOGIA: List<Pair<String, String>> = listOf(
  * al servidor (medicina, odontología y psiquiatría ya los manda; dermatología,
  * un servidor viejo no la conoce, por eso viaja en la app).
  */
-fun frecuentesCie10Locales(dental: Boolean, psiq: Boolean, derma: Boolean, oftalmo: Boolean = false): List<DiagnosticoCie>? = when {
+fun frecuentesCie10Locales(dental: Boolean, psiq: Boolean, derma: Boolean, oftalmo: Boolean = false, otorrino: Boolean = false): List<DiagnosticoCie>? = when {
     dental || psiq -> null
     derma -> FRECUENTES_DERMATOLOGIA.map { (c, d) -> DiagnosticoCie(codigo = c, descripcion = d) }
     // Oftalmología (2026-10-30): FRECUENTES_OFTALMOLOGIA viaja en la app (un servidor viejo no la conoce).
     oftalmo -> FRECUENTES_OFTALMOLOGIA.map { (c, d) -> DiagnosticoCie(codigo = c, descripcion = d) }
+    // Otorrinolaringología (2026-11-03): FRECUENTES_OTORRINO, también en la app.
+    otorrino -> FRECUENTES_OTORRINO.map { (c, d) -> DiagnosticoCie(codigo = c, descripcion = d) }
     else -> null
 }
 
@@ -146,11 +159,15 @@ fun frecuentesCie10Locales(dental: Boolean, psiq: Boolean, derma: Boolean, oftal
  * faringitis aguda". Gana el primero que aplica, como los frecuentes.
  * Devuelve (código, palabras).
  */
-fun ejemploCie10(dental: Boolean = false, gineco: Boolean = false, psiq: Boolean = false, derma: Boolean = false, oftalmo: Boolean = false): Pair<String, String> = when {
+fun ejemploCie10(
+    dental: Boolean = false, gineco: Boolean = false, psiq: Boolean = false, derma: Boolean = false,
+    oftalmo: Boolean = false, otorrino: Boolean = false,
+): Pair<String, String> = when {
     dental -> "K02.1" to "caries de la dentina"
     gineco -> "N76.0" to "vaginitis aguda"
     psiq -> "F41.1" to "ansiedad generalizada"
     derma -> "L70.0" to "acné vulgar"
     oftalmo -> "H52.4" to "presbicia"
+    otorrino -> "H61.2" to "cerumen impactado"
     else -> "J06.9" to "faringitis aguda"
 }
