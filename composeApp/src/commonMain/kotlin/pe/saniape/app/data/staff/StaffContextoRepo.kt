@@ -54,6 +54,7 @@ object StaffContextoRepo {
         ajustes = o?.bool("ajustes") ?: false,
         reportes = o?.bool("reportes") ?: false,
         marketing = o?.bool("marketing") ?: false,
+        sani = o?.bool("sani") ?: false,
         datosPersonales = o?.bool("datos_personales") ?: false,
         // Ausente → true: un backend viejo no le quita lo clínico a nadie.
         historiaClinica = o?.boolOrNull("historia_clinica") ?: true,

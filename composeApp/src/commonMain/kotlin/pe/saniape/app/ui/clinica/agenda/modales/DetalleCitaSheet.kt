@@ -142,6 +142,20 @@ fun DetalleCitaSheet(
                 if (puedeVerCosto && (cita.costo ?: 0.0) > 0) {
                     Dato("Costo", textoSoles(cita.costo ?: 0.0, monedaDeFila(cita.sedeId)))
                 }
+                // 🧾 Boleta/factura SUNAT de la cita cobrada (add-on de facturación; como
+                // /citas web con la ficha abierta). `activa` ya implica el permiso de pagos.
+                if (pe.saniape.app.ui.clinica.comprobante.FacturacionSunat.activa &&
+                    pe.saniape.app.data.staff.ofreceComprobanteCita(cita.tipo, cita.costo, cita.pagadaAt, cita.estado, puedePagos = true)
+                ) {
+                    androidx.compose.foundation.layout.Row(
+                        Modifier.fillMaxWidth().padding(top = 6.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        Text("SUNAT", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(72.dp))
+                        pe.saniape.app.ui.clinica.comprobante.ChipSunat("cita", cita.id)
+                    }
+                }
 
                 atencionDirecta?.let { (texto, resaltado) ->
                     val color = if (resaltado) c.pend else c.navy

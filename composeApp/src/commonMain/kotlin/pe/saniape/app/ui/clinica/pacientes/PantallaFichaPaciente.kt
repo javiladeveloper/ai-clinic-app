@@ -1815,7 +1815,7 @@ private fun PantallaFichaPacienteContenido(
                         val okPago = PacientesRepo.registrarPago(
                             t.id, pago.first, pago.second, "Pago de la sesión del $fecha")
                         if (okPago) pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(paciente.id, pago.second)
-                        if (okPago) pe.saniape.app.ui.Toaster.exito("Pago registrado (${pago.second})")
+                        if (okPago) pe.saniape.app.ui.clinica.comprobante.ofrecerPagoSunat("Pago registrado (${pago.second})", t.id, pago.first)
                         else pe.saniape.app.ui.Toaster.error("La sesión se creó pero el PAGO no se registró — usa la sección Pagos")
                     }
                     recargar()
@@ -2179,7 +2179,7 @@ private fun PantallaFichaPacienteContenido(
                         val rPago = PacientesRepo.cobrarSesionDetalle(req.trat.id, ses.id, pago.first, pago.second, null)
                         if (rPago.registrada) {
                             pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(paciente.id, pago.second)
-                            if (!rPago.encolada) pe.saniape.app.ui.Toaster.exito("Pago registrado (${pago.second})")
+                            if (!rPago.encolada) pe.saniape.app.ui.clinica.comprobante.ofrecerPagoSunat("Pago registrado (${pago.second})", req.trat.id, pago.first, ses.id)
                         } else {
                             cobroFallido = CobroFallido(req.trat.id, ses.id, ses.numero, pago.first, pago.second, rPago.rechazo?.error)
                         }
@@ -2265,7 +2265,7 @@ private fun PantallaFichaPacienteContenido(
                     if (r.registrada) {
                         pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(paciente.id, cf.metodo)
                         cobroFallido = null
-                        if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Pago registrado (${cf.metodo})")
+                        if (!r.encolada) pe.saniape.app.ui.clinica.comprobante.ofrecerPagoSunat("Pago registrado (${cf.metodo})", cf.tratamientoId, cf.monto, cf.sesionId)
                         recargar()
                     } else {
                         cobroFallido = cf.copy(motivo = r.rechazo?.error ?: cf.motivo)

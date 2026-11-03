@@ -220,6 +220,8 @@ fun FilaPagoAgrupado(
     esAdmin: Boolean,
     soloLectura: Boolean,
     onCambio: () -> Unit,
+    /** 🧾 Boleta/factura SUNAT del pago (con la facturación activa); null = nada. */
+    chipSunat: (@Composable () -> Unit)? = null,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val tpl = LocalTerminologiaPaciente.current
@@ -270,6 +272,7 @@ fun FilaPagoAgrupado(
             Column(horizontalAlignment = Alignment.End) {
                 Text("= ${formatearDinero(g.monto, moneda)}", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Text(g.fecha, color = c.textoSuave, fontSize = 10.sp)
+                chipSunat?.let { Spacer(Modifier.height(2.dp)); it() }
             }
             if (esAdmin && !soloLectura) {
                 // Un solo ⋯ (como la fila de un pago simple): ✏ Editar (la parte de saldo,

@@ -400,8 +400,14 @@ private fun CierrePuntual(
                 Text("Cobrado ${dineroActivo(cobrado)} · $metodo", color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    BotonRecibo("🧾 Recibo A4", Modifier.weight(1f)) { recibo("a4") }
-                    BotonRecibo("🎫 Ticket", Modifier.weight(1f)) { recibo("ticket") }
+                    // Facturación electrónica activa: la boleta/factura SUNAT reemplaza al recibo (como la web).
+                    if (pe.saniape.app.ui.clinica.comprobante.FacturacionSunat.activa) {
+                        BotonRecibo("🧾 Boleta", Modifier.weight(1f)) { pe.saniape.app.ui.clinica.comprobante.FacturacionSunat.abrir("atencion", citaId, "03") }
+                        BotonRecibo("🏢 Factura", Modifier.weight(1f)) { pe.saniape.app.ui.clinica.comprobante.FacturacionSunat.abrir("atencion", citaId, "01") }
+                    } else {
+                        BotonRecibo("🧾 Recibo A4", Modifier.weight(1f)) { recibo("a4") }
+                        BotonRecibo("🎫 Ticket", Modifier.weight(1f)) { recibo("ticket") }
+                    }
                 }
             }
         }

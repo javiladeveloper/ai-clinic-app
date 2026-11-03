@@ -203,7 +203,9 @@ fun PantallaAtencionDirecta(
             r.yaEstaba -> Toaster.info("Atención registrada. Esta cita ya estaba cobrada: no se cobró de nuevo")
             else -> {
                 MetodoPagoPreferido.recordar(ci.pacienteId, metodo.value)
-                Toaster.exito("${if (conEvo) "Atención registrada" else "Cita completada"} · cobrado ${textoSoles(valorMonto, moneda)} (${metodo.value})")
+                val aviso = "${if (conEvo) "Atención registrada" else "Cita completada"} · cobrado ${textoSoles(valorMonto, moneda)} (${metodo.value})"
+                // Facturación SUNAT activa: «¿Boleta o factura?» de esta cita (AtenderRapido web).
+                if (!pe.saniape.app.ui.clinica.comprobante.FacturacionSunat.ofrecer("cita", ci.id, aviso)) Toaster.exito(aviso)
             }
         }
     }

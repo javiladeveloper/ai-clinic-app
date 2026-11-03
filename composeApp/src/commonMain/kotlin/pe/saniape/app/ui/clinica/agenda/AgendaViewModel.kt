@@ -1310,7 +1310,8 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         val numero = vinculo.second ?: cita.numeroSesion ?: 0
         if (r.registrada) {
             pe.saniape.app.data.staff.MetodoPagoPreferido.recordar(cita.pacienteId, metodo)
-            if (!r.encolada) pe.saniape.app.ui.Toaster.exito("Pago registrado ($metodo)")
+            // Con la facturación SUNAT activa, el aviso trae «¿Boleta o factura?» del pago.
+            if (!r.encolada) pe.saniape.app.ui.clinica.comprobante.ofrecerPagoSunat("Pago registrado ($metodo)", tratamientoId, monto, vinculo.first)
             return numero to null
         }
         return numero to (r.rechazo?.error ?: "no se pudo registrar")
@@ -1661,14 +1662,18 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             if (r.registrada) {
                 // Encolada: enviarOEncolar ya avisó "se registrará al volver la señal".
                 if (!r.encolada) {
-                    pe.saniape.app.ui.Toaster.exito(
-                        pe.saniape.app.ui.clinica.atencion.textoCobrado(
-                            flujoDe(cita).nombreTipo(cita.tipo),
-                            pe.saniape.app.ui.clinica.agenda.modales.textoSoles(costoAcordado ?: cita.costo ?: 0.0, pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)),
-                            // Bugs caja 2026-10-08: "fechado el…" solo si no es HOY (de la sede activa).
-                            modo, fecha, hoyIso(), pagos, r.yaEstaba,
-                        )
+                    val aviso = pe.saniape.app.ui.clinica.atencion.textoCobrado(
+                        flujoDe(cita).nombreTipo(cita.tipo),
+                        pe.saniape.app.ui.clinica.agenda.modales.textoSoles(costoAcordado ?: cita.costo ?: 0.0, pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)),
+                        // Bugs caja 2026-10-08: "fechado el…" solo si no es HOY (de la sede activa).
+                        modo, fecha, hoyIso(), pagos, r.yaEstaba,
                     )
+                    // Facturación SUNAT activa: el aviso ofrece la boleta/factura de la
+                    // cita (como `ofrecerRecibo('cita', …)` de /citas web). Gratis o ya
+                    // cobrada: no hay nada que facturar, el toast de siempre.
+                    if (modo == "gratis" || r.yaEstaba || !pe.saniape.app.ui.clinica.comprobante.FacturacionSunat.ofrecer("cita", cita.id, aviso)) {
+                        pe.saniape.app.ui.Toaster.exito(aviso)
+                    }
                 }
                 recargarCitas()
                 recargarBanners()

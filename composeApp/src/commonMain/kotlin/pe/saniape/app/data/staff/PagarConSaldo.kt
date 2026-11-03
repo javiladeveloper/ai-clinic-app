@@ -419,7 +419,11 @@ sealed class ConsultaSaldo {
 
 /** Resultado del pago con saldo. */
 sealed class ResultadoPagoSaldo {
-    data class Ok(val saldoAplicado: Double, val estadoPago: String?) : ResultadoPagoSaldo()
+    data class Ok(
+        val saldoAplicado: Double, val estadoPago: String?,
+        /** Las partes creadas (`pagoIds` del servidor): la boleta SUNAT va por la de id menor. */
+        val pagoIds: List<String> = emptyList(),
+    ) : ResultadoPagoSaldo()
     data class Rechazo(val mensaje: String, val rechazo: RechazoServidor) : ResultadoPagoSaldo()
     /** Sin respuesta (sin señal o timeout): pudo haber entrado. La clave se conserva. */
     data object SinRed : ResultadoPagoSaldo()
@@ -483,6 +487,7 @@ object PagarConSaldoRepo {
                 ResultadoPagoSaldo.Ok(
                     saldoAplicado = respuesta?.numero("saldoAplicado") ?: 0.0,
                     estadoPago = respuesta?.texto("estadoPago"),
+                    pagoIds = FacturacionSunatRepo.pagoIdsDe(respuesta),
                 )
             }
             ResultadoEnvio.SIN_RED -> ResultadoPagoSaldo.SinRed

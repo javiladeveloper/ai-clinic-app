@@ -44,6 +44,12 @@ import pe.saniape.app.ui.theme.tocable
  */
 @Composable
 fun DialogoComprobante(tipo: String, id: String, onCerrar: () -> Unit) {
+    // Facturación electrónica activa: hay UN comprobante, la boleta/factura SUNAT
+    // (abre su hoja: el emitido o la emisión), como `elegirRecibo` de la web.
+    if (FacturacionSunat.activa) {
+        androidx.compose.runtime.LaunchedEffect(tipo, id) { FacturacionSunat.abrir(tipo, id); onCerrar() }
+        return
+    }
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     val acciones = recordarAcciones()

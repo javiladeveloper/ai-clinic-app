@@ -439,7 +439,11 @@ private fun BloqueCobro(vm: AtencionViewModel, d: DatosConsultaApp, ctx: Context
                             abierto = false
                             val cobrado = acordado?.let { textoSoles(it, moneda) } ?: monto
                             // Encolada: enviarOEncolar ya avisó "se registrará al volver la señal".
-                            if (!r.encolada) Toaster.exito(textoCobrado(nombreTipo, cobrado, modo, fecha, pe.saniape.app.data.staff.hoyClinicaIso(), pagos, r.yaEstaba))
+                            if (!r.encolada) {
+                                val aviso = textoCobrado(nombreTipo, cobrado, modo, fecha, pe.saniape.app.data.staff.hoyClinicaIso(), pagos, r.yaEstaba)
+                                // Facturación SUNAT activa: «¿Boleta o factura?» de esta cita.
+                                if (modo == "gratis" || r.yaEstaba || !pe.saniape.app.ui.clinica.comprobante.FacturacionSunat.ofrecer("cita", cita.id, aviso)) Toaster.exito(aviso)
+                            }
                             vm.recargar()
                         } else {
                             r.rechazo?.let { Toaster.error(pe.saniape.app.data.staff.mensajeRechazoCobro(it, pagos != null)) }

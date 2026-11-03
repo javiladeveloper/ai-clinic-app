@@ -103,6 +103,9 @@ fun ClinicaConTabs(
     // Sub-pantallas accesibles desde "Más" (módulos sin tab propio).
     var verSesiones by remember { mutableStateOf(false) }
     var verCaja by remember { mutableStateOf(false) }
+    // 🤖 Bandeja de Sani: la entrada solo aparece si la clínica tiene Sani (leadai_activo).
+    var verSani by remember { mutableStateOf(false) }
+    var saniActivo by remember { mutableStateOf(false) }
     var verFinanzas by remember { mutableStateOf(false) }
     var verEspecialidades by remember { mutableStateOf(false) }
     // Reportes es UNA puerta con tres pestañas (como la web); null = cerrado.
@@ -140,7 +143,10 @@ fun ClinicaConTabs(
 
     // Al salir del panel de clínica (al portal, cerrar sesión): nada de recetas pendiente.
     androidx.compose.runtime.DisposableEffect(Unit) {
-        onDispose { pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.reiniciar() }
+        onDispose {
+            pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.reiniciar()
+            pe.saniape.app.ui.clinica.comprobante.FacturacionSunat.reiniciar()
+        }
     }
     LaunchedEffect(intento) {
         cargando = true; error = null
@@ -180,9 +186,10 @@ fun ClinicaConTabs(
 
     // Con un flujo a pantalla completa abierto, el "atrás" es de ese flujo (tiene
     // su propio ManejarAtras, con la confirmación de salir sin guardar).
-    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verEspecialidades || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verPresupuestos || verCampanias || verActividad || verMiPlan || verMiCalendario || verAjustes || horarioDe != null || tab != TabClinica.Inicio)) {
+    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verSani || verEspecialidades || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verPresupuestos || verCampanias || verActividad || verMiPlan || verMiCalendario || verAjustes || horarioDe != null || tab != TabClinica.Inicio)) {
         when {
             verPresupuestos -> verPresupuestos = false
+            verSani -> verSani = false
             verRetencion -> verRetencion = false
             verCampanias -> verCampanias = false
             verActividad -> verActividad = false
@@ -268,7 +275,7 @@ fun ClinicaConTabs(
     val verPacientes = contexto.puede("pacientes") || contexto.modoClinico
 
     fun cerrarOverlays() {
-        verSesiones = false; verCaja = false; verEspecialidades = false
+        verSesiones = false; verCaja = false; verEspecialidades = false; verSani = false
         verFinanzas = false
         verProfesionales = false; horarioDe = null
         vistaReportes = null
@@ -313,7 +320,13 @@ fun ClinicaConTabs(
         urlPagina = pe.saniape.app.data.staff.OnboardingRepo.slugClinica(contexto.clinicaId)
             ?.let { pe.saniape.app.data.staff.urlPaginaClinica(it) }
     }
-    val hayOverlay = verSesiones || verCaja || verEspecialidades || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verPresupuestos || verCampanias || verActividad || verMiPlan || verMiCalendario || verAjustes || horarioDe != null
+    // Sani: mismo criterio que el menú de la web (leadai_activo + permiso). Las
+    // conversaciones son del permiso 'sani' (marketing solo no las atiende: la web
+    // le muestra un aviso), así que la entrada pide 'sani'.
+    LaunchedEffect(contexto.clinicaId, contexto.puede("sani")) {
+        saniActivo = contexto.puede("sani") && pe.saniape.app.data.staff.SaniBandejaRepo.leadaiActivo(contexto.clinicaId)
+    }
+    val hayOverlay = verSani || verSesiones || verCaja || verEspecialidades || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verPresupuestos || verCampanias || verActividad || verMiPlan || verMiCalendario || verAjustes || horarioDe != null
     val tabs = buildList {
         add(TabClinica.Inicio)
         if (verAgenda) add(TabClinica.Agenda)
@@ -394,6 +407,7 @@ fun ClinicaConTabs(
                         onCambioClinica = { pe.saniape.app.data.staff.DashboardRepo.limpiarCache(); pe.saniape.app.data.staff.OdontogramaRepo.limpiarCache(); pe.saniape.app.data.staff.FotosRepo.limpiarCache(); pe.saniape.app.data.staff.ChipsRepo.limpiar(); pe.saniape.app.data.staff.FrasesCampoRepo.limpiar(); tab = TabClinica.Inicio; intento++ },
                         onAbrirSesiones = if (contexto.puede("sesiones")) ({ verSesiones = true }) else null,
                         onAbrirCaja = if (contexto.puede("pagos")) ({ verCaja = true }) else null,
+                        onAbrirSani = if (saniActivo) ({ verSani = true }) else null,
                         // 🧾 Presupuestos pendientes: mismo permiso que ver presupuestos (el plan lo muestra la pantalla).
                         onAbrirPresupuestos = if (pe.saniape.app.data.staff.puedeVerPresupuestos { contexto.puede(it) }) ({ verPresupuestos = true }) else null,
                         // Nativo (crear + asistente). Mismo permiso que /api/staff/especialidad/*.
@@ -448,6 +462,24 @@ fun ClinicaConTabs(
             ) {
                 Box(Modifier.fillMaxSize().background(c.fondo)) {
                     pe.saniape.app.tutoriales.PantallaTutorial("Caja") { PantallaCajaHoy(ctx = contexto) }
+                }
+            }
+            AnimatedVisibility(
+                visible = verSani && saniActivo,
+                enter = entrarDetalle(), exit = salirDetalle(),
+            ) {
+                Box(Modifier.fillMaxSize().background(c.fondo)) {
+                    val alcanceSani = androidx.compose.runtime.rememberCoroutineScope()
+                    pe.saniape.app.ui.clinica.sani.PantallaBandejaSani(
+                        ctx = contexto, onSalir = { verSani = false },
+                        // La ficha vinculada se abre encima (la misma capa del buscador).
+                        onAbrirPaciente = if (verPacientes) ({ id ->
+                            alcanceSani.launch {
+                                val pac = runCatching { pe.saniape.app.data.staff.PacientesRepo.porId(id) }.getOrNull()
+                                if (pac == null) pe.saniape.app.ui.Toaster.error("No se pudo abrir la ficha") else fichaBuscada = pac
+                            }
+                        }) else null,
+                    )
                 }
             }
             AnimatedVisibility(
@@ -651,6 +683,9 @@ fun ClinicaConTabs(
     // "📝 Dar receta / indicaciones" tras completar una atención (agenda, ficha,
     // Sesiones): la barra de la oferta y la emisión, para todas las pantallas.
     pe.saniape.app.ui.clinica.recetas.HostRecetaTrasAtencion(contexto, oculta = pantallaCompleta)
+    // 🧾 Boleta / factura SUNAT tras un cobro (add-on de facturación): la oferta y
+    // la hoja de emisión, para todas las pantallas. Sin el add-on no pinta nada.
+    pe.saniape.app.ui.clinica.comprobante.HostFacturacionSunat(contexto)
     // Al navegar (otra pestaña, un módulo de "Más", la ficha del buscador) la oferta
     // de la pantalla anterior ya no corresponde: se descarta (sigue en el menú).
     val claveNavegacion = Triple(tab, hayOverlay, fichaBuscada?.id)
