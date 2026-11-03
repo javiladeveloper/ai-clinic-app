@@ -529,7 +529,11 @@ private fun FilaEstado(d: DatosConsultaApp, soloLectura: Boolean, guardando: Boo
     }
 }
 
-/** Alergias (en rojo), antecedentes y medicación actual: lo que se ve de un vistazo. */
+/**
+ * Alergias (en rojo), antecedentes y medicación actual: lo que se ve de un vistazo.
+ * Lo negativo («Niega alergias», «Ninguna», «NKDA»…) se muestra como dato, sin
+ * la alerta roja (hayAlergia, como la web).
+ */
 @Composable
 private fun FranjaPaciente(d: DatosConsultaApp) {
     val c = Sania.colors
@@ -540,7 +544,10 @@ private fun FranjaPaciente(d: DatosConsultaApp) {
     if (alergias == null && antecedentes == null && medicacion == null) return
     Spacer(Modifier.height(Sania.dim.sm))
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        alergias?.let { Aviso("⚠ Alergias: $it", c.error, c.errorBg, negrita = true) }
+        alergias?.let {
+            if (pe.saniape.app.data.staff.hayAlergia(it)) Aviso("⚠ Alergias: $it", c.error, c.errorBg, negrita = true)
+            else Aviso("Alergias: $it", c.texto, c.infoBg)
+        }
         antecedentes?.let { Aviso("Antecedentes: $it", c.texto, c.pendBg) }
         medicacion?.let { Aviso("Medicación actual: $it", c.texto, c.pendBg) }
     }

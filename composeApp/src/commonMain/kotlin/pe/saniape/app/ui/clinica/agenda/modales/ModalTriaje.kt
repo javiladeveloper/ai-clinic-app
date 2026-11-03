@@ -127,7 +127,8 @@ fun ModalTriaje(
                     color = c.texto, fontSize = 12.sp)
             }
         }
-        d.alergias?.let { al ->
+        // «Niega alergias», «Ninguna»… no son alerta (hayAlergia, como la web).
+        d.alergias?.takeIf { pe.saniape.app.data.staff.hayAlergia(it) }?.let { al ->
             Spacer(Modifier.height(8.dp))
             Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.errorBg)
                 .padding(horizontal = 12.dp, vertical = 7.dp)) {

@@ -253,7 +253,8 @@ private fun FiliacionHc(d: DatosFiliacionHc) {
     d.ipress?.let { TextoSuave(it) }
     Spacer(Modifier.height(6.dp))
     d.filas.forEach { FilaPar(it) }
-    d.alergias?.takeIf { it.isNotBlank() }?.let { FilaPar(ParHc("Alergias", it, alerta = true)) }
+    // Lo negativo («Niega alergias») es dato, no alerta (hayAlergia, como la web).
+    d.alergias?.takeIf { it.isNotBlank() }?.let { FilaPar(ParHc("Alergias", it, alerta = pe.saniape.app.data.staff.hayAlergia(it))) }
 }
 
 @Composable
