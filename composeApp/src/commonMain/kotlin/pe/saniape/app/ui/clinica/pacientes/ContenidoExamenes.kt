@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -57,8 +59,12 @@ fun ContenidoExamenes(
     ctx: ContextoStaff,
     paciente: pe.saniape.app.data.staff.PacienteStaff,
     acciones: AccionesNativas,
-    /** tratamientoId: al que se ancla el documento (null = General / resultado de examen). */
-    onAbrirSubida: (categoria: String, solicitudId: String?, tratamientoId: String?) -> Unit,
+    /**
+     * tratamientoId: al que se ancla el documento (null = General / resultado de examen).
+     * tipo: el tipo de documento elegido (Audiometría…; null = sin tipo, como siempre).
+     * camara: true = «📸 Tomar foto» (abre la cámara en vez del selector de archivos).
+     */
+    onAbrirSubida: (categoria: String, solicitudId: String?, tratamientoId: String?, tipo: String?, camara: Boolean) -> Unit,
     recargaToken: Int,
 ) {
     val c = Sania.colors
@@ -79,6 +85,13 @@ fun ContenidoExamenes(
     var borrarDocumento by remember { mutableStateOf<DocumentoFicha?>(null) }
     // "+ Subir" con tratamientos: primero se elige a cuál se ancla el documento.
     var eligiendoTratamiento by remember { mutableStateOf(false) }
+    // …y si después va la cámara («📸 Tomar foto») o el selector de archivos.
+    var camaraPendiente by remember { mutableStateOf(false) }
+    // Tipo del documento (2026-11-03, clínica de otorrino: «tomarle foto al
+    // audiograma»): los tipos de DOCUMENTO de la clínica. El elegido pasa a ser
+    // la categoría y el nombre («Audiometría 02-11-2026.jpg»). Sin tipos, como siempre.
+    var tiposDoc by remember { mutableStateOf<List<String>>(emptyList()) }
+    var tipoDoc by remember { mutableStateOf("") }
     // Tratamientos de la ficha (los activos primero) → nombre para agrupar y elegir.
     val tratamientosDoc = remember(paciente.tratamientos) {
         // Fuera solo los Eliminados (como la web); un Cancelado puede tener documentos.
@@ -101,6 +114,15 @@ fun ContenidoExamenes(
     LaunchedEffect(pacienteId, recargaToken) {
         especialidades = runCatching { PacientesRepo.especialidadesClinica() }.getOrDefault(emptyList())
         recargar()
+    }
+    // El catálogo de tipos casi no cambia: una vez por ficha.
+    LaunchedEffect(Unit) { tiposDoc = SolicitudesRepo.tiposDocumento() }
+
+    /** Abre la subida (archivo o cámara); con tratamientos, antes se elige a cuál va. */
+    fun subirDocumento(camara: Boolean) {
+        val tipo = tipoDoc.takeIf { it in tiposDoc }
+        if (tratamientosDoc.isEmpty()) onAbrirSubida(pe.saniape.app.data.staff.CATEGORIA_DOCUMENTO, null, null, tipo, camara)
+        else { camaraPendiente = camara; eligiendoTratamiento = true }
     }
 
     val examenes = solicitudes?.filter { it.tipo == "Examen" } ?: emptyList()
@@ -137,10 +159,7 @@ fun ContenidoExamenes(
             titulo = "📎 Documentos del ${LocalTerminologiaPaciente.current.paciente}",
             subtitulo = "Resultados de laboratorio, informes, radiografías, recetas escaneadas. PDF o imagen.",
             habilitado = true, botonTexto = "+ Subir",
-            onNuevo = {
-                if (tratamientosDoc.isEmpty()) onAbrirSubida("Documento", null, null)
-                else eligiendoTratamiento = true
-            },
+            onNuevo = { subirDocumento(camara = false) },
             cargando = documentos == null, vacio = (documentos ?: emptyList()).isEmpty(),
             textoVacio = "Sin documentos subidos.",
             textoBloqueado = "",
@@ -152,6 +171,13 @@ fun ContenidoExamenes(
                 )
                 val usado = espacioUsado
                 if (limiteMb != null && usado != null) BarraEspacioDocumentos(usado, limiteMb)
+                if (tiposDoc.isNotEmpty()) SelectorTipoDocumento(tiposDoc, tipoDoc) { tipoDoc = it }
+                // «📸 Tomar foto»: el audiograma, la receta o el informe en papel, directo de la cámara.
+                Box(
+                    Modifier.padding(bottom = 10.dp).clip(RoundedCornerShape(Sania.shape.pill.dp))
+                        .border(1.5.dp, c.navy, RoundedCornerShape(Sania.shape.pill.dp))
+                        .clickable { subirDocumento(camara = true) }.padding(horizontal = 12.dp, vertical = 6.dp),
+                ) { Text("📸 Tomar foto", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
             },
         ) {
             // Por tratamiento → categoría; lo que no tiene tratamiento, en "General".
@@ -162,7 +188,8 @@ fun ContenidoExamenes(
                 Text(g.titulo, color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = 4.dp, bottom = 4.dp))
             }
-            g.categorias.forEach { (categoria, docsCat) -> if (conTitulos) {
+            // Con tipo (Audiometría…) el rótulo se ve aunque sea el único grupo (como la web).
+            g.categorias.forEach { (categoria, docsCat) -> if (conTitulos || categoria != pe.saniape.app.data.staff.CATEGORIA_DOCUMENTO) {
                 Text(categoria.uppercase(), color = c.textoSuave, fontSize = 9.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(bottom = 4.dp))
             }
@@ -257,7 +284,7 @@ fun ContenidoExamenes(
             onCancelar = { eligiendoTratamiento = false },
             onElegir = { tratId ->
                 eligiendoTratamiento = false
-                onAbrirSubida("Documento", null, tratId)
+                onAbrirSubida(pe.saniape.app.data.staff.CATEGORIA_DOCUMENTO, null, tratId, tipoDoc.takeIf { it in tiposDoc }, camaraPendiente)
             },
         )
     }
@@ -287,7 +314,7 @@ fun ContenidoExamenes(
         ModalResultado(
             solicitud = s,
             onCancelar = { resultadoDe = null },
-            onSubirArchivo = { onAbrirSubida("Resultado", s.id, null) },
+            onSubirArchivo = { onAbrirSubida("Resultado", s.id, null, null, false) },
             onGuardar = { nota ->
                 resultadoDe = null
                 scope.launch {
@@ -297,6 +324,37 @@ fun ContenidoExamenes(
                 }
             },
         )
+    }
+}
+
+/**
+ * «Tipo:» con un chip por tipo de documento de la clínica (el select de
+ * ExamenesDerivaciones.tsx). «Documento» = sin tipo (nombre del archivo, como
+ * siempre). FlowRow, no LazyRow: son pocos y así se ven todos.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SelectorTipoDocumento(tipos: List<String>, elegido: String, onElegir: (String) -> Unit) {
+    val c = Sania.colors
+    Text("¿Qué examen o documento es?", color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(bottom = 6.dp))
+    FlowRow(
+        Modifier.fillMaxWidth().padding(bottom = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        (listOf("") + tipos).forEach { t ->
+            val activo = t == elegido || (t.isEmpty() && elegido !in tipos)
+            Box(
+                Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+                    .background(if (activo) c.navy else c.chipBg)
+                    .semantics { role = Role.RadioButton; contentDescription = "Tipo: ${t.ifEmpty { "documento" }}" }
+                    .clickable { onElegir(t) }.padding(horizontal = 10.dp, vertical = 5.dp),
+            ) {
+                Text(t.ifEmpty { "Documento" }, color = if (activo) c.sobreNavy else c.texto, fontSize = 12.sp,
+                    fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal)
+            }
+        }
     }
 }
 
