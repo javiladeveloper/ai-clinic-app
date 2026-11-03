@@ -78,17 +78,18 @@ internal fun PasoMotivo(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura:
         CampoTextoClinico(
             label = "Motivo de consulta",
             valor = t["motivo_consulta"].orEmpty(), onChange = { vm.texto("motivo_consulta", it) },
-            frases = frasesDe(d, "motivo", vm.pediatria, vm.derma, vm.oftalmo), soloLectura = soloLectura, minLineas = 2,
+            frases = frasesDe(d, "motivo", vm.pediatria, vm.derma, vm.oftalmo, vm.otorrino), soloLectura = soloLectura, minLineas = 2,
             placeholder = when {
                 dental -> "Ej. Dolor dental al masticar"
                 vm.oftalmo -> "Ej. Ve borroso de cerca, le cuesta leer"
+                vm.otorrino -> "Ej. Oído tapado y zumbido desde hace 1 semana"
                 else -> "Ej. Dolor de garganta y fiebre"
             },
         )
         CampoTextoClinico(
             label = if (dental) "Tiempo de enfermedad (opcional)" else "Tiempo de enfermedad",
             valor = t["tiempo_enfermedad"].orEmpty(), onChange = { vm.texto("tiempo_enfermedad", it) },
-            frases = frasesDe(d, "tiempo", vm.pediatria, vm.derma, vm.oftalmo), soloLectura = soloLectura, minLineas = 1,
+            frases = frasesDe(d, "tiempo", vm.pediatria, vm.derma, vm.oftalmo, vm.otorrino), soloLectura = soloLectura, minLineas = 1,
             placeholder = "Ej. 3 días · inicio brusco · curso progresivo",
         )
         CampoTextoClinico(
@@ -210,10 +211,11 @@ internal fun PasoExamen(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura:
                 dental -> "Examen clínico estomatológico (extra e intraoral)"
                 psiq -> "Examen físico (opcional)"
                 oftalmo -> "Otros hallazgos del examen (opcional)"
+                vm.otorrino -> "Examen otorrinolaringológico (oídos, nariz, garganta y cuello)"
                 else -> "Examen físico: general y regional"
             },
             valor = vm.borrador.textos["examen_fisico"].orEmpty(), onChange = { vm.texto("examen_fisico", it) },
-            frases = frasesDe(d, "examen", vm.pediatria, vm.derma, vm.oftalmo), soloLectura = soloLectura, minLineas = if (psiq || oftalmo) 3 else 6,
+            frases = frasesDe(d, "examen", vm.pediatria, vm.derma, vm.oftalmo, vm.otorrino), soloLectura = soloLectura, minLineas = if (psiq || oftalmo) 3 else 6,
             placeholder = if (dental) "Ej. Tejidos blandos sin alteraciones; pieza 36 con cavidad profunda…"
             else "Ej. BEG, LOTEP. Orofaringe congestiva, amígdalas hipertróficas con exudado…",
             porLinea = true,
@@ -576,24 +578,78 @@ internal fun BotonChico(
 /**
  * Frases aprendidas de un campo, las más usadas primero. Odontología guarda
  * aparte con prefijo (`odonto_motivo`), como `claveFrase` de la web.
- * PEDIATRÍA y DERMATOLOGÍA (varianteFrases de la web): su base delante, y lo
- * aprendido en las mismas claves que medicina (frasesConBase).
+ * PEDIATRÍA, DERMATOLOGÍA, OFTALMOLOGÍA y OTORRINO (varianteFrases de la web):
+ * su base delante, y lo aprendido en las mismas claves que medicina
+ * (frasesConBase). En las ACOTADAS (oftalmo, otorrino) lo aprendido que es
+ * base de otra variante no sale y va después de su base (como la web).
  */
-internal fun frasesDe(d: DatosConsultaApp, campo: String, pediatria: Boolean = false, derma: Boolean = false, oftalmo: Boolean = false): List<FraseFrecuenteApp> {
+internal fun frasesDe(
+    d: DatosConsultaApp, campo: String, pediatria: Boolean = false, derma: Boolean = false,
+    oftalmo: Boolean = false, otorrino: Boolean = false,
+): List<FraseFrecuenteApp> {
     val clave = if (d.flags.dental) "odonto_$campo" else campo
     val aprendidas = d.frases.filter { it.campo == clave && it.texto.isNotBlank() }
         .distinctBy { normalizarFrase(it.texto) }
         .sortedByDescending { it.usos }
-    // varianteFrases de la web: dermatología gana a pediatría.
-    val base = when {
-        d.flags.dental -> emptyList()
-        derma -> FRASES_BASE_DERMA[campo].orEmpty()
-        pediatria -> FRASES_BASE_PEDIATRIA[campo].orEmpty()
-        oftalmo -> FRASES_BASE_OFTALMO[campo].orEmpty()
-        else -> emptyList()
-    }
-    return frasesConBase(base, aprendidas)
+    val variante = if (d.flags.dental) "odonto" else varianteFrases(derma = derma, pediatria = pediatria, oftalmo = oftalmo, otorrino = otorrino)
+    return frasesConBase(
+        basePropia(variante, campo), aprendidas,
+        ajenas = frasesAjenas(variante, campo), baseAntes = tieneBasePropia(variante, campo),
+    )
 }
+
+/**
+ * La variante de frases (varianteFrases de la web, sin dental/gineco/psiq, que
+ * se deciden antes): dermatología gana a pediatría, pediatría a oftalmología y
+ * oftalmología a otorrino. Ninguna → "medicina".
+ */
+internal fun varianteFrases(derma: Boolean = false, pediatria: Boolean = false, oftalmo: Boolean = false, otorrino: Boolean = false): String = when {
+    derma -> "derma"
+    pediatria -> "pediatria"
+    oftalmo -> "oftalmo"
+    otorrino -> "otorrino"
+    else -> "medicina"
+}
+
+/** Las bases que la app MUESTRA como chips (medicina, odonto… solo aprenden: no traen base en la app). */
+private fun basesConChips(variante: String): Map<String, List<FraseFrecuenteApp>>? = when (variante) {
+    "derma" -> FRASES_BASE_DERMA
+    "pediatria" -> FRASES_BASE_PEDIATRIA
+    "oftalmo" -> FRASES_BASE_OFTALMO
+    "otorrino" -> FRASES_BASE_OTORRINO
+    else -> null
+}
+
+private fun basePropia(variante: String, campo: String): List<FraseFrecuenteApp> = basesConChips(variante)?.get(campo).orEmpty()
+
+/** Especialidades de UN órgano (VARIANTES_ACOTADAS de la web): lo general de medicina no les sirve. */
+internal val VARIANTES_ACOTADAS = setOf("oftalmo", "otorrino")
+
+/** Todos los textos base de una variante para un campo (los que la app muestra y los que solo conoce). */
+private fun textosBase(variante: String, campo: String): List<String> =
+    basesConChips(variante)?.get(campo)?.map { it.texto } ?: TEXTOS_BASE_OTRAS_VARIANTES[variante]?.get(campo).orEmpty()
+
+/** Las variantes de FRASES_BASE de la web. */
+private val TODAS_LAS_VARIANTES = listOf("medicina", "odonto", "psiq", "psico", "gineco", "derma", "oftalmo", "otorrino", "pediatria")
+
+/**
+ * frasesAjenas de la web: las frases base de OTRAS variantes para ese campo
+ * (sin las que también tiene la propia), normalizadas. Solo en las acotadas;
+ * las demás no excluyen nada (lo de siempre).
+ */
+internal fun frasesAjenas(variante: String, campo: String): Set<String> {
+    if (variante !in VARIANTES_ACOTADAS) return emptySet()
+    val propias = textosBase(variante, campo).flatMap { lineasDe(it) }.map { normalizarFrase(it) }.toSet()
+    return TODAS_LAS_VARIANTES.filter { it != variante }
+        .flatMap { v -> textosBase(v, campo).flatMap { lineasDe(it) } }
+        .map { normalizarFrase(it) }
+        .filter { it !in propias }
+        .toSet()
+}
+
+/** ¿Variante acotada con base propia para ese campo? Lo aprendido va después de su base. */
+internal fun tieneBasePropia(variante: String, campo: String): Boolean =
+    variante in VARIANTES_ACOTADAS && basesConChips(variante)?.containsKey(campo) == true
 
 /**
  * Frases base del examen mental (EXAMEN_MENTAL de lib/frases-clinicas.ts): el

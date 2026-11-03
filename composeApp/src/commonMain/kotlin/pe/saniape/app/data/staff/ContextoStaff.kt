@@ -97,13 +97,15 @@ data class FlujoClinica(
 
     /**
      * Como [paraEspecialidad], sabiendo el NOMBRE de la especialidad: si no tiene
-     * flujo propio guardado y es psiquiatría, sigue el de medicina general
-     * (Consulta → Controles → Alta, sin Evaluación). Gemelo de
+     * flujo propio guardado y es psiquiatría u otorrino, sigue el de medicina
+     * general (Consulta → Controles → Alta, sin Evaluación). Gemelo de
      * `presetPropioDeEspecialidad` de la web. Todo lo demás, igual que antes.
+     * Otorrino (2026-11-03): agregada a una clínica dental fuera del onboarding
+     * heredaba el flujo dental y ofrecía «→ Evaluación» en cada consulta.
      */
     fun paraEspecialidad(propio: JsonObject?, nombre: String?): FlujoClinica {
         propio?.let { p -> paraEspecialidadValida(p)?.let { return it } }
-        return if (esPsiquiatria(nombre)) FLUJO_MEDICINA_GENERAL else this
+        return if (esPsiquiatria(nombre) || esOtorrino(nombre)) FLUJO_MEDICINA_GENERAL else this
     }
 
     private fun paraEspecialidadValida(propio: JsonObject): FlujoClinica? {

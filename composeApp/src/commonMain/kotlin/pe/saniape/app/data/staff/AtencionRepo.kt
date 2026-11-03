@@ -139,8 +139,10 @@ object AtencionRepo {
      * Dermatología: sus frecuentes viajan en la app (frecuentesCie10Locales), así
      * que funcionan con un servidor que aún no los conoce.
      */
-    suspend fun buscarCie10(q: String, dental: Boolean, psiq: Boolean = false, derma: Boolean = false, oftalmo: Boolean = false): List<DiagnosticoCie> {
-        if (q.trim().length < 2) frecuentesCie10Locales(dental, psiq, derma, oftalmo)?.let { return it }
+    suspend fun buscarCie10(
+        q: String, dental: Boolean, psiq: Boolean = false, derma: Boolean = false, oftalmo: Boolean = false, otorrino: Boolean = false,
+    ): List<DiagnosticoCie> {
+        if (q.trim().length < 2) frecuentesCie10Locales(dental, psiq, derma, oftalmo, otorrino)?.let { return it }
         val tk = token() ?: return emptyList()
         return try {
             val resp = http.get("${Supabase.SITE_URL}/api/staff/cie10") {

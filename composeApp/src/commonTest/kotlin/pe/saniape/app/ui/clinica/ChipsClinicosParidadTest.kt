@@ -68,6 +68,22 @@ class ChipsClinicosParidadTest {
     }
 
     @Test
+    fun otorrinoIgualQueLaWeb() {
+        val ch = chipsDeEspecialidad("Otorrinolaringología")
+        assertEquals(
+            listOf("Otológica", "Hipoacusia", "Vértigo", "Tinnitus", "Rinosinusal", "Rinitis alérgica", "Desviación septal", "Faringoamigdalina", "Laríngea / voz", "Ronquido / apnea", "Epistaxis", "Cuerpo extraño", "Control auditivo"),
+            ch.tipos,
+        )
+        assertEquals(
+            listOf("Dolor de oído", "Oído tapado", "Secreción del oído", "Baja de audición", "Zumbido", "Mareo / vértigo", "Congestión nasal", "Sangrado nasal", "Estornudos", "Dolor de garganta", "Ronquera", "Ronquido", "Dificultad para tragar", "Picazón de oído"),
+            ch.sintomas,
+        )
+        assertEquals(ch, chipsDeEspecialidad("OTORRINO"))
+        assertEquals(ch, chipsDeEspecialidad("Otolaringología"))
+        assertEquals(ch, chipsDeEspecialidad("Audiología"))
+    }
+
+    @Test
     fun medicinaInternaYFamiliarComoMedicinaGeneral() {
         val mg = chipsDeEspecialidad("Medicina General")
         assertEquals(mg, chipsDeEspecialidad("Medicina Interna"))
@@ -117,7 +133,7 @@ class ChipsClinicosParidadTest {
     fun ordenDeClavesIgualQueLaWeb() {
         assertEquals(
             listOf(
-                "fisio", "rehabilit", "terapia fisica", "kinesi", "masoterap", "oftalm", "optometr", "psico", "odonto", "dental", "ortodon",
+                "fisio", "rehabilit", "terapia fisica", "kinesi", "masoterap", "oftalm", "optometr", "otorrino", "otolaring", "audiolog", "psico", "odonto", "dental", "ortodon",
                 "dermato", "gineco", "obstet", "fertilidad", "psiquiatr", "nutri",
                 "medicina general", "medicina fam", "medicina interna", "medico general", "pediatr", "podo",
                 "manicur", "pedicur", "unas", "ceja", "pestan", "belleza", "nail", "lash",
