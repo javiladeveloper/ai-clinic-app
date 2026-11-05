@@ -95,6 +95,8 @@ object StaffContextoRepo {
             recetasOptIn = o.bool("recetasOptIn"),
             triaje = o.bool("triaje"),
             camposTriaje = leerCamposTriaje(campos),
+            // Por especialidad (2026-11-05). Sin la clave (backend viejo) → null: como antes.
+            especialidadesSinTriaje = if (o.containsKey("especialidadesSinTriaje")) ids("especialidadesSinTriaje") else null,
             // Con el interruptor apagado el mapa no cuenta aunque viniera lleno.
             mapaMedico = if (flujoMedico) MapaClinico(ids("especialidadesMedicas"), o.bool("soloMedico")) else MapaClinico(),
             mapaReceta = if (recetas) MapaClinico(ids("especialidadesReceta"), o.bool("soloReceta")) else MapaClinico(),

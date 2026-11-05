@@ -497,6 +497,24 @@ fun filasPiezasTratadas(
     }.sortedWith(compareBy({ if (it.tratamientoId == tratamientoId) 0 else 1 }, { pieza(it) }))
 }
 
+/**
+ * Lo que viene MARCADO en «¿Qué se le hizo hoy?» (gemela de
+ * `piezasPreseleccionadas` de lib/plan-piezas-sesiones.ts, 2026-11-05): lo que
+ * esta sesión ya resolvió o tiene planificado; si no tiene nada (se agendó como
+ * intervención o cita, o se completa desde la agenda), las piezas pendientes de
+ * SU tratamiento no planificadas en otra sesión («si ya pongo completar es
+ * porque traté esa»). [filas] = lo que lista la pantalla ([filasPiezasTratadas]).
+ */
+fun piezasPreseleccionadas(
+    filas: List<DienteHallazgo>,
+    sesionId: String?,
+    tratamientoId: String?,
+): List<DienteHallazgo> {
+    val deLaSesion = if (sesionId != null) filas.filter { it.sesionId == sesionId } else emptyList()
+    if (deLaSesion.isNotEmpty() || tratamientoId == null) return deLaSesion
+    return filas.filter { it.tratamientoId == tratamientoId && it.estado == "Pendiente" && it.sesionId == null }
+}
+
 /** Las filas de "Piezas del plan" de un tratamiento: las suyas + las que resolvieron sus sesiones. */
 fun filasPlanPiezas(
     hallazgos: List<DienteHallazgo>,

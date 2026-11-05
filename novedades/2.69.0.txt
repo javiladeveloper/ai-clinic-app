@@ -1,0 +1,6 @@
+Triaje por especialidad y la pieza ya marcada al completar.
+---
+• Triaje por especialidad: odontología (y psicología u oftalmología) ya no piden triaje tras «Llegó»; la cita médica de la misma clínica sí. Se elige en la web, en Configuración → Módulos clínicos.
+• Completar una sesión dental: la pieza de su tratamiento viene marcada (la resina de la 23 trae la 23), también desde la agenda.
+• Los tratamientos que crea el odontograma quedan con el profesional que atendió, y al agendar sus sesiones se propone a él.
+---

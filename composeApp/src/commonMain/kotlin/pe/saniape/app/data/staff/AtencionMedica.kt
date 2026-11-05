@@ -77,10 +77,17 @@ data class ModulosClinicos(
     val recetas: Boolean = false,
     /** Recetas encendidas en una clínica NO médica (modo "indicaciones"). */
     val recetasOptIn: Boolean = false,
-    /** Signos vitales antes de la atención, en TODA la clínica. */
+    /** Signos vitales antes de la atención: la clínica lo usa. */
     val triaje: Boolean = false,
     /** Qué mide la clínica en su triaje. */
     val camposTriaje: List<String> = MEDICIONES_TRIAJE,
+    /**
+     * Especialidades donde NO se toma el triaje (servidor, 2026-11-05: por
+     * defecto odontología, psicología y oftalmología; o lo que la clínica eligió
+     * en la web). null = un backend que todavía no lo manda: la app decide como
+     * antes (ver [triajeEnCitaDe]).
+     */
+    val especialidadesSinTriaje: List<String>? = null,
     /** Especialidades con flujo médico (`mapaMedico`; vacío con el flujo apagado). */
     val mapaMedico: MapaClinico = MapaClinico(),
     /** Especialidades que ven "💊 Recetas" (`mapaReceta`). */
@@ -97,6 +104,28 @@ data class ModulosClinicos(
      * la clínica o con alguna especialidad en el flujo médico.
      */
     val salaEspera: Boolean get() = triaje || mapaMedico.activo
+}
+
+/**
+ * ¿Esta cita pasa por el triaje? (gemela de `triajeEnAtencion` de la web,
+ * 2026-11-05: el triaje va POR ESPECIALIDAD). El triaje de la clínica
+ * encendido Y la especialidad de la cita lo usa. Sin especialidad en la cita,
+ * la del profesional si tiene una sola; si todas las suyas van sin triaje, no.
+ * Con un backend viejo (sin la lista) se decide como antes: todas menos
+ * oftalmología.
+ */
+fun triajeEnCitaDe(
+    m: ModulosClinicos,
+    especialidadId: String?,
+    especialidadesProfesional: List<String>?,
+    esOftalmologia: Boolean,
+): Boolean {
+    if (!m.triaje) return false
+    val sin = m.especialidadesSinTriaje ?: return !esOftalmologia
+    val prof = especialidadesProfesional.orEmpty().filter { it.isNotBlank() }
+    val esp = especialidadId?.takeIf { it.isNotBlank() } ?: prof.singleOrNull()
+    if (esp != null) return esp !in sin
+    return !(prof.isNotEmpty() && prof.all { it in sin })
 }
 
 /** ¿Esta especialidad lleva registro de atención médica? (especialidadConHistoriaMedica). */

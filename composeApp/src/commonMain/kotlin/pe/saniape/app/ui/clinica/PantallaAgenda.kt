@@ -1039,6 +1039,8 @@ fun PantallaAgenda(
                                         marcando = vm.marcandoLlegada == cita.id,
                                         minutos = if (pe.saniape.app.data.staff.enSalaDeEspera(etapa))
                                             pe.saniape.app.data.staff.minutosEsperando(a?.llegadaAt ?: a?.triajeAt, ahora) else null,
+                                        // «🔔 Llegó» principal: por el triaje de la CLÍNICA, como la web.
+                                        clinicaConTriaje = vm.triajeOn,
                                     )
                                 },
                             )

@@ -411,11 +411,20 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
 
     /**
      * ¿Esta cita pasa por el triaje? (gemelo de `triajeEnCita` de /citas web):
-     * la clínica lo usa y la cita NO es de oftalmología — ahí no se toman
-     * signos vitales: tras «Llegó» va directo a ▶ Atender (2026-10-30).
+     * la clínica lo usa y la ESPECIALIDAD de la cita también (2026-11-05: por
+     * defecto odontología, psicología y oftalmología no; o lo que la clínica
+     * eligió). Si no, tras «Llegó» va directo a ▶ Atender y el triaje queda en
+     * «⋯ Más». Regla en [pe.saniape.app.data.staff.triajeEnCitaDe].
      */
-    fun triajeEnCita(cita: CitaStaff): Boolean =
-        triajeOn && !pe.saniape.app.data.staff.esOftalmologia(especialidades.find { it.id == (cita.especialidadId ?: cita.especialidadServicioId) }?.nombre)
+    fun triajeEnCita(cita: CitaStaff): Boolean {
+        val espId = cita.especialidadId ?: cita.especialidadServicioId
+        return pe.saniape.app.data.staff.triajeEnCitaDe(
+            modulos,
+            espId,
+            terapeutas.find { it.id == cita.terapeutaId }?.especialidadIds,
+            pe.saniape.app.data.staff.esOftalmologia(especialidades.find { it.id == espId }?.nombre),
+        )
+    }
     val salaEsperaOn: Boolean get() = modulos.salaEspera
     /** Campos que mide la clínica en su triaje. */
     val camposTriaje: List<String> get() = modulos.camposTriaje

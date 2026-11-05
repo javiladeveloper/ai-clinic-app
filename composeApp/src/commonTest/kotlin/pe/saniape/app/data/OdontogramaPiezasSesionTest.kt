@@ -12,6 +12,7 @@ import pe.saniape.app.data.staff.esDePiezaEntera
 import pe.saniape.app.data.staff.filasPiezasTratadas
 import pe.saniape.app.data.staff.filasPlanPiezas
 import pe.saniape.app.data.staff.ordenarCaras
+import pe.saniape.app.data.staff.piezasPreseleccionadas
 import pe.saniape.app.data.staff.pintarDiente
 import pe.saniape.app.data.staff.sumarTecnica
 
@@ -37,6 +38,27 @@ private fun h(
 )
 
 class PiezasPorSesionTest {
+    // ── Lo que viene marcado (2026-11-05, gemela de piezasPreseleccionadas web) ──
+
+    @Test fun preseleccionaLoPlanificadoParaLaSesion() {
+        val filas = listOf(h("a", "23", "c", tratamientoId = "t1", sesionId = "s1"), h("b", "24", "c", tratamientoId = "t1"))
+        assertEquals(listOf("a"), piezasPreseleccionadas(filas, "s1", "t1").map { it.id })
+    }
+
+    @Test fun sinNadaPlanificadoLasPendientesDeSuTratamiento() {
+        // La resina de la 23 agendada como intervención: al completarla, la 23 viene marcada.
+        val filas = listOf(
+            h("caries23", "23", "c", tratamientoId = "resina"),
+            h("extraccion22", "22", "e", tratamientoId = "extraccion"),
+            h("planificada", "24", "c", tratamientoId = "resina", sesionId = "otra"),
+        )
+        assertEquals(listOf("caries23"), piezasPreseleccionadas(filas, "s1", "resina").map { it.id })
+        // Desde la agenda sin sesión conocida, igual.
+        assertEquals(listOf("caries23"), piezasPreseleccionadas(filas, null, "resina").map { it.id })
+        // Sin tratamiento: nada.
+        assertTrue(piezasPreseleccionadas(filas, "s1", null).isEmpty())
+    }
+
     @Test
     fun caras_en_orden_fijo() {
         assertEquals(listOf("O", "M"), ordenarCaras(listOf("M", "O")))

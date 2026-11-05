@@ -289,7 +289,9 @@ fun ModalCompletar(
                     // hoy. Lo marcado suma su procedimiento a lo realizado.
                     if (conPiezas) {
                         pe.saniape.app.ui.clinica.odontologia.PiezasTratadas(
-                            pacienteId = cita.pacienteId!!, tratamientoId = cita.tratamientoId, sesionId = null,
+                            // La sesión de la cita: lo planificado para ella sale marcado
+                            // (antes iba null y desde la agenda nunca se preseleccionaba nada).
+                            pacienteId = cita.pacienteId!!, tratamientoId = cita.tratamientoId, sesionId = cita.sesionId,
                             seleccion = piezas, onSeleccion = { piezas = it },
                             onCargado = { piezasListas = it },
                             onProcedimiento = { nombre -> texto = pe.saniape.app.data.staff.sumarTecnica(texto, nombre) },

@@ -329,7 +329,7 @@ fun TarjetaCita(
                     SalaAcciones(it.etapa, it.triajeOn, it.medica, it.marcando, triajeHecho = it.atencion?.triajeAt != null,
                         // El dato de la CLÍNICA (no el recortado por permiso): recepción sin
                         // historia clínica es justo quien marca la llegada.
-                        clinicaConTriaje = sala?.triajeOn == true)
+                        clinicaConTriaje = sala?.clinicaConTriaje == true)
                 },
                 // Sin el permiso, la cita médica se cierra con "✓ Completar" (sin la consulta guiada).
                 medica = verClinico && medica && cita.pacienteId != null,
@@ -497,11 +497,18 @@ private fun CobroCompacto(a: AccionCitaItem, habilitado: Boolean, onClick: () ->
 data class SalaTarjeta(
     val etapa: pe.saniape.app.data.staff.EtapaLlegada,
     val atencion: pe.saniape.app.data.staff.AtencionLlegada?,
+    /** ESTA cita pasa por el triaje (por especialidad: la dental no). */
     val triajeOn: Boolean,
     val medica: Boolean,
     val marcando: Boolean,
     /** Minutos en la sala (desde la llegada), o null. */
     val minutos: Int?,
+    /**
+     * La CLÍNICA toma triaje (aunque esta cita no): «🔔 Llegó» es la acción
+     * principal de la cita por llegar, como en la web (principalSalaDe usa el
+     * triaje de la clínica; el paso de triaje, el de la cita).
+     */
+    val clinicaConTriaje: Boolean = triajeOn,
 )
 
 /**

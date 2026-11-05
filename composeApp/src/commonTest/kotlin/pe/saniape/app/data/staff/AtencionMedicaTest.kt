@@ -18,6 +18,28 @@ import kotlin.test.assertTrue
  */
 class AtencionMedicaTest {
 
+    // ── Triaje por especialidad (2026-11-05, gemela de triajeEnAtencion web) ──
+
+    @Test fun triajePorEspecialidadLaDentalNo() {
+        val m = ModulosClinicos(triaje = true, especialidadesSinTriaje = listOf("odo", "psi"))
+        assertTrue(triajeEnCitaDe(m, "med", null, esOftalmologia = false))
+        assertFalse(triajeEnCitaDe(m, "odo", null, esOftalmologia = false))
+        // Sin especialidad en la cita: la del profesional si tiene una sola.
+        assertFalse(triajeEnCitaDe(m, null, listOf("odo"), esOftalmologia = false))
+        assertFalse(triajeEnCitaDe(m, null, listOf("odo", "psi"), esOftalmologia = false))
+        assertTrue(triajeEnCitaDe(m, null, listOf("odo", "med"), esOftalmologia = false))
+        assertTrue(triajeEnCitaDe(m, null, null, esOftalmologia = false))
+        // Triaje de la clínica apagado: en ninguna.
+        assertFalse(triajeEnCitaDe(m.copy(triaje = false), "med", null, esOftalmologia = false))
+    }
+
+    @Test fun triajeConBackendViejoComoAntes() {
+        // Sin la lista (servidor que todavía no la manda): todas menos oftalmología.
+        val m = ModulosClinicos(triaje = true)
+        assertTrue(triajeEnCitaDe(m, "odo", null, esOftalmologia = false))
+        assertFalse(triajeEnCitaDe(m, "ofta", null, esOftalmologia = true))
+    }
+
     // ── Interruptores y campos ──
 
     @Test fun camposTriajeAusentesOVaciosSonTodos() {

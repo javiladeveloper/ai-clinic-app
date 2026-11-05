@@ -44,6 +44,7 @@ import pe.saniape.app.data.staff.SesionFicha
 import pe.saniape.app.data.staff.contarPlanPiezas
 import pe.saniape.app.data.staff.filasPiezasTratadas
 import pe.saniape.app.data.staff.filasPlanPiezas
+import pe.saniape.app.data.staff.piezasPreseleccionadas
 import pe.saniape.app.ui.theme.Sania
 
 /**
@@ -86,6 +87,7 @@ fun PiezasTratadas(
     val onSeleccionActual by rememberUpdatedState(onSeleccion)
     val seleccionActual by rememberUpdatedState(seleccion)
     val onCargadoActual by rememberUpdatedState(onCargado)
+    val onProcedimientoActual by rememberUpdatedState(onProcedimiento)
 
     LaunchedEffect(pacienteId) {
         cargando = true
@@ -102,11 +104,18 @@ fun PiezasTratadas(
         fallo = halOk == null
         cargando = false
         onCargadoActual(!fallo)
-        // Si se abre sobre una sesión que ya había resuelto piezas, salen marcadas.
-        // Se precarga UNA vez, cuando llegan los datos.
-        val previas = filasPiezasTratadas(hallazgos, catalogo, sesionId, tratamientoId)
-            .filter { sesionId != null && it.sesionId == sesionId }.map { it.id }
-        if (previas.isNotEmpty() && seleccionActual.isEmpty()) onSeleccionActual(previas)
+        // Lo que la sesión ya resolvió o tiene planificado sale marcado; si no tiene
+        // nada, las pendientes de SU tratamiento (2026-11-05, como la web). Se
+        // precarga UNA vez, cuando llegan los datos. Lo pendiente que se marca así
+        // suma su procedimiento a lo realizado, igual que si se tocara a mano.
+        val previas = piezasPreseleccionadas(filasPiezasTratadas(hallazgos, catalogo, sesionId, tratamientoId), sesionId, tratamientoId)
+        if (previas.isNotEmpty() && seleccionActual.isEmpty()) {
+            onSeleccionActual(previas.map { it.id })
+            val porId = catalogo.associateBy { it.id }
+            previas.filter { it.estado == "Pendiente" }.forEach { r ->
+                porId[r.hallazgoId]?.procedimientoId?.let { procs[it] }?.takeIf { it.isNotBlank() }?.let(onProcedimientoActual)
+            }
+        }
     }
 
     if (cargando) {
