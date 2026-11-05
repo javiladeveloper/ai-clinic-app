@@ -437,6 +437,8 @@ fun PantallaAgenda(
     var tratCita by remember { mutableStateOf<CitaStaff?>(null) }
     var tratDiag by remember { mutableStateOf<String?>(null) }
     var tratPac by remember { mutableStateOf<PacienteStaff?>(null) }
+    // La próxima cita de cada tratamiento abierto («📅 … agendada», como la web).
+    var tratProximas by remember { mutableStateOf<Map<String, pe.saniape.app.data.staff.ProximaCitaPlan>>(emptyMap()) }
     var tratForm by remember { mutableStateOf(false) }
     // Tras crear un tratamiento sin su primera cita: ofrecer agendarla.
     var ofertaPrimera by remember { mutableStateOf<pe.saniape.app.ui.clinica.pacientes.OfertaPrimeraCita?>(null) }
@@ -452,14 +454,17 @@ fun PantallaAgenda(
     // (HojaPlanTrasEvaluacion) y, al crear, el plan entero de sus sesiones.
     var planEval by remember { mutableStateOf<Pair<CitaStaff, String?>?>(null) }
     var planEnteroAgenda by remember { mutableStateOf<pe.saniape.app.ui.clinica.pacientes.PlanEnteroInicial?>(null) }
-    fun cerrarTratamiento() { tratCita = null; tratDiag = null; tratPac = null; tratForm = false; tratPrefill = null }
+    fun cerrarTratamiento() { tratCita = null; tratDiag = null; tratPac = null; tratProximas = emptyMap(); tratForm = false; tratPrefill = null }
     fun abrirTratamientoDeCita(cita: CitaStaff, diagnostico: String?) {
         val pid = cita.pacienteId ?: return
         if (!ctx.puede("sesiones")) return
-        tratCita = cita; tratDiag = diagnostico; tratPac = null; tratForm = false
+        tratCita = cita; tratDiag = diagnostico; tratPac = null; tratProximas = emptyMap(); tratForm = false
         cargandoFicha = true
         scope.launch {
+            // El paciente y la próxima cita de cada plan, en paralelo.
+            val proximasD = async { runCatching { PacientesRepo.proximasCitasPorTratamiento(pid) }.getOrDefault(emptyMap()) }
             val pac = runCatching { PacientesRepo.porId(pid) }.getOrNull()
+            tratProximas = proximasD.await()
             cargandoFicha = false
             tratPac = pac
             if (pac?.tratamientos.orEmpty().none { it.estado == "Activo" }) tratForm = true
@@ -1769,6 +1774,14 @@ fun PantallaAgenda(
                                 Text(t.procedimiento ?: "Tratamiento", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                 if (t.totalSesiones > 0 && !t.esConsulta) {
                                     Text("${t.sesionesCompletadas} de ${t.totalSesiones} sesiones", color = c.textoSuave, fontSize = 11.sp)
+                                }
+                                // Ya tiene su cita en la agenda: se ve antes de crear otro plan
+                                // o de ir a la ficha a agendar de nuevo (como la web).
+                                tratProximas[t.id]?.let { prox ->
+                                    Text(
+                                        pe.saniape.app.data.staff.textoCitaAgendada(t.modalidad, t.totalSesiones, t.esConsulta, prox),
+                                        color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                    )
                                 }
                             }
                         }

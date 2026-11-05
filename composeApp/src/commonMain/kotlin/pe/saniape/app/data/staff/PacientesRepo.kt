@@ -1912,6 +1912,33 @@ object PacientesRepo {
     suspend fun saldoPendienteDe(tratamientos: List<TratamientoPaciente>): Double =
         resumenPagosDe(tratamientos).saldo
 
+    /**
+     * La próxima cita de cada tratamiento del paciente (sin atender, de hoy en
+     * adelante), para el aviso «N tratamientos abiertos». Si falla la red, vacío:
+     * el aviso se ve como antes, sin la línea de la cita.
+     */
+    suspend fun proximasCitasPorTratamiento(pacienteId: String): Map<String, ProximaCitaPlan> {
+        val hoy = pe.saniape.app.ui.clinica.agenda.hoyIso()
+        val filas = runCatching {
+            Supabase.client.postgrest["citas"]
+                .select(Columns.raw("tratamiento_id, fecha, hora, terapeuta:terapeutas(nombre)")) {
+                    filter {
+                        eq("paciente_id", pacienteId)
+                        gte("fecha", hoy)
+                        isIn("estado", listOf("Pendiente", "Confirmada"))
+                    }
+                    order("fecha", Order.ASCENDING)
+                    limit(100)
+                }
+                .decodeList<JsonObject>()
+        }.getOrDefault(emptyList())
+        return primeraCitaPorTratamiento(filas.mapNotNull { o ->
+            val trat = o.str("tratamiento_id") ?: return@mapNotNull null
+            val fecha = o.str("fecha") ?: return@mapNotNull null
+            ProximaCitaPlan(trat, fecha, o.str("hora"), (o["terapeuta"] as? JsonObject)?.str("nombre"))
+        })
+    }
+
     /** Hitos del recorrido del paciente (para el FlujoGuiado y las stat cards de la ficha). */
     suspend fun hitosDe(pacienteId: String): HitosPaciente = coroutineScope {
         val hoy = pe.saniape.app.ui.clinica.agenda.hoyIso()
