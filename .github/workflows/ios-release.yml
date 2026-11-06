@@ -43,7 +43,13 @@ jobs:
     # Runner estándar gratis (repos públicos). El runner nunca fue el problema: los
     # cuelgues eran el keychain auto-bloqueado (ver paso de firma) y los rechazos de
     # Apple eran por el SDK viejo (ver paso de Xcode).
-    runs-on: macos-15
+    #
+    # 2026-11-06: macos-15 (M1, 3 CPU, **7 GB**) → macos-15-intel (4 CPU, **14 GB**). La app
+    # creció tanto que enlazar el framework Kotlin release necesita >6 GB de heap: con
+    # -Xmx4g murió por OOM (16-oct) y con -Xmx6g en una máquina de 7 GB swapeaba hasta
+    # pasar los 75 min sin terminar. El Intel también es gratis en repos públicos y trae
+    # el mismo Xcode 26.3. Kotlin/Native compila iosArm64 igual desde un host Intel.
+    runs-on: macos-15-intel
     # Tope de seguridad del JOB. La compilación real con Xcode 26 toma ~20 min
     # (probado en ios-v2.9.3: compile Kotlin + link OK). 90 mata cualquier cuelgue real.
     # macOS factura 10x, así que cada minuto colgado cuesta. Sin la espera del
@@ -55,7 +61,7 @@ jobs:
     # 2026-11-06: subido a 95. El repo es PÚBLICO → el runner macOS estándar es gratis
     # (los "10x" solo aplican a repos privados). Con caché frío (GitHub borra cachés sin
     # uso en 7 días) compilar Kotlin desde cero pasó los 40 min y el corte lo mató.
-    timeout-minutes: 95
+    timeout-minutes: 110
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -105,9 +111,9 @@ jobs:
             ~/.konan
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ios-konan-gradle-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          key: ios-konan-gradle-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
-            ios-konan-gradle-${{ runner.os }}-
+            ios-konan-gradle-${{ runner.os }}-${{ runner.arch }}-
 
       # Caché del DerivedData de Xcode: aquí vive lo COMPILADO del framework KMP + libs. Es lo
       # que de verdad tarda. Con él (una vez guardado), la 2da corrida reusa los .o y baja
@@ -117,9 +123,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          key: ios-deriveddata-xc26-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'iosApp/iosApp.xcodeproj/project.pbxproj') }}
+          key: ios-deriveddata-xc26-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml', 'iosApp/iosApp.xcodeproj/project.pbxproj') }}
           restore-keys: |
-            ios-deriveddata-xc26-${{ runner.os }}-
+            ios-deriveddata-xc26-${{ runner.os }}-${{ runner.arch }}-
 
       # Xcode 26 es OBLIGATORIO: desde abril 2026 Apple RECHAZA todo upload compilado con
       # un SDK menor a iOS 26 ("SDK version issue... must be built with the iOS 26 SDK",
@@ -218,16 +224,28 @@ jobs:
       - name: Más memoria para Kotlin/Native
         run: |
           mkdir -p ~/.gradle
-          echo "org.gradle.jvmargs=-Xmx6g -XX:+UseParallelGC -Dfile.encoding=UTF-8" >> ~/.gradle/gradle.properties
+          # 2026-11-06: 10g en el runner Intel de 14 GB (con 6g en el de 7 GB swapeaba).
+          echo "org.gradle.jvmargs=-Xmx10g -XX:+UseParallelGC -Dfile.encoding=UTF-8" >> ~/.gradle/gradle.properties
           cat ~/.gradle/gradle.properties
+
+      # Compila el framework Kotlin ANTES de Xcode, en su propio paso (2026-11-06).
+      # Dentro de Xcode, la fase "Compile Kotlin Framework" corre muda (xcbeautify esconde
+      # su salida): si se arrastraba o colgaba no había forma de saber dónde. Aquí el log
+      # de Gradle se ve en vivo y el paso tiene su propio tope. Luego, en Xcode,
+      # embedAndSignAppleFrameworkForXcode encuentra linkReleaseFrameworkIosArm64 al día y
+      # solo copia/firma el framework.
+      - name: Compilar framework Kotlin (iosArm64 release)
+        timeout-minutes: 70
+        run: ./gradlew :composeApp:linkReleaseFrameworkIosArm64 --console=plain
 
       # testflight → lane 'beta'       (testers, sin revisión de Apple)
       # produccion → lane 'production' (sube el binario; el envío a revisión se hace
       #               desde App Store Connect — esperar el procesado de Apple
       #               costaba ~20 min de runner macOS a 10x por release)
       - name: Compilar y subir a Apple
-        # 80 con caché frío (ver timeout del job); con caché tibio tarda ~20 min.
-        timeout-minutes: 80
+        # El framework Kotlin ya viene compilado del paso anterior: aquí queda Swift,
+        # firma y subida.
+        timeout-minutes: 30
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
@@ -252,14 +270,14 @@ jobs:
             ~/.konan
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ios-konan-gradle-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          key: ios-konan-gradle-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
 
       - name: Guardar caché DerivedData de Xcode
         if: always()
         uses: actions/cache/save@v4
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          key: ios-deriveddata-xc26-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'iosApp/iosApp.xcodeproj/project.pbxproj') }}
+          key: ios-deriveddata-xc26-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml', 'iosApp/iosApp.xcodeproj/project.pbxproj') }}
 
       - name: Limpiar secretos del runner
         if: always()
