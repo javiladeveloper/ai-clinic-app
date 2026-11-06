@@ -51,6 +51,13 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
+            // EXPERIMENTO (2026-11-06): el release de iOS sin las optimizaciones globales
+            // de Kotlin/Native (-opt). Con 8 MB de código, enlazar optimizado pide >10 GB de
+            // heap y el CI (14 GB) muere por OOM. Sin -opt el enlace pesa mucho menos; el
+            // costo es algo de rendimiento en el iPhone. Solo afecta iOS.
+            if (buildType == org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.RELEASE) {
+                optimized = false
+            }
         }
     }
 
