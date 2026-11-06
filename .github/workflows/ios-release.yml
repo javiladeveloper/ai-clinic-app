@@ -225,7 +225,7 @@ jobs:
         run: |
           mkdir -p ~/.gradle
           # 2026-11-06: 10g en el runner Intel de 14 GB (con 6g en el de 7 GB swapeaba).
-          echo "org.gradle.jvmargs=-Xmx10g -XX:+UseParallelGC -Dfile.encoding=UTF-8" >> ~/.gradle/gradle.properties
+          echo "org.gradle.jvmargs=-Xmx12g -XX:+UseParallelGC -Dfile.encoding=UTF-8" >> ~/.gradle/gradle.properties
           cat ~/.gradle/gradle.properties
 
       # Compila el framework Kotlin ANTES de Xcode, en su propio paso (2026-11-06).
