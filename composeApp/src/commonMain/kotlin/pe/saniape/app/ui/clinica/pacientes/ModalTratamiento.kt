@@ -713,13 +713,18 @@ fun ModalCrearTratamiento(
                 if (onArmarPresupuesto != null && renovacion == null) {
                     val accionesPresu = pe.saniape.app.ui.recordarAcciones()
                     val formaPresu = RoundedCornerShape(Sania.shape.sm.dp)
+                    // iOS (guideline 3.1.1): bloqueado se informa, pero sin "Mejorar plan →" ni enlace.
+                    val enlacePlan = presupuestoBloqueado && pe.saniape.app.data.permiteEnlacesDePago
                     Text(
-                        if (presupuestoBloqueado) "🔒 Presupuestos con precio de paquete — en Premium y Plus. Mejorar plan →"
+                        if (presupuestoBloqueado) {
+                            if (enlacePlan) "🔒 Presupuestos con precio de paquete — en Premium y Plus. Mejorar plan →"
+                            else "🔒 Presupuestos con precio de paquete — en Premium y Plus."
+                        }
                         else "🧾 ¿Lo está pensando o son varios servicios? Arma un presupuesto con precio de paquete y envíaselo.",
                         color = if (presupuestoBloqueado) c.textoSuave else c.texto, fontSize = 12.sp,
                         modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp).clip(formaPresu).background(c.chipBg)
                             .border(1.dp, c.lav, formaPresu)
-                            .clickable {
+                            .clickable(enabled = !presupuestoBloqueado || enlacePlan) {
                                 if (presupuestoBloqueado) accionesPresu.abrirUrl("${pe.saniape.app.data.Supabase.SITE_URL}/suscripcion")
                                 else onArmarPresupuesto(evaluacion?.id ?: citaOrigenId)
                             }

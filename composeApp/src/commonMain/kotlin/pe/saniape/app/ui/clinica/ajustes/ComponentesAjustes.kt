@@ -308,13 +308,16 @@ internal fun CandadoPlan(titulo: String, descripcion: String) {
         Text(titulo, color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(4.dp))
         Text(descripcion, color = c.textoSuave, fontSize = 12.sp, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(10.dp))
-        val acciones = pe.saniape.app.ui.recordarAcciones()
-        Text(
-            "Ver planes ↗", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp))
-                .clickable { acciones.abrirUrl("${pe.saniape.app.data.Supabase.SITE_URL}/suscripcion") }.padding(6.dp),
-        )
+        // iOS (guideline 3.1.1): sin enlace a pagar el plan fuera de la app.
+        if (pe.saniape.app.data.permiteEnlacesDePago) {
+            Spacer(Modifier.height(10.dp))
+            val acciones = pe.saniape.app.ui.recordarAcciones()
+            Text(
+                "Ver planes ↗", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.clip(RoundedCornerShape(Sania.shape.sm.dp))
+                    .clickable { acciones.abrirUrl("${pe.saniape.app.data.Supabase.SITE_URL}/suscripcion") }.padding(6.dp),
+            )
+        }
     }
 }
 

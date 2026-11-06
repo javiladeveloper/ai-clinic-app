@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pe.saniape.app.data.Supabase
+import pe.saniape.app.data.permiteEnlacesDePago
 import pe.saniape.app.data.staff.AddonCatalogo
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.DatosPlan
@@ -116,6 +117,13 @@ fun PantallaMiPlan(ctx: ContextoStaff, onSalir: () -> Unit) {
                                 filas.forEach { f -> FilaCheck(f.ok, f.texto) }
                             }
                         }
+                    }
+                    // iOS (guideline 3.1.1 / 3.1.3(c)): solo lectura de lo que la clínica YA tiene.
+                    // Sin catálogo de planes con precios, sin "gestionar en la web" y sin enlaces a
+                    // pagar adicionales: en el App Store eso cuenta como llamado a comprar fuera de la app.
+                    if (!permiteEnlacesDePago) {
+                        item { Spacer(Modifier.height(Sania.dim.xl)) }
+                        return@LazyColumn
                     }
                     item { Titulo("Planes") }
                     items(d.planes, key = { it.id }) { p ->

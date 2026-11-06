@@ -1,5 +1,6 @@
 package pe.saniape.app.data
 
+import io.github.jan.supabase.auth.AuthConfig
 import pe.saniape.app.BuildConfig
 
 /**
@@ -9,3 +10,6 @@ import pe.saniape.app.BuildConfig
  * (definido en build.gradle.kts via buildConfigField).
  */
 actual fun siteUrlPlataforma(): String = BuildConfig.SITE_URL
+
+/** Android: sin ajustes (el login con Google usa ID token, no deep link). */
+actual fun AuthConfig.configurarAuthPlataforma() {}

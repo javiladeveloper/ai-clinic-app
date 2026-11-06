@@ -3,6 +3,7 @@ package pe.saniape.app.data
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.auth.Auth
+import io.github.jan.supabase.auth.AuthConfig
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.realtime.Realtime
 import kotlin.time.Duration.Companion.seconds
@@ -37,7 +38,7 @@ object Supabase {
             // consultas normales responden en <1s), pero el fallo se nota rápido y la
             // pantalla puede ofrecer "Reintentar" en vez de quedarse muda.
             requestTimeout = 6.seconds
-            install(Auth)
+            install(Auth) { configurarAuthPlataforma() }
             install(Postgrest)
             // Realtime: para el auto-refresco en vivo de la agenda (RealtimeAgenda).
             // Best-effort — si no conecta, las lecturas normales siguen funcionando.
@@ -51,3 +52,12 @@ object Supabase {
  * Android: debug → http://10.0.2.2:3000 (Next.js local), release → producción.
  */
 expect fun siteUrlPlataforma(): String
+
+/**
+ * Ajustes de Auth propios de cada plataforma.
+ * iOS: el login con Google vuelve por el deep link `saniape://login` y lo completa
+ * `handleDeeplinks`, que DESCARTA en silencio cualquier URL cuyo scheme/host no coincida
+ * con los de esta config (por defecto son null → nunca coincidía y la sesión no se creaba).
+ * Android: nada (su login con Google usa ID token, sin deep link).
+ */
+expect fun AuthConfig.configurarAuthPlataforma()

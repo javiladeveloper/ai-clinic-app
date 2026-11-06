@@ -44,6 +44,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import pe.saniape.app.data.Supabase
+import pe.saniape.app.data.permiteEnlacesDePago
 import pe.saniape.app.data.staff.AjustesRepo
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.soles
@@ -152,10 +153,21 @@ internal fun SeccionSedes(d: JsonObject, ctx: ContextoStaff, onVolver: () -> Uni
         title = { Text("Primero actualiza tu plan", fontWeight = FontWeight.Bold) },
         text = {
             val pagadas = dd.i("sedesPagadas") ?: 1
-            Text("Tu suscripción actual cubre $pagadas ${if (pagadas == 1) "sede" else "sedes"}. Para agregar otra: entra a Suscripción, elige el número de sedes (cada sede adicional cuesta ${soles(dd.n("precioPorSede") ?: 0.0)}/mes en tu plan ${dd.t("planNombre")}) y completa el pago. Después vuelve aquí y créala — quedará habilitada al instante.")
+            if (permiteEnlacesDePago) {
+                Text("Tu suscripción actual cubre $pagadas ${if (pagadas == 1) "sede" else "sedes"}. Para agregar otra: entra a Suscripción, elige el número de sedes (cada sede adicional cuesta ${soles(dd.n("precioPorSede") ?: 0.0)}/mes en tu plan ${dd.t("planNombre")}) y completa el pago. Después vuelve aquí y créala — quedará habilitada al instante.")
+            } else {
+                // iOS (guideline 3.1.1): se informa el límite, sin precio ni llamado a pagar.
+                Text("Tu suscripción actual cubre $pagadas ${if (pagadas == 1) "sede" else "sedes"}. Cuando tu plan incluya otra sede, podrás crearla aquí y quedará habilitada al instante.")
+            }
         },
-        confirmButton = { TextButton(onClick = { avisoPlan = false; acciones.abrirUrl("${Supabase.SITE_URL}/suscripcion") }) { Text("Actualizar mi plan ↗", color = c.navy, fontWeight = FontWeight.Bold) } },
-        dismissButton = { TextButton(onClick = { avisoPlan = false }) { Text("Ahora no", color = c.textoSuave) } },
+        confirmButton = {
+            if (permiteEnlacesDePago) {
+                TextButton(onClick = { avisoPlan = false; acciones.abrirUrl("${Supabase.SITE_URL}/suscripcion") }) { Text("Actualizar mi plan ↗", color = c.navy, fontWeight = FontWeight.Bold) }
+            } else {
+                TextButton(onClick = { avisoPlan = false }) { Text("Entendido", color = c.navy, fontWeight = FontWeight.Bold) }
+            }
+        },
+        dismissButton = if (permiteEnlacesDePago) { { TextButton(onClick = { avisoPlan = false }) { Text("Ahora no", color = c.textoSuave) } } } else null,
         containerColor = c.superficie,
     )
     if (volver) AlertaConTeclado(

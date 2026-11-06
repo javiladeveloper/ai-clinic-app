@@ -238,8 +238,11 @@ internal fun CandadoPresupuestos(onMejorarPlan: () -> Unit) {
         Text("Presupuestos y paquetes", color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(4.dp))
         Text(TEXTO_CANDADO_PRESUPUESTOS, color = c.textoSuave, fontSize = 12.sp, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(10.dp))
-        BotonPresu("Mejorar plan →", lleno = true, onClick = onMejorarPlan)
+        // iOS (guideline 3.1.1): el candado se ve, pero sin botón a pagar el plan fuera de la app.
+        if (pe.saniape.app.data.permiteEnlacesDePago) {
+            Spacer(Modifier.height(10.dp))
+            BotonPresu("Mejorar plan →", lleno = true, onClick = onMejorarPlan)
+        }
     }
 }
 

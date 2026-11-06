@@ -426,7 +426,8 @@ internal fun modulosAdministracion(ctx: ContextoStaff, equipoNativo: Boolean = f
         if (!campaniasNativas) add("🎉  Campañas" to "/campanias")
     }
     if (ctx.puede("ajustes")) {
-        if (!miPlanNativo) add("💎  Mi plan" to "/suscripcion")
+        // iOS (guideline 3.1.1): la página web de suscripción es para pagar → no se enlaza.
+        if (!miPlanNativo && pe.saniape.app.data.permiteEnlacesDePago) add("💎  Mi plan" to "/suscripcion")
         if (!ajustesNativo) add("⚙️  Ajustes de la clínica" to "/configuracion")
     }
 }

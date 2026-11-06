@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import io.github.jan.supabase.auth.handleDeeplinks
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import platform.Foundation.NSURL
 import pe.saniape.app.data.Supabase
 
@@ -30,7 +31,7 @@ object GoogleWebAuthPuente {
 }
 
 actual class GoogleAuthLauncher(
-    @Suppress("unused") private val scope: CoroutineScope,
+    private val scope: CoroutineScope,
 ) {
     actual fun lanzar(onResultado: (exito: Boolean, error: String?) -> Unit) {
         val iniciar = GoogleWebAuthPuente.iniciar
@@ -46,13 +47,22 @@ actual class GoogleAuthLauncher(
                 error != null -> onResultado(false, error)
                 callbackUrl != null -> {
                     val url = NSURL(string = callbackUrl)
-                    if (url != null) {
+                    val fragmento = url?.fragment.orEmpty()
+                    if (url != null && "access_token=" in fragmento) {
                         // Completa la sesión con los tokens del callback (mismo handler del deep link).
-                        // handleDeeplinks es extensión de SupabaseClient (NO de .auth).
-                        Supabase.client.handleDeeplinks(url)
-                        onResultado(true, null)
+                        // handleDeeplinks es extensión de SupabaseClient (NO de .auth) y solo acepta
+                        // saniape://login (scheme/host en configurarAuthPlataforma). El éxito se
+                        // avisa cuando la sesión YA quedó importada, no antes.
+                        Supabase.client.handleDeeplinks(url) {
+                            scope.launch { onResultado(true, null) }
+                        }
                     } else {
-                        onResultado(false, "No se pudo completar el inicio de sesión con Google.")
+                        // Google/Supabase devuelven el motivo en el fragment (#error_description=…).
+                        val motivo = fragmento.split("&")
+                            .firstOrNull { it.startsWith("error_description=") }
+                            ?.substringAfter("=")
+                            ?.replace("+", " ")
+                        onResultado(false, motivo ?: "No se pudo completar el inicio de sesión con Google.")
                     }
                 }
                 // callbackUrl y error null = el usuario canceló la hoja: sin acción de error.

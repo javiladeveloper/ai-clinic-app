@@ -43,7 +43,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Sania usa la cámara para tomar fotos clínicas (evolución del paciente).</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Sania usa tu ubicación para mostrarte clínicas cercanas.</string>
+	<string>Sania usa tu ubicación solo cuando tocas «Usar mi ubicación actual», para marcar en el mapa dónde queda tu sede o consultorio.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Sania accede a tus fotos para adjuntar imágenes o documentos clínicos.</string>
 	<key>UIApplicationSceneManifest</key>
