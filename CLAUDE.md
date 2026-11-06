@@ -64,6 +64,16 @@ Aplica este patrón a cualquier pantalla/repo nuevo con cargas.
 
 ---
 
+## 🚨 SI ESTÁS EN LA MAC (2026-11-06): lee primero [docs/IOS-COMPILAR-EN-LA-MAC.md](docs/IOS-COMPILAR-EN-LA-MAC.md)
+
+El build de iOS en GitHub Actions muere por falta de memoria: la app pasó de 0.95 MB a
+7.8 MB de código compartido. La tarea es compilar en la Mac y reportar el resultado. Ese
+documento tiene el contexto, los pasos y el formato del reporte. Mientras la cuenta de
+Apple siga en migración (beneficios pausados), no se sube nada a TestFlight ni se
+configura Xcode Cloud.
+
+---
+
 ## 🖥️ PRIMERA VEZ EN LA MAC — instalar antes de nada
 
 En la Mac (todavía sin herramientas). Orden:
