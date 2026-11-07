@@ -383,7 +383,8 @@ fun AvisoSaldoCancelado(
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val tpl = LocalTerminologiaPaciente.current
-    if (t.estado != "Cancelado") return
+    // Cancelado o SUSPENDIDO (06/11/2026): el Admin pasa lo pagado y no atendido a saldo a favor.
+    if (t.estado != "Cancelado" && t.estado != "Suspendido") return
     val c = Sania.colors
     val scope = rememberCoroutineScope()
     var trabajando by remember { mutableStateOf(false) }

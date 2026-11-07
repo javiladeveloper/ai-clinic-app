@@ -73,4 +73,20 @@ class SaldoDisponibleTest {
         ))
         assertEquals(250.0, total)
     }
+
+    @Test
+    fun suspendido_liberado_cuenta_solo_lo_completado() {
+        // Jonathan 06/11/2026 (opción A): paquete de 10 a S/1000 pagado completo;
+        // 4 sesiones completadas y 2 quedaron agendadas al suspender.
+        val base = CuentaTratamiento(
+            acordado = 1000.0, pagado = 1000.0, estado = "Suspendido", modalidad = "Paquete",
+            totalSesiones = 10, sesionesRealizadas = 6, citasNoCanceladas = 6, sesionesCompletadas = 4,
+        )
+        assertEquals(0.0, saldoDisponibleTratamiento(base))                      // sin liberar: como siempre
+        assertEquals(600.0, noAtendidoCancelado(base))                          // el aviso al Admin
+        assertEquals(600.0, saldoDisponibleTratamiento(base.copy(saldoLiberado = true)))
+        assertEquals(0.0, noAtendidoCancelado(base.copy(sesionesCompletadas = null))) // sin conteo: ante la duda, no
+        // Un excedente normal de un suspendido sigue siendo automático.
+        assertEquals(100.0, saldoDisponibleTratamiento(base.copy(pagado = 1100.0)))
+    }
 }

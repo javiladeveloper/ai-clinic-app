@@ -149,6 +149,8 @@ data class TratamientoPaciente(
             sesionesRealizadas = if (sinConteos) Int.MAX_VALUE / 2 else sesionesRealizadas ?: 0,
             citasNoCanceladas = citasNoCanceladas ?: 0,
             saldoLiberado = saldoLiberadoAt != null,
+            // Lo atendido de un suspendido: sus sesiones COMPLETADAS (ya vienen en el select).
+            sesionesCompletadas = sesionesDevengo?.count { it.estado == "Completada" },
         )
     }
 

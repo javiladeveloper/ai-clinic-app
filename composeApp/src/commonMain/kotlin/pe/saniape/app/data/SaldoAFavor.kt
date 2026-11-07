@@ -54,6 +54,12 @@ data class CuentaTratamiento(
      * cancelado NUNCA es saldo (decisión del dueño 2026-10-06).
      */
     val saldoLiberado: Boolean = false,
+    /**
+     * Sesiones COMPLETADAS: lo atendido de un SUSPENDIDO (al suspender pueden
+     * quedar sesiones agendadas, que no son atención). null = no se cargaron.
+     * Gemelo de lib/saldo-a-favor.ts (valorAtendidoSuspendido, 06/11/2026).
+     */
+    val sesionesCompletadas: Int? = null,
 )
 
 /**
@@ -131,9 +137,21 @@ fun valorAtendidoCancelado(c: CuentaTratamiento): Double? {
     }
 }
 
-/** Lo pagado y no atendido de un cancelado, SIN mirar si se liberó (para el aviso y el botón del Admin). */
+/**
+ * Lo ATENDIDO de un SUSPENDIDO (Jonathan 06/11/2026, opción A): como el
+ * cancelado, pero contando solo lo COMPLETADO. Sin el conteo → null (ante la duda, no).
+ */
+fun valorAtendidoSuspendido(c: CuentaTratamiento): Double? {
+    val completadas = c.sesionesCompletadas ?: return null
+    return valorAtendidoCancelado(c.copy(sesionesRealizadas = completadas, citasNoCanceladas = 0))
+}
+
+/**
+ * Lo pagado y no atendido de un cancelado o SUSPENDIDO, SIN mirar si se liberó
+ * (para el aviso y el botón del Admin).
+ */
 fun noAtendidoCancelado(c: CuentaTratamiento): Double {
-    val atendido = valorAtendidoCancelado(c) ?: return 0.0
+    val atendido = (if (c.estado == "Suspendido") valorAtendidoSuspendido(c) else valorAtendidoCancelado(c)) ?: return 0.0
     val ex = c.pagado - atendido
     return if (ex > 0.005) redondear2(ex) else 0.0
 }
@@ -142,6 +160,8 @@ fun noAtendidoCancelado(c: CuentaTratamiento): Double {
 fun saldoDisponibleTratamiento(c: CuentaTratamiento): Double = when (c.estado) {
     "Eliminado" -> 0.0
     "Cancelado" -> if (c.saldoLiberado) noAtendidoCancelado(c) else 0.0
+    // Suspendido: sin liberar, como siempre (su excedente es automático).
+    "Suspendido" -> if (c.saldoLiberado) noAtendidoCancelado(c) else saldoAFavorTratamiento(c)
     else -> saldoAFavorTratamiento(c)
 }
 
