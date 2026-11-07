@@ -64,13 +64,26 @@ Aplica este patrón a cualquier pantalla/repo nuevo con cargas.
 
 ---
 
-## 🚨 SI ESTÁS EN LA MAC (2026-11-06): lee primero [docs/IOS-COMPILAR-EN-LA-MAC.md](docs/IOS-COMPILAR-EN-LA-MAC.md)
+## ✅ iOS COMPILA DE NUEVO (2026-11-07): Kotlin 2.4.21 + framework sin optimizar
 
-El build de iOS en GitHub Actions muere por falta de memoria: la app pasó de 0.95 MB a
-7.8 MB de código compartido. La tarea es compilar en la Mac y reportar el resultado. Ese
-documento tiene el contexto, los pasos y el formato del reporte. Mientras la cuenta de
-Apple siga en migración (beneficios pausados), no se sube nada a TestFlight ni se
-configura Xcode Cloud.
+Con 7.8 MB de código compartido, el framework release optimizado ya no enlazaba:
+
+- Con Kotlin 2.1.0 se quedaba sin memoria aun con 10 GB.
+- Con Kotlin 2.4.21 tardaba más de 75 min.
+
+Se resolvió así (commit 5eb263d, en master):
+
+- **Kotlin 2.4.21.**
+- **`optimized = (project.findProperty("iosOptimized") == "true")`** en
+  `binaries.framework`. Por defecto va sin optimizar. Para el release final al App
+  Store se puede pasar `-PiosOptimized=true`, pero no es obligatorio.
+
+**El CI `ios-release.yml` (macos-15-intel, 14 GB) compila en ~19 min y SUBE a App Store
+Connect** (run 42391378944). Android pasa sus 2,212 tests con Kotlin 2.4.21.
+
+En la Mac (16 GB) también compila: hay que cerrar Xcode mientras enlaza. Contexto en
+[docs/IOS-COMPILAR-EN-LA-MAC.md](docs/IOS-COMPILAR-EN-LA-MAC.md) y en el reporte de la
+rama `mac/ios-resultado`.
 
 ---
 
