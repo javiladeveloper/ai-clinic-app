@@ -51,6 +51,13 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
+            // HÍBRIDO (6-nov-2026): el link RELEASE full-optimizado de Kotlin/Native
+            // es inviable para esta app grande (508 archivos): se arrastra >75 min
+            // monohilo en la fase LLVM, y con K2.1.0 pedía 10g+ de heap (OOM en CI).
+            // Por defecto va SIN optimizar -> link ~6 min y ~5 GB de heap, apto para
+            // dev/TestFlight/CI. Solo el release final al App Store usa la
+            // optimización completa, con: ./gradlew ... -PiosOptimized=true
+            optimized = (project.findProperty("iosOptimized") == "true")
         }
     }
 
