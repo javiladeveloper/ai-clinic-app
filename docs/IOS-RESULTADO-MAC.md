@@ -47,8 +47,12 @@ optimized = (project.findProperty("iosOptimized") == "true")
    - **Login de clínica (admin_test@admin.com) FUNCIONA**: entra como "Clinica Test · Admin",
      carga 123 pacientes desde **Supabase** (red + auth + backend OK en iOS), dashboard
      completo renderiza bien.
-   - **Login Google (`975d3cd`): PENDIENTE de probar** (interacción con la hoja web del
-     simulador, lo prueba Jonathan a mano).
+   - **Login Google (`975d3cd`): ✅ FUNCIONA en iPhone** (probado por Jonathan en el
+     simulador). "Continuar con Google" abre la hoja web (ASWebAuthenticationSession, el fix
+     del Guideline 4), se elige la cuenta y **vuelve a la app con la sesión iniciada** →
+     portal del paciente cargado con datos reales (tratamiento "Consulta médica general ·
+     Clinica Test · 3/10 sesiones"). Era la verificación clave que nunca se había hecho en
+     iPhone — confirmada OK.
    Comando usado: `xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration
    Debug -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17'
    CODE_SIGNING_ALLOWED=NO build` (con `JAVA_HOME` seteado para la fase Compile Kotlin Framework).
