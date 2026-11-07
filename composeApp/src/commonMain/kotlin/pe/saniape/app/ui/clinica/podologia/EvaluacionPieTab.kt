@@ -603,7 +603,11 @@ private fun EditorEvaluacionPie(
         onCancelar = { if (!guardando) onCerrar() },
         onAccion = { guardar() },
     ) {
-        EtqForm("Fecha")
+        // «Hoy» = lo mismo que elegirlo en el selector (nunca futura).
+        pe.saniape.app.ui.componentes.EtiquetaConAhora(
+            modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA,
+            onAhora = { a -> fecha = if (a.fecha > hoy) hoy else a.fecha },
+        ) { EtqForm("Fecha") }
         CajaSelectorForm(fechaEvalPodo(fecha)) { elegirFecha = true }
         Spacer(Modifier.height(10.dp))
         Row(

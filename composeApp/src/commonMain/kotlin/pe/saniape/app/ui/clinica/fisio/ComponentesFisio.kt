@@ -336,7 +336,10 @@ fun ModalNoVolvio(
             singleLine = true, modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(12.dp))
-        EtqForm("Fecha del cierre")
+        pe.saniape.app.ui.componentes.EtiquetaConAhora(
+            modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA, habilitado = !guardando,
+            onAhora = { a -> fecha = a.fecha },
+        ) { EtqForm("Fecha del cierre") }
         Box(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
                 .background(c.superficie).border(1.dp, if (fecha > hoy) c.error else c.borde, RoundedCornerShape(Sania.shape.sm.dp))

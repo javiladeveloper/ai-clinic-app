@@ -129,7 +129,11 @@ internal fun SeccionFuentes(vm: EvaluacionPsicoViewModel, acciones: AccionesNati
                 CampoCortoPsico("Quién / qué", f.nombre, { v -> cambiar(f.id) { it.copy(nombre = v) } }, ro,
                     placeholder = "Ej. Tutora de aula, informe neurológico 2025")
                 Column {
-                    EtqForm("Fecha")
+                    // «Hoy» = lo mismo que elegirlo en el selector.
+                    pe.saniape.app.ui.componentes.EtiquetaConAhora(
+                        modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA, habilitado = !ro,
+                        onAhora = { a -> cambiar(f.id) { it.copy(fecha = a.fecha) } },
+                    ) { EtqForm("Fecha") }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.weight(1f)) {
                             CajaSelectorForm(f.fecha?.let { fechaDmyPsico(it) }?.ifBlank { null } ?: "Sin fecha") { if (!ro) fechaDe = f.id }

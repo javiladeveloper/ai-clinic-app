@@ -652,6 +652,14 @@ private fun FormularioCrecimiento(
     val scope = rememberCoroutineScope()
     var fecha by remember { mutableStateOf(hoy) }
     var elegirFecha by remember { mutableStateOf(false) }
+    // Lo mismo al elegir en el selector que con «Hoy».
+    fun ponerFecha(f: String) {
+        when {
+            f > hoy -> Toaster.error("La fecha no puede ser futura.")
+            nac != null && f < nac -> Toaster.error("La fecha es anterior al nacimiento.")
+            else -> fecha = f
+        }
+    }
     var peso by remember { mutableStateOf("") }
     var talla by remember { mutableStateOf(textoCampoMedicion(tallaPrevia)) }
     var pc by remember { mutableStateOf("") }
@@ -699,7 +707,9 @@ private fun FormularioCrecimiento(
         onCancelar = { if (!guardando) onCerrar() },
         onAccion = { guardar() },
     ) {
-        EtqForm("Fecha")
+        pe.saniape.app.ui.componentes.EtiquetaConAhora(
+            modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA, onAhora = { a -> ponerFecha(a.fecha) },
+        ) { EtqForm("Fecha") }
         CajaSelectorForm(fechaHc(fecha)) { elegirFecha = true }
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -738,13 +748,7 @@ private fun FormularioCrecimiento(
             ) { errores.forEach { Text(it, color = c.error, fontSize = 12.sp) } }
         }
     }
-    if (elegirFecha) DialogoFecha(onElegir = { f ->
-        when {
-            f > hoy -> Toaster.error("La fecha no puede ser futura.")
-            nac != null && f < nac -> Toaster.error("La fecha es anterior al nacimiento.")
-            else -> fecha = f
-        }
-    }, onCerrar = { elegirFecha = false }, inicial = fecha)
+    if (elegirFecha) DialogoFecha(onElegir = { f -> ponerFecha(f) }, onCerrar = { elegirFecha = false }, inicial = fecha)
 }
 
 @Composable

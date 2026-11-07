@@ -48,6 +48,12 @@ data class PrefillRecetaAtencion(
     val cie10: String? = null,
     /** Indicaciones generales ya escritas en la consulta (plan). */
     val indicaciones: String? = null,
+    /**
+     * La especialidad de la atención (la de la cita o la del servicio). Decide si
+     * en el modo «indicaciones» se ofrece receta con medicamentos
+     * ([recetaComoIndicaciones]). null = no se sabe: como la clínica.
+     */
+    val especialidadId: String? = null,
 )
 
 /**
@@ -84,22 +90,31 @@ fun recetaAplicaAtencion(
  * Clínica NO médica que encendió recetas (DALU, fisioterapia): la hoja sale como
  * INDICACIONES (sin Rp. ni medicamentos obligatorios), así que todo el texto
  * habla de "indicaciones". En una clínica médica, "receta / indicaciones".
+ *
+ * POR ATENCIÓN (gemelo de `textosRecetaDe` web, bc8919de, QA 07/11/2026): en el
+ * modo «indicaciones», la atención de una especialidad que prescribe
+ * (odontología, medicina, otorrino… `especialidadesPrescriben`) se ofrece como
+ * en una clínica médica. Sin especialidad conocida, lo de la clínica.
  */
-fun recetaComoIndicaciones(modulos: ModulosClinicos): Boolean = modulos.recetasOptIn
+fun recetaComoIndicaciones(modulos: ModulosClinicos, especialidadId: String? = null): Boolean {
+    if (!modulos.recetasOptIn) return false
+    val esp = especialidadId?.takeIf { it.isNotBlank() } ?: return true
+    return esp !in modulos.especialidadesPrescriben
+}
 
 /** El botón: "📝 Dar indicaciones" (no médica) o "📝 Dar receta / indicaciones". */
-fun textoDarReceta(modulos: ModulosClinicos): String =
-    if (recetaComoIndicaciones(modulos)) "📝 Dar indicaciones" else "📝 Dar receta / indicaciones"
+fun textoDarReceta(modulos: ModulosClinicos, especialidadId: String? = null): String =
+    if (recetaComoIndicaciones(modulos, especialidadId)) "📝 Dar indicaciones" else "📝 Dar receta / indicaciones"
 
 /** El sustantivo para avisos e indicadores: "Indicaciones" o "Receta". */
-fun nombreHojaReceta(modulos: ModulosClinicos): String =
-    if (recetaComoIndicaciones(modulos)) "Indicaciones" else "Receta"
+fun nombreHojaReceta(modulos: ModulosClinicos, especialidadId: String? = null): String =
+    if (recetaComoIndicaciones(modulos, especialidadId)) "Indicaciones" else "Receta"
 
-/** La pregunta de la oferta tras completar ("¿Le dejas indicaciones a Ana?"). */
+/** La pregunta de la oferta tras completar ("¿Le dejas indicaciones a Ana?"). Por la especialidad de [p]. */
 fun textoOfertaReceta(modulos: ModulosClinicos, p: PrefillRecetaAtencion): String {
     val nombre = p.pacienteNombre?.trim()?.split(Regex("\\s+"))?.firstOrNull()?.takeIf { it.isNotBlank() }
     val a = nombre?.let { " a $it" } ?: ""
-    return if (recetaComoIndicaciones(modulos)) "¿Le dejas indicaciones$a?"
+    return if (recetaComoIndicaciones(modulos, p.especialidadId)) "¿Le dejas indicaciones$a?"
     else "¿Le das una receta o indicaciones$a?"
 }
 
@@ -136,8 +151,14 @@ fun prefillRecetaDeCita(
         terapeutaId = terapeutaId?.takeIf { it.isNotBlank() } ?: cita.terapeutaId,
         diagnostico = diagnostico?.trim()?.takeIf { it.isNotEmpty() },
         atencion = atencion,
+        // La de la cita, luego la del servicio de su tratamiento (como recetaAplicaAtencion).
+        especialidadId = especialidadDeCitaReceta(cita),
     )
 }
+
+/** La especialidad de una cita para la receta: la de la cita, luego la de su servicio. */
+fun especialidadDeCitaReceta(cita: CitaStaff): String? =
+    listOf(cita.especialidadId, cita.especialidadServicioId).firstOrNull { !it.isNullOrBlank() }
 
 /**
  * El prellenado de una SESIÓN de la ficha o de la lista de Sesiones: su
@@ -154,6 +175,8 @@ fun prefillRecetaDeSesion(
     terapeutaSesion: String? = null,
     terapeutaTratamiento: String? = null,
     diagnostico: String? = null,
+    /** La del servicio del tratamiento (decide «indicaciones» vs receta). */
+    especialidadId: String? = null,
 ): PrefillRecetaAtencion = PrefillRecetaAtencion(
     pacienteId = pacienteId,
     pacienteNombre = pacienteNombre,
@@ -163,6 +186,7 @@ fun prefillRecetaDeSesion(
     terapeutaId = terapeutaSesion?.takeIf { it.isNotBlank() } ?: terapeutaTratamiento,
     diagnostico = diagnostico?.trim()?.takeIf { it.isNotEmpty() },
     atencion = numero?.takeIf { it > 0 }?.let { "Sesión #$it" } ?: "Sesión",
+    especialidadId = especialidadId?.takeIf { it.isNotBlank() },
 )
 
 /**
@@ -181,6 +205,8 @@ fun prefillRecetaDeTratamiento(
     diagnostico: String?,
     atencion: String?,
     medicacion: String?,
+    /** La del servicio del tratamiento (decide «indicaciones» vs receta). */
+    especialidadId: String? = null,
 ): PrefillRecetaAtencion = PrefillRecetaAtencion(
     pacienteId = pacienteId,
     pacienteNombre = pacienteNombre,
@@ -190,6 +216,7 @@ fun prefillRecetaDeTratamiento(
     diagnostico = diagnostico?.trim()?.takeIf { it.isNotEmpty() },
     atencion = atencion,
     medicacionRef = medicacion?.trim()?.takeIf { it.isNotEmpty() },
+    especialidadId = especialidadId?.takeIf { it.isNotBlank() },
 )
 
 /**
@@ -209,6 +236,8 @@ fun prefillRecetaTrasConsulta(
     diagnostico: String?,
     cie10: String?,
     indicaciones: String?,
+    /** La especialidad de la cita de la consulta (null = como la clínica). */
+    especialidadId: String? = null,
 ): PrefillRecetaAtencion? {
     if (!recetasAplica || pacienteId.isNullOrBlank()) return null
     if (estadosRecetasDeLaCita.any { it != "Anulada" }) return null
@@ -222,6 +251,7 @@ fun prefillRecetaTrasConsulta(
         atencion = "Consulta",
         cie10 = cie10?.trim()?.takeIf { it.isNotEmpty() },
         indicaciones = indicaciones?.trim()?.takeIf { it.isNotEmpty() },
+        especialidadId = especialidadId?.takeIf { it.isNotBlank() },
     )
 }
 

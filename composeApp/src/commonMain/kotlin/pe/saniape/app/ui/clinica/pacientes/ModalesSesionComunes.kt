@@ -53,6 +53,8 @@ fun ModalEstadoSesion(
     horaInicial: String?,
     subtitulo: String? = null,
     guardando: Boolean = false,
+    /** Zona de la sede de la sesión para «Ahora»; null = la de la sede activa. */
+    zonaAhora: String? = null,
     onCancelar: () -> Unit,
     onConfirmar: (motivo: String?, fecha: String?, hora: String?) -> Unit,
 ) {
@@ -84,7 +86,12 @@ fun ModalEstadoSesion(
                 Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
                     Column(Modifier.weight(1f)) { EtqForm("Fecha"); CajaSelectorForm(fecha) { mostrarFecha = true } }
                     Column(Modifier.weight(1f)) {
-                        EtqForm("Hora"); CajaSelectorForm(pe.saniape.app.ui.hora12(hora)) { mostrarHora = true }
+                        // «Ahora»: fecha y hora de este momento en la zona de la sede.
+                        pe.saniape.app.ui.componentes.EtiquetaConAhora(
+                            zona = zonaAhora, habilitado = !guardando,
+                            onAhora = { a -> fecha = a.fecha; hora = a.hora },
+                        ) { EtqForm("Hora") }
+                        CajaSelectorForm(pe.saniape.app.ui.hora12(hora)) { mostrarHora = true }
                     }
                 }
             }

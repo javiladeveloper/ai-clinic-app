@@ -348,7 +348,11 @@ internal fun FormularioPlanOrto(
         SegmentadoMapa(APARATOLOGIAS_ORTO.map { it.id to it.corto }, aparatologia, { v -> v?.let { elegirAparatologia(it) } }, permiteVacio = false)
         EtiquetaMapa("Arcadas")
         SegmentadoMapa(ARCADAS_ORTO.map { it.id to it.nombre }, arcadas, { v -> v?.let { arcadas = it } }, permiteVacio = false)
-        EtiquetaMapa("Instalación")
+        if (instalada) {
+            pe.saniape.app.ui.componentes.EtiquetaConAhora(
+                modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA, onAhora = { a -> fechaInstalacion = a.fecha },
+            ) { EtiquetaMapa("Instalación") }
+        } else EtiquetaMapa("Instalación")
         if (instalada) CajaSelectorForm(fechaIndicacion(fechaInstalacion)) { elegirFecha = "instalacion" }
         Box(Modifier.padding(top = 6.dp)) {
             ChipMapa((if (!instalada) "✓ " else "") + "Todavía no se instala", !instalada) { instalada = !instalada }
@@ -399,7 +403,9 @@ internal fun FormularioPlanOrto(
         EtiquetaMapa("Retención planificada")
         SegmentadoMapa(RETENCIONES_ORTO.map { it.id to it.nombre }, retencion, { retencion = it })
         if (!nuevo || fase == "retencion") {
-            EtiquetaMapa("Retiro de la aparatología")
+            pe.saniape.app.ui.componentes.EtiquetaConAhora(
+                modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA, onAhora = { a -> fechaRetiro = a.fecha },
+            ) { EtiquetaMapa("Retiro de la aparatología") }
             CajaSelectorForm(fechaRetiro.takeIf { it.isNotBlank() }?.let { fechaIndicacion(it) } ?: "Sin retirar") { elegirFecha = "retiro" }
             if (fechaRetiro.isNotBlank()) {
                 Text("Quitar la fecha de retiro", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
@@ -569,7 +575,9 @@ internal fun FormularioControlOrto(
             citaDe(b.citaId)?.let { textoCitaOrto(it) } ?: "Sin cita",
             listOf("" to "Sin cita") + elegibles.map { it.id to textoCitaOrto(it) },
         ) { elegirCita(it) }
-        EtiquetaMapa("Fecha")
+        pe.saniape.app.ui.componentes.EtiquetaConAhora(
+            modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA, onAhora = { a -> b = b.copy(fecha = a.fecha) },
+        ) { EtiquetaMapa("Fecha") }
         CajaSelectorForm(fechaIndicacion(b.fecha ?: hoy)) { elegirFecha = true }
         if (profesionales.isNotEmpty()) {
             EtiquetaMapa("Atendió")

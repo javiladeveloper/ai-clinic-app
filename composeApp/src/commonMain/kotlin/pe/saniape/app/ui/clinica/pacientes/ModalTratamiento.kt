@@ -562,12 +562,14 @@ fun ModalCrearTratamiento(
         avisarCambio?.invoke(terId, proc?.id, modalidadUnPaso)
     }
 
+    // Lo mismo al elegir en el selector que con «Hoy».
+    fun elegirFechaInicio(f: String) {
+        fechaInicio = f
+        // Un inicio programado para más adelante lleva la cita a ese día (CitaUnPaso.kt).
+        if (unPaso != null) { inicioTocado = true; unPaso.onFechaInicio(f) }
+    }
     if (mostrarFechaInicio) DialogoFecha(
-        onElegir = {
-            fechaInicio = it
-            // Un inicio programado para más adelante lleva la cita a ese día (CitaUnPaso.kt).
-            if (unPaso != null) { inicioTocado = true; unPaso.onFechaInicio(it) }
-        },
+        onElegir = { elegirFechaInicio(it) },
         onCerrar = { mostrarFechaInicio = false },
     )
     if (mostrarFechaPrimera) DialogoFecha(onElegir = { fechaPrimera = it; primeraTocada = true }, onCerrar = { mostrarFechaPrimera = false }, inicial = fechaPrimera)
@@ -1086,7 +1088,14 @@ fun ModalCrearTratamiento(
                 if (proc != null && !esUnidades) {
                     Spacer(Modifier.height(12.dp))
                     Tarjeta(titulo = "Fecha de inicio", icono = "📅") {
-                        CajaSelectorForm(fechaInicio) { mostrarFechaInicio = true }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Box(Modifier.weight(1f)) { CajaSelectorForm(fechaInicio) { mostrarFechaInicio = true } }
+                            pe.saniape.app.ui.componentes.BotonAhora(
+                                modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA,
+                                zona = ctxStaff?.zonaDeSede(sedeDestino),
+                                onAhora = { a -> elegirFechaInicio(a.fecha) },
+                            )
+                        }
                         Text("Anterior si ya empezó, futura si está programado.",
                             color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
                     }
@@ -1125,7 +1134,14 @@ fun ModalCrearTratamiento(
                             Spacer(Modifier.height(8.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Column(Modifier.weight(1f)) { Etq("Fecha"); CajaSelectorForm(fechaPrimera) { mostrarFechaPrimera = true } }
-                                Column(Modifier.weight(1f)) { Etq("Hora"); CajaSelectorForm(horaPrimera) { mostrarHoraPrimera = true } }
+                                Column(Modifier.weight(1f)) {
+                                    // «Ahora» = lo mismo que elegir fecha y hora en los selectores.
+                                    pe.saniape.app.ui.componentes.EtiquetaConAhora(
+                                        zona = ctxStaff?.zonaDeSede(sedeDestino),
+                                        onAhora = { a -> fechaPrimera = a.fecha; horaPrimera = a.hora; primeraTocada = true },
+                                    ) { Etq("Hora") }
+                                    CajaSelectorForm(horaPrimera) { mostrarHoraPrimera = true }
+                                }
                             }
                             Text("Se crea la sesión #1 con su cita. Las siguientes se agendan como siempre.",
                                 color = c.textoSuave, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
@@ -1796,7 +1812,10 @@ fun ModalEditarConsulta(
                         SelectorCajita(fecha.ifBlank { "Elegir…" }) { mostrarFechaCita = true }
                     }
                     Column(Modifier.weight(1f)) {
-                        Etq("Hora")
+                        pe.saniape.app.ui.componentes.EtiquetaConAhora(
+                            zona = t.sedeId?.let { pe.saniape.app.ui.componentes.zonaParaAhora(it) },
+                            onAhora = { a -> fecha = a.fecha; hora = a.hora },
+                        ) { Etq("Hora") }
                         SelectorCajita(pe.saniape.app.ui.hora12(hora)) { mostrarHoraCita = true }
                     }
                 }

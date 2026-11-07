@@ -317,7 +317,13 @@ private fun FormularioMedidas(
         onCancelar = { if (!guardando) onCerrar() },
         onAccion = { guardar() },
     ) {
-        EtqForm("Fecha")
+        // «Hoy» = lo mismo que elegirlo en el selector (con su control de fecha futura).
+        pe.saniape.app.ui.componentes.EtiquetaConAhora(
+            modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA,
+            onAhora = { a ->
+                if (fechaMedicionFutura(a.fecha, hoyClinicaIso())) Toaster.error(ERROR_FECHA_FUTURA) else fecha = a.fecha
+            },
+        ) { EtqForm("Fecha") }
         CajaSelectorForm(fechaHc(fecha)) { elegirFecha = true }
         Spacer(Modifier.height(12.dp))
         // De a dos por fila; el perímetro abdominal (etiqueta larga) va solo.

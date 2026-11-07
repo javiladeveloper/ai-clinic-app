@@ -1,6 +1,9 @@
 package pe.saniape.app.data.staff
 
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.query.Columns
+import io.github.jan.supabase.postgrest.query.Order
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
@@ -10,6 +13,7 @@ import io.ktor.http.encodeURLPathPart
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import pe.saniape.app.data.Supabase
 import pe.saniape.app.data.crearHttpClient
 
@@ -57,6 +61,30 @@ object ReciboRepo {
         } catch (e: Exception) {
             ResultadoRecibo.Error("Sin conexión: no se pudo generar el recibo.")
         }
+    }
+
+    /**
+     * 🧾 de una SESIÓN pagada (gemelo de `elegirReciboDeSesion` de la web): el pago
+     * VINCULADO a la sesión (el más reciente); sin él (un paquete pagado aparte),
+     * el último del tratamiento. Success(null) = no hay ninguno; Failure = no se
+     * pudo leer (sin red). Una lectura al tocar: la RLS la acota a la clínica.
+     */
+    suspend fun pagoDeSesion(sesionId: String?, tratamientoId: String?): Result<String?> = try {
+        suspend fun ultimo(columna: String, id: String): String? =
+            Supabase.client.postgrest["pagos_tratamiento"]
+                .select(Columns.raw("id")) {
+                    filter { eq(columna, id) }
+                    order("created_at", Order.DESCENDING)
+                    limit(1)
+                }
+                .decodeList<JsonObject>()
+                .firstOrNull()?.let { (it["id"] as? JsonPrimitive)?.contentOrNull?.takeIf { s -> s.isNotBlank() } }
+        val porSesion = sesionId?.takeIf { it.isNotBlank() }?.let { ultimo("sesion_id", it) }
+        Result.success(porSesion ?: tratamientoId?.takeIf { it.isNotBlank() }?.let { ultimo("tratamiento_id", it) })
+    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Result.failure(e)
     }
 
     /** Bytes del PDF, o null si no se pudo (sin red, sin permiso, aún no cobrado). */

@@ -578,7 +578,11 @@ private fun ModalEvaluacionFisio(
             TIPOS_EVALUACION.forEach { (id, label) -> ChipEval(label, activo = tipo == id) { tipo = id } }
         }
         Spacer(Modifier.height(12.dp))
-        EtqForm("Fecha")
+        // «Hoy» = lo mismo que elegirlo en el selector (nunca futura).
+        pe.saniape.app.ui.componentes.EtiquetaConAhora(
+            modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA,
+            onAhora = { a -> fecha = if (a.fecha > hoyClinicaIso()) hoyClinicaIso() else a.fecha },
+        ) { EtqForm("Fecha") }
         CajaSelectorForm(fechaCorta(fecha)) { eligiendoFecha = true }
         if (terapeutas.isNotEmpty()) {
             Spacer(Modifier.height(12.dp))

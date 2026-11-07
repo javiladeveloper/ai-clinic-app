@@ -342,7 +342,10 @@ fun TarjetaCita(
                 anularCobro = anularCobro && pagada,
                 // 🧾 Comprobante: el recibo del cobro YA hecho, otra vez (gemelo de /citas web).
                 comprobante = pe.saniape.app.data.staff.ofreceComprobanteCita(
-                    cita.tipo, cita.costo, cita.pagadaAt, cita.estado, puedeCobrar),
+                    cita.tipo, cita.costo, cita.pagadaAt, cita.estado, puedeCobrar) ||
+                    // …y el de una SESIÓN pagada: su pago vive en el tratamiento (Dr. Luis 07/11).
+                    pe.saniape.app.data.staff.ofreceComprobanteSesion(
+                        cita.tipo, cita.sesionId, cita.tratamientoId, cita.estado, estadoPago?.estado, puedeCobrar),
                 receta = textoReceta?.takeIf { verClinico && cita.pacienteId != null },
                 nutricion = verClinico && nutricion && cita.pacienteId != null,
                 embarazo = verClinico && embarazo && cita.pacienteId != null,

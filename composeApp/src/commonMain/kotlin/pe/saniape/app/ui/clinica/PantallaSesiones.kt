@@ -110,6 +110,8 @@ fun PantallaSesiones(
             sesionId = s.id, numero = s.numero, tratamientoId = s.tratamientoId,
             terapeutaSesion = s.terapeutaId, terapeutaTratamiento = s.terapeutaTratamientoId,
             diagnostico = s.diagnostico,
+            // La del servicio: decide «indicaciones» vs receta en el cierre y la hoja.
+            especialidadId = s.especialidadId,
         )
     }
     // Indicador por sesión: UNA lectura liviana, en segundo plano, solo con el módulo
@@ -380,7 +382,7 @@ fun PantallaSesiones(
                             onAmpliar = { abrirFichaAccion(s, pe.saniape.app.data.staff.AccionTratamientoFicha.AMPLIAR) },
                             onDarAlta = { abrirFichaAccion(s, pe.saniape.app.data.staff.AccionTratamientoFicha.ALTA) },
                             textoReceta = if (s.estado == "Completada" && recetaAplica(s))
-                                pe.saniape.app.data.staff.textoDarReceta(ctx.modulosClinicos) else null,
+                                pe.saniape.app.data.staff.textoDarReceta(ctx.modulosClinicos, s.especialidadId) else null,
                             recetaVinculada = recetasPorSesion[s.id],
                             onReceta = { pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.abrir(prefillReceta(s), yaTiene = recetasPorSesion[s.id]) },
                             onVerReceta = { r ->

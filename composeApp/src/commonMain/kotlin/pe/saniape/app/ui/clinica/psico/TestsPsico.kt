@@ -218,7 +218,10 @@ private fun TarjetaTest(
             }
 
             Column {
-                EtqForm("Fecha de aplicación")
+                pe.saniape.app.ui.componentes.EtiquetaConAhora(
+                    modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA, habilitado = !ro,
+                    onAhora = { a -> cambiar(t.copy(fecha = a.fecha)) },
+                ) { EtqForm("Fecha de aplicación") }
                 CajaSelectorForm(fechaDmyPsico(t.fecha).ifBlank { "Elegir" }) { if (!ro) elegirFecha = true }
                 if (t.edadMeses != null) Text("Edad al aplicarlo: ${textoEdadMeses(t.edadMeses)}", color = c.textoSuave,
                     fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))

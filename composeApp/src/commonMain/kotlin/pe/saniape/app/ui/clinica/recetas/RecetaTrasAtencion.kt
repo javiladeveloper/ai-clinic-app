@@ -196,8 +196,9 @@ fun HostRecetaTrasAtencion(
             val p = mostrada ?: return@AnimatedVisibility
             BarraOfertaReceta(
                 completada = textoAtencionCompletada(p),
+                // Por atención: la especialidad de [p] decide «indicaciones» vs receta.
                 pregunta = textoOfertaReceta(modulos, p),
-                boton = textoDarReceta(modulos),
+                boton = textoDarReceta(modulos, p.especialidadId),
                 onDar = { RecetaTrasAtencion.abrir(p) },
                 onDescartar = { RecetaTrasAtencion.descartar() },
             )
@@ -211,7 +212,7 @@ fun HostRecetaTrasAtencion(
             onEmitida = { id ->
                 RecetaTrasAtencion.cerrar()
                 RecetaTrasAtencion.marcarEmitida()
-                if (id.isNotBlank()) porImprimir = id to nombreHojaReceta(modulos)
+                if (id.isNotBlank()) porImprimir = id to nombreHojaReceta(modulos, p.especialidadId)
             },
         )
     }
@@ -380,7 +381,8 @@ private fun EmisionRecetaAtencion(
         cie10 = pf.cie10,
         citaId = pf.citaId,
         tratamientoId = pf.tratamientoId,
-        recetasOptIn = ctx.modulosClinicos.recetasOptIn,
+        // Por atención: odontología/medicina recetan aunque la clínica esté en modo «indicaciones».
+        recetasOptIn = pe.saniape.app.data.staff.recetaComoIndicaciones(ctx.modulosClinicos, pf.especialidadId),
         onCancelar = onCerrar,
         onEmitida = onEmitida,
         terapeutaSugerido = pf.terapeutaId,

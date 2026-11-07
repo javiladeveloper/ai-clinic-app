@@ -279,7 +279,10 @@ private fun DialogoGasto(
             )
             Spacer(Modifier.height(10.dp))
             if (frecuencia == "Único") {
-                EtqForm("Fecha del gasto")
+                pe.saniape.app.ui.componentes.EtiquetaConAhora(
+                    modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA,
+                    onAhora = { a -> fechaUnica = a.fecha },
+                ) { EtqForm("Fecha del gasto") }
                 CajaSelectorForm(fechaUnica?.let { fechaCortaFin(it) } ?: "Elegir fecha") { eligiendoFecha = true }
             } else {
                 EtqForm("Día de cobro (opcional)")

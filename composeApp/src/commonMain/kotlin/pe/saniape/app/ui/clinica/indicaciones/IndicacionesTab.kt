@@ -725,7 +725,9 @@ private fun EditorIndicaciones(
         EtqForm("Título")
         CampoInd(cont.titulo, { cont = cont.copy(titulo = it.take(LimitesIndicaciones.TITULO)) }, "Ej. Cuidados después del peeling químico")
         Spacer(Modifier.height(10.dp))
-        EtqForm("Fecha")
+        pe.saniape.app.ui.componentes.EtiquetaConAhora(
+            modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA, onAhora = { a -> fecha = a.fecha },
+        ) { EtqForm("Fecha") }
         CajaSelectorForm(fechaIndicacion(fecha)) { elegirFecha = true }
 
         Spacer(Modifier.height(12.dp))

@@ -77,6 +77,14 @@ data class ModulosClinicos(
     val recetas: Boolean = false,
     /** Recetas encendidas en una clínica NO médica (modo "indicaciones"). */
     val recetasOptIn: Boolean = false,
+    /**
+     * Especialidades cuyas atenciones SÍ pueden llevar medicamentos (rubros que
+     * recetan, sin optometría; `prescriben` de la web, bc8919de). En el modo
+     * «indicaciones», una atención de estas se ofrece como receta igual (QA
+     * 07/11/2026: odontología u otorrino en una clínica con fisio). Vacía si el
+     * servidor no la manda: todo como la clínica.
+     */
+    val especialidadesPrescriben: List<String> = emptyList(),
     /** Signos vitales antes de la atención: la clínica lo usa. */
     val triaje: Boolean = false,
     /** Qué mide la clínica en su triaje. */

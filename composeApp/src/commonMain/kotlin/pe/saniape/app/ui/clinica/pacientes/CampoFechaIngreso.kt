@@ -76,8 +76,14 @@ fun CampoFechaIngreso(fecha: String, onCambio: (String) -> Unit, habilitado: Boo
     }
 
     Column(Modifier.fillMaxWidth()) {
-        Text("Fecha de ingreso", color = c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 4.dp))
+        // «Hoy» (zona de la sede activa): lo mismo que elegirlo en el selector.
+        pe.saniape.app.ui.componentes.EtiquetaConAhora(
+            modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA, habilitado = habilitado,
+            onAhora = { a -> onCambio(a.fecha) },
+        ) {
+            Text("Fecha de ingreso", color = c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 4.dp))
+        }
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
                 .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))

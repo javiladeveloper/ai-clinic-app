@@ -106,6 +106,8 @@ fun DialogoInformeMedico(
     pacienteNombre: String,
     prefill: PrefillInforme?,
     hoy: String,
+    /** Zona con la que se calculó [hoy], para «Hoy» de la fecha; null = la de la sede activa. */
+    zonaAhora: String? = null,
     onCancelar: () -> Unit,
     /**
      * Abierto desde la FICHA (sin atención): se prellena con la última atención
@@ -148,6 +150,13 @@ fun DialogoInformeMedico(
     }
 
     var fecha by remember { mutableStateOf(hoy) }
+    // La fecha del documento: lo mismo al elegir en el calendario que con «Hoy».
+    fun ponerFechaDoc(f: String) {
+        fecha = f.takeIf { it <= hoy && it >= restarDias(hoy, MAX_DIAS_ATRAS_DOC) } ?: run {
+            Toaster.error("La fecha debe estar entre hoy y $MAX_DIAS_ATRAS_DOC días atrás.")
+            fecha
+        }
+    }
     var titulo by remember { mutableStateOf(tituloInicial.orEmpty()) }
     var dirigidoA by remember { mutableStateOf("") }
     var motivo by remember { mutableStateOf(p.motivo.orEmpty()) }
@@ -329,7 +338,11 @@ fun DialogoInformeMedico(
 
             // ── Fecha, título, dirigido a ──
             Column {
-                EtqForm("Fecha")
+                // «Hoy» solo en la fecha del informe (no en el rango del descanso).
+                pe.saniape.app.ui.componentes.EtiquetaConAhora(
+                    modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA, zona = zonaAhora,
+                    onAhora = { a -> ponerFechaDoc(a.fecha) },
+                ) { EtqForm("Fecha") }
                 CajaSelectorForm("📅 ${fechaDMA(fecha)}") { calendario = "fecha" }
                 Text("Entre hoy y $MAX_DIAS_ATRAS_DOC días atrás.", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp))
             }
@@ -517,10 +530,7 @@ fun DialogoInformeMedico(
                         hasta = hastaPorDias(f, n)
                     }
                     "hasta" -> hasta = f
-                    else -> fecha = f.takeIf { it <= hoy && it >= restarDias(hoy, MAX_DIAS_ATRAS_DOC) } ?: run {
-                        Toaster.error("La fecha debe estar entre hoy y $MAX_DIAS_ATRAS_DOC días atrás.")
-                        fecha
-                    }
+                    else -> ponerFechaDoc(f)
                 }
             },
         )

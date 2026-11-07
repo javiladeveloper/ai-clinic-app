@@ -493,7 +493,8 @@ private fun BloqueProcedimiento(vm: AtencionViewModel, d: DatosConsultaApp, solo
             }
             if (cuando == "programar") {
                 Spacer(Modifier.height(8.dp))
-                SelectorFechaHora(fecha = fecha, hora = hora, minimo = hoy, onFecha = { fecha = it }, onHora = { hora = it })
+                SelectorFechaHora(fecha = fecha, hora = hora, minimo = hoy, onFecha = { fecha = it }, onHora = { hora = it },
+                    zona = pe.saniape.app.ui.componentes.zonaParaAhora(d.cita.sede_id))
             }
             Spacer(Modifier.height(10.dp))
             BotonChico(if (vm.accionando == "indicar") "Indicando…" else "Indicar procedimiento", c.sobreNavy, c.navy,
@@ -567,7 +568,8 @@ private fun BloqueControl(vm: AtencionViewModel, d: DatosConsultaApp, soloLectur
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                SelectorFechaHora(fecha = fecha, hora = hora, minimo = diaCita, onFecha = { fechaManual = it }, onHora = { hora = it })
+                SelectorFechaHora(fecha = fecha, hora = hora, minimo = diaCita, onFecha = { fechaManual = it }, onHora = { hora = it },
+                    zona = pe.saniape.app.ui.componentes.zonaParaAhora(d.cita.sede_id))
                 Spacer(Modifier.height(8.dp))
                 EtqForm("Motivo (opcional)")
                 OutlinedTextField(
@@ -606,6 +608,8 @@ internal fun SelectorFechaHora(
     minimo: String?,
     onFecha: (String) -> Unit,
     onHora: (String) -> Unit,
+    /** Zona de la sede de la cita para «Ahora»; null = la de la sede activa. */
+    zona: String? = null,
 ) {
     val c = Sania.colors
     var mostrarFecha by remember { mutableStateOf(false) }
@@ -650,7 +654,10 @@ internal fun SelectorFechaHora(
             CajaSelectorForm("📅 ${fechaLegibleCorta(fecha)}") { mostrarFecha = true }
         }
         Column(Modifier.weight(1f)) {
-            EtqForm("Hora")
+            // «Ahora»: las dos, por los mismos callbacks que los selectores.
+            pe.saniape.app.ui.componentes.EtiquetaConAhora(zona = zona, onAhora = { a -> onFecha(a.fecha); onHora(a.hora) }) {
+                EtqForm("Hora")
+            }
             CajaSelectorForm("🕐 ${hora12(hora)}") { mostrarHora = true }
         }
     }

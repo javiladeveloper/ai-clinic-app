@@ -1,0 +1,8 @@
+Botón «Ahora» en fechas y horas, comprobante de sesiones pagadas y saldo a favor de tratamientos suspendidos.
+---
+• «Ahora» / «Hoy» junto a las fechas y horas: un toque pone el momento actual (en la hora de tu sede) al crear o reprogramar citas, registrar pagos, gastos y registros clínicos.
+• Agenda: una sesión ya pagada tiene «🧾 Comprobante» en su menú, para imprimir o enviar el recibo.
+• Recetas: en odontología y medicina puedes sumar medicamentos aunque tu clínica use hojas de indicaciones.
+• Un tratamiento suspendido ya pagado deja lo no atendido como saldo a favor, para usarlo en otro tratamiento.
+• El aviso de tratamientos abiertos muestra la cita ya agendada de cada plan.
+---

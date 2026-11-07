@@ -35,3 +35,17 @@ fun reciboDeMovimiento(id: String, tipo: String, categoria: String?, comprobante
  */
 fun ofreceComprobanteCita(tipo: String?, costo: Double?, pagadaAt: String?, estado: String?, puedePagos: Boolean): Boolean =
     puedePagos && tipo != "Sesión" && (costo ?: 0.0) > 0 && !pagadaAt.isNullOrBlank() && estado != "Cancelada"
+
+/**
+ * …y el de una SESIÓN pagada (Dr. Luis 07/11/2026, gemelo de /citas web): su pago
+ * vive en el tratamiento, no en la cita. Cita «Sesión» con sesión o tratamiento,
+ * no cancelada, permiso 'pagos' y el estado de pago del servidor
+ * (/api/staff/cita/estado-pago) en 'pagado' o 'parcial'. El pago concreto se
+ * busca al tocar ([ReciboRepo.pagoDeSesion]).
+ */
+fun ofreceComprobanteSesion(
+    tipo: String?, sesionId: String?, tratamientoId: String?, estado: String?,
+    estadoPago: String?, puedePagos: Boolean,
+): Boolean =
+    puedePagos && tipo == "Sesión" && (!sesionId.isNullOrBlank() || !tratamientoId.isNullOrBlank()) &&
+        estado != "Cancelada" && (estadoPago == "pagado" || estadoPago == "parcial")

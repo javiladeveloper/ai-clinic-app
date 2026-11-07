@@ -704,7 +704,11 @@ fun ModalEditarCita(
                 Spacer(Modifier.height(Sania.dim.md))
                 SelectorBotonModal("Fecha", fecha) { mostrarFecha = true }
                 Spacer(Modifier.height(Sania.dim.sm))
-                SelectorBotonModal("Hora", hora12(hora)) { mostrarHora = true }
+                SelectorBotonModal(
+                    "Hora", hora12(hora),
+                    ahora = { a -> fecha = a.fecha; hora = a.hora },
+                    zonaAhora = pe.saniape.app.ui.componentes.zonaParaAhora(cita.sedeId),
+                ) { mostrarHora = true }
                 if (profesionales != null && profesionales.isNotEmpty()) {
                     Spacer(Modifier.height(Sania.dim.md))
                     Text("Profesional", color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -848,7 +852,11 @@ fun ModalPasarEvaluacion(cita: CitaStaff, onCancelar: () -> Unit, onElegir: (fec
                     Spacer(Modifier.height(Sania.dim.md))
                     SelectorBotonModal("Fecha", fecha) { mostrarFecha = true }
                     Spacer(Modifier.height(Sania.dim.sm))
-                    SelectorBotonModal("Hora", hora12(hora)) { mostrarHora = true }
+                    SelectorBotonModal(
+                        "Hora", hora12(hora),
+                        ahora = { a -> fecha = a.fecha; hora = a.hora },
+                        zonaAhora = pe.saniape.app.ui.componentes.zonaParaAhora(cita.sedeId),
+                    ) { mostrarHora = true }
                     Spacer(Modifier.height(Sania.dim.lg))
                     BotonModal("✓ Agendar evaluación", c.navy, c.sobreNavy, lleno = true) { onElegir(fecha, hora) }
                     Spacer(Modifier.height(Sania.dim.sm))
@@ -887,10 +895,21 @@ private fun BotonModal(texto: String, color: androidx.compose.ui.graphics.Color,
 }
 
 @Composable
-private fun SelectorBotonModal(label: String, valor: String, onClick: () -> Unit) {
+private fun SelectorBotonModal(
+    label: String,
+    valor: String,
+    /** «Ahora» junto a la etiqueta (zona de la sede de la cita); null = sin botón. */
+    ahora: ((pe.saniape.app.data.staff.AhoraEnZona) -> Unit)? = null,
+    zonaAhora: String? = null,
+    onClick: () -> Unit,
+) {
     val c = Sania.colors
     Column {
-        Text(label, color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        if (ahora != null) {
+            pe.saniape.app.ui.componentes.EtiquetaConAhora(zona = zonaAhora, onAhora = ahora) {
+                Text(label, color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+        } else Text(label, color = c.textoSuave, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
                 .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))

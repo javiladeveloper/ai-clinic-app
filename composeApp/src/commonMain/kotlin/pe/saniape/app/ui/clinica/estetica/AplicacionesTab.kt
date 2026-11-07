@@ -722,7 +722,9 @@ private fun EditorMapa(
             listOf("" to vacioTer) + profesionales.map { it.id to it.nombre },
         ) { terSel = it }
         Spacer(Modifier.height(8.dp))
-        EtqForm("Fecha")
+        pe.saniape.app.ui.componentes.EtiquetaConAhora(
+            modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA, onAhora = { a -> fecha = a.fecha },
+        ) { EtqForm("Fecha") }
         CajaSelectorForm(fechaIndicacion(fecha)) { elegirFecha = true }
 
         if (nuevo && lista.isEmpty() && anterior != null) {

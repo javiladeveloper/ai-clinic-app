@@ -304,6 +304,10 @@ private fun FormTricoscopia(
 
     var fecha by remember { mutableStateOf(ev?.fecha ?: hoy) }
     var elegirFecha by remember { mutableStateOf(false) }
+    // Lo mismo al elegir en el selector que con «Hoy».
+    fun elegirFechaTrico(elegida: String) {
+        if (fechaTricoscopiaFutura(elegida, hoy)) Toaster.error("La fecha no puede ser futura.") else fecha = elegida
+    }
     // Visita nueva: la escala de la última evaluación (el grado se mira de nuevo).
     var escala by remember { mutableStateOf(if (ev != null) ev.escala.orEmpty() else escalaSugerida(items).orEmpty()) }
     var grado by remember { mutableStateOf(ev?.grado.orEmpty()) }
@@ -417,7 +421,9 @@ private fun FormTricoscopia(
             BotonContorno("↺ Copiar clasificación del ${fechaHc(anterior.fecha)}") { copiarAnterior() }
             Spacer(Modifier.height(12.dp))
         }
-        EtqForm("Fecha")
+        pe.saniape.app.ui.componentes.EtiquetaConAhora(
+            modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA, onAhora = { a -> elegirFechaTrico(a.fecha) },
+        ) { EtqForm("Fecha") }
         CajaSelectorForm(fechaHc(fecha)) { elegirFecha = true }
         if (tratamientos.size > 1) {
             Spacer(Modifier.height(12.dp))
@@ -618,9 +624,7 @@ private fun FormTricoscopia(
             ) { errores.forEach { Text(it, color = c.error, fontSize = 12.sp) } }
         }
     }
-    if (elegirFecha) DialogoFecha(onElegir = { elegida ->
-        if (fechaTricoscopiaFutura(elegida, hoy)) Toaster.error("La fecha no puede ser futura.") else fecha = elegida
-    }, onCerrar = { elegirFecha = false }, inicial = fecha)
+    if (elegirFecha) DialogoFecha(onElegir = { elegida -> elegirFechaTrico(elegida) }, onCerrar = { elegirFecha = false }, inicial = fecha)
 }
 
 @Composable

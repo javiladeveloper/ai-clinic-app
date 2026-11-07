@@ -210,6 +210,9 @@ fun PantallaAgenda(
     var detalleCita by remember { mutableStateOf<pe.saniape.app.data.staff.CitaStaff?>(null) }
     // 🧾 Comprobante: la cita cobrada cuyo recibo se reimprime (A4 / ticket).
     var comprobanteCita by remember { mutableStateOf<pe.saniape.app.data.staff.CitaStaff?>(null) }
+    // …y el de una SESIÓN pagada: el id del pago (de la sesión o, si no, el último del tratamiento).
+    var comprobantePagoId by remember { mutableStateOf<String?>(null) }
+    var buscandoPagoSesion by remember { mutableStateOf(false) }
     var fichaPaciente by remember { mutableStateOf<PacienteStaff?>(null) }
     // La ficha se abre en la pestaña 🏠 Ejercicios (se cerró una sesión de fisio con "dejarle ejercicios").
     var fichaEjercicios by remember { mutableStateOf<pe.saniape.app.ui.clinica.fisio.IndicarEjercicios?>(null) }
@@ -366,6 +369,25 @@ fun PantallaAgenda(
             }
             fichaPie = pe.saniape.app.ui.clinica.podologia.AperturaPie(cita.id)
             fichaPaciente = pac
+        }
+    }
+    /**
+     * 🧾 de una SESIÓN pagada (gemelo de `elegirReciboDeSesion` de la web): se busca
+     * al tocar el pago de la sesión (o el último del tratamiento) y se abre su
+     * recibo como el de cualquier pago (A4/ticket, o la boleta SUNAT si hay facturación).
+     */
+    fun abrirComprobanteSesion(cita: CitaStaff) {
+        if (buscandoPagoSesion) return
+        buscandoPagoSesion = true
+        scope.launch {
+            try {
+                pe.saniape.app.data.staff.ReciboRepo.pagoDeSesion(cita.sesionId, cita.tratamientoId)
+                    .onSuccess { id ->
+                        if (id != null) comprobantePagoId = id
+                        else pe.saniape.app.ui.Toaster.info("Esta sesión no tiene un pago registrado.")
+                    }
+                    .onFailure { pe.saniape.app.ui.Toaster.error("Sin conexión: no se pudo buscar el pago de la sesión.") }
+            } finally { buscandoPagoSesion = false }
         }
     }
     /**
@@ -940,7 +962,9 @@ fun PantallaAgenda(
                                         AccionTarjeta.Atender -> atendiendo = Atendiendo(cita.id)
                                         AccionTarjeta.EvaluacionPsico -> evalPsico = cita to kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
                                         AccionTarjeta.AnularCobro -> anularCobroCita = cita
-                                        AccionTarjeta.Comprobante -> comprobanteCita = cita
+                                        // La sesión se paga en su tratamiento: el recibo es el de ESE pago.
+                                        AccionTarjeta.Comprobante -> if (cita.tipo == "Sesión") abrirComprobanteSesion(cita)
+                                            else comprobanteCita = cita
                                         AccionTarjeta.PonerPrecio -> ponerPrecioCita = cita
                                         AccionTarjeta.AbonarPaquete -> abonarPaqueteCita = cita
                                         AccionTarjeta.Ampliar -> abrirFichaAccionTratamiento(cita, pe.saniape.app.data.staff.AccionTratamientoFicha.AMPLIAR)
@@ -987,8 +1011,10 @@ fun PantallaAgenda(
                                 mediosPago = vm.mediosPago[cita.id],
                                 anularCobro = vm.puedeAnularCobro(cita),
                                 // 📝 Receta / indicaciones de la cita atendida (con el módulo y el permiso).
+                                // El texto, por la especialidad de ESTA atención (odontología receta aunque la clínica dé indicaciones).
                                 textoReceta = if (cita.estado == "Completada" && vm.recetaAplica(cita))
-                                    pe.saniape.app.data.staff.textoDarReceta(ctx.modulosClinicos) else null,
+                                    pe.saniape.app.data.staff.textoDarReceta(ctx.modulosClinicos,
+                                        pe.saniape.app.data.staff.especialidadDeCitaReceta(cita)) else null,
                                 recetaVinculada = vm.recetasPorCita[cita.id]?.let {
                                     pe.saniape.app.data.staff.etiquetaRecetaVinculada(it)
                                 },
@@ -1482,6 +1508,7 @@ fun PantallaAgenda(
             pacienteNombre = cita.pacienteNombre.orEmpty(),
             prefill = null,
             hoy = pe.saniape.app.data.staff.hoyEnIso(ctx.zonaDeSede(cita.sedeId)),
+            zonaAhora = ctx.zonaDeSede(cita.sedeId),
             onCancelar = { docCita = null },
             desdeFicha = true,
             citaOrigenId = cita.id,
@@ -1636,6 +1663,9 @@ fun PantallaAgenda(
     // domicilio con Maps) y, para quien atiende, diagnóstico y notas de la sesión.
     comprobanteCita?.let { cita ->
         pe.saniape.app.ui.clinica.comprobante.DialogoComprobante("cita", cita.id) { comprobanteCita = null }
+    }
+    comprobantePagoId?.let { pagoId ->
+        pe.saniape.app.ui.clinica.comprobante.DialogoComprobante("pago", pagoId) { comprobantePagoId = null }
     }
     detalleCita?.let { cita ->
         pe.saniape.app.ui.clinica.agenda.modales.DetalleCitaSheet(

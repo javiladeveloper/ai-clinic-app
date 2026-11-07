@@ -162,6 +162,12 @@ fun DialogoCertificadoSaludMental(
     }
 
     val d = datos
+    // Lo mismo al elegir en el calendario que con «Hoy».
+    fun elegirFechaCert(f: String) {
+        val dd = datos ?: return
+        if (f <= dd.hoy && f >= restarDias(dd.hoy, MAX_DIAS_ATRAS_CERTIFICADO)) fecha = f
+        else Toaster.error("La fecha debe estar entre hoy y $MAX_DIAS_ATRAS_CERTIFICADO días atrás.")
+    }
     val firmante = d?.firmantes?.firstOrNull { it.id == terapeutaId }
     // Plantilla vigente: la del firmante → la de la clínica → la de fábrica.
     val propia = d?.plantillas?.firstOrNull { !it.terapeutaId.isNullOrEmpty() && it.terapeutaId == terapeutaId }
@@ -327,7 +333,9 @@ fun DialogoCertificadoSaludMental(
                 // ── Fecha y lugar ──
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Column(Modifier.weight(1f)) {
-                        EtqForm("Fecha")
+                        pe.saniape.app.ui.componentes.EtiquetaConAhora(
+                            modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA, onAhora = { a -> elegirFechaCert(a.fecha) },
+                        ) { EtqForm("Fecha") }
                         CajaSelectorForm("📅 ${fechaDMA(fecha)}") { calendario = true }
                     }
                     CampoDialogo("Lugar", lugar, { lugar = it.take(80) }, "Tacna", modifier = Modifier.weight(1f))
@@ -588,10 +596,7 @@ fun DialogoCertificadoSaludMental(
         DialogoFecha(
             inicial = fecha,
             onCerrar = { calendario = false },
-            onElegir = { f ->
-                if (f <= d.hoy && f >= restarDias(d.hoy, MAX_DIAS_ATRAS_CERTIFICADO)) fecha = f
-                else Toaster.error("La fecha debe estar entre hoy y $MAX_DIAS_ATRAS_CERTIFICADO días atrás.")
-            },
+            onElegir = { f -> elegirFechaCert(f) },
         )
     }
 }

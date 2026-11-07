@@ -1038,7 +1038,13 @@ fun PantallaCrearCita(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) { Etiqueta("Fecha"); SelectorBoton(fecha) { verFecha = true } }
-                Column(Modifier.weight(1f)) { Etiqueta("Hora"); SelectorBoton(hora) { verHora = true } }
+                Column(Modifier.weight(1f)) {
+                    // «Ahora» (zona de la sede): las dos, como el selector.
+                    pe.saniape.app.ui.componentes.EtiquetaConAhora(
+                        zona = ctx.zonaDeSede(sedeId), onAhora = { a -> fecha = a.fecha; hora = a.hora },
+                    ) { Etiqueta("Hora") }
+                    SelectorBoton(hora) { verHora = true }
+                }
             }
             if (profFijo == null) {
                 Spacer(Modifier.height(8.dp))
@@ -1381,7 +1387,10 @@ fun PantallaCrearCita(
                         SelectorBoton(fecha) { mostrarFecha = true }
                     }
                     Column(Modifier.weight(1f)) {
-                        Etiqueta("Hora")
+                        // «Ahora» = fecha y hora de este momento en la zona de la sede.
+                        pe.saniape.app.ui.componentes.EtiquetaConAhora(
+                            zona = ctx.zonaDeSede(sedeId), onAhora = { a -> fecha = a.fecha; hora = a.hora },
+                        ) { Etiqueta("Hora") }
                         SelectorBoton(hora) { mostrarHora = true }
                     }
                 }

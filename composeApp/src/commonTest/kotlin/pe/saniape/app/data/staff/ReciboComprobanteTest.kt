@@ -55,4 +55,18 @@ class ReciboComprobanteTest {
         assertEquals("No se pudo generar el recibo", mensajeErrorRecibo("<html>502</html>"))
         assertEquals("No se pudo generar el recibo", mensajeErrorRecibo(null))
     }
+
+    @Test
+    fun comprobanteDeSesionPagadaOParcialConSesionOTratamiento() {
+        // Gemelo de la entrada `comprobante` con `pagoSesion` de /citas web (07/11/2026).
+        assertTrue(ofreceComprobanteSesion("Sesión", "s1", null, "Completada", "pagado", puedePagos = true))
+        assertTrue(ofreceComprobanteSesion("Sesión", null, "t1", "Confirmada", "parcial", puedePagos = true))
+        // Sin pago, sin permiso, cancelada, otro tipo o sin sesión ni tratamiento: nada.
+        assertFalse(ofreceComprobanteSesion("Sesión", "s1", "t1", "Completada", "debe", puedePagos = true))
+        assertFalse(ofreceComprobanteSesion("Sesión", "s1", "t1", "Completada", null, puedePagos = true))
+        assertFalse(ofreceComprobanteSesion("Sesión", "s1", "t1", "Completada", "pagado", puedePagos = false))
+        assertFalse(ofreceComprobanteSesion("Sesión", "s1", "t1", "Cancelada", "pagado", puedePagos = true))
+        assertFalse(ofreceComprobanteSesion("Consulta", "s1", "t1", "Completada", "pagado", puedePagos = true))
+        assertFalse(ofreceComprobanteSesion("Sesión", null, " ", "Completada", "pagado", puedePagos = true))
+    }
 }

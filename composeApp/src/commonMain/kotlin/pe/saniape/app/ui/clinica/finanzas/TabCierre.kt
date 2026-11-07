@@ -118,9 +118,13 @@ internal fun TabCierre(
         nota = d.cierre?.nota ?: ""
     }
 
+    // Lo mismo al elegir en el selector que con «Hoy».
+    fun elegirFecha(f: String) {
+        if (f > hoy) Toaster.error("No se puede cerrar un día que todavía no llega") else fecha = f
+    }
     if (eligiendo) DialogoFecha(
         inicial = fecha,
-        onElegir = { f -> if (f > hoy) Toaster.error("No se puede cerrar un día que todavía no llega") else fecha = f },
+        onElegir = { f -> elegirFecha(f) },
         onCerrar = { eligiendo = false },
     )
 
@@ -128,6 +132,14 @@ internal fun TabCierre(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) {
                 CajaSelectorForm("📅 " + (if (fecha == hoy) "Hoy · " else "") + fechaCortaFin(fecha) + " (" + fecha + ")") { if (!soloHoy) eligiendo = true }
+            }
+            if (!soloHoy) {
+                Spacer(Modifier.width(8.dp))
+                // «Hoy» de la sede activa (la de esta caja).
+                pe.saniape.app.ui.componentes.BotonAhora(
+                    modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA,
+                    onAhora = { a -> elegirFecha(a.fecha) },
+                )
             }
             val d = dia
             if (d != null) {

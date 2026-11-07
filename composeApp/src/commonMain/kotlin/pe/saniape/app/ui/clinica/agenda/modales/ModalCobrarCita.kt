@@ -240,7 +240,11 @@ fun ModalCobrarCita(
             }
 
             Spacer(Modifier.height(14.dp))
-            Etiqueta("FECHA DEL PAGO")
+            pe.saniape.app.ui.componentes.EtiquetaConAhora(
+                modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA,
+                zona = pe.saniape.app.ui.componentes.zonaParaAhora(cita.sedeId), habilitado = !guardando,
+                onAhora = { a -> fecha = a.fecha },
+            ) { Etiqueta("FECHA DEL PAGO") }
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
                     .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))

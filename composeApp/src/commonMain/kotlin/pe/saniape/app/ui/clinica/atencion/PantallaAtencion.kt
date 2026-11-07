@@ -133,6 +133,7 @@ fun PantallaAtencion(
                 diagnostico = dxTexto,
                 cie10 = dxCodigo,
                 indicaciones = vm.borrador.textos["tratamiento"],
+                especialidadId = dt.cita.especialidad_id,
             )?.let { pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.ofrecer(it) }
         }
         onSalir()
@@ -349,6 +350,7 @@ private fun ColumnScope.ContenidoAtencion(
             prefill = prefill,
             // "Hoy" en la zona de la sede de la cita (multipaís), como el servidor.
             hoy = pe.saniape.app.data.staff.hoyEnIso(ctx.zonaDeSede(d.cita.sede_id)),
+            zonaAhora = ctx.zonaDeSede(d.cita.sede_id),
             onCancelar = { vm.cerrarDocumento() },
             onEmitido = { id, numero ->
                 vm.cerrarDocumento()

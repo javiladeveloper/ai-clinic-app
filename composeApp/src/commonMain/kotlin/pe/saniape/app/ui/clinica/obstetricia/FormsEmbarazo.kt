@@ -141,9 +141,17 @@ private fun FilaCheck(texto: String, marcado: Boolean, onCambio: (Boolean) -> Un
 
 /** Selector de fecha con "Quitar" opcional (la fecha nunca se teclea). */
 @Composable
-private fun CampoFecha(etiqueta: String, valor: String?, vacio: String, onAbrir: () -> Unit, onQuitar: (() -> Unit)? = null) {
+private fun CampoFecha(
+    etiqueta: String, valor: String?, vacio: String, onAbrir: () -> Unit, onQuitar: (() -> Unit)? = null,
+    /** «Hoy» junto a la etiqueta (solo en lo que se registra: nunca FUR ni próximo control). */
+    onHoy: ((pe.saniape.app.data.staff.AhoraEnZona) -> Unit)? = null,
+) {
     val c = Sania.colors
-    EtqForm(etiqueta)
+    if (onHoy != null) {
+        pe.saniape.app.ui.componentes.EtiquetaConAhora(modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA, onAhora = onHoy) {
+            EtqForm(etiqueta)
+        }
+    } else EtqForm(etiqueta)
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.weight(1f)) { CajaSelectorForm(valor?.let { fechaEmb(it) } ?: vacio, onAbrir) }
         if (valor != null && onQuitar != null) {
@@ -203,6 +211,8 @@ internal fun FormEmbarazo(
     var elegir by remember { mutableStateOf<String?>(null) }  // "fur" | "eco"
     var errores by remember { mutableStateOf<List<String>>(emptyList()) }
     var guardando by remember { mutableStateOf(false) }
+    // Lo mismo al elegir en el selector que con «Hoy» (nunca futura).
+    fun ponerFecha(cual: String, f: String) { val v = f.minIso(hoy); if (cual == "fur") fur = v else ecoFecha = v }
 
     val borrador = BorradorEmbarazo(
         pacienteId = pacienteId, especialidadId = if (nuevo) especialidadId else embarazo?.especialidadId,
@@ -266,7 +276,8 @@ internal fun FormEmbarazo(
                         modifier = Modifier.heightIn(min = 44.dp).clickable { conEco = false; ecoFecha = null; ecoSem = ""; ecoDias = "" }
                             .padding(horizontal = 10.dp, vertical = 14.dp))
                 }
-                CampoFecha("Fecha de la ecografía", ecoFecha, "Elegir fecha", { elegir = "eco" })
+                CampoFecha("Fecha de la ecografía", ecoFecha, "Elegir fecha", { elegir = "eco" },
+                    onHoy = { a -> ponerFecha("eco", a.fecha) })
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CampoNumEmb("EG que dio: semanas", ecoSem, { ecoSem = it }, Modifier.weight(1f), placeholder = "Ej. 8", max = 2)
@@ -341,7 +352,7 @@ internal fun FormEmbarazo(
 
     elegir?.let { cual ->
         DialogoFecha(
-            onElegir = { f -> val v = f.minIso(hoy); if (cual == "fur") fur = v else ecoFecha = v },
+            onElegir = { f -> ponerFecha(cual, f) },
             onCerrar = { elegir = null },
             inicial = (if (cual == "fur") fur else ecoFecha) ?: hoy,
         )
@@ -359,6 +370,8 @@ internal fun FinalizarEmbarazo(emb: Embarazo, hoy: String, onCerrar: () -> Unit,
     var elegir by remember { mutableStateOf(false) }
     var errores by remember { mutableStateOf<List<String>>(emptyList()) }
     var guardando by remember { mutableStateOf(false) }
+    // Lo mismo al elegir en el selector que con «Hoy»: no futura ni antes del inicio.
+    fun ponerFecha(f: String) { fecha = f.minIso(hoy).let { v -> inicio?.let { v.maxIso(it) } ?: v } }
     fun guardar() {
         if (guardando || desenlace == null) return
         // La misma regla que la API: fin no futuro ni anterior al inicio del embarazo.
@@ -385,11 +398,11 @@ internal fun FinalizarEmbarazo(emb: Embarazo, hoy: String, onCerrar: () -> Unit,
         EtiquetaMapa("Desenlace")
         SegmentadoMapa(DESENLACES_EMB.map { it.id to it.nombre }, desenlace, { desenlace = it })
         Spacer(Modifier.height(10.dp))
-        CampoFecha("Fecha", fecha, "Elegir fecha", { elegir = true })
+        CampoFecha("Fecha", fecha, "Elegir fecha", { elegir = true }, onHoy = { a -> ponerFecha(a.fecha) })
         CajaErroresMapa(errores)
     }
     if (elegir) DialogoFecha(
-        onElegir = { f -> fecha = f.minIso(hoy).let { v -> inicio?.let { v.maxIso(it) } ?: v } },
+        onElegir = { f -> ponerFecha(f) },
         onCerrar = { elegir = false }, inicial = fecha,
     )
 }
@@ -481,6 +494,9 @@ internal fun FormControl(
         embarazo,
     )
     val finMax = embarazo.fechaFin?.minIso(hoy) ?: hoy
+    // Lo mismo al elegir en el selector que con «Hoy».
+    // Dentro del embarazo: desde su inicio hasta hoy (o su fin, si está finalizado).
+    fun ponerFechaControl(f: String) { fecha = f.minIso(finMax).let { v -> d?.inicio?.let { v.maxIso(it) } ?: v } }
     fun toggle(lista: List<String>, id: String) = if (id in lista) lista - id else lista + id
 
     fun guardar() {
@@ -528,7 +544,7 @@ internal fun FormControl(
         onCancelar = { if (!guardando) onCerrar() },
         onAccion = { guardar() },
     ) {
-        CampoFecha("Fecha", fecha, "Elegir fecha", { elegir = "fecha" })
+        CampoFecha("Fecha", fecha, "Elegir fecha", { elegir = "fecha" }, onHoy = { a -> ponerFechaControl(a.fecha) })
         Spacer(Modifier.height(8.dp))
         EtqForm("Edad gestacional")
         val em = egManual
@@ -622,8 +638,7 @@ internal fun FormControl(
         DialogoFecha(
             onElegir = { f ->
                 if (cual == "fecha") {
-                    // Dentro del embarazo: desde su inicio hasta hoy (o su fin, si está finalizado).
-                    fecha = f.minIso(finMax).let { v -> d?.inicio?.let { v.maxIso(it) } ?: v }
+                    ponerFechaControl(f)
                 } else {
                     proximo = if (f <= fecha) null else f
                 }

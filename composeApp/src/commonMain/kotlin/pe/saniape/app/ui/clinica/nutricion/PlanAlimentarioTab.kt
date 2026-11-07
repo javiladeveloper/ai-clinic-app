@@ -588,7 +588,9 @@ private fun EditorPlan(
         onCancelar = { if (!guardando) onCerrar() },
         onAccion = { guardar() },
     ) {
-        EtqForm("Fecha")
+        pe.saniape.app.ui.componentes.EtiquetaConAhora(
+            modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA, onAhora = { a -> fecha = a.fecha },
+        ) { EtqForm("Fecha") }
         CajaSelectorForm(fechaPlan(fecha)) { elegirFecha = true }
 
         if (nuevo) {

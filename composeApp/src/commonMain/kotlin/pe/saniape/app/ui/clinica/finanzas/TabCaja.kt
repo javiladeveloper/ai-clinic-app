@@ -525,7 +525,12 @@ private fun DialogoMovimiento(
                 ChipsMetodoPago(metodo) { metodo = it }
             } else {
                 Spacer(Modifier.height(10.dp))
-                EtqForm("Fecha")
+                // «Hoy» en la zona de la sede del movimiento (lo mismo que elegirlo).
+                pe.saniape.app.ui.componentes.EtiquetaConAhora(
+                    modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA,
+                    zona = editando?.sedeId?.let { pe.saniape.app.ui.componentes.zonaParaAhora(it) },
+                    onAhora = { a -> fecha = a.fecha },
+                ) { EtqForm("Fecha") }
                 CajaSelectorForm(fecha?.let { fechaCortaFin(it) + " (" + it + ")" } ?: "—") { eligiendoFecha = true }
                 Text("No se puede tocar un día con la caja ya cerrada: en ese caso, registra un movimiento de ajuste de hoy.",
                     color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))

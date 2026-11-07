@@ -557,12 +557,16 @@ private fun PantallaFichaPacienteContenido(
     }
     // ¿Este tratamiento puede llevar receta / indicaciones? (módulo + permiso + especialidad).
     // Sin 'historia_clinica' no se dan ni se ofrecen (la receta es clínica).
+    // La especialidad del tratamiento (la del servicio, o por su nombre): decide si aplica
+    // y, en el modo «indicaciones», si la atención receta medicamentos (odontología, otorrino…).
+    val especialidadTrat = { t: TratamientoPaciente ->
+        t.especialidadId ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id
+    }
     val recetaAplicaTrat = { t: TratamientoPaciente ->
         verHc && esPacienteReceta && !pe.saniape.app.data.staff.fichaInactiva(paciente.estado) &&
             pe.saniape.app.data.staff.recetaAplicaAtencion(
                 ctx.modulosClinicos, ctx.puede("sesiones"),
-                especialidadServicioId = t.especialidadId
-                    ?: especialidadesClinica.firstOrNull { it.nombre == t.especialidadNombre }?.id,
+                especialidadServicioId = especialidadTrat(t),
                 especialidadesProfesional = t.especialidadesProfesional,
                 especialidadesDeQuienMira = datosReceta.second,
             )
@@ -575,6 +579,7 @@ private fun PantallaFichaPacienteContenido(
             citaId = hitos?.citaPorSesion?.get(ses.id),
             terapeutaSesion = ses.terapeutaId, terapeutaTratamiento = t.terapeutaId,
             diagnostico = t.diagnostico ?: paciente.diagnostico,
+            especialidadId = especialidadTrat(t),
         )
     }
     // Prellenado del tratamiento entero (consulta / servicio único / el "📝" del menú, como la web).
@@ -584,11 +589,12 @@ private fun PantallaFichaPacienteContenido(
             tratamientoId = t.id, esConsulta = t.esConsulta, citaOrigenId = t.citaOrigenId,
             terapeutaId = t.terapeutaId, diagnostico = t.diagnostico ?: paciente.diagnostico,
             atencion = null, medicacion = t.medicacion,
+            especialidadId = especialidadTrat(t),
         )
     }
     val recetaEnTarjeta = { t: TratamientoPaciente ->
         if (!recetaAplicaTrat(t)) null else RecetaEnTarjeta(
-            textoDar = pe.saniape.app.data.staff.textoDarReceta(ctx.modulosClinicos),
+            textoDar = pe.saniape.app.data.staff.textoDarReceta(ctx.modulosClinicos, especialidadTrat(t)),
             vinculadas = recetasVinc,
             citaDeSesion = { sid -> hitos?.citaPorSesion?.get(sid) },
             onDar = { ses ->
@@ -2830,7 +2836,14 @@ private fun ModalCrearSesion(
         TarjetaForm(titulo = "Programación", icono = "📅") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) { EtqForm("Fecha"); SelectorBoxFicha(fecha) { mostrarFecha = true } }
-                Column(Modifier.weight(1f)) { EtqForm("Hora"); SelectorBoxFicha(hora12(hora)) { mostrarHora = true } }
+                Column(Modifier.weight(1f)) {
+                    // «Ahora» = lo mismo que elegir fecha y hora en los selectores.
+                    pe.saniape.app.ui.componentes.EtiquetaConAhora(
+                        zona = t.sedeId?.let { pe.saniape.app.ui.componentes.zonaParaAhora(it) },
+                        onAhora = { a -> fecha = a.fecha; hora = a.hora; tocado = true },
+                    ) { EtqForm("Hora") }
+                    SelectorBoxFicha(hora12(hora)) { mostrarHora = true }
+                }
             }
             sugerencia?.takeIf { !tocado }?.let {
                 Text(it, color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
@@ -3013,7 +3026,12 @@ private fun ModalEditarCitaHito(
         TarjetaForm(titulo = flujo.nombreTipo(cita.tipo), icono = if (cita.tipo == "Consulta") "💬" else "🔍") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) { EtqForm("Fecha"); SelectorBoxFicha(fecha) { mostrarFecha = true } }
-                Column(Modifier.weight(1f)) { EtqForm("Hora"); SelectorBoxFicha(hora12(hora)) { mostrarHora = true } }
+                Column(Modifier.weight(1f)) {
+                    pe.saniape.app.ui.componentes.EtiquetaConAhora(onAhora = { a -> fecha = a.fecha; hora = a.hora }) {
+                        EtqForm("Hora")
+                    }
+                    SelectorBoxFicha(hora12(hora)) { mostrarHora = true }
+                }
             }
             Spacer(Modifier.height(10.dp))
             EtqForm("Notas")
@@ -4243,7 +4261,13 @@ internal fun ModalPlanEntero(
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) { EtqForm("Desde"); SelectorBoxFicha(desde) { mostrarFecha = true } }
-                Column(Modifier.weight(1f)) { EtqForm("Hora"); SelectorBoxFicha(hora12(hora)) { mostrarHora = true } }
+                Column(Modifier.weight(1f)) {
+                    // «Ahora»: desde hoy a esta hora (lo mismo que los dos selectores).
+                    pe.saniape.app.ui.componentes.EtiquetaConAhora(
+                        onAhora = { a -> desde = a.fecha; hora = a.hora; filas = null },
+                    ) { EtqForm("Hora") }
+                    SelectorBoxFicha(hora12(hora)) { mostrarHora = true }
+                }
             }
             Spacer(Modifier.height(10.dp))
             EtqForm("Sesiones")

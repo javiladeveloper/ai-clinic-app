@@ -77,6 +77,71 @@ class RecetaAtencionTest {
         assertEquals("✓ Atención completada", textoAtencionCompletada(p))
     }
 
+    /**
+     * Por ATENCIÓN (gemelo de `textosRecetaDe` web, QA 07/11/2026): clínica en modo
+     * «indicaciones» con fisio y odontología; odontología prescribe.
+     */
+    private val demoDental = ModulosClinicos(
+        recetas = true, recetasOptIn = true,
+        mapaReceta = MapaClinico(listOf("fisio", "odo"), solo = true),
+        especialidadesPrescriben = listOf("odo"),
+    )
+
+    @Test
+    fun modoIndicacionesPorEspecialidadDeLaAtencion() {
+        // Fisioterapia → indicaciones.
+        assertTrue(recetaComoIndicaciones(demoDental, "fisio"))
+        assertEquals("📝 Dar indicaciones", textoDarReceta(demoDental, "fisio"))
+        assertEquals("Indicaciones", nombreHojaReceta(demoDental, "fisio"))
+        // Odontología → receta con medicamentos, como en una clínica médica.
+        assertFalse(recetaComoIndicaciones(demoDental, "odo"))
+        assertEquals("📝 Dar receta / indicaciones", textoDarReceta(demoDental, "odo"))
+        assertEquals("Receta", nombreHojaReceta(demoDental, "odo"))
+        assertEquals("¿Le das una receta o indicaciones a Ana?",
+            textoOfertaReceta(demoDental, PrefillRecetaAtencion(pacienteId = "p", pacienteNombre = "Ana", especialidadId = "odo")))
+        // Sin especialidad conocida → como la clínica (indicaciones).
+        assertTrue(recetaComoIndicaciones(demoDental, null))
+        assertTrue(recetaComoIndicaciones(demoDental, " "))
+        assertEquals("¿Le dejas indicaciones a Ana?",
+            textoOfertaReceta(demoDental, PrefillRecetaAtencion(pacienteId = "p", pacienteNombre = "Ana")))
+        // Una clínica médica sigue con receta en cualquier atención; sin la lista (backend viejo), todo como la clínica.
+        assertFalse(recetaComoIndicaciones(mixta, "fisio"))
+        assertTrue(recetaComoIndicaciones(dalu, "odo"))
+    }
+
+    @Test
+    fun elContextoTraeLasEspecialidadesQuePrescribenOVacia() {
+        val con = StaffContextoRepo.parsear(buildJsonObject {
+            put("modulosClinicos", buildJsonObject {
+                put("recetas", true); put("recetasOptIn", true)
+                put("especialidadesPrescriben", kotlinx.serialization.json.buildJsonArray {
+                    add(JsonPrimitive("odo")); add(JsonPrimitive("")); add(JsonPrimitive("med"))
+                })
+            })
+        })
+        assertEquals(listOf("odo", "med"), con.modulosClinicos.especialidadesPrescriben)
+        // Backend sin la clave: vacía (todo como la clínica).
+        val sin = StaffContextoRepo.parsear(buildJsonObject {
+            put("modulosClinicos", buildJsonObject { put("recetas", true); put("recetasOptIn", true) })
+        })
+        assertEquals(emptyList<String>(), sin.modulosClinicos.especialidadesPrescriben)
+    }
+
+    @Test
+    fun elPrellenadoLlevaLaEspecialidadDeLaAtencion() {
+        val cita = CitaStaff(
+            id = "c1", fecha = "2026-11-07", hora = "10:00", estado = "Completada", tipo = "Sesión",
+            costo = null, duracion = null, origen = null, confirmadaPorPaciente = false, numeroSesion = 2,
+            terapeutaId = null, terapeutaNombre = null, pacienteId = "p", pacienteNombre = "P", pacienteTelefono = null,
+            tratamientoId = "t1", procedimiento = null, especialidadId = null, especialidadServicioId = "odo",
+            notaRecepcion = null,
+        )
+        assertEquals("odo", prefillRecetaDeCita(cita)?.especialidadId)
+        assertEquals("med", prefillRecetaDeCita(cita.copy(especialidadId = "med"))?.especialidadId)
+        assertEquals("fisio", prefillRecetaDeSesion("p", null, "s1", 2, "t1", especialidadId = "fisio").especialidadId)
+        assertNull(prefillRecetaDeSesion("p", null, "s1", 2, "t1").especialidadId)
+    }
+
     @Test
     fun indicadorDiceLoQueRealmenteSeEmitio() {
         val receta = RecetaVinculada("r1", 12, "c1", "s1", "t1")

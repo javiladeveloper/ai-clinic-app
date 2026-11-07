@@ -307,6 +307,14 @@ private fun FormularioVacuna(
     var elegirFecha by remember { mutableStateOf(false) }
     var elegirVacuna by remember { mutableStateOf(false) }
     var errores by remember { mutableStateOf<List<String>>(emptyList()) }
+    // Lo mismo al elegir en el selector que con «Hoy».
+    fun ponerFecha(f: String) {
+        when {
+            f > hoy -> Toaster.error("La fecha no puede ser futura.")
+            fechaNacimiento != null && f < fechaNacimiento -> Toaster.error("La fecha es anterior al nacimiento.")
+            else -> fecha = f
+        }
+    }
     var guardando by remember { mutableStateOf(false) }
 
     val titulo = when (form) {
@@ -378,7 +386,9 @@ private fun FormularioVacuna(
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f)) {
-                EtqForm("Fecha")
+                pe.saniape.app.ui.componentes.EtiquetaConAhora(
+                    modo = pe.saniape.app.ui.componentes.ModoAhora.FECHA, onAhora = { a -> ponerFecha(a.fecha) },
+                ) { EtqForm("Fecha") }
                 CajaSelectorForm(fechaHc(fecha)) { elegirFecha = true }
             }
             Column(Modifier.weight(1f)) {
@@ -412,13 +422,7 @@ private fun FormularioVacuna(
             ) { errores.forEach { Text(it, color = c.error, fontSize = 12.sp) } }
         }
     }
-    if (elegirFecha) DialogoFecha(onElegir = { f ->
-        when {
-            f > hoy -> Toaster.error("La fecha no puede ser futura.")
-            fechaNacimiento != null && f < fechaNacimiento -> Toaster.error("La fecha es anterior al nacimiento.")
-            else -> fecha = f
-        }
-    }, onCerrar = { elegirFecha = false }, inicial = fecha)
+    if (elegirFecha) DialogoFecha(onElegir = { f -> ponerFecha(f) }, onCerrar = { elegirFecha = false }, inicial = fecha)
     if (elegirVacuna) {
         // Lista corta (24): Column con scroll del diálogo, sin listas perezosas.
         AlertDialog(

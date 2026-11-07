@@ -93,6 +93,8 @@ object StaffContextoRepo {
             flujoMedico = flujoMedico,
             recetas = recetas,
             recetasOptIn = o.bool("recetasOptIn"),
+            // Por atención (2026-11-07, aditivo): sin la clave → vacía (como la clínica).
+            especialidadesPrescriben = ids("especialidadesPrescriben"),
             triaje = o.bool("triaje"),
             camposTriaje = leerCamposTriaje(campos),
             // Por especialidad (2026-11-05). Sin la clave (backend viejo) → null: como antes.

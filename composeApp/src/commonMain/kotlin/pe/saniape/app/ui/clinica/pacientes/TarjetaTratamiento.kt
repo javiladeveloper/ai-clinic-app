@@ -750,6 +750,7 @@ fun TarjetaTratamiento(
             numero = ses.numero, estado = nuevo,
             fechaInicial = ses.fecha, horaInicial = ses.hora,
             guardando = accionando,
+            zonaAhora = t.sedeId?.let { pe.saniape.app.ui.componentes.zonaParaAhora(it) },
             onCancelar = { if (!accionando) cambioEstado = null },
             onConfirmar = { motivo, fecha, hora ->
                 if (accionando) return@ModalEstadoSesion
@@ -1789,7 +1790,10 @@ private fun ModalEditarSesion(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) { EtqForm("Fecha"); CajaSelectorForm(fecha) { mostrarFecha = true } }
                 Column(Modifier.weight(1f)) {
-                    EtqForm("Hora")
+                    // «Ahora» (zona de la sede activa, la de la ficha): fecha y hora.
+                    pe.saniape.app.ui.componentes.EtiquetaConAhora(onAhora = { a -> fecha = a.fecha; hora = a.hora }) {
+                        EtqForm("Hora")
+                    }
                     CajaSelectorForm(if (hora.isBlank()) "—" else pe.saniape.app.ui.hora12(hora)) { mostrarHora = true }
                 }
             }
@@ -1871,7 +1875,10 @@ private fun ModalCorregirSesion(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) { EtqForm("Fecha"); CajaSelectorForm(fecha) { mostrarFecha = true } }
                 Column(Modifier.weight(1f)) {
-                    EtqForm("Hora")
+                    // «Ahora» (zona de la sede activa, la de la ficha): fecha y hora.
+                    pe.saniape.app.ui.componentes.EtiquetaConAhora(onAhora = { a -> fecha = a.fecha; hora = a.hora }) {
+                        EtqForm("Hora")
+                    }
                     CajaSelectorForm(if (hora.isBlank()) "—" else pe.saniape.app.ui.hora12(hora)) { mostrarHora = true }
                 }
             }
