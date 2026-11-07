@@ -40,5 +40,16 @@ optimized = (project.findProperty("iosOptimized") == "true")
 ### Qué falta decidir / validar
 1. **Subir Kotlin a 2.4.21 en `master`** (hoy está en 2.1.0). En `exp/ios-kotlin-nueva` Android compiló OK; validar Android a fondo antes de mergear.
 2. Compatibilidad **Compose Multiplatform 1.7.3 con Kotlin 2.4.21** (se dejó MP en 1.7.3). Compiló el framework; conviene correr la app y revisar que no haya warnings/incompatibilidades del compose-compiler.
-3. **Simulador: NO probado** (Jonathan no lo pidió). El login Google (`975d3cd`) sigue sin probarse en iPhone.
+3. **Simulador: ✅ PROBADO Y FUNCIONA** (6-nov, en `mac/ios-hibrido`). Build debug del
+   simulador: `xcodebuild ... -sdk iphonesimulator` → **BUILD SUCCEEDED en 5 min** (framework
+   debug liviano, sin el AssertionError). Instalada y lanzada en iPhone 17 (iOS 26):
+   - La app **abre** y muestra la pantalla de login (Google / Apple / Acceso clínicas).
+   - **Login de clínica (admin_test@admin.com) FUNCIONA**: entra como "Clinica Test · Admin",
+     carga 123 pacientes desde **Supabase** (red + auth + backend OK en iOS), dashboard
+     completo renderiza bien.
+   - **Login Google (`975d3cd`): PENDIENTE de probar** (interacción con la hoja web del
+     simulador, lo prueba Jonathan a mano).
+   Comando usado: `xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration
+   Debug -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17'
+   CODE_SIGNING_ALLOWED=NO build` (con `JAVA_HOME` seteado para la fase Compile Kotlin Framework).
 4. Recordar: la cuenta Apple Developer está en migración a organización (Norac Labs) → **subir a TestFlight sigue en pausa**; esto es solo "compila / no compila".
