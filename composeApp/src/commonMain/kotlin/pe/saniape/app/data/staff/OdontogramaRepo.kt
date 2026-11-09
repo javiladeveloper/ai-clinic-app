@@ -220,11 +220,14 @@ object OdontogramaRepo {
         superficies: List<String>? = null,
         citaId: String? = null,
         notas: String? = null,
+        /** Hallazgo de varias piezas (puente, brackets, diastema): la pieza final. */
+        dienteHasta: String? = null,
     ): Boolean = try {
         Supabase.client.postgrest["dientes_hallazgos"].insert(buildJsonObject {
             put("paciente_id", pacienteId)
             put("diente", diente)
             put("hallazgo_id", hallazgoId)
+            if (dienteHasta != null && dienteHasta != diente) put("diente_hasta", dienteHasta)
             if (!superficies.isNullOrEmpty()) {
                 putJsonArray("superficies") { superficies.forEach { add(JsonPrimitive(it)) } }
             }

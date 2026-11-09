@@ -86,6 +86,48 @@ fun esHallazgoDeRango(nombre: String): Boolean =
     Regex("puente|pr[oó]tesis fija|ortod[oó]n|bracket|aparato|diastema|ed[eé]ntul", RegexOption.IGNORE_CASE)
         .containsMatchIn(nombre)
 
+/**
+ * Las piezas de la misma arcada (superior o inferior) que [diente], en orden
+ * visual de izquierda a derecha: dónde puede terminar un hallazgo de varias
+ * piezas. Gemelo de `piezasDeLaArcada` (lib/odontograma.ts). null = no es pieza.
+ */
+fun piezasDeLaArcada(diente: String): List<String>? {
+    val n = diente.toIntOrNull() ?: return null
+    val q = if (n >= 51) CUADRANTES_DECIDUO else CUADRANTES_ADULTO
+    val superior = (n / 10) in setOf(1, 2, 5, 6)
+    val arcada = if (superior) q[0] + q[1] else q[2] + q[3]
+    return arcada.takeIf { diente in it }
+}
+
+/** La marca de un hallazgo de varias piezas sobre UNA pieza (la UI la dibuja como barra). */
+data class MarcaRango(val color: String, val punteada: Boolean)
+
+/**
+ * Qué piezas cubre cada hallazgo de varias piezas (puente, brackets, diastema):
+ * de la inicial a la final, en la misma arcada; sin final («solo esta pieza»),
+ * solo la inicial. Las barras de piezas vecinas forman la línea que la web
+ * dibuja entre ellas. Rojo = por hacer, azul = existente/hecho; el diastema va
+ * punteado (es un espacio, no una pieza).
+ */
+fun marcasDeRango(hallazgos: List<DienteHallazgo>, catalogo: List<HallazgoDental>): Map<String, List<MarcaRango>> {
+    val porId = catalogo.associateBy { it.id }
+    val out = linkedMapOf<String, MutableList<MarcaRango>>()
+    for (r in hallazgos) {
+        val hal = porId[r.hallazgoId] ?: continue
+        if (!esHallazgoDeRango(hal.nombre)) continue
+        val arcada = piezasDeLaArcada(r.diente) ?: continue
+        val i = arcada.indexOf(r.diente)
+        val j = r.dienteHasta?.let { arcada.indexOf(it) }?.takeIf { it >= 0 } ?: i
+        val hecho = r.estado == "Realizado" || hal.color.equals(COLOR_REALIZADO, ignoreCase = true)
+        val marca = MarcaRango(
+            color = if (hecho) COLOR_REALIZADO else hal.color,
+            punteada = Regex("diastema", RegexOption.IGNORE_CASE).containsMatchIn(hal.nombre),
+        )
+        for (k in minOf(i, j)..maxOf(i, j)) out.getOrPut(arcada[k]) { mutableListOf() }.add(marca)
+    }
+    return out
+}
+
 /** Qué símbolo de la norma corresponde a un hallazgo, por su nombre. Gemelo de `tipoDeHallazgo` (web). */
 fun tipoDeHallazgo(nombre: String): String? {
     val n = nombre.lowercase()
@@ -230,9 +272,15 @@ fun precioSegunCaras(tramos: Map<String, Double>?, caras: Int): Double? {
  */
 fun buscarProcedimientoSugerido(nombre: String, procedimientos: List<ProcedimientoRef>): ProcedimientoRef? {
     val n = nombre.lowercase()
-    fun busca(re: String) = procedimientos.firstOrNull { Regex(re, RegexOption.IGNORE_CASE).containsMatchIn(it.nombre) }
+    fun busca(re: String, salvo: Regex? = null) = procedimientos.firstOrNull {
+        salvo?.containsMatchIn(it.nombre) != true && Regex(re, RegexOption.IGNORE_CASE).containsMatchIn(it.nombre)
+    }
     return when {
-        Regex("caries|fractura|restauraci|empaste|resina").containsMatchIn(n) -> busca("resina|curaci[oó]n|empaste|obturaci[oó]n|restauraci[oó]n")
+        // Una caries se restaura: nunca una CARILLA ni una CORONA aunque digan
+        // «resina» (Urbina 09/11/2026: «Carillas Resina» S/ 300 iba antes que
+        // «Resina / restauración» S/ 90 y la caries se presupuestaba como carilla).
+        Regex("caries|fractura|restauraci|empaste|resina").containsMatchIn(n) ->
+            busca("resina|curaci[oó]n|empaste|obturaci[oó]n|restauraci[oó]n", Regex("carilla|corona", RegexOption.IGNORE_CASE))
         Regex("sarro|gingivitis|profilaxis|limpieza|placa").containsMatchIn(n) -> busca("limpieza|profilaxis|destartraje")
         Regex("endodoncia").containsMatchIn(n) -> busca("endodoncia")
         Regex("extracci").containsMatchIn(n) -> busca("extracci[oó]n|cirug[ií]a")

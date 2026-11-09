@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -45,6 +46,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -62,6 +64,7 @@ import pe.saniape.app.data.staff.CUADRANTES_DECIDUO
 import pe.saniape.app.data.staff.COLOR_REALIZADO
 import pe.saniape.app.data.staff.DienteHallazgo
 import pe.saniape.app.data.staff.HallazgoDental
+import pe.saniape.app.data.staff.MarcaRango
 import pe.saniape.app.data.staff.OdontogramaRepo
 import pe.saniape.app.data.staff.PSEUDO_DIENTES
 import pe.saniape.app.data.staff.PintadoDiente
@@ -69,6 +72,7 @@ import pe.saniape.app.data.staff.Zona
 import pe.saniape.app.data.staff.caraEnZona
 import pe.saniape.app.data.staff.calcularCPO
 import pe.saniape.app.data.staff.esDePiezaEntera
+import pe.saniape.app.data.staff.marcasDeRango
 import pe.saniape.app.data.staff.ordenarCaras
 import pe.saniape.app.data.staff.pintarDiente
 import pe.saniape.app.data.staff.zonaEn
@@ -355,12 +359,12 @@ fun OdontogramaVista(
             hallazgosDelDiente = porDiente[diente].orEmpty(),
             catalogo = catalogo,
             onCerrar = { abierto = null },
-            onMarcar = { hallazgoId, caras, existente ->
+            onMarcar = { hallazgoId, caras, existente, dienteHasta ->
                 escribir {
                     // Ya pendiente en esta pieza: se le SUMAN las caras (una sola caries
                     // MO, se cobra una vez). Si no, un registro nuevo.
                     val ok = if (existente != null) OdontogramaRepo.actualizarSuperficies(existente.id, caras.orEmpty())
-                        else OdontogramaRepo.agregar(pacienteId, diente, hallazgoId, caras?.let { ordenarCaras(it) }, citaId)
+                        else OdontogramaRepo.agregar(pacienteId, diente, hallazgoId, caras?.let { ordenarCaras(it) }, citaId, dienteHasta = dienteHasta)
                     if (ok) recargar() else Toaster.error("No se pudo marcar")
                 }
             },
@@ -471,6 +475,9 @@ internal fun Boca(
     onTocar: (String, String?) -> Unit,
 ) {
     val c = Sania.colors
+    // Puente, brackets, diastema: qué piezas cubre cada uno (antes la app no los
+    // dibujaba en ningún lado; la web los une con una línea).
+    val rangos = remember(porDiente, catalogo) { marcasDeRango(porDiente.values.flatten(), catalogo) }
     BoxWithConstraints(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
             .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp))
@@ -483,15 +490,15 @@ internal fun Boca(
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 EtiquetaArcada("Superior")
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    FilaPiezas(cuadrantes[0], tam, porDiente, catalogo, onTocar)
+                    FilaPiezas(cuadrantes[0], tam, porDiente, catalogo, onTocar, rangos)
                     LineaMedia(tam)
-                    FilaPiezas(cuadrantes[1], tam, porDiente, catalogo, onTocar)
+                    FilaPiezas(cuadrantes[1], tam, porDiente, catalogo, onTocar, rangos)
                 }
                 PlanoOclusal()
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    FilaPiezas(cuadrantes[2], tam, porDiente, catalogo, onTocar)
+                    FilaPiezas(cuadrantes[2], tam, porDiente, catalogo, onTocar, rangos)
                     LineaMedia(tam)
-                    FilaPiezas(cuadrantes[3], tam, porDiente, catalogo, onTocar)
+                    FilaPiezas(cuadrantes[3], tam, porDiente, catalogo, onTocar, rangos)
                 }
                 EtiquetaArcada("Inferior")
             }
@@ -539,13 +546,13 @@ internal fun Boca(
                         EtiquetaArcada("Superior")
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (i == 1) LineaMedia(tam)
-                            FilaPiezas(sup, tam, porDiente, catalogo, onTocar)
+                            FilaPiezas(sup, tam, porDiente, catalogo, onTocar, rangos)
                             if (i == 0) LineaMedia(tam)
                         }
                         PlanoOclusal()
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (i == 1) LineaMedia(tam)
-                            FilaPiezas(inf, tam, porDiente, catalogo, onTocar)
+                            FilaPiezas(inf, tam, porDiente, catalogo, onTocar, rangos)
                             if (i == 0) LineaMedia(tam)
                         }
                         EtiquetaArcada("Inferior")
@@ -568,6 +575,7 @@ private fun FilaPiezas(
     porDiente: Map<String, List<DienteHallazgo>>,
     catalogo: List<HallazgoDental>,
     onTocar: (String, String?) -> Unit,
+    rangos: Map<String, List<MarcaRango>>,
 ) {
     piezas.forEach { d ->
         // Cada pieza recuerda su pintado: se recalcula SOLO si cambió lo de esa
@@ -575,7 +583,7 @@ private fun FilaPiezas(
         // Compose salta la pieza entera: marcar la 16 no redibuja las otras 31.
         val deLaPieza = porDiente[d].orEmpty()
         val pintado = remember(deLaPieza, catalogo) { pintarDiente(deLaPieza, catalogo) }
-        Pieza(d, tam, pintado, onTocar)
+        Pieza(d, tam, pintado, onTocar, rangos[d].orEmpty())
     }
 }
 
@@ -607,16 +615,39 @@ private val PIEZA_MIN = 34.dp
 private val PIEZA_MAX = 52.dp
 private val PAD_PIEZA = 1.dp
 private val LINEA_MEDIA = 10.dp
+/** Alto reservado bajo cada pieza para la barra de puente/brackets/diastema. */
+private val ALTO_BARRA_RANGO = 6.dp
 
 /** Una pieza: su número y el diagrama de 5 caras. */
 @Composable
-private fun Pieza(diente: String, tam: Dp, pintado: PintadoDiente, onTocar: (String, String?) -> Unit) {
+private fun Pieza(
+    diente: String,
+    tam: Dp,
+    pintado: PintadoDiente,
+    onTocar: (String, String?) -> Unit,
+    rangos: List<MarcaRango> = emptyList(),
+) {
     val c = Sania.colors
     Column(
         Modifier.padding(horizontal = PAD_PIEZA).width(tam),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         DienteDiagrama(diente, tam, pintado, onTocarCara = { cara -> onTocar(diente, cara) })
+        // Puente, brackets, diastema: una barra bajo cada pieza que cubren (las de
+        // piezas vecinas se tocan y se leen como una línea). El espacio se reserva
+        // siempre: si no, las piezas marcadas quedarían corridas de las otras.
+        // Lo pendiente (rojo) manda sobre lo existente (azul); diastema punteado.
+        val marca = rangos.firstOrNull { !it.color.equals(COLOR_REALIZADO, ignoreCase = true) } ?: rangos.firstOrNull()
+        val colorBarra = marca?.let { colorDe(it.color) }
+        Spacer(
+            Modifier.requiredWidth(tam + PAD_PIEZA * 2).height(ALTO_BARRA_RANGO).drawWithCache {
+                val y = size.height / 2
+                val efecto = if (marca?.punteada == true) PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 3.dp.toPx())) else null
+                onDrawBehind {
+                    if (colorBarra != null) drawLine(colorBarra, Offset(0f, y), Offset(size.width, y), strokeWidth = 3.dp.toPx(), pathEffect = efecto)
+                }
+            },
+        )
         Text(
             diente,
             color = c.texto, fontSize = 11.sp, fontWeight = FontWeight.Bold,

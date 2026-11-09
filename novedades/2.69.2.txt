@@ -1,0 +1,6 @@
+Odontograma: el diastema, los puentes y los brackets ahora se ven, y una caries ya no se presupuesta como carilla.
+---
+• Odontograma: el diastema, los puentes y los brackets se dibujan con una barra bajo las piezas que cubren (el diastema, punteada).
+• Al marcar un diastema, un puente o unos brackets eliges hasta qué pieza llega (p. ej. de la 11 a la 21), o «Solo esta pieza».
+• Presupuesto dental: una caries o una fractura se presupuesta con tu servicio de resina o restauración, nunca como carilla o corona.
+---
