@@ -101,3 +101,26 @@ class BuscarOpcionesTest {
         assertEquals("Limpieza", conEmoji.first { it.coincide }.texto)
     }
 }
+
+class FiltrarServiciosCampaniaTest {
+    private val servicios = listOf(
+        ServicioApp(id = "1", nombre = "Limpieza facial esencial", categoriaLibre = "Facial"),
+        ServicioApp(id = "2", nombre = "Ozono localizado"),
+        ServicioApp(id = "3", nombre = "OZONOTERAPIA mayor", categoria = "Técnicas especiales"),
+        ServicioApp(id = "4", nombre = "Toxina botulínica", categoriaLibre = "Inyectables"),
+    )
+
+    @Test fun vacio_son_todos() {
+        assertEquals(listOf("1", "2", "3", "4"), filtrarServicios(servicios, "").map { it.id })
+    }
+
+    @Test fun por_nombre_sin_tildes_ni_mayusculas() {
+        assertEquals(listOf("2", "3"), filtrarServicios(servicios, "ozono").map { it.id })
+        assertEquals(listOf("4"), filtrarServicios(servicios, "TOXINA BOTULINICA").map { it.id })
+    }
+
+    @Test fun por_categoria() {
+        assertEquals(listOf("4"), filtrarServicios(servicios, "inyectables").map { it.id })
+        assertEquals(listOf("3"), filtrarServicios(servicios, "tecnicas").map { it.id })
+    }
+}

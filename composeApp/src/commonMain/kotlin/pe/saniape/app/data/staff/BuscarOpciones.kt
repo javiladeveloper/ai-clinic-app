@@ -101,3 +101,13 @@ fun resaltarCoincidencias(etiqueta: String, consulta: String?): List<TramoResalt
     tramos += TramoResaltado(actual.toString(), marca)
     return tramos
 }
+
+/**
+ * Los servicios que coinciden con lo escrito, por NOMBRE y CATEGORÍA (la libre;
+ * si no hay, la fija), con la regla y el orden de [filtrarOpciones]. Gemelo de
+ * `filtrarServicios` (lib/buscar-opciones.ts). Campañas, 09/11/2026.
+ */
+fun filtrarServicios(servicios: List<ServicioApp>, consulta: String?): List<ServicioApp> =
+    filtrarOpciones(servicios, consulta) { s ->
+        listOfNotNull(s.nombre, (s.categoriaLibre?.takeIf { it.isNotBlank() } ?: s.categoria)).joinToString(" ")
+    }

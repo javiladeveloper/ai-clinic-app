@@ -377,6 +377,7 @@ private fun FormularioCampania(
     var falloRegalos by remember { mutableStateOf(false) }
     var reintentoRegalos by remember { mutableIntStateOf(0) }
     var regaloAbierto by remember { mutableStateOf<Int?>(null) }
+    var buscaServicio by remember { mutableStateOf("") }
 
     // Los regalos viven en otra tabla: se leen al abrir (query plana, como la web).
     LaunchedEffect(inicial?.id, reintentoRegalos) {
@@ -482,18 +483,57 @@ private fun FormularioCampania(
                 if (servicios.isEmpty()) {
                     Text("No hay servicios activos. Créalos en Servicios primero.", color = c.pend, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 } else {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        servicios.forEach { s ->
-                            val sel = s.id in f.serviciosIds
-                            Text(
-                                (if (sel) "✓ " else "") + s.nombre,
-                                color = if (sel) c.sobreNavy else c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
-                                    .background(if (sel) c.navy else c.fondo)
-                                    .border(1.dp, if (sel) c.navy else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
-                                    .clickable { f = f.copy(serviciosIds = if (sel) f.serviciosIds - s.id else f.serviciosIds + s.id) }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                            )
+                    val visibles = remember(servicios, buscaServicio) { pe.saniape.app.data.staff.filtrarServicios(servicios, buscaServicio) }
+                    val elegidos = servicios.filter { it.id in f.serviciosIds }
+                    val sinMarcar = visibles.filter { it.id !in f.serviciosIds }
+                    if (elegidos.isNotEmpty()) {
+                        Text(
+                            "${elegidos.size} elegido${if (elegidos.size == 1) "" else "s"} · toca para quitar",
+                            color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            elegidos.forEach { s ->
+                                Text(
+                                    "✓ ${s.nombre}  ✕",
+                                    color = c.sobreNavy, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.navy)
+                                        .clickable { f = f.copy(serviciosIds = f.serviciosIds - s.id) }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                    }
+                    OutlinedTextField(
+                        value = buscaServicio, onValueChange = { buscaServicio = it }, singleLine = true,
+                        placeholder = { Text("Buscar servicio…") }, colors = coloresCampoForm(), modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (buscaServicio.isNotBlank() && sinMarcar.isNotEmpty()) {
+                        Text(
+                            "✓ Marcar los que se ven (${sinMarcar.size})",
+                            color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 8.dp)
+                                .clickable { f = f.copy(serviciosIds = (f.serviciosIds + sinMarcar.map { it.id }).distinct()) },
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    if (visibles.isEmpty()) {
+                        Text("Ningún servicio con «${buscaServicio.trim()}»", color = c.textoSuave, fontSize = 12.sp)
+                    } else {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            visibles.forEach { s ->
+                                val sel = s.id in f.serviciosIds
+                                Text(
+                                    (if (sel) "✓ " else "") + s.nombre,
+                                    color = if (sel) c.sobreNavy else c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+                                        .background(if (sel) c.navy else c.fondo)
+                                        .border(1.dp, if (sel) c.navy else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
+                                        .clickable { f = f.copy(serviciosIds = if (sel) f.serviciosIds - s.id else f.serviciosIds + s.id) }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                )
+                            }
                         }
                     }
                 }
