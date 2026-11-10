@@ -243,7 +243,7 @@ object AgendaRepo {
             "terapeuta_id, paciente_id, tratamiento_id, especialidad_id, procedimiento_id, sede_id, sesion_id, confirmacion_token, created_at, " +
             "paciente:pacientes(nombre, telefono, edad, fecha_nacimiento, requiere_apoderado, estado), terapeuta:terapeutas(nombre), " +
             "tratamiento:tratamientos!citas_tratamiento_id_fkey(nota_recepcion, estado, modalidad, total_sesiones, sesiones_completadas, " +
-            "procedimiento:procedimientos(id, nombre, especialidad_id)), " +
+            "procedimiento:procedimientos(id, nombre, especialidad_id), ${TratamientoServicios.SELECT_LINEAS}), " +
             "sesion:sesiones!citas_sesion_id_fkey(numero)"
 
     /** Columnas de la cita virtual (2026-10-16). Nullable: una cita de antes las trae en null. */
@@ -306,8 +306,9 @@ object AgendaRepo {
                 pacienteNombre = (obj("paciente")?.get("nombre") as? JsonPrimitive)?.content?.takeIf { it != "null" },
                 pacienteTelefono = (obj("paciente")?.get("telefono") as? JsonPrimitive)?.content?.takeIf { it != "null" },
                 tratamientoId = s("tratamiento_id"),
-                procedimiento = (obj("tratamiento")?.get("procedimiento") as? JsonObject)
-                    ?.get("nombre")?.let { (it as? JsonPrimitive)?.content?.takeIf { v -> v != "null" } },
+                // Varios servicios en el tratamiento: «OCT + Campimetría» (TratamientoServicios).
+                procedimiento = TratamientoServicios.nombre(obj("tratamiento"), (obj("tratamiento")?.get("procedimiento") as? JsonObject)
+                    ?.get("nombre")?.let { (it as? JsonPrimitive)?.content?.takeIf { v -> v != "null" } }),
                 especialidadId = s("especialidad_id"),
                 especialidadServicioId = (obj("tratamiento")?.get("procedimiento") as? JsonObject)
                     ?.get("especialidad_id")?.let { (it as? JsonPrimitive)?.content?.takeIf { v -> v != "null" } },

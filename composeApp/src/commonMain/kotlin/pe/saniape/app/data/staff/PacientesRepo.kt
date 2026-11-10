@@ -630,6 +630,7 @@ object PacientesRepo {
             ses_estados:sesiones!sesiones_tratamiento_id_fkey(id, estado, costo, numero, fecha),
             pagos_dev:pagos_tratamiento(sesion_id, monto),
             citas_estados:citas!citas_tratamiento_id_fkey(estado),
+            ${TratamientoServicios.SELECT_LINEAS},
             procedimiento:procedimientos(nombre, especialidad_id, modo_cobro, precio, unidad_label, especialidad:especialidades(nombre, usa_sesiones)),
             terapeuta:terapeutas(id, nombre, especialidades:terapeuta_especialidades(especialidad:especialidades(id, nombre)))
         )
@@ -2060,7 +2061,8 @@ object PacientesRepo {
         val trats = (o["tratamientos"] as? JsonArray ?: emptyList()).mapNotNull { rel ->
             val t = rel as? JsonObject ?: return@mapNotNull null
             val procObj = t["procedimiento"] as? JsonObject
-            val proc = procObj?.str("nombre")
+            // Varios servicios en el tratamiento: «OCT + Campimetría» (TratamientoServicios).
+            val proc = TratamientoServicios.nombre(t, procObj?.str("nombre"))
             val espObj = procObj?.get("especialidad") as? JsonObject
             // usa_sesiones de la especialidad del procedimiento (default true si no viene).
             val usaSes = (espObj?.get("usa_sesiones") as? JsonPrimitive)

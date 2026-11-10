@@ -1,0 +1,5 @@
+Tratamientos con varios servicios: la app los muestra con todos sus servicios.
+---
+• Un tratamiento creado en la web con varios servicios (por ejemplo OCT + Campimetría) se ve con su nombre completo en la ficha del paciente y en la agenda.
+• Su precio es la suma de los servicios y su cita dura lo que suman.
+---
