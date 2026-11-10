@@ -266,28 +266,54 @@ fun precioSegunCaras(tramos: Map<String, Double>?, caras: Int): Double? {
     return null
 }
 
+/** Servicios que no TRATAN nada (consulta, control, evaluación…): solo si no hay otro. */
+private val NO_TRATAMIENTO = Regex(
+    "consulta|control|evaluaci[oó]n|estudio|diagn[oó]stic|valoraci[oó]n|revisi[oó]n", RegexOption.IGNORE_CASE,
+)
+
 /**
  * Busca el servicio sugerido por palabra clave cuando el hallazgo no tiene uno
  * enlazado. Gemelo de `buscarProcedimientoSugerido` (lib/odontograma.ts).
+ *
+ * Antes devolvía el PRIMERO que coincidía (orden alfabético): en Tokio
+ * «Ortodoncia / Brackets» salía «Consulta de ortodoncia» y en Urbina
+ * «Extracción indicada» salía «Extracción de tercer molar». Regla (R1, 09/11):
+ * 1. candidatos = los que coinciden con la rama, menos sus exclusiones;
+ * 2. fuera los «no-tratamiento» si queda alguno que sí trate;
+ * 3. fuera los que la rama evita (cirugías de cordal) si queda otro;
+ * 4. entre los preferidos de la rama, si hay alguno;
+ * 5. desempate: el orden del catálogo.
  */
 fun buscarProcedimientoSugerido(nombre: String, procedimientos: List<ProcedimientoRef>): ProcedimientoRef? {
     val n = nombre.lowercase()
-    fun busca(re: String, salvo: Regex? = null) = procedimientos.firstOrNull {
-        salvo?.containsMatchIn(it.nombre) != true && Regex(re, RegexOption.IGNORE_CASE).containsMatchIn(it.nombre)
+    fun re(s: String) = Regex(s, RegexOption.IGNORE_CASE)
+    fun busca(patron: String, salvo: Regex? = null, preferir: Regex? = null, evitar: Regex? = null): ProcedimientoRef? {
+        val coincide = re(patron)
+        var candidatos = procedimientos.filter { salvo?.containsMatchIn(it.nombre) != true && coincide.containsMatchIn(it.nombre) }
+        fun sinLos(r: Regex) = candidatos.filterNot { r.containsMatchIn(it.nombre) }.ifEmpty { candidatos }
+        candidatos = sinLos(NO_TRATAMIENTO)
+        if (evitar != null) candidatos = sinLos(evitar)
+        if (preferir != null) candidatos = candidatos.filter { preferir.containsMatchIn(it.nombre) }.ifEmpty { candidatos }
+        return candidatos.firstOrNull()
     }
     return when {
         // Una caries se restaura: nunca una CARILLA ni una CORONA aunque digan
         // «resina» (Urbina 09/11/2026: «Carillas Resina» S/ 300 iba antes que
         // «Resina / restauración» S/ 90 y la caries se presupuestaba como carilla).
         Regex("caries|fractura|restauraci|empaste|resina").containsMatchIn(n) ->
-            busca("resina|curaci[oó]n|empaste|obturaci[oó]n|restauraci[oó]n", Regex("carilla|corona", RegexOption.IGNORE_CASE))
+            busca(
+                "resina|curaci[oó]n|empaste|obturaci[oó]n|restauraci[oó]n", salvo = re("carilla|corona"),
+                preferir = re("restauraci[oó]n|resina|obturaci[oó]n|curaci[oó]n|empaste"),
+            )
         Regex("sarro|gingivitis|profilaxis|limpieza|placa").containsMatchIn(n) -> busca("limpieza|profilaxis|destartraje")
         Regex("endodoncia").containsMatchIn(n) -> busca("endodoncia")
-        Regex("extracci").containsMatchIn(n) -> busca("extracci[oó]n|cirug[ií]a")
+        Regex("extracci").containsMatchIn(n) ->
+            busca("extracci[oó]n|cirug[ií]a", preferir = re("simple"), evitar = re("tercer molar|cordal|quir[uú]rgic|impactad"))
         Regex("corona").containsMatchIn(n) -> busca("corona|pr[oó]tesis")
         Regex("blanqueamiento").containsMatchIn(n) -> busca("blanqueamiento")
         Regex("bruxismo").containsMatchIn(n) -> busca("placa|f[eé]rula")
-        Regex("ortodoncia|bracket|frenillos|alineador|maloclusi").containsMatchIn(n) -> busca("ortodoncia|bracket|frenillo|alineador")
+        Regex("ortodoncia|bracket|frenillos|alineador|maloclusi").containsMatchIn(n) ->
+            busca("ortodoncia|bracket|frenillo|alineador", preferir = re("instalaci[oó]n|colocaci[oó]n|bracket|aparato|alineador"))
         else -> null
     }
 }
@@ -344,14 +370,21 @@ fun agruparPresupuesto(
 
     for (r in abiertos) {
         val hal = porId[r.hallazgoId]
+        // Un hallazgo de PIEZA guardado en "BOCA" (dictado sin número, o marcado
+        // antes del arreglo) no se presupuesta: no tiene pieza. Va aparte, marcado
+        // «sin pieza», para que el odontólogo elija la pieza o lo borre. Antes
+        // convertía en «de boca» toda la línea: Urbina, caries 16 + 17 + BOCA se
+        // cobraba UNA resina en vez de dos (R2, 09/11).
+        if (esHallazgoSinPieza(r, hal)) { sinProcedimiento.add(r); continue }
         var proc = hal?.procedimientoId?.let { procPorId[it] }
         if (proc == null && hal != null) proc = buscarProcedimientoSugerido(hal.nombre, sugeribles)
         if (hal == null || proc == null) { sinProcedimiento.add(r); continue }
 
         val acum = porProc.getOrPut(proc.id) { Acum(proc) }
         if (hal.nombre !in acum.nombres) acum.nombres.add(hal.nombre)
-        // Basta UN hallazgo de boca para que la línea sea de boca.
-        if (hal.porBoca || r.diente == "BOCA") acum.porBoca = true
+        // Basta UN hallazgo de boca para que la línea sea de boca. Solo lo es el
+        // hallazgo `porBoca`: estar en "BOCA" ya no basta.
+        if (hal.porBoca) acum.porBoca = true
         if (r.diente !in acum.piezas) acum.piezas.add(r.diente)
         val clave = "${proc.id}|${r.diente}"
         val sup = r.superficies?.takeIf { it.isNotEmpty() }
