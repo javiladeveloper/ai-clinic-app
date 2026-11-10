@@ -227,9 +227,10 @@ internal fun PanelDiente(
 /**
  * Elegir un hallazgo para la boca entera (sarro, gingivitis, bruxismo…).
  *
- * Solo se ofrecen los que la clínica marcó "de boca" más los que no tienen
- * sentido por pieza; y no se ofrece dos veces lo que ya está pendiente, porque
- * duplicarlo lo cobraría dos veces.
+ * Solo se ofrecen los que la clínica marcó "de boca" (R2, 09/11): una caries
+ * o una extracción guardadas en "BOCA" no tienen pieza y no se pueden cobrar
+ * bien. Y no se ofrece dos veces lo que ya está pendiente, porque duplicarlo
+ * lo cobraría dos veces.
  */
 @Composable
 internal fun PanelBoca(
@@ -239,9 +240,7 @@ internal fun PanelBoca(
     onElegir: (String) -> Unit,
 ) {
     val c = Sania.colors
-    val activos = remember(catalogo) { catalogo.filter { it.estado == "Activo" && !it.marcaAusente } }
-    // Primero los de boca: son los que se buscan acá.
-    val ordenados = remember(activos) { activos.sortedByDescending { it.porBoca } }
+    val ordenados = remember(catalogo) { catalogo.filter { it.estado == "Activo" && it.porBoca && !it.marcaAusente } }
 
     DialogoForm(
         titulo = "Boca completa",
@@ -254,7 +253,12 @@ internal fun PanelBoca(
             "Se cobra una sola vez en el presupuesto, por muchas piezas que afecte.",
             color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(bottom = 10.dp),
         )
-        ChipsCatalogo(ordenados, onElegir = { onElegir(it.id) }, deshabilitados = yaMarcados)
+        if (ordenados.isEmpty()) {
+            Text(
+                "Ningún hallazgo del catálogo es «de toda la boca». Márcalo así en Ajustes → Hallazgos del odontograma (sarro, gingivitis…).",
+                color = c.textoSuave, fontSize = 12.sp,
+            )
+        } else ChipsCatalogo(ordenados, onElegir = { onElegir(it.id) }, deshabilitados = yaMarcados)
         if (yaMarcados.isNotEmpty()) {
             Text(
                 "Los apagados ya están registrados como pendientes.",

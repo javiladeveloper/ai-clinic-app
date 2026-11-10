@@ -305,7 +305,12 @@ fun OdontogramaVista(
                 FilaHallazgo(
                     nombre = hal?.nombre ?: "Hallazgo",
                     color = colorDe(if (h.estado == "Realizado") COLOR_REALIZADO else hal?.color),
-                    detalle = if (h.estado == "Realizado") "Realizado" else "Pendiente",
+                    // Un hallazgo de PIEZA aquí no tiene pieza: no se cobra (R2).
+                    detalle = when {
+                        h.estado == "Realizado" -> "Realizado"
+                        pe.saniape.app.data.staff.esHallazgoSinPieza(h, hal) -> "⚠ Sin pieza: no se cobra. Márcalo en su pieza y bórralo de aquí"
+                        else -> "Pendiente"
+                    },
                     soloLectura = soloLectura,
                     onAlternar = {
                         escribir {

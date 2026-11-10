@@ -28,7 +28,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.launch
+import pe.saniape.app.data.offline.ColaRepo
+import pe.saniape.app.data.staff.CODIGO_PIEZAS_YA_PRESUPUESTADAS
+import pe.saniape.app.data.staff.MENSAJE_PIEZAS_YA_PRESUPUESTADAS
+import pe.saniape.app.data.staff.TratamientoEnCola
+import pe.saniape.app.data.staff.esHallazgoSinPieza
+import pe.saniape.app.data.staff.libresParaPresupuesto
+import pe.saniape.app.data.staff.nombresSinPrecio
+import pe.saniape.app.data.staff.presupuestoDesactualizado
+import pe.saniape.app.data.staff.tratamientosEnCola
 import pe.saniape.app.data.staff.DienteHallazgo
 import pe.saniape.app.data.staff.HallazgoDental
 import pe.saniape.app.data.staff.OdontogramaRepo
@@ -97,9 +107,34 @@ internal fun PresupuestoOdontograma(
     var serviciosCargados by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { todos = OdontogramaRepo.procedimientos(); serviciosCargados = true }
 
+    // ── Lo que ya va en camino (auditoría app C1) ───────────────────────────
+    // Un «crear tratamiento» que quedó en la cola sin señal NO está hecho: sus
+    // piezas siguen sin tratamiento en lo que se ve. Se leen de la cola (sobrevive
+    // a cerrar la app) y salen del presupuesto como «pendiente de sincronizar»:
+    // un segundo toque no puede encolar otro tratamiento por las mismas piezas.
+    val onCambioActual by androidx.compose.runtime.rememberUpdatedState(onCambio)
+    var enCola by remember(pacienteId) { mutableStateOf<List<TratamientoEnCola>>(emptyList()) }
+    val pendientesCola by pe.saniape.app.data.offline.EstadoSync.pendientes.collectAsState()
+    LaunchedEffect(pacienteId, pendientesCola) {
+        val antes = enCola.flatMap { it.hallazgoIds }.toSet()
+        val ahora = runCatching { tratamientosEnCola(ColaRepo.pendientes(), pacienteId) }.getOrDefault(enCola)
+        enCola = ahora
+        // Algo de lo encolado ya subió (o el servidor lo rechazó): se relee el
+        // odontograma para ver esas piezas atadas, o libres otra vez.
+        if ((antes - ahora.flatMap { it.hallazgoIds }.toSet()).isNotEmpty()) onCambioActual()
+    }
+    // Lo recién creado, hasta que la recarga lo traiga atado a su tratamiento.
+    var creadosLocal by remember(pacienteId) { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(hallazgos) {
+        if (creadosLocal.isNotEmpty()) {
+            creadosLocal = creadosLocal.filterTo(mutableSetOf()) { id -> hallazgos.any { it.id == id && it.tratamientoId == null } }
+        }
+    }
+    val idsEnCola = remember(enCola) { enCola.flatMap { it.hallazgoIds }.toSet() }
+
     // Solo lo que todavía no tiene tratamiento: lo ya presupuestado no se
     // vuelve a ofrecer (crearía un segundo tratamiento por la misma caries).
-    val libres = remember(hallazgos) { hallazgos.filter { it.tratamientoId == null } }
+    val libres = remember(hallazgos, idsEnCola, creadosLocal) { libresParaPresupuesto(hallazgos, idsEnCola + creadosLocal) }
     val (lineasBase, sinServicio) = remember(libres, catalogo, todos, servicios) {
         // El servicio SUGERIDO por nombre sale solo de los dentales (igual que la web).
         agruparPresupuesto(libres, catalogo, todos, servicios)
@@ -123,6 +158,20 @@ internal fun PresupuestoOdontograma(
     val total = lineas.filter { it.procedimientoId in marcadas }.sumOf { it.subtotal } +
         extras.sumOf { precioExtra(it) }
 
+    /**
+     * Lo creado sale de la lista EN CUANTO se crea, aunque otra línea falle
+     * (auditoría C2, igual que `onCreado` de la web): reintentar no vuelve a
+     * crear la ortodoncia que ya se cargó. Las piezas creadas se ocultan hasta
+     * que la recarga las traiga atadas; las encoladas, por la cola.
+     */
+    fun aplicar(r: ResultadoCrear) {
+        if (r.extrasCreados.isNotEmpty()) extras = extras.filter { it.id !in r.extrasCreados }
+        val usados = r.lineasCreadas + r.extrasCreados
+        if (usados.isNotEmpty()) precios = precios - usados
+        if (r.hallazgosCreados.isNotEmpty()) creadosLocal = creadosLocal + r.hallazgosCreados
+        r.cola?.let { enCola = it }
+    }
+
     // ── Completar evaluación en un paso (29/09/2026, gemelo de PresupuestoPanel web) ──
     // Lo que se crea es lo que está A LA VISTA: líneas marcadas, precios
     // ajustados y servicios añadidos. Se vuelve a registrar en cada composición
@@ -141,20 +190,23 @@ internal fun PresupuestoOdontograma(
             }
             // Sin precio no se crea NADA: un tratamiento en S/ 0 queda "pago
             // pendiente" para siempre y no se cobra nunca (regla de la web).
-            val sinPrecio = elegidas.filter { it.subtotal <= 0.0 }.map { it.nombre } +
-                extrasAhora.filter { it.precio <= 0.0 }.map { it.nombre }
+            val sinPrecio = nombresSinPrecio(elegidas, extrasAhora)
             if (sinPrecio.isNotEmpty()) {
                 throw ErrorEvaluacionDental("pon el precio de ${sinPrecio.joinToString(", ")} en el presupuesto (o desmárcalo).")
             }
             val planes = elegidas.map { planTratamiento(it, procPorId[it.procedimientoId]) }
             val cuantos = planes.size + extrasAhora.size
             creando = true
-            val (fallidos, oferta) = try {
+            val r = try {
                 crearTodo(pacienteId, citaId, planes, extrasAhora, procPorId)
             } finally {
                 creando = false
             }
+            aplicar(r)
             onCambio()
+            if (r.desactualizado != null) throw ErrorEvaluacionDental(r.desactualizado.replaceFirstChar { it.lowercase() } + ".")
+            val fallidos = r.fallidos
+            val oferta = r.oferta
             if (fallidos > 0) {
                 // Los que sí se crearon quedan (y atan sus piezas): al reintentar,
                 // la evaluación ya "tiene tratamiento" y no se duplica, así que lo
@@ -192,7 +244,7 @@ internal fun PresupuestoOdontograma(
     ) {
         Text("💰 Presupuesto", color = c.texto, fontWeight = FontWeight.Bold, fontSize = 15.sp)
 
-        if (lineas.isEmpty() && sinServicio.isEmpty() && extras.isEmpty()) {
+        if (lineas.isEmpty() && sinServicio.isEmpty() && extras.isEmpty() && enCola.isEmpty()) {
             Text(
                 "Marca hallazgos en el odontograma y aquí aparece lo que cuesta tratarlos.",
                 color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp),
@@ -260,11 +312,52 @@ internal fun PresupuestoOdontograma(
         // ── Hallazgos que no tienen servicio ──────────────────────────────
         // No se pueden cobrar hasta que se les asigne uno. Se muestran para que
         // no se olviden: una fractura sin servicio no entra al presupuesto.
-        if (sinServicio.isNotEmpty()) {
+        // ── Tratamientos en la cola sin señal: ya van, no se ofrecen otra vez ──
+        enCola.forEach { t ->
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("⏳", fontSize = 16.sp)
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        t.diagnostico ?: procPorId[t.procedimientoId]?.nombre ?: "Tratamiento",
+                        color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    )
+                    Text("Pendiente de sincronizar: se creará al volver la señal", color = c.textoSuave, fontSize = 11.sp)
+                }
+                t.precioAcordado?.let {
+                    Text("${simboloMoneda(moneda)} ${dinero(it)}", color = c.textoSuave, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+            }
+        }
+
+        val porIdCat = remember(catalogo) { catalogo.associateBy { it.id } }
+        val (sinPieza, sinServicioReal) = remember(sinServicio, porIdCat) {
+            sinServicio.partition { esHallazgoSinPieza(it, porIdCat[it.hallazgoId]) }
+        }
+        // ── Hallazgos de PIEZA guardados en «Boca completa» (R2) ──────────
+        // No se cobran: no tienen pieza. Antes volvían «de boca» toda la línea
+        // y se cobraba una resina por varias caries.
+        if (sinPieza.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            Text("Sin pieza (no se cobra)", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            sinPieza.map { it.hallazgoId }.distinct().mapNotNull { porIdCat[it] }.forEach { hal ->
+                Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(colorDe(hal.color)))
+                    Spacer(Modifier.width(6.dp))
+                    Text(hal.nombre, color = c.texto, fontSize = 12.sp)
+                }
+            }
+            Text(
+                "Quedó en «Boca completa» y es de una pieza: márcalo en su pieza del odontograma y bórralo de «Boca completa».",
+                color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+
+        if (sinServicioReal.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
             Text("Sin servicio asignado", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            val porId = catalogo.associateBy { it.id }
-            sinServicio.map { it.hallazgoId }.distinct().mapNotNull { porId[it] }.forEach { hal ->
+            val porId = porIdCat
+            sinServicioReal.map { it.hallazgoId }.distinct().mapNotNull { porId[it] }.forEach { hal ->
                 Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(colorDe(hal.color)))
                     Spacer(Modifier.width(6.dp))
@@ -299,28 +392,36 @@ internal fun PresupuestoOdontograma(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp))
                         .background(if (cuantos > 0 && !creando) c.navy else c.borde)
                         .clickable(enabled = cuantos > 0 && !creando) {
+                            val elegidas = lineas.filter { it.procedimientoId in marcadas }
+                            val extrasAhora = extras.map { it.copy(precio = precioExtra(it)) }
+                            // La misma guarda que la evaluación (auditoría C3): sin
+                            // precio no se crea NADA, ni la línea ni el resto.
+                            val sinPrecio = nombresSinPrecio(elegidas, extrasAhora)
+                            if (sinPrecio.isNotEmpty()) {
+                                Toaster.error("Pon el precio de ${sinPrecio.joinToString(", ")} (o desmárcalo)")
+                                return@clickable
+                            }
                             creando = true
                             val planes: List<PlanTratamiento> =
-                                lineas.filter { it.procedimientoId in marcadas }
-                                    .map { planTratamiento(it, procPorId[it.procedimientoId]) }
+                                elegidas.map { planTratamiento(it, procPorId[it.procedimientoId]) }
                             scope.launch {
-                                val (fallidos, oferta) = crearTodo(
-                                    pacienteId, citaId, planes,
-                                    extras.map { it.copy(precio = precioExtra(it)) },
-                                    procPorId,
-                                )
-                                creando = false
-                                if (fallidos == 0) {
-                                    Toaster.exito("Tratamiento(s) creados")
-                                    extras = emptyList()
-                                    precios = emptyMap()
-                                    onCambio()
-                                    // Siempre se ofrece agendar la primera cita (requisito del dueño).
-                                    oferta?.let { of -> onOfrecerAgendar?.invoke(of) }
-                                } else {
-                                    Toaster.error("$fallidos no se pudieron crear. Revisa y reintenta.")
-                                    onCambio()
+                                val r = try {
+                                    crearTodo(pacienteId, citaId, planes, extrasAhora, procPorId)
+                                } finally {
+                                    creando = false
                                 }
+                                aplicar(r)
+                                onCambio()
+                                when {
+                                    r.desactualizado != null -> Toaster.error(r.desactualizado)
+                                    r.fallidos > 0 -> Toaster.error("${r.fallidos} no se pudieron crear. Revisa y reintenta.")
+                                    // Lo encolado ya lo avisó la cola («se registrará al volver la señal»).
+                                    r.enCola > 0 && r.creadosEnServidor > 0 ->
+                                        Toaster.exito("${r.creadosEnServidor} creado(s); ${r.enCola} se creará(n) al volver la señal")
+                                    r.enCola == 0 -> Toaster.exito("Tratamiento(s) creados")
+                                }
+                                // Siempre se ofrece agendar la primera cita (requisito del dueño).
+                                if (r.fallidos == 0 && r.desactualizado == null) r.oferta?.let { of -> onOfrecerAgendar?.invoke(of) }
                             }
                         }
                         .padding(vertical = 13.dp),
@@ -400,29 +501,85 @@ internal fun PresupuestoOdontograma(
  * `tratamientoDeItem` de la web: sin él, completar la sesión cobraba el precio
  * de lista y quedaba saldo fantasma.
  */
+private class ResultadoCrear(
+    val fallidos: Int = 0,
+    val oferta: pe.saniape.app.ui.clinica.pacientes.OfertaPrimeraCita? = null,
+    /** Servicios de las líneas que quedaron registradas (en el servidor o en la cola). */
+    val lineasCreadas: Set<String> = emptySet(),
+    /** Extras registrados: salen de la lista aunque otro falle. */
+    val extrasCreados: Set<String> = emptySet(),
+    /** Piezas atadas YA en el servidor (se ocultan hasta que la recarga las traiga). */
+    val hallazgosCreados: Set<String> = emptySet(),
+    val enCola: Int = 0,
+    val creadosEnServidor: Int = 0,
+    /** La cola releída tras crear (null = no se pudo leer). */
+    val cola: List<TratamientoEnCola>? = null,
+    /** El presupuesto estaba viejo: no se creó lo que faltaba. El texto a mostrar. */
+    val desactualizado: String? = null,
+)
+
+private const val MENSAJE_YA_EN_COLA = "Estas piezas ya van en la cola: se crearán al volver la señal"
+
+private suspend fun colaDe(pacienteId: String): List<TratamientoEnCola>? =
+    runCatching { tratamientosEnCola(ColaRepo.pendientes(), pacienteId) }.getOrNull()
+
 private suspend fun crearTodo(
     pacienteId: String,
     citaId: String?,
     planes: List<PlanTratamiento>,
     extras: List<ProcedimientoRef>,
     procPorId: Map<String, ProcedimientoRef>,
-): Pair<Int, pe.saniape.app.ui.clinica.pacientes.OfertaPrimeraCita?> {
+): ResultadoCrear {
+    // Antes de crear se relee lo de las piezas (auditoría C1): si la web, otro
+    // equipo o un toque anterior ya las presupuestó, el presupuesto que se ve
+    // está viejo y crear daría un segundo tratamiento por las mismas piezas.
+    val ids = planes.flatMap { it.hallazgoIds }
+    if (ids.isNotEmpty()) {
+        val colaAntes = colaDe(pacienteId)
+        val idsCola = colaAntes.orEmpty().flatMap { it.hallazgoIds }.toSet()
+        val frescos = OdontogramaRepo.hallazgosONull(pacienteId)
+        if (presupuestoDesactualizado(ids, frescos, idsCola)) {
+            return ResultadoCrear(
+                cola = colaAntes,
+                desactualizado = if (ids.any { it in idsCola }) MENSAJE_YA_EN_COLA else MENSAJE_PIEZAS_YA_PRESUPUESTADAS,
+            )
+        }
+    }
+
     var fallidos = 0
+    var enCola = 0
+    var enServidor = 0
+    var desactualizado: String? = null
+    val lineasCreadas = mutableSetOf<String>()
+    val extrasCreados = mutableSetOf<String>()
+    val hallazgosCreados = mutableSetOf<String>()
     // id creado + su servicio + la respuesta (trae su sede)
     var primero: Triple<String, ProcedimientoRef?, kotlinx.serialization.json.JsonObject?>? = null
-    suspend fun crear(cuerpo: kotlinx.serialization.json.JsonObject, proc: ProcedimientoRef?) {
+    /** true = quedó registrada (en el servidor o en la cola). */
+    suspend fun crear(cuerpo: kotlinx.serialization.json.JsonObject, proc: ProcedimientoRef?): Boolean {
         val r = PacientesRepo.crearTratamientoDetalle(cuerpo)
         if (!r.registrada) {
+            if (r.codigo == CODIGO_PIEZAS_YA_PRESUPUESTADAS) {
+                // R4 (servidor): otro ya ató esas piezas y no se creó nada. Se
+                // para aquí: con el presupuesto viejo, lo que sigue (extras
+                // incluidos) también puede estar ya cargado.
+                desactualizado = MENSAJE_PIEZAS_YA_PRESUPUESTADAS
+                return false
+            }
             fallidos++
             r.rechazo?.let { Toaster.error(it.error) }
-            return
+            return false
         }
+        if (r.encolada) enCola++ else enServidor++
         val id = pe.saniape.app.data.staff.idDeRespuesta(r.cuerpo)
         if (primero == null && id != null && !r.encolada) primero = Triple(id, proc, r.cuerpo)
+        return true
     }
     for (p in planes) {
+        if (desactualizado != null) break
         val modalidad = if (p.modalidad == "Sesiones") "Paquete" else p.modalidad
-        crear(PacientesRepo.cuerpoCrearTratamiento(
+        val antesCola = enCola
+        val ok = crear(PacientesRepo.cuerpoCrearTratamiento(
             pacienteId = pacienteId, procedimientoId = p.procedimientoId, terapeutaId = null,
             modalidad = modalidad, totalSesiones = p.totalSesiones, precioPaquete = p.precioPaquete,
             precioPorSesion = if (modalidad == "Sesión suelta") p.precioAcordado else null,
@@ -430,10 +587,16 @@ private suspend fun crearTodo(
             citaOrigenId = citaId, cantidadUnidades = p.cantidadUnidades, precioUnitario = p.precioUnitario,
             hallazgoIds = p.hallazgoIds,
         ), procPorId[p.procedimientoId])
+        if (ok) {
+            lineasCreadas += p.procedimientoId
+            // Las encoladas las oculta la cola; estas ya están atadas en el servidor.
+            if (enCola == antesCola) hallazgosCreados += p.hallazgoIds
+        }
     }
     for (e in extras) {
+        if (desactualizado != null) break
         val porSesiones = e.modoCobro == "sesiones"
-        crear(PacientesRepo.cuerpoCrearTratamiento(
+        val ok = crear(PacientesRepo.cuerpoCrearTratamiento(
             pacienteId = pacienteId, procedimientoId = e.id, terapeutaId = null,
             modalidad = if (porSesiones) "Paquete" else "Sesión suelta",
             totalSesiones = if (porSesiones) (e.tarifarios.firstOrNull()?.cantidadSesiones ?: 1) else 1,
@@ -441,6 +604,7 @@ private suspend fun crearTodo(
             precioPorSesion = if (porSesiones) null else e.precio, precioAcordado = e.precio,
             diagnostico = "${e.nombre} (Tratamiento complementario)", citaOrigenId = citaId,
         ), e)
+        if (ok) extrasCreados += e.id
     }
     val oferta = primero?.let { (id, proc, resp) ->
         pe.saniape.app.ui.clinica.pacientes.ofertaPrimeraCitaDe(
@@ -450,7 +614,13 @@ private suspend fun crearTodo(
             terapeutaId = null, especialidadId = proc?.especialidadId, respuesta = resp,
         )
     }
-    return fallidos to oferta
+    return ResultadoCrear(
+        fallidos = fallidos, oferta = oferta,
+        lineasCreadas = lineasCreadas, extrasCreados = extrasCreados, hallazgosCreados = hallazgosCreados,
+        enCola = enCola, creadosEnServidor = enServidor,
+        cola = if (enCola > 0) colaDe(pacienteId) else null,
+        desactualizado = desactualizado,
+    )
 }
 
 @Composable

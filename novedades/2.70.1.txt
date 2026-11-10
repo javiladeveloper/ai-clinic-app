@@ -1,0 +1,13 @@
+Sala de espera en la agenda y arreglos de dinero en el presupuesto dental: servicio sugerido correcto, sin tratamientos en S/ 0 ni duplicados.
+---
+• Agenda de hoy: arriba, la sala de espera de cada profesional, con «En consulta», «Sigue» y cuántos minutos lleva esperando cada paciente.
+• «🔔 Llegó» para todas las clínicas (en la cita o en ⋯ Más) y «▶ Pasar» para hacerlo entrar a consulta. Si te equivocaste: «Volver a la sala» o «Llegó por error».
+• Inicio: «Sigue» con el nombre del paciente y ▶ Pasar; recepción ve la sala de cada profesional con su nombre.
+• Campañas: al elegir a qué servicios aplica una campaña, ahora puedes buscarlos por nombre.
+• Presupuesto dental: el servicio sugerido es el que trata, no la consulta (brackets → «Instalación de brackets»; extracción → la simple antes que la de tercer molar).
+• Presupuesto dental: una caries guardada en «Boca completa» ya no junta las demás piezas en un solo cobro; queda aparte como «sin pieza» para que la marques en su pieza.
+• «Boca completa» ofrece solo los hallazgos de toda la boca (sarro, gingivitis…).
+• «Crear tratamiento(s)» no crea nada si un servicio está en S/ 0: te pide ponerle precio.
+• Si algo falla al crear, lo que sí se creó sale de la lista y no se vuelve a crear al reintentar.
+• Sin señal, lo que creas desde el presupuesto queda «pendiente de sincronizar» y no se puede crear dos veces. Si esas piezas ya tienen tratamiento (p. ej. desde la web), te avisa y actualiza el presupuesto.
+---
