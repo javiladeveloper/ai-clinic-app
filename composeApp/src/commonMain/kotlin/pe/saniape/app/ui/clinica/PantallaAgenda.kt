@@ -760,7 +760,9 @@ fun PantallaAgenda(
                 if (vm.calendarioAbierto) estadoLista.scrollToItem(0)
             }
             // Lo que hace cada acción de la tarjeta: lo usan la tarjeta y la franja de la sala de espera.
-            val alAccionTarjeta: (CitaStaff, AccionTarjeta) -> Unit = { cita, accion ->
+            // Se arma en cada recomposición (lee el estado de ahora); las tarjetas reciben
+            // [alAccionTarjeta], una instancia estable que lo llama: así no se recomponen todas.
+            val alAccionTarjetaAhora: (CitaStaff, AccionTarjeta) -> Unit = { cita, accion ->
                 when (accion) {
                     AccionTarjeta.Confirmar -> vm.ejecutar(AccionCita.Confirmar, cita)
                     AccionTarjeta.Completar ->
@@ -831,6 +833,10 @@ fun PantallaAgenda(
                     AccionTarjeta.MapaAplicacion -> abrirFichaAplicaciones(cita)
                     AccionTarjeta.ServicioEnVisita -> servicioEnVisitaCita = cita
                 }
+            }
+            val alAccionTarjetaVigente = androidx.compose.runtime.rememberUpdatedState(alAccionTarjetaAhora)
+            val alAccionTarjeta: (CitaStaff, AccionTarjeta) -> Unit = remember {
+                { cita, accion -> alAccionTarjetaVigente.value(cita, accion) }
             }
             // Una vez por recomposición (no por tarjeta): ¿«🔔 Llegó» sin sala médica va a la vista?
             val llegoVista = vm.llegoALaVista

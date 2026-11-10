@@ -320,6 +320,24 @@ fun podarPendientes(
 }
 
 /**
+ * La cola sin señal se vació (EstadoSync.pendientes llegó a 0): lo encolado ya
+ * se envió (o el servidor lo rechazó en silencio). Lo optimista sin confirmar
+ * pasa a «confirmado ahora» para que venza solo en [VIDA_PENDIENTE_MS] y la
+ * lista del servidor vuelva a mandar. Lo que [enCurso] (un pedido en vuelo,
+ * que confirma su propia respuesta) no se toca. Sin cambios → el MISMO mapa.
+ */
+fun confirmarEncolados(
+    pendientes: Map<String, PendienteSala>,
+    ahoraMs: Long,
+    enCurso: Set<String> = emptySet(),
+): Map<String, PendienteSala> {
+    if (pendientes.none { (id, p) -> p.confirmadaEn == null && id !in enCurso }) return pendientes
+    return pendientes.mapValues { (id, p) ->
+        if (p.confirmadaEn == null && id !in enCurso) p.copy(confirmadaEn = ahoraMs) else p
+    }
+}
+
+/**
  * ¿La cita tiene un momento de sala de HOY? (`llegoHoy` de /citas y del Inicio
  * web). Compara con [hoy], no con la fecha de la cita.
  */

@@ -129,8 +129,9 @@ data class EntradaAccionesCita(
     /**
      * «🔔 Llegó» sin sala médica A LA VISTA (`llegoALaVista` de la web): la
      * clínica tiene el aviso al profesional (plan con notificacionesFlujo) o ya
-     * usa la sala hoy. Entonces es la secundaria (el cierre sigue de principal,
-     * como en la web); si no, va a «⋯ Más».
+     * usa la sala hoy. Entonces es la secundaria si ninguna otra aplica (el
+     * cierre sigue de principal y «→ Evaluación» no se desplaza); si no, va a
+     * «⋯ Más».
      */
     val llegoALaVista: Boolean = false,
     /** Consulta guiada por especialidad (sin depender de la sala de espera). */
@@ -328,8 +329,9 @@ private fun ordenCita(a: AccionTarjeta): Int = when (a) {
  * - Cancelada u otro estado → nada (todo en el menú).
  *
  * Secundaria (una): el cierre si la primaria es Llegó › ✓ Confirmar
- * (Pendiente) › el cierre si la primaria es Triaje › 🔔 Llegó sin sala médica (solo
- * con [EntradaAccionesCita.llegoALaVista]) › → Evaluación › 🧠 Evaluación; en la Completada, la otra opción del
+ * (Pendiente) › el cierre si la primaria es Triaje › → Evaluación › ✓ Se realizó en
+ * esta visita › 🧠 Evaluación › 🔔 Llegó sin sala médica (solo con
+ * [EntradaAccionesCita.llegoALaVista], al final); en la Completada, la otra opción del
  * plan terminado o 🔁 Repetir (agendar la siguiente, muy usado).
  */
 fun planAccionesCita(e: EntradaAccionesCita): PlanAccionesCita {
@@ -363,13 +365,15 @@ fun planAccionesCita(e: EntradaAccionesCita): PlanAccionesCita {
             cierre?.takeIf { primaria?.accion == AccionTarjeta.Llego },
             de(AccionTarjeta.Confirmar),
             cierre?.takeIf { primaria?.accion == AccionTarjeta.Triaje },
-            // «🔔 Llegó» sin sala médica, a la vista solo con llegoALaVista (plan con
-            // avisos o sala en uso hoy); si no, en «⋯ Más» (decisión del 09/11/2026).
-            de(AccionTarjeta.Llego)?.takeIf { e.llegoSimple && e.llegoALaVista && e.sala == null },
             de(AccionTarjeta.PasarEvaluacion),
             // Podología y todo servicio de una vez: a un toque en la evaluación del día.
             de(AccionTarjeta.ServicioEnVisita),
             de(AccionTarjeta.EvaluacionPsico),
+            // «🔔 Llegó» sin sala médica, a la vista solo con llegoALaVista (plan con
+            // avisos o sala en uso hoy) y SOLO si no hay otra secundaria: el flujo de
+            // siempre (→ Evaluación, Se realizó en esta visita) no se mueve. En la
+            // sesión queda a la vista, como la web; si no, en «⋯ Más».
+            de(AccionTarjeta.Llego)?.takeIf { e.llegoSimple && e.llegoALaVista && e.sala == null },
         )
         e.estado == "Completada" -> listOf(
             de(AccionTarjeta.Ampliar).takeIf { primaria?.accion == AccionTarjeta.DarAlta },

@@ -2,6 +2,6 @@ Sala de espera: quién llegó, quién está en consulta y quién sigue, con el n
 ---
 • Agenda de hoy: arriba, la sala de espera de cada profesional, con «En consulta», «Sigue» y cuántos minutos lleva esperando cada paciente.
 • «🔔 Llegó» para todas las clínicas (en la cita o en ⋯ Más) y «▶ Pasar» para hacerlo entrar a consulta. Si te equivocaste: «Volver a la sala» o «Llegó por error».
-• Inicio: «Sigue: <paciente>» con ▶ Pasar; recepción ve la sala de cada profesional con su nombre.
+• Inicio: «Sigue» con el nombre del paciente y ▶ Pasar; recepción ve la sala de cada profesional con su nombre.
 • Campañas: al elegir a qué servicios aplica una campaña, ahora puedes buscarlos por nombre.
 ---

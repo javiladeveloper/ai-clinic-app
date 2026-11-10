@@ -111,6 +111,21 @@ class RendimientoPacientesTest {
         assertNull(r.faltan(9_999))
     }
 
+    /** Con tope: eventos sin pausa igual disparan a los maxEsperaMs del primero. */
+    @Test
+    fun rafagaConTopeDisparaAunqueLosEventosNoParen() {
+        val r = RafagaEventos(esperaMs = 1_200, maxEsperaMs = 5_000)
+        r.evento(0)
+        assertEquals(1_200, r.faltan(0))
+        r.evento(4_500)                         // sin tope serían 5_700
+        assertEquals(500, r.faltan(4_500))
+        assertEquals(0, r.faltan(5_000))
+        assertEquals(4_500, r.disparar())
+        // La ráfaga siguiente cuenta su tope desde SU primer evento.
+        r.evento(6_000)
+        assertEquals(1_200, r.faltan(6_000))
+    }
+
     @Test
     fun accionRealtimeNoRecargaLoQueYaSeCargo() {
         // Una carga empezó DESPUÉS del último evento (el propio completar): ya lo trae.

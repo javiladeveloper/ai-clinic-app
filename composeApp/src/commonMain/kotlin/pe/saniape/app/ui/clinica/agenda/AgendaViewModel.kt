@@ -787,6 +787,26 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                     recargarBanners()
                 }
         }
+        // Sala de espera sin señal: al vaciarse la cola, lo encolado ya se envió (o se
+        // rechazó después, sin aviso a esta pantalla). Lo optimista sin confirmar
+        // vence solo y la lista del servidor vuelve a mandar.
+        viewModelScope.launch {
+            var habia = false
+            pe.saniape.app.data.offline.EstadoSync.pendientes.collect { n ->
+                if (n > 0) { habia = true; return@collect }
+                if (!habia) return@collect
+                habia = false
+                val antes = salaLocal
+                salaLocal = pe.saniape.app.data.staff.confirmarEncolados(
+                    salaLocal, kotlinx.datetime.Clock.System.now().toEpochMilliseconds(), moviendoSala,
+                )
+                if (salaLocal !== antes) launch {
+                    recargarCitas()
+                    kotlinx.coroutines.delay(pe.saniape.app.data.staff.VIDA_PENDIENTE_MS + 500)
+                    podarSala()
+                }
+            }
+        }
         // Sala de espera: la web refresca las llegadas cada 45 s (recepción marca,
         // el médico lo ve). Lo mismo aquí, y SOLO con triaje/flujo médico.
         if (salaEsperaOn) {

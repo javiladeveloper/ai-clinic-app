@@ -91,12 +91,10 @@ fun FranjaSalaEspera(
             )
             Text(if (plegada) "▼" else "▲", color = c.pend, fontSize = 12.sp)
         }
-        if (plegada) return@Column
-        if (grupos.isEmpty()) {
+        // Plegada: solo el encabezado.
+        if (!plegada && grupos.isEmpty()) {
             Text("Sala vacía", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(14.dp))
-            return@Column
-        }
-        grupos.forEachIndexed { gi, g ->
+        } else if (!plegada) grupos.forEachIndexed { gi, g ->
             if (gi > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde))
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),

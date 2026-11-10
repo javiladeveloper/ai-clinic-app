@@ -210,18 +210,34 @@ const val ESPERA_RAFAGA_MS = 800L
  * Junta una ráfaga de eventos en UNA recarga: se dispara cuando pasan [esperaMs] sin
  * eventos nuevos (debounce). Máquina de estados pura (el reloj lo pone quien la usa)
  * para poder probarla sin corrutinas.
+ *
+ * [maxEsperaMs] (opcional): tope desde el PRIMER evento de la ráfaga. Con eventos
+ * seguidos sin pausa (una clínica con mucho movimiento) igual se dispara a tiempo.
  */
-class RafagaEventos(private val esperaMs: Long = ESPERA_RAFAGA_MS) {
+class RafagaEventos(
+    private val esperaMs: Long = ESPERA_RAFAGA_MS,
+    private val maxEsperaMs: Long? = null,
+) {
+    private var primerEvento: Long? = null
     private var ultimoEvento: Long? = null
 
     /** Llegó un evento en [ahoraMs]. */
-    fun evento(ahoraMs: Long) { ultimoEvento = ahoraMs }
+    fun evento(ahoraMs: Long) {
+        if (primerEvento == null) primerEvento = ahoraMs
+        ultimoEvento = ahoraMs
+    }
 
     /** ms que faltan para disparar: null = no hay nada pendiente; 0 = ya. */
-    fun faltan(ahoraMs: Long): Long? = ultimoEvento?.let { (it + esperaMs - ahoraMs).coerceAtLeast(0) }
+    fun faltan(ahoraMs: Long): Long? {
+        val ultimo = ultimoEvento ?: return null
+        var limite = ultimo + esperaMs
+        val primero = primerEvento
+        if (maxEsperaMs != null && primero != null) limite = minOf(limite, primero + maxEsperaMs)
+        return (limite - ahoraMs).coerceAtLeast(0)
+    }
 
     /** Dispara: devuelve cuándo llegó el ÚLTIMO evento de la ráfaga (y la vacía). */
-    fun disparar(): Long? = ultimoEvento.also { ultimoEvento = null }
+    fun disparar(): Long? = ultimoEvento.also { ultimoEvento = null; primerEvento = null }
 }
 
 /** Qué hacer con una ráfaga de eventos del paciente abierto. */

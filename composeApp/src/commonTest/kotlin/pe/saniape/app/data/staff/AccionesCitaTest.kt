@@ -342,8 +342,9 @@ class AccionesCitaTest {
 
     /**
      * `llegoALaVista` (plan con avisos o sala en uso hoy): «🔔 Llegó» sale del
-     * «⋯ Más» a la vista, como secundaria (gemelo de la web: el cierre sigue de
-     * principal). La Pendiente conserva «✓ Confirmar» a la vista.
+     * «⋯ Más» a la vista, como secundaria, solo cuando ninguna otra aplica (la
+     * sesión, como la web: el cierre sigue de principal). La Pendiente conserva
+     * «✓ Confirmar» a la vista.
      */
     @Test
     fun llegoALaVistaEsLaSecundariaYElCierreSigueDePrincipal() {
@@ -351,11 +352,11 @@ class AccionesCitaTest {
         assertEquals(AccionTarjeta.Completar, p.primaria?.accion)
         assertEquals(AccionTarjeta.Llego, p.secundaria?.accion)
         assertTrue(p.enMenu.none { it.accion == AccionTarjeta.Llego })
-        // Desplaza a «→ Evaluación» al menú (como en la web), no lo pierde.
-        val consulta = planAccionesCita(EntradaAccionesCita(
-            estado = "Confirmada", tipo = "Consulta", llegoSimple = true, llegoALaVista = true, pasarA = "Evaluación"))
-        assertEquals(AccionTarjeta.Llego, consulta.secundaria?.accion)
-        assertTrue(consulta.enMenu.any { it.accion == AccionTarjeta.PasarEvaluacion })
+        // «✓ Se realizó en esta visita» tampoco se desplaza: Llegó va al menú.
+        val visita = planAccionesCita(EntradaAccionesCita(
+            estado = "Confirmada", tipo = "Evaluación", llegoSimple = true, llegoALaVista = true, servicioEnVisita = true))
+        assertEquals(AccionTarjeta.ServicioEnVisita, visita.secundaria?.accion)
+        assertTrue(visita.enMenu.any { it.accion == AccionTarjeta.Llego })
         // Sin confirmar: Confirmar sigue a la vista; Llegó, en el menú.
         val pend = planAccionesCita(EntradaAccionesCita(estado = "Pendiente", tipo = "Sesión", llegoSimple = true, llegoALaVista = true))
         assertEquals(AccionTarjeta.Completar, pend.primaria?.accion)
@@ -371,5 +372,21 @@ class AccionesCitaTest {
         ))
         assertEquals(1, (medica.visibles + medica.enMenu).count { it.accion == AccionTarjeta.Llego })
         assertTrue(medica.visibles.none { it.accion == AccionTarjeta.Llego })
+    }
+
+    /**
+     * El flujo de siempre de DALU no cambia: una Consulta confirmada de hoy en una
+     * clínica Plus (avisos al profesional → llegoALaVista) sigue con «→ Evaluación»
+     * de secundaria; «🔔 Llegó» va a «⋯ Más».
+     */
+    @Test
+    fun consultaDeHoyEnPlusConservaPasarEvaluacionYLlegoVaAlMenu() {
+        val p = planAccionesCita(EntradaAccionesCita(
+            estado = "Confirmada", tipo = "Consulta", llegoSimple = true, llegoALaVista = true, pasarA = "Evaluación"))
+        assertEquals(AccionTarjeta.Completar, p.primaria?.accion)
+        assertEquals(AccionTarjeta.PasarEvaluacion, p.secundaria?.accion)
+        assertTrue(p.visibles.none { it.accion == AccionTarjeta.Llego })
+        assertTrue(p.enMenu.any { it.accion == AccionTarjeta.Llego })
+        assertTrue(p.enMenu.none { it.accion == AccionTarjeta.PasarEvaluacion })
     }
 }

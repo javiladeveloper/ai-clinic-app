@@ -279,6 +279,25 @@ class SalaEsperaTest {
         assertSame(quieto, podarPendientes(citas, quieto, 2000))
     }
 
+    /** La cola se vació: lo encolado (rechazado luego o no) vence solo; lo en vuelo y lo confirmado no se tocan. */
+    @Test
+    fun confirmarEncoladosAlVaciarseLaColaLoOptimistaVenceSolo() {
+        val citas = listOf(M("b"), M("d"))
+        val p = mapOf(
+            "a" to PendienteSala(MomentosSala(llegadaAt = "2026-11-09T15:00:00Z"), confirmadaEn = 1000),
+            "b" to PendienteSala(MomentosSala(llegadaAt = "2026-11-09T15:01:00Z"), confirmadaEn = null),
+            "d" to PendienteSala(MomentosSala(llegadaAt = "2026-11-09T15:03:00Z"), confirmadaEn = null),
+        )
+        val r = confirmarEncolados(p, 5000, enCurso = setOf("d"))
+        assertEquals(1000L, r.getValue("a").confirmadaEn)
+        assertEquals(5000L, r.getValue("b").confirmadaEn)
+        assertNull(r.getValue("d").confirmadaEn)
+        // Pasada la vida, la lista del servidor vuelve a mandar (el rechazado desaparece).
+        assertEquals(listOf("d"), podarPendientes(citas, r, 5000 + VIDA_PENDIENTE_MS + 1).keys.toList())
+        // Nada sin confirmar fuera de lo en vuelo → el MISMO mapa.
+        assertSame(r, confirmarEncolados(r, 9000, enCurso = setOf("d")))
+    }
+
     @Test
     fun momentosDeSuDiaSoloLosDelDiaDeLaCitaSinFechaTalCual() {
         val ayer = "2026-11-08T15:00:00Z"

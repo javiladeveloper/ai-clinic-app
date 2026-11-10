@@ -113,16 +113,30 @@ fun PantallaInicioStaff(
     val conCola = ctx.modulosClinicos.salaEspera
 
     // Relectura con espera: una ráfaga de cambios (Realtime, ▶ Pasar y su propio
-    // aviso Realtime) = una sola relectura, ≥ 1 s después del último (resolución 6).
-    val esperaRelectura = remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    val releerConEspera: () -> Unit = {
-        esperaRelectura.value?.cancel()
-        esperaRelectura.value = scope.launch {
-            kotlinx.coroutines.delay(1_200)
+    // aviso Realtime) = una sola relectura, 1,2 s después del último y a lo sumo
+    // 5 s después del primero (una clínica con mucho movimiento igual se pone al
+    // día). Solo se reinicia la ESPERA: un stats() en vuelo nunca se cancela; lo
+    // que llegue mientras tanto arma la ráfaga siguiente (resolución 6).
+    val rafagaInicio = remember { pe.saniape.app.data.staff.RafagaEventos(esperaMs = 1_200, maxEsperaMs = 5_000) }
+    val senalRelectura = remember { kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED) }
+    val releerActual: () -> Unit = remember {
+        {
+            rafagaInicio.evento(pe.saniape.app.data.staff.relojMonotonoMs())
+            senalRelectura.trySend(Unit)
+        }
+    }
+    LaunchedEffect(sedeFiltro, conCola) {
+        while (true) {
+            senalRelectura.receive()
+            while (true) {
+                val falta = rafagaInicio.faltan(pe.saniape.app.data.staff.relojMonotonoMs()) ?: break
+                if (falta <= 0L) break
+                kotlinx.coroutines.delay(falta)
+            }
+            rafagaInicio.disparar() ?: continue
             runCatching { DashboardRepo.stats(conCola) }.getOrNull()?.let { stats = it }
         }
     }
-    val releerActual by androidx.compose.runtime.rememberUpdatedState(releerConEspera)
 
     // Metas de comisión. Se autooculta si no tiene ninguna: solo comisiona quien
     // la clínica configuró, y a los demás no debe salirles un hueco vacío.
@@ -154,7 +168,7 @@ fun PantallaInicioStaff(
     // donde se notaba: llegaba el aviso al celular, se abría Sania y la cita
     // nueva no estaba hasta refrescar a mano (2026-08-11).
     // Es TAMBIÉN la escucha de la sala de espera del Inicio: no se abre otro canal.
-    // Con espera (releerConEspera): una ráfaga de cambios = una relectura.
+    // Con espera (releerActual): una ráfaga de cambios = una relectura.
     LaunchedEffect(Unit) {
         pe.saniape.app.data.staff.RealtimeAgenda.suscribir(this) {
             // Solo las stats: recargar las notificaciones aquí las marcaría como
@@ -186,6 +200,30 @@ fun PantallaInicioStaff(
     // Cada recarga poda lo que la agenda ya trae (o lo confirmado hace rato).
     LaunchedEffect(entradasSala) {
         salaLocal = podarPendientes(entradasSala, salaLocal, Clock.System.now().toEpochMilliseconds(), zonaSala)
+    }
+    // Sin señal: al vaciarse la cola, lo encolado ya se envió (o se rechazó
+    // después, sin aviso aquí). Lo optimista sin confirmar vence solo y la agenda
+    // del servidor vuelve a mandar.
+    val agendaHoyActual by androidx.compose.runtime.rememberUpdatedState(stats?.agendaHoy.orEmpty())
+    LaunchedEffect(Unit) {
+        var habia = false
+        pe.saniape.app.data.offline.EstadoSync.pendientes.collect { n ->
+            if (n > 0) { habia = true; return@collect }
+            if (!habia) return@collect
+            habia = false
+            val antes = salaLocal
+            salaLocal = pe.saniape.app.data.staff.confirmarEncolados(
+                salaLocal, Clock.System.now().toEpochMilliseconds(), moviendoSala,
+            )
+            if (salaLocal !== antes) launch {
+                releerActual()
+                kotlinx.coroutines.delay(VIDA_PENDIENTE_MS + 500)
+                salaLocal = podarPendientes(
+                    agendaHoyActual.map { entradaSalaDeAgenda(it, hoySala) }, salaLocal,
+                    Clock.System.now().toEpochMilliseconds(), zonaSala,
+                )
+            }
+        }
     }
     // ▶ Pasar: NUNCA con sala médica (pasarEnInicio, resolución 8: va por clínica).
     // `ctx` ya es el contexto cargado (el Inicio no se pinta sin él).
