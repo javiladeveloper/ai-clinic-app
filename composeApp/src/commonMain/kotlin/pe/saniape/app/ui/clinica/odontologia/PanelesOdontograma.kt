@@ -240,7 +240,7 @@ internal fun PanelBoca(
     onElegir: (String) -> Unit,
 ) {
     val c = Sania.colors
-    val ordenados = remember(catalogo) { catalogo.filter { it.estado == "Activo" && it.porBoca && !it.marcaAusente } }
+    val ordenados = remember(catalogo) { pe.saniape.app.data.staff.hallazgosParaBoca(catalogo) }
 
     DialogoForm(
         titulo = "Boca completa",

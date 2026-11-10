@@ -13,6 +13,7 @@ import pe.saniape.app.data.staff.agruparPresupuesto
 import pe.saniape.app.data.staff.buscarProcedimientoSugerido
 import pe.saniape.app.data.staff.esHallazgoSinPieza
 import pe.saniape.app.data.staff.hallazgosEnCola
+import pe.saniape.app.data.staff.hallazgosParaBoca
 import pe.saniape.app.data.staff.libresParaPresupuesto
 import pe.saniape.app.data.staff.nombresSinPrecio
 import pe.saniape.app.data.staff.presupuestoDesactualizado
@@ -73,6 +74,24 @@ class ServicioSugeridoR1Test {
         assertEquals("x", buscarProcedimientoSugerido("Extracción indicada", cat)?.id)
     }
 
+    // ── Detalles de la revisión (web 0c2c0b11) ──
+    @Test
+    fun extraccion_tercera_molar_tambien_se_evita() {
+        val cat = listOf(proc("a", "Extracción de tercera molar", 400.0), proc("b", "Extracción simple", 80.0))
+        assertEquals("b", buscarProcedimientoSugerido("Extracción indicada", cat)?.id)
+    }
+
+    @Test
+    fun caries_restauracion_antes_que_curacion_y_curacion_de_herida_no_cuenta() {
+        val cat = listOf(
+            proc("h", "Curación de herida", 20.0),
+            proc("e", "Empaste provisional", 30.0),
+            proc("r", "Resina / restauración", 90.0),
+        )
+        assertEquals("r", buscarProcedimientoSugerido("Caries", cat)?.id)
+        assertEquals("e", buscarProcedimientoSugerido("Caries", cat.take(2))?.id)
+    }
+
     @Test
     fun desempate_por_orden_del_catalogo() {
         val cat = listOf(proc("a", "Extracción simple adulto"), proc("b", "Extracción simple niño"))
@@ -89,7 +108,7 @@ class HallazgoDePiezaEnBocaR2Test {
     @Test
     fun urbina_caries_16_17_y_boca_resina_por_dos_piezas_y_la_de_boca_sin_pieza() {
         val filas = listOf(reg("a", "16", "hc"), reg("b", "17", "hc"), reg("c", "BOCA", "hc"))
-        val (lineas, sin) = agruparPresupuesto(filas, listOf(caries), procs)
+        val (lineas, sin, sinPieza) = agruparPresupuesto(filas, listOf(caries), procs)
         assertEquals(1, lineas.size)
         val l = lineas.single()
         assertEquals(listOf("16", "17"), l.piezas)
@@ -97,16 +116,36 @@ class HallazgoDePiezaEnBocaR2Test {
         assertEquals(180.0, l.subtotal)
         assertFalse(l.porBoca)
         assertEquals(listOf("c"), sin.map { it.id })
+        assertEquals(listOf("c"), sinPieza.map { it.id })
         assertTrue(esHallazgoSinPieza(sin.single(), caries))
+    }
+
+    @Test
+    fun con_servicio_enlazado_y_solo_en_boca_tampoco_se_presupuesta() {
+        val conServicio = caries.copy(procedimientoId = "res")
+        val (lineas, _, sinPieza) = agruparPresupuesto(listOf(reg("c", "BOCA", "hc")), listOf(conServicio), procs)
+        assertTrue(lineas.isEmpty())
+        assertEquals(listOf("c"), sinPieza.map { it.id })
+    }
+
+    @Test
+    fun el_panel_de_boca_ofrece_solo_hallazgos_de_boca_activos() {
+        val cat = listOf(
+            caries, sarro,
+            HallazgoDental(id = "hg", nombre = "Gingivitis", color = "#d97706", porBoca = true, estado = "Inactivo"),
+            HallazgoDental(id = "ha", nombre = "Ausente", color = "#6b7280", marcaAusente = true, porBoca = true),
+        )
+        assertEquals(listOf("hs"), hallazgosParaBoca(cat).map { it.id })
     }
 
     @Test
     fun un_hallazgo_de_boca_en_boca_sigue_cobrandose_una_vez() {
         val filas = listOf(reg("s", "BOCA", "hs"), reg("s2", "16", "hs"))
-        val (lineas, sin) = agruparPresupuesto(filas, listOf(sarro), procs)
+        val (lineas, sin, sinPieza) = agruparPresupuesto(filas, listOf(sarro), procs)
         assertEquals(80.0, lineas.single().subtotal)
         assertTrue(lineas.single().porBoca)
         assertTrue(sin.isEmpty())
+        assertTrue(sinPieza.isEmpty())
         assertFalse(esHallazgoSinPieza(filas[0], sarro))
     }
 

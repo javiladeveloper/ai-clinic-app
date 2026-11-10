@@ -34,7 +34,6 @@ import pe.saniape.app.data.offline.ColaRepo
 import pe.saniape.app.data.staff.CODIGO_PIEZAS_YA_PRESUPUESTADAS
 import pe.saniape.app.data.staff.MENSAJE_PIEZAS_YA_PRESUPUESTADAS
 import pe.saniape.app.data.staff.TratamientoEnCola
-import pe.saniape.app.data.staff.esHallazgoSinPieza
 import pe.saniape.app.data.staff.libresParaPresupuesto
 import pe.saniape.app.data.staff.nombresSinPrecio
 import pe.saniape.app.data.staff.presupuestoDesactualizado
@@ -135,7 +134,7 @@ internal fun PresupuestoOdontograma(
     // Solo lo que todavía no tiene tratamiento: lo ya presupuestado no se
     // vuelve a ofrecer (crearía un segundo tratamiento por la misma caries).
     val libres = remember(hallazgos, idsEnCola, creadosLocal) { libresParaPresupuesto(hallazgos, idsEnCola + creadosLocal) }
-    val (lineasBase, sinServicio) = remember(libres, catalogo, todos, servicios) {
+    val (lineasBase, sinServicio, sinPieza) = remember(libres, catalogo, todos, servicios) {
         // El servicio SUGERIDO por nombre sale solo de los dentales (igual que la web).
         agruparPresupuesto(libres, catalogo, todos, servicios)
     }
@@ -331,9 +330,9 @@ internal fun PresupuestoOdontograma(
         }
 
         val porIdCat = remember(catalogo) { catalogo.associateBy { it.id } }
-        val (sinPieza, sinServicioReal) = remember(sinServicio, porIdCat) {
-            sinServicio.partition { esHallazgoSinPieza(it, porIdCat[it.hallazgoId]) }
-        }
+        // Los «sin pieza» también vienen en sinServicio (como la web): no se les
+        // ofrece «Asignar servicio», el arreglo es marcarlos en su pieza.
+        val sinServicioReal = remember(sinServicio, sinPieza) { sinServicio - sinPieza.toSet() }
         // ── Hallazgos de PIEZA guardados en «Boca completa» (R2) ──────────
         // No se cobran: no tienen pieza. Antes volvían «de boca» toda la línea
         // y se cobraba una resina por varias caries.

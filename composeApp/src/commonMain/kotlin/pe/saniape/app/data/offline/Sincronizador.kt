@@ -86,6 +86,16 @@ fun clasificarRespuesta(status: Int, json: JsonObject?): DestinoRespuesta {
 }
 
 /**
+ * El aviso cuando el servidor rechaza una operación de la cola. El 409
+ * PIEZAS_YA_PRESUPUESTADAS (un «crear tratamiento» encolado cuyas piezas ya
+ * tienen tratamiento) se dice tal cual: el presupuesto lo detecta al bajar la
+ * cola y se recarga solo (PresupuestoOdontograma).
+ */
+fun mensajeRechazoCola(tipo: String, codigo: String?, error: String?): String =
+    if (codigo == pe.saniape.app.data.staff.CODIGO_PIEZAS_YA_PRESUPUESTADAS) pe.saniape.app.data.staff.MENSAJE_PIEZAS_YA_PRESUPUESTADAS
+    else "No se pudo registrar «$tipo»: ${error ?: "error del servidor"}"
+
+/**
  * Cuántas veces se reintenta una operación antes de darla por fallida. Los ciclos
  * se disparan al volver la señal y al abrir la app, así que 20 cubre días de mala
  * conectividad sin dejar nada pendiente para siempre.
@@ -195,7 +205,7 @@ object Sincronizador {
                         // sus dependientes y SE AVISA (antes quedaba muerto en silencio,
                         // con la UI habiendo dicho "guardado").
                         ColaRepo.marcarFallida(op.id, r.error ?: "error del servidor")
-                        Toaster.error("No se pudo registrar «${op.tipo}»: ${r.error ?: "error del servidor"}")
+                        Toaster.error(mensajeRechazoCola(op.tipo, r.codigo, r.error))
                     }
                 }
             }

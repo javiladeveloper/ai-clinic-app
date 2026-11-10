@@ -21,11 +21,12 @@ const val MENSAJE_PIEZAS_YA_PRESUPUESTADAS = "Estas piezas ya tienen un tratamie
 private const val ENDPOINT_TRATAMIENTO = "/api/staff/tratamiento/accion"
 
 /**
- * Hallazgo de PIEZA guardado en un pseudo-diente ("BOCA"): no tiene pieza, así
- * que no se puede cobrar (R2). Solo los hallazgos `porBoca` van a la boca entera.
+ * Hallazgo de PIEZA guardado en "BOCA": no tiene pieza, así que no se puede
+ * cobrar (R2). Solo los hallazgos `porBoca` van a la boca entera. Gemelo de la
+ * condición de `agruparPresupuesto` en lib/odontograma.ts (solo 'BOCA').
  */
 fun esHallazgoSinPieza(r: DienteHallazgo, hal: HallazgoDental?): Boolean =
-    hal != null && !hal.porBoca && r.diente in PSEUDO_DIENTES
+    hal != null && !hal.porBoca && r.diente == "BOCA"
 
 /**
  * Lo que el presupuesto puede ofrecer: sin tratamiento y fuera de [excluidos]

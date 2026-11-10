@@ -40,6 +40,22 @@ class ClasificarRespuestaTest {
         assertEquals(DestinoRespuesta.RECHAZO, clasificarRespuesta(409, null))
     }
 
+    /**
+     * Dental Fase 1 · R4: el «crear tratamiento» encolado cuyas piezas ya tienen
+     * tratamiento. Viene SIN `reintentable`: es final (se saca de la cola y se
+     * avisa), nunca se reintenta.
+     */
+    @Test
+    fun piezasYaPresupuestadasEsRechazoFinal() {
+        val cuerpo = j("""{"ok":false,"codigo":"PIEZAS_YA_PRESUPUESTADAS","error":"Estas piezas ya tienen un tratamiento: actualiza el presupuesto"}""")
+        assertEquals(DestinoRespuesta.RECHAZO, clasificarRespuesta(409, cuerpo))
+        assertEquals(
+            "Estas piezas ya tienen un tratamiento: actualiza el presupuesto",
+            mensajeRechazoCola("tratamiento:accion", "PIEZAS_YA_PRESUPUESTADAS", "otro texto"),
+        )
+        assertEquals("No se pudo registrar «cita:crear»: Sin cupo", mensajeRechazoCola("cita:crear", null, "Sin cupo"))
+    }
+
     @Test
     fun errores4xxSonRechazo() {
         assertEquals(DestinoRespuesta.RECHAZO, clasificarRespuesta(400, j(

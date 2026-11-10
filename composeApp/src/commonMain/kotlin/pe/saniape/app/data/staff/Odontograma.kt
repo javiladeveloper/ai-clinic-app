@@ -287,33 +287,39 @@ private val NO_TRATAMIENTO = Regex(
 fun buscarProcedimientoSugerido(nombre: String, procedimientos: List<ProcedimientoRef>): ProcedimientoRef? {
     val n = nombre.lowercase()
     fun re(s: String) = Regex(s, RegexOption.IGNORE_CASE)
-    fun busca(patron: String, salvo: Regex? = null, preferir: Regex? = null, evitar: Regex? = null): ProcedimientoRef? {
+    fun busca(patron: String, salvo: Regex? = null, preferir: List<Regex> = emptyList(), evitar: Regex? = null): ProcedimientoRef? {
         val coincide = re(patron)
         var candidatos = procedimientos.filter { salvo?.containsMatchIn(it.nombre) != true && coincide.containsMatchIn(it.nombre) }
         fun sinLos(r: Regex) = candidatos.filterNot { r.containsMatchIn(it.nombre) }.ifEmpty { candidatos }
         candidatos = sinLos(NO_TRATAMIENTO)
         if (evitar != null) candidatos = sinLos(evitar)
-        if (preferir != null) candidatos = candidatos.filter { preferir.containsMatchIn(it.nombre) }.ifEmpty { candidatos }
+        // Las preferencias se aplican EN ORDEN: la primera que acierta gana.
+        for (pref in preferir) {
+            val hit = candidatos.filter { pref.containsMatchIn(it.nombre) }
+            if (hit.isNotEmpty()) { candidatos = hit; break }
+        }
         return candidatos.firstOrNull()
     }
     return when {
         // Una caries se restaura: nunca una CARILLA ni una CORONA aunque digan
         // «resina» (Urbina 09/11/2026: «Carillas Resina» S/ 300 iba antes que
         // «Resina / restauración» S/ 90 y la caries se presupuestaba como carilla).
+        // «Curación de herida» tampoco es una restauración.
         Regex("caries|fractura|restauraci|empaste|resina").containsMatchIn(n) ->
             busca(
-                "resina|curaci[oó]n|empaste|obturaci[oó]n|restauraci[oó]n", salvo = re("carilla|corona"),
-                preferir = re("restauraci[oó]n|resina|obturaci[oó]n|curaci[oó]n|empaste"),
+                "resina|curaci[oó]n|empaste|obturaci[oó]n|restauraci[oó]n", salvo = re("carilla|corona|herida"),
+                // En ORDEN: restauración / resina / obturación primero; curación / empaste después.
+                preferir = listOf(re("restauraci[oó]n|resina|obturaci[oó]n"), re("curaci[oó]n|empaste")),
             )
         Regex("sarro|gingivitis|profilaxis|limpieza|placa").containsMatchIn(n) -> busca("limpieza|profilaxis|destartraje")
         Regex("endodoncia").containsMatchIn(n) -> busca("endodoncia")
         Regex("extracci").containsMatchIn(n) ->
-            busca("extracci[oó]n|cirug[ií]a", preferir = re("simple"), evitar = re("tercer molar|cordal|quir[uú]rgic|impactad"))
+            busca("extracci[oó]n|cirug[ií]a", preferir = listOf(re("simple")), evitar = re("tercer[ao]? molar|cordal|quir[uú]rgic|impactad"))
         Regex("corona").containsMatchIn(n) -> busca("corona|pr[oó]tesis")
         Regex("blanqueamiento").containsMatchIn(n) -> busca("blanqueamiento")
         Regex("bruxismo").containsMatchIn(n) -> busca("placa|f[eé]rula")
         Regex("ortodoncia|bracket|frenillos|alineador|maloclusi").containsMatchIn(n) ->
-            busca("ortodoncia|bracket|frenillo|alineador", preferir = re("instalaci[oó]n|colocaci[oó]n|bracket|aparato|alineador"))
+            busca("ortodoncia|bracket|frenillo|alineador", preferir = listOf(re("instalaci[oó]n|colocaci[oó]n|bracket|aparato|alineador")))
         else -> null
     }
 }
@@ -332,14 +338,16 @@ fun buscarProcedimientoSugerido(nombre: String, procedimientos: List<Procedimien
  * - Servicio con precio según caras: cada pieza vale según sus caras.
  *
  * Devuelve también los hallazgos sin servicio: no se pueden cobrar, pero el
- * odontólogo tiene que verlos para no olvidarlos.
+ * odontólogo tiene que verlos para no olvidarlos. Y, aparte (tercero), los
+ * «sin pieza»: de pieza pero guardados en "BOCA" (también van en el segundo,
+ * como en la web: `{ lineas, sinProcedimiento, sinPieza }`).
  */
 fun agruparPresupuesto(
     hallazgos: List<DienteHallazgo>,
     catalogo: List<HallazgoDental>,
     procedimientos: List<ProcedimientoRef>,
     sugeribles: List<ProcedimientoRef> = procedimientos,
-): Pair<List<LineaPresupuesto>, List<DienteHallazgo>> {
+): Triple<List<LineaPresupuesto>, List<DienteHallazgo>, List<DienteHallazgo>> {
     val porId = catalogo.associateBy { it.id }
     val procPorId = procedimientos.associateBy { it.id }
 
@@ -365,6 +373,7 @@ fun agruparPresupuesto(
     }
     val porProc = linkedMapOf<String, Acum>()
     val sinProcedimiento = mutableListOf<DienteHallazgo>()
+    val sinPieza = mutableListOf<DienteHallazgo>()
     // Caras de cada pieza en cada servicio (se juntan las de todos sus registros); null = pieza entera.
     val caras = hashMapOf<String, Set<String>?>()
 
@@ -375,7 +384,7 @@ fun agruparPresupuesto(
         // «sin pieza», para que el odontólogo elija la pieza o lo borre. Antes
         // convertía en «de boca» toda la línea: Urbina, caries 16 + 17 + BOCA se
         // cobraba UNA resina en vez de dos (R2, 09/11).
-        if (esHallazgoSinPieza(r, hal)) { sinProcedimiento.add(r); continue }
+        if (esHallazgoSinPieza(r, hal)) { sinPieza.add(r); sinProcedimiento.add(r); continue }
         var proc = hal?.procedimientoId?.let { procPorId[it] }
         if (proc == null && hal != null) proc = buscarProcedimientoSugerido(hal.nombre, sugeribles)
         if (hal == null || proc == null) { sinProcedimiento.add(r); continue }
@@ -423,8 +432,15 @@ fun agruparPresupuesto(
             preciosPieza = preciosPieza,
         )
     }
-    return lineas to sinProcedimiento
+    return Triple(lineas, sinProcedimiento, sinPieza)
 }
+
+/**
+ * Lo que ofrece el panel «Boca completa»: solo hallazgos `porBoca` activos (R2).
+ * (Sarro y Gingivitis ya son `por_boca` en todas las clínicas: dato corregido el 09/11.)
+ */
+fun hallazgosParaBoca(catalogo: List<HallazgoDental>): List<HallazgoDental> =
+    catalogo.filter { it.estado == "Activo" && !it.marcaAusente && it.porBoca }
 
 /**
  * Redacta un diagnóstico con lo que el odontólogo marcó.
