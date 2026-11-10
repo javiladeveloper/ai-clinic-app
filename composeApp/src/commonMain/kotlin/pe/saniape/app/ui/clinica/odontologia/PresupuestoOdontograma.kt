@@ -34,6 +34,8 @@ import pe.saniape.app.data.offline.ColaRepo
 import pe.saniape.app.data.staff.CODIGO_PIEZAS_YA_PRESUPUESTADAS
 import pe.saniape.app.data.staff.MENSAJE_PIEZAS_YA_PRESUPUESTADAS
 import pe.saniape.app.data.staff.TratamientoEnCola
+import pe.saniape.app.data.staff.esCreacionParcial
+import pe.saniape.app.data.staff.marcasTrasCambio
 import pe.saniape.app.data.staff.libresParaPresupuesto
 import pe.saniape.app.data.staff.nombresSinPrecio
 import pe.saniape.app.data.staff.presupuestoDesactualizado
@@ -151,7 +153,15 @@ internal fun PresupuestoOdontograma(
     // La clave son los SERVICIOS, no `lineas`: `lineas` cambia al editar un
     // precio, y con esa clave editar un precio volvía a marcar lo desmarcado.
     val idsServicios = lineasBase.map { it.procedimientoId }
-    var marcadas by remember(idsServicios) { mutableStateOf(idsServicios.toSet()) }
+    // Al desaparecer lo creado (R5) NO se re-marca lo que el odontólogo desmarcó:
+    // solo las líneas nuevas entran marcadas.
+    var marcadas by remember { mutableStateOf(idsServicios.toSet()) }
+    var vistas by remember { mutableStateOf(idsServicios.toSet()) }
+    if (idsServicios.toSet() != vistas) {
+        val (m, v) = marcasTrasCambio(marcadas, vistas, idsServicios)
+        marcadas = m
+        vistas = v
+    }
     val procPorId = remember(todos) { todos.associateBy { it.id } }
 
     val total = lineas.filter { it.procedimientoId in marcadas }.sumOf { it.subtotal } +
@@ -183,7 +193,7 @@ internal fun PresupuestoOdontograma(
             if (elegidas.isEmpty() && extrasAhora.isEmpty()) {
                 return@crear when {
                     lineas.isNotEmpty() -> ResultadoTratamientoEvaluacion.Desmarcado
-                    sinServicio.isNotEmpty() -> ResultadoTratamientoEvaluacion.SinServicio
+                    (sinServicio - sinPieza.toSet()).isNotEmpty() -> ResultadoTratamientoEvaluacion.SinServicio
                     else -> ResultadoTratamientoEvaluacion.SinHallazgos
                 }
             }
@@ -564,6 +574,14 @@ private suspend fun crearTodo(
                 // incluidos) también puede estar ya cargado.
                 desactualizado = MENSAJE_PIEZAS_YA_PRESUPUESTADAS
                 return false
+            }
+            val cuerpoRechazo = r.rechazo?.datos ?: r.cuerpo
+            if (esCreacionParcial(r.rechazo?.status ?: 0, cuerpoRechazo)) {
+                // 409 parcial: el tratamiento SÍ existe; reintentar lo duplicaría.
+                // Cuenta como creado (sale de la lista) y se muestra el mensaje del servidor.
+                r.rechazo?.let { Toaster.error(it.error) }
+                enServidor++
+                return true
             }
             fallidos++
             r.rechazo?.let { Toaster.error(it.error) }

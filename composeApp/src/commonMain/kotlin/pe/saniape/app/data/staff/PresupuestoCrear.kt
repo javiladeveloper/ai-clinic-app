@@ -85,3 +85,24 @@ fun presupuestoDesactualizado(
     val porId = frescos.associateBy { it.id }
     return hallazgoIds.any { id -> porId[id]?.let { it.tratamientoId != null } ?: true }
 }
+
+/**
+ * Marcas del presupuesto tras cambiar las líneas (R5: lo creado sale de la lista).
+ * Solo las líneas NUEVAS (no vistas antes) entran marcadas; lo que el odontólogo
+ * desmarcó sigue desmarcado y lo que desapareció se olvida. Devuelve
+ * (marcadas, vistas) para la siguiente vez.
+ */
+fun marcasTrasCambio(
+    previas: Set<String>,
+    vistas: Set<String>,
+    actuales: List<String>,
+): Pair<Set<String>, Set<String>> {
+    val ahora = actuales.toSet()
+    val nuevas = ahora - vistas
+    return ((previas intersect ahora) + nuevas) to ahora
+}
+
+/** 409 con `parcial`: el tratamiento SÍ se creó (trae `id`) pero sus piezas no se pudieron atar ni deshacer. */
+fun esCreacionParcial(status: Int, cuerpo: kotlinx.serialization.json.JsonObject?): Boolean =
+    status == 409 && (cuerpo?.get("parcial") as? JsonPrimitive)?.contentOrNull == "true" &&
+        !(cuerpo["id"] as? JsonPrimitive)?.contentOrNull.isNullOrBlank()
