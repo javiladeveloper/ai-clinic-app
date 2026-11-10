@@ -445,8 +445,9 @@ fun PantallaAgenda(
     // "· 12 min" de quien espera (solo con sala de espera; DALU no lo arranca).
     var triajeCita by remember { mutableStateOf<CitaStaff?>(null) }
     var ahora by remember { mutableStateOf(kotlinx.datetime.Clock.System.now()) }
-    LaunchedEffect(vm.salaEsperaOn) {
-        while (vm.salaEsperaOn) {
+    // También con la sala de TODAS las clínicas (desde el primer «Llegó» del día).
+    LaunchedEffect(vm.salaEsperaOn, vm.usaSalaHoy) {
+        while (vm.salaEsperaOn || vm.usaSalaHoy) {
             kotlinx.coroutines.delay(30_000)
             ahora = kotlinx.datetime.Clock.System.now()
         }
@@ -758,6 +759,81 @@ fun PantallaAgenda(
             LaunchedEffect(vm.calendarioAbierto) {
                 if (vm.calendarioAbierto) estadoLista.scrollToItem(0)
             }
+            // Lo que hace cada acción de la tarjeta: lo usan la tarjeta y la franja de la sala de espera.
+            val alAccionTarjeta: (CitaStaff, AccionTarjeta) -> Unit = { cita, accion ->
+                when (accion) {
+                    AccionTarjeta.Confirmar -> vm.ejecutar(AccionCita.Confirmar, cita)
+                    AccionTarjeta.Completar ->
+                        // La cita que EVALÚA pide el diagnóstico del profesional
+                        // (también la Consulta de medicina general, que no tiene
+                        // Evaluación aparte); antes solo "Evaluación" y la consulta
+                        // médica se cerraba sin diagnóstico.
+                        // El CONTROL de nutrición no: se cierra como consulta de
+                        // seguimiento y ofrece "⚖️ Registrar medidas" (decidirCompletar).
+                        vm.decidirCompletar(cita) { abreEvaluacion ->
+                            if (pe.saniape.app.data.staff.abreVentanaAlCompletar(abreEvaluacion, cita.tipo)) completar = cita
+                            else vm.ejecutar(AccionCita.Completar, cita)
+                        }
+                    AccionTarjeta.Cancelar -> confirmar = cita to AccionCita.Cancelar
+                    AccionTarjeta.Revertir -> confirmar = cita to AccionCita.Revertir
+                    AccionTarjeta.Editar -> editar = cita
+                    AccionTarjeta.PasarEvaluacion -> pasarEval = cita
+                    // La fecha y la hora de la regla única (sin red: +7 de siempre).
+                    AccionTarjeta.Repetir -> scope.launch {
+                        prefillEval = vm.propuestaParaRepetir(cita)?.let { pr ->
+                            repetirDesde(cita).copy(fecha = pr.fecha, hora = pr.hora, terapeutaId = pr.terapeutaId ?: cita.terapeutaId)
+                        } ?: repetirDesde(cita)
+                    }
+                    AccionTarjeta.Odontograma -> odontogramaCita = cita
+                    // Evaluación ya completada → la hoja corta del plan (T3); el resto, lo de siempre.
+                    AccionTarjeta.CrearTratamiento -> if (cita.estado == "Completada" && vm.flujoDe(cita).esCitaQueEvalua(cita.tipo) &&
+                        !vm.esPsicologia(cita) && !vm.esDental(cita)) planEval = cita to null
+                    else abrirTratamientoDeCita(cita, null)
+                    AccionTarjeta.Llego -> vm.marcarLlegada(cita)
+                    AccionTarjeta.Triaje -> triajeCita = cita
+                    AccionTarjeta.Cobrar -> cobrar = cita
+                    // La consulta guiada, nativa (antes se abría en la web).
+                    AccionTarjeta.Atender -> atendiendo = Atendiendo(cita.id)
+                    AccionTarjeta.EvaluacionPsico -> evalPsico = cita to kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+                    AccionTarjeta.AnularCobro -> anularCobroCita = cita
+                    // La sesión se paga en su tratamiento: el recibo es el de ESE pago.
+                    AccionTarjeta.Comprobante -> if (cita.tipo == "Sesión") abrirComprobanteSesion(cita)
+                        else comprobanteCita = cita
+                    AccionTarjeta.PonerPrecio -> ponerPrecioCita = cita
+                    AccionTarjeta.AbonarPaquete -> abonarPaqueteCita = cita
+                    AccionTarjeta.Ampliar -> abrirFichaAccionTratamiento(cita, pe.saniape.app.data.staff.AccionTratamientoFicha.AMPLIAR)
+                    AccionTarjeta.DarAlta -> abrirFichaAccionTratamiento(cita, pe.saniape.app.data.staff.AccionTratamientoFicha.ALTA)
+                    AccionTarjeta.Pedido -> vm.pedidosPorCita[cita.id]?.firstOrNull()?.let { abrirPedido(it) }
+                        ?: run { pedidoEditar = cita to null }
+                    // 📝 Ya tiene receta → verla/imprimirla; si no → darla, prellenada.
+                    // Primero se confirma si ya tiene (aunque el indicador no haya
+                    // cargado): si tiene, el aviso 🖨 Ver / reimprimir · Emitir otra.
+                    AccionTarjeta.Receta -> vm.prefillReceta(cita)?.let { pf ->
+                        if (!buscandoReceta) {
+                            buscandoReceta = true
+                            scope.launch {
+                                try {
+                                    pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.abrir(pf, yaTiene = vm.recetaVinculadaDe(cita))
+                                } finally { buscandoReceta = false }
+                            }
+                        }
+                    }
+                    AccionTarjeta.Medidas -> abrirFichaNutricion(cita, "medidas", abrirFormulario = true)
+                    AccionTarjeta.PlanAlimentario -> abrirFichaNutricion(cita, "plan", abrirFormulario = false)
+                    AccionTarjeta.Embarazo -> abrirFichaEmbarazo(cita)
+                    AccionTarjeta.AtenderDirecto, AccionTarjeta.Evolucion -> atencionDirectaId = cita.id
+                    // 🚫 La falta del mismo día: el modal de siempre (motivo + reponer).
+                    AccionTarjeta.NoVino -> noVino = cita
+                    AccionTarjeta.DocInforme, AccionTarjeta.DocDescanso, AccionTarjeta.DocOrden, AccionTarjeta.DocConstancia ->
+                        vm.documentosDe(cita, verHc)
+                            .firstOrNull { pe.saniape.app.data.staff.accionDeDocumento(it.clave) == accion }
+                            ?.let { docCita = cita to it }
+                    AccionTarjeta.MapaAplicacion -> abrirFichaAplicaciones(cita)
+                    AccionTarjeta.ServicioEnVisita -> servicioEnVisitaCita = cita
+                }
+            }
+            // Una vez por recomposición (no por tarjeta): ¿«🔔 Llegó» sin sala médica va a la vista?
+            val llegoVista = vm.llegoALaVista
             LazyColumn(
                 Modifier.fillMaxSize(),
                 state = estadoLista,
@@ -877,6 +953,38 @@ fun PantallaAgenda(
                     }
                 }
 
+                // 🪑 Sala de espera de HOY (todas las clínicas, 09/11/2026): quién espera
+                // y quién sigue, por profesional, con el nombre del paciente. Solo con
+                // sala médica o desde el primer «Llegó» del día (DALU: nada nuevo si nadie lo toca).
+                if (vm.usaSalaHoy && !vm.cargando) {
+                    item(key = "sala-espera") {
+                        val deFila: (pe.saniape.app.data.staff.FilaSala) -> CitaStaff? = { f -> vm.citas.firstOrNull { it.id == f.citaId } }
+                        pe.saniape.app.ui.clinica.agenda.componentes.FranjaSalaEspera(
+                            grupos = vm.gruposSala(ahora),
+                            zona = vm.zonaSala,
+                            // También mientras «✓ Completar» decide si abre la evaluación (como la web).
+                            moviendo = vm.moviendoSala + listOfNotNull(vm.decidiendoCita),
+                            botonDe = { f, estado -> deFila(f)?.let { vm.botonFranja(it, estado) } },
+                            menuDe = { f -> deFila(f)?.let { vm.menuFranja(it) } == true },
+                            onBoton = { f, b ->
+                                deFila(f)?.let { cita ->
+                                    when (b) {
+                                        // «▶ Pasar» solo existe sin sala médica (botonFilaSala lo garantiza).
+                                        pe.saniape.app.data.staff.BotonFilaSala.PASAR -> vm.accionSala(cita, pe.saniape.app.data.staff.AccionSala.PASAR)
+                                        // El MISMO cierre de la tarjeta (cobro, receta, evaluación…).
+                                        pe.saniape.app.data.staff.BotonFilaSala.COMPLETAR -> alAccionTarjeta(cita, AccionTarjeta.Completar)
+                                        pe.saniape.app.data.staff.BotonFilaSala.ATENDER,
+                                        pe.saniape.app.data.staff.BotonFilaSala.CONTINUAR -> alAccionTarjeta(cita, AccionTarjeta.Atender)
+                                        pe.saniape.app.data.staff.BotonFilaSala.ATENDER_DIRECTO -> alAccionTarjeta(cita, AccionTarjeta.AtenderDirecto)
+                                        pe.saniape.app.data.staff.BotonFilaSala.TRIAJE -> alAccionTarjeta(cita, AccionTarjeta.Triaje)
+                                    }
+                                }
+                            },
+                            onAccionSala = { f, a -> deFila(f)?.let { vm.accionSala(it, a) } },
+                        )
+                    }
+                }
+
                 // Sala de espera (triaje o flujo médico): filtro rápido del día de hoy.
                 // Sin sala de espera (DALU, RENOVA) no aparece.
                 if (vm.mirandoHoy && !vm.cargando) {
@@ -926,78 +1034,7 @@ fun PantallaAgenda(
                                 puedeVerCosto = ctx.puede("pagos"),
                                 accionando = vm.accionando,
                                 decidiendo = vm.decidiendoCita == cita.id,
-                                onAccion = { accion ->
-                                    when (accion) {
-                                        AccionTarjeta.Confirmar -> vm.ejecutar(AccionCita.Confirmar, cita)
-                                        AccionTarjeta.Completar ->
-                                            // La cita que EVALÚA pide el diagnóstico del profesional
-                                            // (también la Consulta de medicina general, que no tiene
-                                            // Evaluación aparte); antes solo "Evaluación" y la consulta
-                                            // médica se cerraba sin diagnóstico.
-                                            // El CONTROL de nutrición no: se cierra como consulta de
-                                            // seguimiento y ofrece "⚖️ Registrar medidas" (decidirCompletar).
-                                            vm.decidirCompletar(cita) { abreEvaluacion ->
-                                                if (pe.saniape.app.data.staff.abreVentanaAlCompletar(abreEvaluacion, cita.tipo)) completar = cita
-                                                else vm.ejecutar(AccionCita.Completar, cita)
-                                            }
-                                        AccionTarjeta.Cancelar -> confirmar = cita to AccionCita.Cancelar
-                                        AccionTarjeta.Revertir -> confirmar = cita to AccionCita.Revertir
-                                        AccionTarjeta.Editar -> editar = cita
-                                        AccionTarjeta.PasarEvaluacion -> pasarEval = cita
-                                        // La fecha y la hora de la regla única (sin red: +7 de siempre).
-                                        AccionTarjeta.Repetir -> scope.launch {
-                                            prefillEval = vm.propuestaParaRepetir(cita)?.let { pr ->
-                                                repetirDesde(cita).copy(fecha = pr.fecha, hora = pr.hora, terapeutaId = pr.terapeutaId ?: cita.terapeutaId)
-                                            } ?: repetirDesde(cita)
-                                        }
-                                        AccionTarjeta.Odontograma -> odontogramaCita = cita
-                                        // Evaluación ya completada → la hoja corta del plan (T3); el resto, lo de siempre.
-                                        AccionTarjeta.CrearTratamiento -> if (cita.estado == "Completada" && vm.flujoDe(cita).esCitaQueEvalua(cita.tipo) &&
-                                            !vm.esPsicologia(cita) && !vm.esDental(cita)) planEval = cita to null
-                                        else abrirTratamientoDeCita(cita, null)
-                                        AccionTarjeta.Llego -> vm.marcarLlegada(cita)
-                                        AccionTarjeta.Triaje -> triajeCita = cita
-                                        AccionTarjeta.Cobrar -> cobrar = cita
-                                        // La consulta guiada, nativa (antes se abría en la web).
-                                        AccionTarjeta.Atender -> atendiendo = Atendiendo(cita.id)
-                                        AccionTarjeta.EvaluacionPsico -> evalPsico = cita to kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
-                                        AccionTarjeta.AnularCobro -> anularCobroCita = cita
-                                        // La sesión se paga en su tratamiento: el recibo es el de ESE pago.
-                                        AccionTarjeta.Comprobante -> if (cita.tipo == "Sesión") abrirComprobanteSesion(cita)
-                                            else comprobanteCita = cita
-                                        AccionTarjeta.PonerPrecio -> ponerPrecioCita = cita
-                                        AccionTarjeta.AbonarPaquete -> abonarPaqueteCita = cita
-                                        AccionTarjeta.Ampliar -> abrirFichaAccionTratamiento(cita, pe.saniape.app.data.staff.AccionTratamientoFicha.AMPLIAR)
-                                        AccionTarjeta.DarAlta -> abrirFichaAccionTratamiento(cita, pe.saniape.app.data.staff.AccionTratamientoFicha.ALTA)
-                                        AccionTarjeta.Pedido -> vm.pedidosPorCita[cita.id]?.firstOrNull()?.let { abrirPedido(it) }
-                                            ?: run { pedidoEditar = cita to null }
-                                        // 📝 Ya tiene receta → verla/imprimirla; si no → darla, prellenada.
-                                        // Primero se confirma si ya tiene (aunque el indicador no haya
-                                        // cargado): si tiene, el aviso 🖨 Ver / reimprimir · Emitir otra.
-                                        AccionTarjeta.Receta -> vm.prefillReceta(cita)?.let { pf ->
-                                            if (!buscandoReceta) {
-                                                buscandoReceta = true
-                                                scope.launch {
-                                                    try {
-                                                        pe.saniape.app.ui.clinica.recetas.RecetaTrasAtencion.abrir(pf, yaTiene = vm.recetaVinculadaDe(cita))
-                                                    } finally { buscandoReceta = false }
-                                                }
-                                            }
-                                        }
-                                        AccionTarjeta.Medidas -> abrirFichaNutricion(cita, "medidas", abrirFormulario = true)
-                                        AccionTarjeta.PlanAlimentario -> abrirFichaNutricion(cita, "plan", abrirFormulario = false)
-                                        AccionTarjeta.Embarazo -> abrirFichaEmbarazo(cita)
-                                        AccionTarjeta.AtenderDirecto, AccionTarjeta.Evolucion -> atencionDirectaId = cita.id
-                                        // 🚫 La falta del mismo día: el modal de siempre (motivo + reponer).
-                                        AccionTarjeta.NoVino -> noVino = cita
-                                        AccionTarjeta.DocInforme, AccionTarjeta.DocDescanso, AccionTarjeta.DocOrden, AccionTarjeta.DocConstancia ->
-                                            vm.documentosDe(cita, verHc)
-                                                .firstOrNull { pe.saniape.app.data.staff.accionDeDocumento(it.clave) == accion }
-                                                ?.let { docCita = cita to it }
-                                        AccionTarjeta.MapaAplicacion -> abrirFichaAplicaciones(cita)
-                                        AccionTarjeta.ServicioEnVisita -> servicioEnVisitaCita = cita
-                                    }
-                                },
+                                onAccion = { accion -> alAccionTarjeta(cita, accion) },
                                 onVerResumen = { resumenDeCita = cita; resumenPacienteId = it },
                                 onAbrirDetalle = { detalleCita = cita },
                                 conteoFranja = vm.conteosFranja[cita.id] ?: 1,
@@ -1062,8 +1099,13 @@ fun PantallaAgenda(
                                     hayServicios = pe.saniape.app.data.staff.hayServicioDeUnaVez(
                                         serviciosUnaVez, cita.especialidadId ?: cita.especialidadServicioId),
                                 ),
+                                // «🔔 Llegó» sin sala médica (todas las clínicas y planes): a «⋯ Más»,
+                                // o a la vista con el plan con avisos / la sala en uso hoy.
+                                llegoSimple = vm.ofreceLlegoSimple(cita),
+                                llegoALaVista = llegoVista,
                                 sala = vm.etapaDe(cita)?.let { etapa ->
-                                    val a = vm.atencionDe(cita)
+                                    // La misma llegada que la franja (atención + la de la cita).
+                                    val a = vm.atencionSalaDe(cita)
                                     pe.saniape.app.ui.clinica.agenda.componentes.SalaTarjeta(
                                         etapa = etapa, atencion = a, triajeOn = vm.triajeEnCita(cita),
                                         medica = vm.esMedicaGuiada(cita),

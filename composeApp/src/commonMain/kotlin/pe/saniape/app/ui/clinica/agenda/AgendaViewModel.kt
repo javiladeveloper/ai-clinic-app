@@ -450,12 +450,21 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         cita.terapeutaId?.let { espsPorTerapeuta[it] },
     )
 
-    /** Etapa de llegada de la cita (null = sin sala de espera: la tarjeta de siempre). */
+    /**
+     * Etapa de llegada de la cita (null = sin sala MÉDICA: la tarjeta de siempre).
+     * Se lee de la atención con la llegada / consulta de la CITA mezcladas
+     * ([atencionSalaDe], como `etapaDe` de /citas web): la tarjeta y la franja
+     * dicen lo mismo apenas llega el cambio de la cita por Realtime.
+     */
     fun etapaDe(cita: CitaStaff): pe.saniape.app.data.staff.EtapaLlegada? {
         if (!salaEsperaOn || cita.fecha.take(10) != hoy) return null
         if (!triajeOn && !esMedicaGuiada(cita)) return null
-        return pe.saniape.app.data.staff.etapaLlegada(cita.estado, false, atencionDe(cita))
+        return pe.saniape.app.data.staff.etapaLlegada(cita.estado, false, atencionSalaDe(cita))
     }
+
+    /** La atención de hoy de la cita con sus momentos de sala (citas.llegada_at / consulta_at, de su día). */
+    fun atencionSalaDe(cita: CitaStaff): pe.saniape.app.data.staff.AtencionLlegada? =
+        pe.saniape.app.data.staff.atencionSalaDeCita(entradaSala(cita), atencionDe(cita), zonaSala)
 
     /** Filtro rápido "🪑 En sala de espera (N)" (solo mirando hoy, sin búsqueda). */
     var soloEspera by mutableStateOf(false); private set
@@ -465,7 +474,10 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                 else citasFiltradas.filter { pe.saniape.app.data.staff.enSalaDeEspera(etapaDe(it)) }
     /** Lo que la lista pinta: con el filtro, quien llegó primero arriba (es a quien le toca). */
     val citasVisibles: List<CitaStaff>
-        get() = if (mirandoHoy && soloEspera) enEspera.sortedBy { c -> atencionDe(c)?.let { it.llegadaAt ?: it.triajeAt }.orEmpty() }
+        get() = if (mirandoHoy && soloEspera) enEspera.sortedBy { c ->
+                    atencionSalaDe(c)?.let { it.llegadaAt ?: it.triajeAt }?.let { pe.saniape.app.data.staff.parsearInstante(it) }
+                        ?: kotlinx.datetime.Instant.DISTANT_FUTURE
+                }
                 else citasFiltradas
     fun alternarSoloEspera() { soloEspera = !soloEspera }
 
@@ -487,6 +499,9 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
      * o sin señal); si el servidor la rechaza, se deshace y se avisa.
      */
     fun marcarLlegada(cita: CitaStaff) {
+        // Sin sala médica (DALU, estética, odontología sin triaje…): la llegada va a la
+        // CITA (POST /api/staff/cita/sala), con la sala de espera de todas las clínicas.
+        if (etapaDe(cita) == null) { accionSala(cita, pe.saniape.app.data.staff.AccionSala.LLEGO); return }
         if (marcandoLlegada != null) return
         viewModelScope.launch {
             marcandoLlegada = cita.id
@@ -502,11 +517,176 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                 return@launch
             }
             if (!r.encolada) {
-                val quien = cita.pacienteNombre ?: ctx.terminologiaPaciente.Paciente
-                pe.saniape.app.ui.Toaster.exito(if (triajeEnCita(cita)) "$quien en sala de espera — falta el triaje" else "$quien en sala de espera")
+                // Ninguna indicación sin nombre: el del paciente y, si lo hay, el del profesional.
+                val texto = pe.saniape.app.data.staff.textoAccionSala(
+                    pe.saniape.app.data.staff.AccionSala.LLEGO,
+                    pe.saniape.app.data.staff.nombrePacienteSala(cita.pacienteNombre),
+                    pe.saniape.app.data.staff.profesionalSala(entradaCruda(cita), miTerapeutaId, mapaTerapeutas).nombre,
+                )
+                pe.saniape.app.ui.Toaster.exito(if (triajeEnCita(cita)) "$texto — falta el triaje" else texto)
                 recargarLlegadas()
             }
         }
+    }
+
+    // ── Sala de espera de TODAS las clínicas (09/11/2026) ────────────────────
+    // citas.llegada_at / consulta_at, gemela de la franja de /citas web
+    // (components/citas/SalaEspera.tsx + hooks/useAccionSala.ts). Reglas en
+    // data/staff/SalaEspera.kt. Se mantiene al día con la MISMA suscripción
+    // Realtime de `citas` de la agenda (cada cambio recarga el día → ponerCitas).
+
+    /**
+     * Lo tocado en ESTE teléfono que la lista todavía no trae: optimista
+     * (confirmadaEn null) o ya confirmado por el servidor. Se poda en cada recarga
+     * ([pe.saniape.app.data.staff.podarPendientes]).
+     */
+    private var salaLocal by mutableStateOf<Map<String, pe.saniape.app.data.staff.PendienteSala>>(emptyMap())
+
+    /** Citas cuya sala se está guardando ("…" en su botón). Un pedido a la vez POR cita. */
+    var moviendoSala by mutableStateOf<Set<String>>(emptySet()); private set
+
+    /** Zona de la sede activa (Lima por defecto): el "hoy" y la hora de la sala. */
+    val zonaSala: String? get() = pe.saniape.app.data.staff.zonaActivaId()
+
+    /** Marcar / pasar / volver: permiso agendar o sesiones (el del endpoint). */
+    private val puedeMoverSala: Boolean get() = ctx.puede("agendar") || ctx.puede("sesiones")
+
+    /** id → nombre de los profesionales que se conocen (nombra al profesional si la cita no lo trae). */
+    private val mapaTerapeutas: Map<String, String> get() = terapeutas.associate { it.id to it.nombre }
+
+    /** La cita tal como llegó del servidor, para las reglas de la sala. */
+    private fun entradaCruda(c: CitaStaff) = pe.saniape.app.data.staff.CitaSalaEntrada(
+        id = c.id, fecha = c.fecha, hora = c.hora, estado = c.estado, tipo = c.tipo,
+        terapeutaId = c.terapeutaId, terapeutaNombre = c.terapeutaNombre, pacienteNombre = c.pacienteNombre,
+        llegadaAt = c.llegadaAt, consultaAt = c.consultaAt,
+    )
+
+    /** La cita con lo tocado en este teléfono encima (lo que se pinta). */
+    private fun entradaSala(c: CitaStaff): pe.saniape.app.data.staff.CitaSalaEntrada {
+        val e = entradaCruda(c)
+        val p = salaLocal[c.id] ?: return e
+        return e.copy(llegadaAt = p.momentos.llegadaAt, consultaAt = p.momentos.consultaAt)
+    }
+
+    /**
+     * Las citas de HOY de la franja: las de la agenda a la vista, sin búsqueda ni
+     * filtros de estado o tipo (la recortarían). derivedStateOf: la tarjeta de cada
+     * cita lo consulta y no se recalcula en cada recomposición.
+     */
+    private val citasSalaDerivado = androidx.compose.runtime.derivedStateOf {
+        if (fechaSel != hoy || verHistorial || busqueda.isNotBlank() || filtroEstado != null || filtroTipo != null) emptyList()
+        else citasFiltradas
+    }
+    private val citasSala: List<CitaStaff> get() = citasSalaDerivado.value
+
+    private val usaSalaDerivado = androidx.compose.runtime.derivedStateOf {
+        pe.saniape.app.data.staff.usaSalaHoy(citasSala.map { entradaSala(it) }, salaEsperaOn, hoy, zonaSala)
+    }
+
+    /**
+     * ¿Se muestra la franja? (resolución 2) Con sala médica, siempre (hoy); sin
+     * ella, desde la primera llegada del día (DALU: igual que siempre si nadie
+     * toca «Llegó»). Ahí recién puede decir «Sala vacía».
+     */
+    val usaSalaHoy: Boolean get() = usaSalaDerivado.value
+
+    /**
+     * ¿«🔔 Llegó» sin sala médica va a la vista en la tarjeta? Plan con aviso al
+     * profesional (notificacionesFlujo) o sala en uso hoy. Si no, a «⋯ Más».
+     */
+    val llegoALaVista: Boolean
+        get() = pe.saniape.app.data.staff.llegoALaVista(ctx.can("notificacionesFlujo"), usaSalaHoy)
+
+    fun gruposSala(ahora: kotlinx.datetime.Instant): List<pe.saniape.app.data.staff.GrupoSala> {
+        val delDia = citasSala
+        return pe.saniape.app.data.staff.armarSala(
+            citas = delDia.map { entradaSala(it) },
+            atenciones = if (salaEsperaOn) delDia.mapNotNull { c -> atencionDe(c)?.let { c.id to it } }.toMap() else emptyMap(),
+            hoy = hoy, zona = zonaSala, ahora = ahora, miTerapeutaId = miTerapeutaId,
+            terapeutas = mapaTerapeutas,
+        )
+    }
+
+    fun estadoSalaDe(c: CitaStaff): pe.saniape.app.data.staff.EstadoSala =
+        pe.saniape.app.data.staff.estadoSala(entradaSala(c), if (salaEsperaOn) atencionDe(c) else null, hoy, zonaSala)
+
+    /** «🔔 Llegó» de la cita SIN sala médica (todas las clínicas y planes): hoy, por llegar, con permiso. */
+    fun ofreceLlegoSimple(c: CitaStaff): Boolean =
+        puedeMoverSala && c.pacienteId != null && etapaDe(c) == null &&
+            estadoSalaDe(c) == pe.saniape.app.data.staff.EstadoSala.POR_LLEGAR
+
+    /**
+     * El botón de la fila de la franja (null = ninguno). La cita con etapa de sala
+     * MÉDICA ([etapaDe] != null, el mismo criterio de su tarjeta y de `etapaDe(c)`
+     * de la web) lleva el paso de siempre de su tarjeta (🩺 Triaje / ▶ Atender /
+     * ✓ Completar) y NUNCA «▶ Pasar»; las demás, ▶ Pasar / su cierre, con permiso.
+     */
+    fun botonFranja(c: CitaStaff, estado: pe.saniape.app.data.staff.EstadoSala): pe.saniape.app.data.staff.BotonFilaSala? {
+        val etapa = etapaDe(c)
+        val salaMedica = etapa != null
+        if (!salaMedica && !puedeMoverSala) return null
+        return pe.saniape.app.data.staff.botonFilaSala(
+            estado = estado,
+            salaMedica = salaMedica,
+            medica = verHc && esMedicaGuiada(c),
+            directa = verHc && atencionDirectaDe(c) == pe.saniape.app.data.staff.OfertaAtencionDirecta.ATENDER,
+            faltaTriaje = verHc && etapa == pe.saniape.app.data.staff.EtapaLlegada.LLEGO && triajeEnCita(c),
+        )
+    }
+
+    /** «⋯ Volver a la sala / Llegó por error»: solo en la sala de todas las clínicas (no en la médica, resolución 10). */
+    fun menuFranja(c: CitaStaff): Boolean = puedeMoverSala && etapaDe(c) == null
+
+    /**
+     * «Llegó / ▶ Pasar / Volver / Llegó por error»: se pinta al tocar; si el
+     * servidor lo rechaza, vuelve como estaba y se muestra SU texto. Un pedido a
+     * la vez por cita (el segundo toque no sale). Sin señal queda en la cola y lo
+     * optimista se ve hasta que la lista lo traiga.
+     */
+    fun accionSala(cita: CitaStaff, accion: pe.saniape.app.data.staff.AccionSala) {
+        if (cita.id in moviendoSala) return
+        moviendoSala = moviendoSala + cita.id
+        val previa = salaLocal[cita.id]
+        // La base, como la ve el servidor: lo de otro día no cuenta.
+        val base = pe.saniape.app.data.staff.baseDeAccionSala(entradaCruda(cita), salaLocal, zonaSala)
+        val optimista = pe.saniape.app.data.staff.aplicarAccionSala(accion, base, kotlinx.datetime.Clock.System.now().toString())
+        salaLocal = salaLocal + (cita.id to pe.saniape.app.data.staff.PendienteSala(optimista, confirmadaEn = null))
+        viewModelScope.launch {
+            val r = try {
+                AgendaRepo.accionSala(cita.id, accion)
+            } finally {
+                moviendoSala = moviendoSala - cita.id
+            }
+            if (!r.registrada) {
+                salaLocal = if (previa != null) salaLocal + (cita.id to previa) else salaLocal - cita.id
+                pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo actualizar la sala de espera")
+                return@launch
+            }
+            // En la cola: enviarOEncolar ya avisó «se registrará al volver la señal».
+            if (r.encolada) return@launch
+            val resp = pe.saniape.app.data.staff.respuestaSala(r.cuerpo)
+            salaLocal = salaLocal + (cita.id to pe.saniape.app.data.staff.PendienteSala(
+                resp?.momentos ?: optimista,
+                confirmadaEn = kotlinx.datetime.Clock.System.now().toEpochMilliseconds(),
+            ))
+            pe.saniape.app.ui.Toaster.exito(pe.saniape.app.data.staff.avisoAccionSala(
+                accion,
+                pe.saniape.app.data.staff.nombrePacienteSala(cita.pacienteNombre),
+                pe.saniape.app.data.staff.profesionalSala(entradaCruda(cita), miTerapeutaId, mapaTerapeutas),
+                resp?.avisoSolicitado == true,
+            ))
+            // Realtime suele traerlo antes; esto cubre el caso sin Realtime conectado.
+            recargarCitas()
+            // Pasado el tiempo de vida, lo confirmado deja de pisar a la lista.
+            kotlinx.coroutines.delay(pe.saniape.app.data.staff.VIDA_PENDIENTE_MS + 500)
+            podarSala()
+        }
+    }
+
+    private fun podarSala() {
+        salaLocal = pe.saniape.app.data.staff.podarPendientes(
+            citas.map { entradaCruda(it) }, salaLocal, kotlinx.datetime.Clock.System.now().toEpochMilliseconds(), zonaSala,
+        )
     }
 
     /**
@@ -1005,6 +1185,8 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
      */
     private fun ponerCitas(nuevas: List<CitaStaff>) {
         citas = nuevas
+        // Sala de espera: lo optimista que la lista ya trae (o lo confirmado viejo) sobra.
+        podarSala()
         val ids = nuevas.filter { it.estado != "Cancelada" }.map { it.id }
         estadosPagoJob?.cancel()
         if (ids.isEmpty()) { estadosPago = emptyMap(); return }

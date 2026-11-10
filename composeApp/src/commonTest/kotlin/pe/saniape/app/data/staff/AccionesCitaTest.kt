@@ -324,4 +324,52 @@ class AccionesCitaTest {
             if (estado == "Cancelada" || estado == "No asistió") assertNull(p.primaria, ctx)
         }
     }
+
+    // ── Sala de espera de TODAS las clínicas (09/11/2026): «🔔 Llegó» sin sala médica ──
+
+    @Test
+    fun llegoSinSalaMedicaVaAlMenuYNoCambiaLaPrimaria() {
+        val p = planAccionesCita(EntradaAccionesCita(estado = "Confirmada", tipo = "Sesión", llegoSimple = true))
+        assertEquals(AccionTarjeta.Completar, p.primaria?.accion)
+        assertEquals(listOf(AccionTarjeta.Llego), p.menuDe(GrupoAccion.ATENCION))
+        assertEquals("🔔 Llegó", p.enMenu.first { it.accion == AccionTarjeta.Llego }.texto)
+        // Sin la bandera (DALU, otro día, ya llegó): la tarjeta de siempre.
+        val siempre = planAccionesCita(EntradaAccionesCita(estado = "Confirmada", tipo = "Sesión"))
+        assertTrue(siempre.enMenu.none { it.accion == AccionTarjeta.Llego })
+        val completada = planAccionesCita(EntradaAccionesCita(estado = "Completada", tipo = "Sesión", llegoSimple = true))
+        assertTrue(completada.enMenu.none { it.accion == AccionTarjeta.Llego } && completada.primaria?.accion != AccionTarjeta.Llego)
+    }
+
+    /**
+     * `llegoALaVista` (plan con avisos o sala en uso hoy): «🔔 Llegó» sale del
+     * «⋯ Más» a la vista, como secundaria (gemelo de la web: el cierre sigue de
+     * principal). La Pendiente conserva «✓ Confirmar» a la vista.
+     */
+    @Test
+    fun llegoALaVistaEsLaSecundariaYElCierreSigueDePrincipal() {
+        val p = planAccionesCita(EntradaAccionesCita(estado = "Confirmada", tipo = "Sesión", llegoSimple = true, llegoALaVista = true))
+        assertEquals(AccionTarjeta.Completar, p.primaria?.accion)
+        assertEquals(AccionTarjeta.Llego, p.secundaria?.accion)
+        assertTrue(p.enMenu.none { it.accion == AccionTarjeta.Llego })
+        // Desplaza a «→ Evaluación» al menú (como en la web), no lo pierde.
+        val consulta = planAccionesCita(EntradaAccionesCita(
+            estado = "Confirmada", tipo = "Consulta", llegoSimple = true, llegoALaVista = true, pasarA = "Evaluación"))
+        assertEquals(AccionTarjeta.Llego, consulta.secundaria?.accion)
+        assertTrue(consulta.enMenu.any { it.accion == AccionTarjeta.PasarEvaluacion })
+        // Sin confirmar: Confirmar sigue a la vista; Llegó, en el menú.
+        val pend = planAccionesCita(EntradaAccionesCita(estado = "Pendiente", tipo = "Sesión", llegoSimple = true, llegoALaVista = true))
+        assertEquals(AccionTarjeta.Completar, pend.primaria?.accion)
+        assertEquals(AccionTarjeta.Confirmar, pend.secundaria?.accion)
+        assertEquals(listOf(AccionTarjeta.Llego), pend.menuDe(GrupoAccion.ATENCION))
+        // A la vista sin la bandera de la cita (otro día, ya llegó): nada.
+        val sinLlego = planAccionesCita(EntradaAccionesCita(estado = "Confirmada", tipo = "Sesión", llegoALaVista = true))
+        assertTrue((sinLlego.visibles + sinLlego.enMenu).none { it.accion == AccionTarjeta.Llego })
+        // Con sala médica manda su flujo (el Llegó de la sala médica), nunca el simple.
+        val medica = planAccionesCita(EntradaAccionesCita(
+            estado = "Confirmada", tipo = "Consulta", llegoSimple = true, llegoALaVista = true,
+            sala = SalaAcciones(EtapaLlegada.POR_LLEGAR, triajeOn = false, medica = true),
+        ))
+        assertEquals(1, (medica.visibles + medica.enMenu).count { it.accion == AccionTarjeta.Llego })
+        assertTrue(medica.visibles.none { it.accion == AccionTarjeta.Llego })
+    }
 }

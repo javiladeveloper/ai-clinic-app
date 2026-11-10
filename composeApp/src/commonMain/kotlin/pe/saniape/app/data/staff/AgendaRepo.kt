@@ -91,6 +91,10 @@ data class CitaStaff(
     val pacienteEstado: String? = null,
     /** Observaciones de la cita (`citas.notas`): de aquí sale el motivo ([motivoDeNotasCita]). */
     val notas: String? = null,
+    /** Sala de espera de todas las clínicas (09/11/2026): «🔔 Llegó». null = no llegó (o base sin la migración). */
+    val llegadaAt: String? = null,
+    /** «▶ Pasar»: entró a consulta. */
+    val consultaAt: String? = null,
 ) {
     val esVirtual: Boolean get() = esCitaVirtual(modalidad)
 
@@ -245,29 +249,40 @@ object AgendaRepo {
     /** Columnas de la cita virtual (2026-10-16). Nullable: una cita de antes las trae en null. */
     const val COLUMNAS_VIRTUALES = ", modalidad, enlace_virtual, enlace_origen"
 
+    /** Sala de espera de todas las clínicas (migración 20261209120000). Nullable. */
+    const val COLUMNAS_SALA = ", llegada_at, consulta_at"
+
     /**
-     * ¿La base tiene las columnas de citas virtuales? Se asume que sí; si un
-     * select falla por ellas (base sin la migración: Dev atrasada), se repite sin
-     * ellas y no se vuelven a pedir en esta sesión. La agenda nunca se cae por esto.
+     * ¿La base tiene las columnas de citas virtuales / de la sala? Se asume que sí;
+     * si un select falla por ellas (base sin la migración: Dev atrasada), se repite
+     * sin ellas y no se vuelven a pedir en esta sesión. La agenda nunca se cae por esto.
      */
     private var virtualesEnBase = true
+    private var salaEnBase = true
 
     private fun faltaColumnaVirtual(e: Exception): Boolean {
         val m = e.message.orEmpty()
         return ("modalidad" in m || "enlace_" in m) && ("42703" in m || "does not exist" in m || "column" in m)
     }
 
-    /** [traer] con las columnas virtuales; sin ellas si la base no las tiene (ver [virtualesEnBase]). */
+    private fun faltaColumnaSala(e: Exception): Boolean {
+        val m = e.message.orEmpty()
+        return ("llegada_at" in m || "consulta_at" in m) && ("42703" in m || "does not exist" in m || "column" in m)
+    }
+
+    /** [traer] con las columnas virtuales y de la sala; sin las que la base no tenga. */
     internal suspend fun <T> conColumnasVirtuales(traer: suspend (String) -> T): T {
-        if (!virtualesEnBase) return traer(SELECT_CITA)
+        val cols = SELECT_CITA + (if (virtualesEnBase) COLUMNAS_VIRTUALES else "") + (if (salaEnBase) COLUMNAS_SALA else "")
         return try {
-            traer(SELECT_CITA + COLUMNAS_VIRTUALES)
+            traer(cols)
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (!faltaColumnaVirtual(e)) throw e
-            virtualesEnBase = false
-            traer(SELECT_CITA)
+            when {
+                salaEnBase && faltaColumnaSala(e) -> { salaEnBase = false; conColumnasVirtuales(traer) }
+                virtualesEnBase && faltaColumnaVirtual(e) -> { virtualesEnBase = false; conColumnasVirtuales(traer) }
+                else -> throw e
+            }
         }
     }
 
@@ -321,8 +336,23 @@ object AgendaRepo {
                 tratamientoCompletadas = obj("tratamiento")?.let { t -> (t["sesiones_completadas"] as? JsonPrimitive)?.content?.toDoubleOrNull()?.toInt() },
                 pacienteEstado = (obj("paciente")?.get("estado") as? JsonPrimitive)?.content?.takeIf { it != "null" },
                 notas = s("notas")?.takeIf { it.isNotBlank() },
+                llegadaAt = s("llegada_at")?.takeIf { it.isNotBlank() },
+                consultaAt = s("consulta_at")?.takeIf { it.isNotBlank() },
             )
     }
+
+    /**
+     * Sala de espera de TODAS las clínicas (09/11/2026): «🔔 Llegó», «▶ Pasar»,
+     * «↩ Volver a la sala», «Llegó por error» (POST /api/staff/cita/sala).
+     * Idempotente en el servidor: sin señal va a la cola y se reintenta sin
+     * duplicar ni repetir el aviso. El rechazo (409 CITA_NO_VIGENTE / CITA_OTRO_DIA /
+     * SALA_EN_CONFLICTO / PASAR_SALA_MEDICA, 401/403, 500) vuelve con su texto.
+     */
+    suspend fun accionSala(citaId: String, accion: AccionSala): pe.saniape.app.data.offline.ResultadoEscritura =
+        enviarOEncolarDetalle("cita:sala", "/api/staff/cita/sala", buildJsonObject {
+            put("citaId", citaId)
+            put("accion", accion.clave)
+        })
 
     /** Confirmar (escritura simple, sin efectos colaterales) → directo a Supabase. */
     suspend fun confirmar(citaId: String): Boolean = try {

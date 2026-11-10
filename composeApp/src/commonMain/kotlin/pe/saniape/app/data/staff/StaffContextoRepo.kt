@@ -78,6 +78,7 @@ object StaffContextoRepo {
         citasVirtualesMeet = o?.boolOrNull("citasVirtualesMeet") ?: false,
         presupuestos = o?.boolOrNull("presupuestos") ?: false,
         escalas = o?.boolOrNull("escalas") ?: false,
+        notificacionesFlujo = o?.boolOrNull("notificacionesFlujo") ?: false,
     )
 
     /** Módulos clínicos. Sin el objeto (backend viejo) → todo apagado, como siempre. */

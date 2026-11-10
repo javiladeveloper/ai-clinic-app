@@ -83,6 +83,13 @@ fun TarjetaCita(
      */
     sala: SalaTarjeta? = null,
     /**
+     * «🔔 Llegó» sin sala médica (todas las clínicas, 09/11/2026): la cita de hoy
+     * por llegar. Va a «⋯ Más», salvo con [llegoALaVista]. Lo decide la pantalla.
+     */
+    llegoSimple: Boolean = false,
+    /** Plan con aviso al profesional o sala en uso hoy: ese «🔔 Llegó» va a la vista (secundaria). */
+    llegoALaVista: Boolean = false,
+    /**
      * La cita va por la consulta guiada (especialidad médica, no dental). Decide
      * "▶ Atender" vs "✓ Completar" AUNQUE no haya sala de espera (otro día, o la
      * clínica no la usa), igual que /citas web (`esMedicaGuiada`). Antes solo salía
@@ -325,6 +332,8 @@ fun TarjetaCita(
                 // consulta médica guiada ni nutrición: ahí va en «⋯ Más», como la web).
                 crearTratamientoPrincipal = crearTratamiento && cita.pacienteId != null &&
                     !odontologia && !medica && !nutricion,
+                llegoSimple = llegoSimple && cita.pacienteId != null,
+                llegoALaVista = llegoALaVista,
                 sala = salaEf?.takeIf { cita.pacienteId != null }?.let {
                     SalaAcciones(it.etapa, it.triajeOn, it.medica, it.marcando, triajeHecho = it.atencion?.triajeAt != null,
                         // El dato de la CLÍNICA (no el recortado por permiso): recepción sin

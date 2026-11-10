@@ -304,6 +304,7 @@ data class ContextoStaff(
         "citasVirtualesMeet" -> planEstado.features.citasVirtualesMeet
         "presupuestos" -> planEstado.features.presupuestos
         "escalas" -> planEstado.features.escalas
+        "notificacionesFlujo" -> planEstado.features.notificacionesFlujo
         else -> false
     }
 
@@ -432,6 +433,12 @@ data class PlanFeatures(
      * PLAN_REQUERIDO. Backend sin el campo → false.
      */
     val escalas: Boolean = false,
+    /**
+     * 🔔 Aviso al celular del profesional cuando llega su paciente (Plus y prueba;
+     * lib/plan.ts `notificacionesFlujo`). En la agenda decide que «🔔 Llegó» sin
+     * sala médica vaya a la vista ([llegoALaVista]). Backend sin el campo → false.
+     */
+    val notificacionesFlujo: Boolean = false,
 )
 
 data class ClinicaRef(val id: String, val nombre: String)
