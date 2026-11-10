@@ -29,6 +29,13 @@ data class CitaAgenda(
      * cobran solas. Ausente (servidor viejo, caché en disco) = false.
      */
     val yaPago: Boolean = false,
+    // Sala de espera de todas las clínicas (09/11/2026). Ausentes (servidor viejo) = null / false.
+    val tipo: String? = null,
+    val terapeutaId: String? = null,
+    val terapeutaNombre: String? = null,
+    val noAsistio: Boolean = false,
+    val llegadaAt: String? = null,
+    val consultaAt: String? = null,
 )
 
 /** Stats del dashboard (server-side, ya filtrados por miTerapeutaId si aplica). */
@@ -45,7 +52,39 @@ data class StatsDashboard(
     val pacientesNuevosSemana: Int,
     val derivacionesPend: Int,
     val agendaHoy: List<CitaAgenda>,
+    /** Con sala médica (?cola=1): llegada / triaje / consulta de la atención de cada cita de hoy. */
+    val cola: Map<String, AtencionLlegada> = emptyMap(),
 )
+
+/** Una fila de `agendaHoy` de /api/dashboard/stats (null si no trae id). */
+fun citaAgendaDeJson(a: JsonObject): CitaAgenda? {
+    fun s(k: String) = (a[k] as? JsonPrimitive)?.content?.takeIf { it != "null" }
+    return CitaAgenda(
+        id = s("id")?.takeIf { it.isNotBlank() } ?: return null,
+        hora = s("hora") ?: "",
+        estado = s("estado") ?: "",
+        paciente = s("paciente") ?: "Paciente",
+        procedimiento = s("procedimiento") ?: "Consulta",
+        yaPago = s("yaPago") == "true",
+        tipo = s("tipo")?.takeIf { it.isNotBlank() },
+        terapeutaId = s("terapeutaId")?.takeIf { it.isNotBlank() },
+        terapeutaNombre = s("terapeutaNombre")?.takeIf { it.isNotBlank() },
+        noAsistio = s("noAsistio") == "true",
+        llegadaAt = s("llegadaAt")?.takeIf { it.isNotBlank() },
+        consultaAt = s("consultaAt")?.takeIf { it.isNotBlank() },
+    )
+}
+
+/** `cola` de /api/dashboard/stats?cola=1 (momentos de la atención por cita). Sin cola → vacío. */
+fun colaDeJson(o: JsonObject?): Map<String, AtencionLlegada> =
+    o?.entries?.mapNotNull { (id, v) ->
+        val a = v as? JsonObject ?: return@mapNotNull null
+        fun s(k: String) = (a[k] as? JsonPrimitive)?.content?.takeIf { it != "null" && it.isNotBlank() }
+        id to AtencionLlegada(
+            id = null, citaId = id, llegadaAt = s("llegada_at"), triajeAt = s("triaje_at"),
+            consultaInicioAt = s("consulta_inicio_at"), atendidaAt = s("atendida_at"),
+        )
+    }?.toMap().orEmpty()
 
 object DashboardRepo {
     private val json = Json { ignoreUnknownKeys = true }
@@ -91,20 +130,24 @@ object DashboardRepo {
         parsear(json.parseToJsonElement(crudo).jsonObject).also { cache = it; cacheSede = sedeActual() }
     }.getOrNull()
 
-    private fun JsonObject.str(k: String): String? =
-        (this[k] as? JsonPrimitive)?.content?.takeIf { it != "null" }
     private fun JsonObject.intp(k: String): Int =
         (this[k] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
     private fun JsonObject.bool(k: String): Boolean =
         (this[k] as? JsonPrimitive)?.content == "true"
 
-    suspend fun stats(): StatsDashboard? {
+    /**
+     * [conCola]: con sala médica (triaje / flujo médico) también la `cola` (llegada,
+     * triaje y consulta de la atención de cada cita de hoy) para la sala de espera
+     * del Inicio. Sin sala médica (DALU) la URL es la de siempre.
+     */
+    suspend fun stats(conCola: Boolean = false): StatsDashboard? {
         val tk = token() ?: return null
         // Multisede: las stats de la sede activa (?sede=, misma regla que la web).
         // Sin sede elegida (o sin multisede) la URL es la de siempre.
         val sede = sedeActual()
         val clave = claveDisco()
-        val url = "${Supabase.SITE_URL}/api/dashboard/stats" + if (sede.isEmpty()) "" else "?sede=$sede"
+        val params = listOfNotNull(sede.takeIf { it.isNotEmpty() }?.let { "sede=$it" }, "cola=1".takeIf { conCola })
+        val url = "${Supabase.SITE_URL}/api/dashboard/stats" + if (params.isEmpty()) "" else "?" + params.joinToString("&")
         val resp = http.get(url) {
             header("Authorization", "Bearer $tk")
         }
@@ -138,17 +181,8 @@ object DashboardRepo {
     }.getOrNull()
 
     private fun parsear(o: JsonObject): StatsDashboard {
-        val agenda = (o["agendaHoy"] as? JsonArray ?: JsonArray(emptyList())).mapNotNull {
-            val a = it.jsonObject
-            CitaAgenda(
-                id = a.str("id") ?: return@mapNotNull null,
-                hora = a.str("hora") ?: "",
-                estado = a.str("estado") ?: "",
-                paciente = a.str("paciente") ?: "Paciente",
-                procedimiento = a.str("procedimiento") ?: "Consulta",
-                yaPago = a.bool("yaPago"),
-            )
-        }
+        val agenda = (o["agendaHoy"] as? JsonArray ?: JsonArray(emptyList()))
+            .mapNotNull { (it as? JsonObject)?.let(::citaAgendaDeJson) }
         return StatsDashboard(
             esProfesional = o.bool("esProfesional"),
             totalPacientes = o.intp("totalPacientes"),
@@ -162,6 +196,7 @@ object DashboardRepo {
             pacientesNuevosSemana = o.intp("pacientesNuevosSemana"),
             derivacionesPend = o.intp("derivacionesPend"),
             agendaHoy = agenda,
+            cola = colaDeJson(o["cola"] as? JsonObject),
         )
     }
 }

@@ -49,6 +49,23 @@ import pe.saniape.app.data.staff.CitaAgenda
 import pe.saniape.app.data.staff.ContextoStaff
 import pe.saniape.app.data.staff.DashboardRepo
 import pe.saniape.app.data.staff.StatsDashboard
+import pe.saniape.app.data.staff.AccionSala
+import pe.saniape.app.data.staff.AgendaRepo
+import pe.saniape.app.data.staff.FilaSala
+import pe.saniape.app.data.staff.PendienteSala
+import pe.saniape.app.data.staff.VIDA_PENDIENTE_MS
+import pe.saniape.app.data.staff.aplicarAccionSala
+import pe.saniape.app.data.staff.aplicarPendientes
+import pe.saniape.app.data.staff.avisoAccionSala
+import pe.saniape.app.data.staff.baseDeAccionSala
+import pe.saniape.app.data.staff.entradaSalaDeAgenda
+import pe.saniape.app.data.staff.gruposSalaDeAgenda
+import pe.saniape.app.data.staff.nombrePacienteSala
+import pe.saniape.app.data.staff.pasarEnInicio
+import pe.saniape.app.data.staff.podarPendientes
+import pe.saniape.app.data.staff.profesionalSala
+import pe.saniape.app.data.staff.respuestaSala
+import pe.saniape.app.data.staff.sigueVisibleEnInicio
 import pe.saniape.app.ui.hora12
 import pe.saniape.app.ui.theme.Sania
 import pe.saniape.app.ui.nombreDeSaludo
@@ -90,6 +107,23 @@ fun PantallaInicioStaff(
     var verNotifs by remember { mutableStateOf(false) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
+    // 🪑 Sala de espera (todas las clínicas, 09/11/2026). Con sala médica (triaje o
+    // flujo médico) también se pide la `cola` (llegada / triaje / consulta de la
+    // atención), como el Inicio web. Sin sala médica (DALU) la URL es la de siempre.
+    val conCola = ctx.modulosClinicos.salaEspera
+
+    // Relectura con espera: una ráfaga de cambios (Realtime, ▶ Pasar y su propio
+    // aviso Realtime) = una sola relectura, ≥ 1 s después del último (resolución 6).
+    val esperaRelectura = remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val releerConEspera: () -> Unit = {
+        esperaRelectura.value?.cancel()
+        esperaRelectura.value = scope.launch {
+            kotlinx.coroutines.delay(1_200)
+            runCatching { DashboardRepo.stats(conCola) }.getOrNull()?.let { stats = it }
+        }
+    }
+    val releerActual by androidx.compose.runtime.rememberUpdatedState(releerConEspera)
+
     // Metas de comisión. Se autooculta si no tiene ninguna: solo comisiona quien
     // la clínica configuró, y a los demás no debe salirles un hueco vacío.
     var metas by remember { mutableStateOf<List<pe.saniape.app.data.staff.AvanceMeta>>(emptyList()) }
@@ -102,13 +136,13 @@ fun PantallaInicioStaff(
     var primeraSede by remember { mutableStateOf(true) }
     LaunchedEffect(sedeFiltro) {
         if (primeraSede) { primeraSede = false; return@LaunchedEffect }
-        try { DashboardRepo.stats()?.let { stats = it } } catch (_: Exception) {}
+        try { DashboardRepo.stats(conCola)?.let { stats = it } } catch (_: Exception) {}
         cargando = false
     }
     LaunchedEffect(pe.saniape.app.ui.Reanudacion.contador) {
         // Refresca aunque haya caché (para traer lo nuevo), pero sin borrar la pantalla:
         // si ya hay stats visibles, el spinner no aparece (cargando ya es false).
-        try { DashboardRepo.stats()?.let { stats = it } } catch (_: Exception) {}
+        try { DashboardRepo.stats(conCola)?.let { stats = it } } catch (_: Exception) {}
         cargando = false
         notifs = runCatching { pe.saniape.app.data.staff.NotificacionesRepo.listar() }.getOrDefault(emptyList())
         metas = pe.saniape.app.data.staff.MetasRepo.mias()
@@ -119,13 +153,84 @@ fun PantallaInicioStaff(
     // Inicio NO — y es la primera que se ve al abrir la app, así que era justo
     // donde se notaba: llegaba el aviso al celular, se abría Sania y la cita
     // nueva no estaba hasta refrescar a mano (2026-08-11).
+    // Es TAMBIÉN la escucha de la sala de espera del Inicio: no se abre otro canal.
+    // Con espera (releerConEspera): una ráfaga de cambios = una relectura.
     LaunchedEffect(Unit) {
         pe.saniape.app.data.staff.RealtimeAgenda.suscribir(this) {
             // Solo las stats: recargar las notificaciones aquí las marcaría como
             // vistas sin que el usuario las haya visto.
-            scope.launch {
-                runCatching { DashboardRepo.stats() }.getOrNull()?.let { stats = it }
+            releerActual()
+        }
+    }
+
+    // ── 🪑 Sala de espera: «Sigue» (resolución 6 del plan) ──
+    // Solo con sala médica o desde la primera llegada de HOY que trae /stats
+    // (sigueVisibleEnInicio). Sin eso (DALU sin «Llegó») no hay reloj ni nada más.
+    // salaLocal: lo pasado en este teléfono, hasta que la agenda lo traiga.
+    var salaLocal by remember { mutableStateOf<Map<String, PendienteSala>>(emptyMap()) }
+    var moviendoSala by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var ahoraSala by remember { mutableStateOf(Clock.System.now()) }
+    val zonaSala = pe.saniape.app.data.staff.zonaActivaId()
+    val hoySala = pe.saniape.app.data.staff.hoyClinicaIso(ahoraSala)
+    val entradasSala = remember(stats, hoySala) {
+        stats?.agendaHoy.orEmpty().map { entradaSalaDeAgenda(it, hoySala) }
+    }
+    val sigueVisible = sigueVisibleEnInicio(conCola, aplicarPendientes(entradasSala, salaLocal), hoySala, zonaSala)
+    LaunchedEffect(sigueVisible) {
+        if (!sigueVisible) return@LaunchedEffect
+        while (true) {
+            ahoraSala = Clock.System.now()
+            kotlinx.coroutines.delay(60_000)
+        }
+    }
+    // Cada recarga poda lo que la agenda ya trae (o lo confirmado hace rato).
+    LaunchedEffect(entradasSala) {
+        salaLocal = podarPendientes(entradasSala, salaLocal, Clock.System.now().toEpochMilliseconds(), zonaSala)
+    }
+    // ▶ Pasar: NUNCA con sala médica (pasarEnInicio, resolución 8: va por clínica).
+    // `ctx` ya es el contexto cargado (el Inicio no se pinta sin él).
+    val puedePasarSala = pasarEnInicio(ctx.modulosClinicos.mapaMedico, ctx.modulosClinicos.triaje, contextoListo = true) &&
+        (ctx.puede("agendar") || ctx.puede("sesiones"))
+    val miTerapeutaSala = ctx.miTerapeutaId.takeIf { stats?.esProfesional == true }
+    val pasarSala: (FilaSala) -> Unit = pasar@{ f ->
+        val cita = stats?.agendaHoy?.firstOrNull { it.id == f.citaId } ?: return@pasar
+        if (!puedePasarSala || cita.id in moviendoSala) return@pasar
+        val entrada = entradaSalaDeAgenda(cita, hoySala)
+        val previa = salaLocal[cita.id]
+        val optimista = aplicarAccionSala(AccionSala.PASAR, baseDeAccionSala(entrada, salaLocal, zonaSala), Clock.System.now().toString())
+        moviendoSala = moviendoSala + cita.id
+        salaLocal = salaLocal + (cita.id to PendienteSala(optimista, confirmadaEn = null))
+        scope.launch {
+            val r = try {
+                AgendaRepo.accionSala(cita.id, AccionSala.PASAR)
+            } finally {
+                moviendoSala = moviendoSala - cita.id
             }
+            if (!r.registrada) {
+                salaLocal = if (previa != null) salaLocal + (cita.id to previa) else salaLocal - cita.id
+                pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo pasar a consulta")
+                // Lo que se ve pudo quedar viejo (otro equipo lo movió): se relee.
+                releerActual()
+                return@launch
+            }
+            // En la cola sin señal: enviarOEncolar ya avisó «se registrará al volver la señal».
+            if (r.encolada) return@launch
+            val resp = respuestaSala(r.cuerpo)
+            salaLocal = salaLocal + (cita.id to PendienteSala(
+                resp?.momentos ?: optimista, confirmadaEn = Clock.System.now().toEpochMilliseconds(),
+            ))
+            // Con el nombre del paciente y del profesional («Ana pasó a consulta con Dra. Ruiz»).
+            pe.saniape.app.ui.Toaster.exito(avisoAccionSala(
+                AccionSala.PASAR, nombrePacienteSala(cita.paciente),
+                profesionalSala(entrada, miTerapeutaSala), resp?.avisoSolicitado == true,
+            ))
+            // Entra a la misma espera que el aviso Realtime de este cambio: una relectura.
+            releerActual()
+            kotlinx.coroutines.delay(VIDA_PENDIENTE_MS + 500)
+            salaLocal = podarPendientes(
+                stats?.agendaHoy.orEmpty().map { entradaSalaDeAgenda(it, hoySala) }, salaLocal,
+                Clock.System.now().toEpochMilliseconds(), zonaSala,
+            )
         }
     }
     val noLeidas = notifs.count { !it.leida }
@@ -173,7 +278,7 @@ fun PantallaInicioStaff(
                 onRefresh = {
                     refrescando = true
                     scope.launch {
-                        runCatching { DashboardRepo.stats() }.onSuccess { stats = it }
+                        runCatching { DashboardRepo.stats(conCola) }.onSuccess { stats = it }
                         notifs = runCatching { pe.saniape.app.data.staff.NotificacionesRepo.listar() }.getOrDefault(notifs)
                         metas = pe.saniape.app.data.staff.MetasRepo.mias()
                         refrescando = false
@@ -228,6 +333,25 @@ fun PantallaInicioStaff(
                 }
 
                 if (s != null) {
+                    // ── 🪑 SALA DE ESPERA: quién sigue (con nombre), por profesional ──
+                    if (sigueVisible) {
+                        val gruposSala = gruposSalaDeAgenda(
+                            s.agendaHoy, s.cola, hoySala, zonaSala, ahoraSala, miTerapeutaSala, salaLocal,
+                        )
+                        if (gruposSala.isNotEmpty()) {
+                            item(key = "sala-espera-inicio") {
+                                TarjetaSalaInicio(
+                                    grupos = gruposSala,
+                                    zona = zonaSala,
+                                    moviendo = moviendoSala,
+                                    puedePasar = puedePasarSala,
+                                    onPasar = pasarSala,
+                                    onAbrir = { onAbrirCita(it.citaId) },
+                                )
+                            }
+                        }
+                    }
+
                     // ── PRÓXIMA CITA destacada (la primera de hoy que aún no pasa) ──
                     val proxima = proximaCita(s.agendaHoy)
                     if (proxima != null) {

@@ -462,3 +462,34 @@ fun botonFilaSala(
     if (!conSalaMedica) return BotonFilaSala.PASAR
     return if (faltaTriaje) BotonFilaSala.TRIAJE else cierre
 }
+
+// ── «Sigue» del Inicio (agenda de hoy de /api/dashboard/stats) ──────────────
+
+/**
+ * Una cita de la agenda del Inicio como entrada de la sala. La agenda del
+ * Inicio ya es la de hoy (el endpoint la acota): se le pone la fecha [hoy],
+ * como `SigueInicio.tsx`.
+ */
+fun entradaSalaDeAgenda(c: CitaAgenda, hoy: String): CitaSalaEntrada = CitaSalaEntrada(
+    id = c.id, fecha = hoy, hora = c.hora, estado = c.estado, noAsistio = c.noAsistio, tipo = c.tipo,
+    terapeutaId = c.terapeutaId, terapeutaNombre = c.terapeutaNombre, pacienteNombre = c.paciente,
+    llegadaAt = c.llegadaAt, consultaAt = c.consultaAt,
+)
+
+/**
+ * La sala del Inicio, desde la agenda de hoy de /api/dashboard/stats (y su
+ * `cola`, con sala médica). [pendientes]: lo tocado en este teléfono (▶ Pasar)
+ * mientras la agenda no lo trae.
+ */
+fun gruposSalaDeAgenda(
+    agenda: List<CitaAgenda>,
+    cola: Map<String, AtencionLlegada>,
+    hoy: String,
+    zona: String?,
+    ahora: Instant,
+    miTerapeutaId: String?,
+    pendientes: Map<String, PendienteSala> = emptyMap(),
+): List<GrupoSala> = armarSala(
+    citas = aplicarPendientes(agenda.map { entradaSalaDeAgenda(it, hoy) }, pendientes),
+    atenciones = cola, hoy = hoy, zona = zona, ahora = ahora, miTerapeutaId = miTerapeutaId,
+)
