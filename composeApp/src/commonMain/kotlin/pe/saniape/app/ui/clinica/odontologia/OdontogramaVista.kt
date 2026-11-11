@@ -174,6 +174,18 @@ fun OdontogramaVista(
         onDatosActual?.invoke(hallazgos, catalogo)
     }
 
+    // Lo que marcan desde la web u otro teléfono aparece solo (11/11/2026). En la
+    // misma fila que las escrituras propias: nunca pisa un guardado a medias.
+    LaunchedEffect(pacienteId) {
+        pe.saniape.app.data.staff.RealtimeOdontograma.escuchar(pacienteId) {
+            fila.withLock {
+                OdontogramaRepo.hallazgosONull(pacienteId)?.let { nuevos ->
+                    if (nuevos != hallazgos) { hallazgos = nuevos; onDatosActual?.invoke(hallazgos, catalogo) }
+                }
+            }
+        }
+    }
+
     if (cargando) {
         EsqueletoOdontograma()
         return
