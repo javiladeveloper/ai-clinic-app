@@ -174,6 +174,28 @@ internal fun TarjetaSeccion(titulo: String, obligatoria: Boolean, contenido: @Co
 private fun FilaPar(p: ParHc) {
     val c = Sania.colors
     val vacio = p.valor.isBlank()
+    // Valor largo (el examen oftalmológico, la anamnesis…): etiqueta arriba a todo
+    // el ancho y cada hallazgo en su fila, cada ojo en su renglón (10/11/2026).
+    if (!vacio && pe.saniape.app.data.staff.valorHcLargo(p.valor)) {
+        Column(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 2.dp)) {
+            Text(p.etiqueta, color = if (p.alerta) c.error else c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(3.dp))
+            pe.saniape.app.data.staff.filasDeValorHc(p.valor).forEachIndexed { i, f ->
+                if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(c.borde.copy(alpha = 0.6f)))
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    if (f.nombre != null) {
+                        Text(f.nombre, color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.weight(0.4f).padding(end = 8.dp))
+                    }
+                    Column(Modifier.weight(if (f.nombre != null) 0.6f else 1f)) {
+                        f.partes.forEach { parte ->
+                            Text(parte, color = if (p.alerta) c.error else c.texto, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                }
+            }
+        }
+        return
+    }
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
         Text("${p.etiqueta}:", color = if (p.alerta) c.error else c.textoSuave, fontSize = 12.sp,
             fontWeight = if (p.alerta) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.width(130.dp))

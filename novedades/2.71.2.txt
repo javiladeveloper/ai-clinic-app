@@ -1,0 +1,5 @@
+Historia clínica más ordenada en el celular.
+---
+• Historia clínica: los exámenes largos (oftalmológico, anamnesis…) se leen como tabla: cada hallazgo en su fila y cada ojo (OD / OI) en su renglón, en todas las especialidades.
+• Ficha del paciente → ⋯: 📅 Agendar cita, ✏ Editar, 📂 Historia clínica, 📋 Filiación y Dar de baja, como en la web.
+• Un servicio realizado que todavía no se cobró sigue a la vista en la ficha.
