@@ -45,6 +45,8 @@ import kotlinx.datetime.toLocalDateTime
 import pe.saniape.app.ui.hora12
 import pe.saniape.app.data.staff.EspecialidadClinica
 import pe.saniape.app.data.staff.EvaluacionRef
+import pe.saniape.app.data.staff.FilaOtroServicio
+import pe.saniape.app.data.staff.DURACIONES_OTRO_SERVICIO
 import pe.saniape.app.data.staff.PacientesRepo
 import pe.saniape.app.data.staff.PlantillaRef
 import pe.saniape.app.data.staff.ProcedimientoRef
@@ -100,7 +102,15 @@ data class TratamientoNuevo(
     val indicacionesAntes: String? = null,
     /** Tipo del tratamiento (decide qué cita ofrecer agendar tras crearlo). */
     val tipo: pe.saniape.app.data.staff.TipoTratamientoNuevo = pe.saniape.app.data.staff.TipoTratamientoNuevo.SESIONES,
-)
+    /**
+     * Varios servicios en este tratamiento (2+ líneas, la primera el principal),
+     * desde la Nueva cita. Vacío = el de siempre. [precioAcordado] ya es la suma.
+     */
+    val servicios: List<pe.saniape.app.data.staff.LineaServicio> = emptyList(),
+) {
+    /** Cuánto dura la cita con todos sus servicios (null = sin servicios agregados). */
+    val duracionServicios: Int? get() = servicios.takeIf { it.size > 1 }?.sumOf { it.duracion ?: 30 }
+}
 
 /**
  * La cita que se está creando en «Nueva cita», para crear el tratamiento Y
@@ -121,6 +131,8 @@ class CitaEnUnPaso(
     val onFechaInicio: (String) -> Unit,
     /** «Crear tratamiento y agendar cita»: el tratamiento armado, para crearlo y agendar. */
     val onCrearYAgendar: (TratamientoNuevo) -> Unit,
+    /** Duración elegida para la cita: la del servicio principal si se agregan otros. */
+    val duracion: Int = 30,
 )
 
 /** Tras crear el tratamiento con éxito: aprende su diagnóstico (en segundo plano, una vez). */
@@ -257,6 +269,8 @@ fun ModalCrearTratamiento(
     // Campañas de descuento vigentes (⚡ promos): se ofrecen al elegir el servicio.
     var campanias by remember { mutableStateOf<List<pe.saniape.app.data.staff.CampaniaApp>>(emptyList()) }
     var campaniaAplicada by remember { mutableStateOf<pe.saniape.app.data.staff.CampaniaApp?>(null) }
+    // «＋ Agregar otro servicio» (pago único desde la Nueva cita): las filas extra.
+    var otrosServicios by remember { mutableStateOf<List<FilaOtroServicio>>(emptyList()) }
     // Auditoría de descuentos: si el acordado queda por DEBAJO de la referencia, se pide el porqué.
     var motivoPrecio by remember { mutableStateOf("") }
     // Cuándo empieza (pasada si ya venía atendiéndose, futura si está programado). Default hoy.
@@ -432,6 +446,9 @@ fun ModalCrearTratamiento(
         if (p != null && autollenadoDe != p.id) {
             autollenadoDe = p.id
             campaniaAplicada = null   // otra promo puede aplicar al nuevo servicio
+            // Los servicios agregados siguen solo si son de la misma especialidad del nuevo principal.
+            val validos = pe.saniape.app.data.staff.candidatosOtroServicio(procedimientos, p).map { it.id }.toSet()
+            otrosServicios = otrosServicios.filter { it.procedimientoId.isBlank() || it.procedimientoId in validos }
             // Servicio único: el acordado NO se prellena (igual que la web): el precio base se
             // muestra aparte y como ayuda en el campo; vacío = se cobra el base. Cambiar de
             // servicio conserva la cantidad de unidades y la elección Paquete/Suelta.
@@ -551,6 +568,26 @@ fun ModalCrearTratamiento(
     )
     val avisoMoneda = "Esta sede cobra en ${pe.saniape.app.data.staff.normalizarMoneda(monedaSede)} y el servicio " +
         "no tiene precio propio aquí: escribe el precio para poder crearlo."
+    // Varios servicios en un tratamiento: pago único, no dental, desde la Nueva cita
+    // (la cita dura lo que suman). Gemelo de `ofreceExtras` en la web.
+    val ofreceOtros = unPaso != null && unPaso.estado != pe.saniape.app.data.staff.EstadoCitaUnPaso.Estado.NO &&
+        pe.saniape.app.data.staff.ofreceOtrosServicios(
+            tipoTrat, proc, pe.saniape.app.data.staff.StaffContextoRepo.actual?.mapaDental ?: pe.saniape.app.data.staff.MapaDental(),
+        )
+    val candidatosOtros = if (ofreceOtros) pe.saniape.app.data.staff.candidatosOtroServicio(procedimientos, proc) else emptyList()
+    /** Las líneas (principal + agregados); vacía = el tratamiento de siempre. */
+    fun lineasAGuardar(): List<pe.saniape.app.data.staff.LineaServicio> {
+        val p = proc ?: return emptyList()
+        if (!ofreceOtros) return emptyList()
+        return pe.saniape.app.data.staff.lineasDelFormulario(
+            principal = pe.saniape.app.data.staff.LineaServicio(
+                procedimientoId = p.id, nombre = p.nombre, precioLista = precioBaseONull,
+                precioAcordado = precioAcordado.toDoubleOrNull() ?: precioBaseONull ?: 0.0,
+                duracion = unPaso?.duracion,
+            ),
+            filas = otrosServicios, procs = procedimientos, camps = campanias,
+        )
+    }
     val puedeCrear = proc != null && !faltaPrecioPaquete && !faltaPrecioMoneda && (!esUnidades ||
         pe.saniape.app.data.staff.puedeCrearPorUnidades(precioUnitario))
 
@@ -603,7 +640,9 @@ fun ModalCrearTratamiento(
                             val tipoFinal = tipoTrat ?: pe.saniape.app.data.staff.tipoTratamientoDe(p, precioSede)
                             // Nunca una modalidad que contradiga el modo de cobro del servicio.
                             val modalidadFinal = pe.saniape.app.data.staff.modalidadAGuardar(tipoFinal, modalidad)
+                            val lineas = lineasAGuardar()
                             return TratamientoNuevo(
+                                    servicios = lineas,
                                     procedimientoId = p.id,
                                     terapeutaId = if (miTerapeutaId != null) miTerapeutaId else terapeuta?.id,
                                     modalidad = modalidadFinal,
@@ -616,7 +655,9 @@ fun ModalCrearTratamiento(
                                         precioPorSesion.toDoubleOrNull() ?: precioBaseONull else null,
                                     // Vacío = precio de lista (igual que la web): unidades → cantidad ×
                                     // precio; servicio único → el precio base del servicio.
-                                    precioAcordado = if (esUnidades) pe.saniape.app.data.staff.acordadoUnidadesAlCrear(
+                                    // Con varios servicios: la suma (el servidor la vuelve a calcular).
+                                    precioAcordado = if (lineas.size > 1) pe.saniape.app.data.staff.totalLineas(lineas)
+                                    else if (esUnidades) pe.saniape.app.data.staff.acordadoUnidadesAlCrear(
                                         precioAcordado, cantidadUAGuardar, precioUnitario.toDoubleOrNull(),
                                     ) else precioAcordado.toDoubleOrNull()
                                         ?: if (esServUnico) precioBaseONull else null,
@@ -970,6 +1011,16 @@ fun ModalCrearTratamiento(
                         Text("El servicio se registra al realizarse (paso “Por hacer”).",
                             color = c.textoSuave, fontSize = 10.sp)
                     }
+                    if (ofreceOtros) {
+                        Spacer(Modifier.height(12.dp))
+                        FilaOtrosServicios(
+                            filas = otrosServicios, onFilas = { otrosServicios = it },
+                            candidatos = candidatosOtros, campanias = campanias, moneda = moneda,
+                            precioPrincipal = precioAcordado.toDoubleOrNull() ?: precioBase,
+                            duracionPrincipal = unPaso?.duracion ?: 30,
+                            duracionFilaPorDefecto = unPaso?.duracion ?: 30,
+                        )
+                    }
                 } else if (usaSesiones) {
                     Spacer(Modifier.height(12.dp))
                     Tarjeta(titulo = "Pago del plan", icono = "💳") {
@@ -1232,6 +1283,7 @@ private fun cuerpoDe(pacienteId: String, nuevo: TratamientoNuevo) = PacientesRep
     campaniaId = nuevo.campaniaId, motivoPrecio = nuevo.motivoPrecio,
     fechaInicio = nuevo.fechaInicio,
     primeraFecha = nuevo.primeraFecha, primeraHora = nuevo.primeraHora,
+    servicios = nuevo.servicios,
 )
 
 /**
@@ -1537,10 +1589,31 @@ fun ModalEditarTratamiento(
                 diagnostico: String?, medicacion: String?, proximoControl: String?,
                 cantidadUnidades: Int?, precioUnitario: Double?) -> Unit,
     onCorregir: ((CorreccionTratamiento) -> Unit)? = null,
+    /**
+     * Pago único SIN atender: guardar con su lista COMPLETA de servicios (la
+     * primera, el principal; una sola = vuelve a ser de un servicio). null = la
+     * fila «＋ Agregar otro servicio» no se ofrece.
+     */
+    onGuardarConServicios: ((List<pe.saniape.app.data.staff.LineaServicio>) -> Unit)? = null,
 ) {
     val moneda = pe.saniape.app.ui.monedaUI()
     val c = Sania.colors
     val correccion = onCorregir != null
+    // ── Varios servicios (gemelo de `editaLineas` en la web) ──
+    val mapaDental = pe.saniape.app.data.staff.StaffContextoRepo.actual?.mapaDental ?: pe.saniape.app.data.staff.MapaDental()
+    val editaServicios = !correccion && onGuardarConServicios != null && t.esServicioUnico &&
+        t.sesionesCompletadas == 0 && t.estado == "Activo" && t.procedimientoId != null &&
+        !(mapaDental.activo && pe.saniape.app.data.staff.esServicioDental(t.especialidadId, mapaDental))
+    var procsE by remember { mutableStateOf<List<ProcedimientoRef>>(emptyList()) }
+    var campaniasE by remember { mutableStateOf<List<pe.saniape.app.data.staff.CampaniaApp>>(emptyList()) }
+    if (editaServicios) LaunchedEffect(Unit) {
+        procsE = runCatching { PacientesRepo.procedimientos() }.getOrDefault(emptyList())
+        campaniasE = runCatching { pe.saniape.app.data.staff.CatalogosCobroRepo.campaniasVigentes() }.getOrDefault(emptyList())
+    }
+    val candidatosE = pe.saniape.app.data.staff.candidatosOtroServicio(procsE, procsE.find { it.id == t.procedimientoId })
+    var filasE by remember {
+        mutableStateOf(t.servicios.drop(1).map { FilaOtroServicio(it.procedimientoId, formatoNum(it.precioAcordado), it.duracion ?: 30) })
+    }
     val verHcC = pe.saniape.app.data.staff.LocalVerHistoriaClinica.current
     var diagnosticoC by remember { mutableStateOf(t.diagnostico ?: "") }
     var terapeutaC by remember { mutableStateOf(t.terapeutaId) }
@@ -1551,11 +1624,33 @@ fun ModalEditarTratamiento(
     var totalSesiones by remember { mutableStateOf(t.totalSesiones.toString()) }
     var precioPaquete by remember { mutableStateOf(t.precioPaquete?.toString() ?: "") }
     var precioPorSesion by remember { mutableStateOf(t.precioPorSesion?.toString() ?: "") }
-    var precioAcordado by remember { mutableStateOf(t.precioAcordado?.toString() ?: "") }
+    // Con varios servicios el acordado del tratamiento es la suma: si se editan sus
+    // servicios, el campo es el del PRINCIPAL; si no (ya atendido, corrección), el total.
+    var precioAcordado by remember {
+        mutableStateOf(
+            t.servicios.firstOrNull()?.takeIf { editaServicios }?.precioAcordado?.let { formatoNum(it) }
+                ?: t.precioAcordado?.toString() ?: "",
+        )
+    }
     var cantidadUnidades by remember { mutableStateOf(t.cantidadUnidades?.toString() ?: "") }
     var precioUnitario by remember { mutableStateOf(t.precioUnitario?.toString() ?: "") }
     val esPaquete = t.modalidad == "Paquete"
     val esUnidades = t.tipo == pe.saniape.app.data.staff.TipoTratamiento.UNIDADES
+    /** La lista a guardar; null = no se tocan los servicios (guardado de siempre). */
+    fun serviciosAGuardar(): List<pe.saniape.app.data.staff.LineaServicio>? {
+        if (!editaServicios) return null
+        val principal = pe.saniape.app.data.staff.LineaServicio(
+            procedimientoId = t.procedimientoId ?: return null, nombre = null, precioLista = t.precioBase,
+            precioAcordado = precioAcordado.toDoubleOrNull() ?: t.precioBase ?: 0.0,
+            duracion = t.servicios.firstOrNull()?.duracion,
+        )
+        val lineas = pe.saniape.app.data.staff.lineasDelFormulario(principal, filasE, procsE, campaniasE)
+        return when {
+            lineas.isNotEmpty() -> lineas
+            t.servicios.size > 1 -> listOf(principal)   // se quitaron todos: vuelve a ser de un servicio
+            else -> null
+        }
+    }
     // No se puede bajar el N° de sesiones por debajo de las ya completadas.
     val nuevoTotal = totalSesiones.toIntOrNull() ?: 0
     val errorSesiones = !t.esConsulta && !esUnidades && !t.esServicioUnico && nuevoTotal < t.sesionesCompletadas
@@ -1630,9 +1725,23 @@ fun ModalEditarTratamiento(
                     }
                 } else if (t.esServicioUnico) {
                     Tarjeta(titulo = "Servicio único", icono = "✨") {
-                        Etq("Precio acordado (${simboloMoneda(moneda)})"); CampoNum(precioAcordado) { precioAcordado = it }
+                        Etq(if (editaServicios && (t.servicios.size > 1 || filasE.isNotEmpty())) "Precio acordado del primer servicio (${simboloMoneda(moneda)})"
+                            else if (t.servicios.size > 1) "Precio acordado — total (${simboloMoneda(moneda)})"
+                            else "Precio acordado (${simboloMoneda(moneda)})")
+                        CampoNum(precioAcordado) { precioAcordado = it }
                         Text("Precio base del servicio: ${simboloMoneda(moneda)} ${t.precioBase ?: 0.0}.",
                             color = c.textoSuave, fontSize = 10.sp)
+                    }
+                    if (editaServicios) {
+                        Spacer(Modifier.height(12.dp))
+                        FilaOtrosServicios(
+                            filas = filasE, onFilas = { filasE = it },
+                            candidatos = candidatosE, campanias = campaniasE, moneda = moneda,
+                            precioPrincipal = precioAcordado.toDoubleOrNull() ?: t.precioBase ?: 0.0,
+                            duracionPrincipal = t.servicios.firstOrNull()?.duracion ?: 30,
+                            duracionFilaPorDefecto = 30,
+                            conMinutos = false,
+                        )
                     }
                 } else if (!t.esConsulta) {
                     Tarjeta(titulo = "Plan por sesiones", icono = if (esPaquete) "📦" else "🎫") {
@@ -1679,6 +1788,10 @@ fun ModalEditarTratamiento(
                                     diagnostico = diagnosticoC.trim(),
                                     terapeutaId = terapeutaC,
                                 ))
+                                return@clickable
+                            }
+                            serviciosAGuardar()?.let { lineas ->
+                                onGuardarConServicios?.invoke(lineas)
                                 return@clickable
                             }
                             onGuardar(
@@ -1958,6 +2071,98 @@ private fun <T> SelectorLista(items: List<T>, elegido: T?, etiqueta: (T) -> Stri
                             .padding(horizontal = 12.dp, vertical = 11.dp))
                 }
             }
+        }
+    }
+}
+
+/**
+ * «＋ Agregar otro servicio» de un pago único (gemelo de `servicios-extra` en
+ * TratamientoForm web): cada fila = servicio (misma especialidad), precio
+ * (vacío = campaña o lista) y duración. Todos quedan en ESTE tratamiento: una
+ * sola cita que dura lo que suman, un solo cobro y un recibo con cada servicio.
+ */
+@Composable
+private fun FilaOtrosServicios(
+    filas: List<FilaOtroServicio>,
+    onFilas: (List<FilaOtroServicio>) -> Unit,
+    candidatos: List<ProcedimientoRef>,
+    campanias: List<pe.saniape.app.data.staff.CampaniaApp>,
+    moneda: String,
+    /** Lo que vale el principal (acordado o lista) y cuánto dura su parte. */
+    precioPrincipal: Double,
+    duracionPrincipal: Int,
+    duracionFilaPorDefecto: Int,
+    /** ¿Decir cuánto dura la cita? (al editar no se sabe la del primer servicio). */
+    conMinutos: Boolean = true,
+) {
+    val c = Sania.colors
+    val sim = simboloMoneda(moneda)
+    Tarjeta(titulo = "Otros servicios en este tratamiento", icono = "➕") {
+        filas.forEachIndexed { i, f ->
+            val p = candidatos.find { it.id == f.procedimientoId }
+            val camp = p?.let { pe.saniape.app.data.staff.precioCampaniaOtroServicio(campanias, it) }
+            fun cambiar(nueva: FilaOtroServicio) = onFilas(filas.mapIndexed { j, x -> if (j == i) nueva else x })
+            Column(Modifier.padding(bottom = 10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Etq("Servicio ${i + 2}")
+                    Spacer(Modifier.weight(1f))
+                    Text("✕ Quitar", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable { onFilas(filas.filterIndexed { j, _ -> j != i }) }.padding(4.dp))
+                }
+                pe.saniape.app.ui.clinica.SelectorBuscable(
+                    // Sin los ya elegidos en otra fila.
+                    items = candidatos.filter { cand -> cand.id == f.procedimientoId || filas.none { it.procedimientoId == cand.id } },
+                    elegido = p, etiqueta = { it.nombre }, placeholder = "Elige el servicio…",
+                    onElegir = { cambiar(f.copy(procedimientoId = it.id, precio = "")) },
+                    detalle = { pe.saniape.app.data.staff.formatearDinero(it.precio, moneda) },
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        CampoNum(
+                            f.precio,
+                            ayuda = (camp?.second ?: p?.precio)?.let { "$sim ${formatoNum(it)}" } ?: "Precio",
+                            ayudaComoValor = p != null,
+                        ) { cambiar(f.copy(precio = it)) }
+                    }
+                    Column(Modifier.weight(1f)) {
+                        SelectorLista(DURACIONES_OTRO_SERVICIO, f.duracion, { "$it min" }, "${f.duracion} min") {
+                            cambiar(f.copy(duracion = it))
+                        }
+                    }
+                }
+                if (camp != null && f.precio.isBlank()) {
+                    Text("🏷️ ${camp.first.nombre}: $sim ${formatoNum(camp.second)} (lista $sim ${formatoNum(p.precio)})",
+                        color = c.teal, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
+                }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "＋ Agregar otro servicio",
+                color = if (candidatos.isEmpty()) c.textoSuave else c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable(enabled = candidatos.size > filas.size) {
+                    onFilas(filas + FilaOtroServicio(duracion = duracionFilaPorDefecto))
+                }.padding(vertical = 6.dp),
+            )
+            Spacer(Modifier.weight(1f))
+            if (filas.isNotEmpty()) {
+                val total = precioPrincipal + filas.filter { it.procedimientoId.isNotBlank() }.sumOf { f ->
+                    val p = candidatos.find { it.id == f.procedimientoId }
+                    f.precio.toDoubleOrNull()
+                        ?: p?.let { pe.saniape.app.data.staff.precioCampaniaOtroServicio(campanias, it)?.second ?: it.precio } ?: 0.0
+                }
+                Text("Total: $sim ${formatoNum(total)}", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        if (candidatos.isEmpty()) {
+            Text("No hay otros servicios de pago único en esta especialidad.", color = c.textoSuave, fontSize = 11.sp)
+        } else if (filas.isNotEmpty()) {
+            val minutos = duracionPrincipal + filas.filter { it.procedimientoId.isNotBlank() }.sumOf { it.duracion }
+            Text(
+                if (conMinutos) "Todos en este mismo tratamiento: una sola cita de $minutos min, un solo cobro y un recibo con cada servicio."
+                else "Todos en este mismo tratamiento: un solo cobro (su total) y un recibo con cada servicio.",
+                color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
         }
     }
 }

@@ -134,6 +134,8 @@ data class TratamientoPaciente(
      */
     val sesionesDevengo: List<pe.saniape.app.data.SesionDevengo>? = null,
     val pagosDevengo: List<pe.saniape.app.data.PagoDevengo>? = null,
+    /** Varios servicios (2+ líneas de `tratamiento_servicios`); vacío = el de siempre. */
+    val servicios: List<LineaServicio> = emptyList(),
 ) {
     /**
      * La cuenta de este tratamiento para el saldo a favor, con lo [pagado].
@@ -1446,6 +1448,7 @@ object PacientesRepo {
         hallazgoIds: List<String> = emptyList(),
         // Primera sesión en el mismo paso (servidor: lib/primera-sesion.ts). null = no.
         primeraFecha: String? = null, primeraHora: String? = null,
+        servicios: List<LineaServicio> = emptyList(),
     ): JsonObject = buildJsonObject {
         put("accion", "crear"); put("pacienteId", pacienteId); put("procedimientoId", procedimientoId)
         if (!primeraFecha.isNullOrBlank()) put("primeraSesion", buildJsonObject {
@@ -1470,6 +1473,8 @@ object PacientesRepo {
         if (hallazgoIds.isNotEmpty()) {
             put("hallazgoIds", kotlinx.serialization.json.JsonArray(hallazgoIds.map { JsonPrimitive(it) }))
         }
+        // Varios servicios (2+): el servidor pone el principal y el total.
+        if (servicios.size > 1) put("servicios", jsonLineas(servicios))
     }
 
     suspend fun editarTratamiento(
@@ -1479,8 +1484,12 @@ object PacientesRepo {
         diagnostico: String? = null, medicacion: String? = null, proximoControl: String? = null,
         // Modalidad Unidades: cantidad × precio unitario.
         cantidadUnidades: Int? = null, precioUnitario: Double? = null,
+        // Pago único sin atender: la lista COMPLETA de servicios (1 = vuelve a ser de
+        // un servicio). null = no se tocan. El servidor rechaza si ya se atendió.
+        servicios: List<LineaServicio>? = null,
     ): Boolean = accionTratamiento(buildJsonObject {
         put("accion", "editar"); put("tratamientoId", tratamientoId)
+        if (servicios != null) put("servicios", jsonLineas(servicios))
         if (totalSesiones != null) put("totalSesiones", totalSesiones)
         if (precioPaquete != null) put("precioPaquete", precioPaquete)
         if (precioPorSesion != null) put("precioPorSesion", precioPorSesion)
@@ -2131,6 +2140,7 @@ object PacientesRepo {
                 sedeId = t.str("sede_id"),
                 sesionesDevengo = sesionesDevengoDe(t["ses_estados"]),
                 pagosDevengo = pagosDevengoDe(t["pagos_dev"]),
+                servicios = TratamientoServicios.lineasGuardadas(t).takeIf { it.size > 1 }.orEmpty(),
             )
         }
         return PacienteStaff(

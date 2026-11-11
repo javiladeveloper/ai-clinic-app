@@ -1913,6 +1913,17 @@ private fun PantallaFichaPacienteContenido(
                     recargar()
                 }
             },
+            // Pago único sin atender: sus servicios (el servidor pone el principal,
+            // el total y ajusta la cita por atender).
+            onGuardarConServicios = { lineas ->
+                editarTratamiento = null
+                scope.launch {
+                    val ok = PacientesRepo.editarTratamiento(t.id, null, null, null, null, servicios = lineas)
+                    if (ok) pe.saniape.app.ui.Toaster.exito(if (lineas.size > 1) "Servicios del tratamiento actualizados" else "Tratamiento actualizado")
+                    else pe.saniape.app.ui.Toaster.error("No se pudo guardar")
+                    recargar()
+                }
+            },
         )
     }
 

@@ -952,6 +952,12 @@ fun PantallaCrearCita(
         if (creandoTratamiento || guardando) return
         creandoTratamiento = true
         errorUnPaso = null
+        // Varios servicios: la cita dura lo que suman (se verifica y se guarda así).
+        // Si no se llega a crear el tratamiento, vuelve a la de antes.
+        val duracionAntes = duracion
+        val tocadaAntes = duracionTocada
+        nuevo.duracionServicios?.let { duracion = it; duracionTocada = true }
+        fun devolverDuracion() { duracion = duracionAntes; duracionTocada = tocadaAntes }
         scope.launch {
             try {
                 val nombre = pe.saniape.app.data.staff.nombreCitaDelTratamiento(nuevo.modalidad)
@@ -982,6 +988,7 @@ fun PantallaCrearCita(
                 when (r) {
                     // No se creó nada: el formulario sigue abierto y el bloque dice qué falta.
                     is pe.saniape.app.data.staff.ResultadoUnPaso.CitaInvalida -> {
+                        devolverDuracion()
                         errorUnPaso = r.error
                         pe.saniape.app.ui.Toaster.error(r.error)
                     }
@@ -992,7 +999,7 @@ fun PantallaCrearCita(
                             if (creadoSinId) elegirCreado(pacTrat, nuevo, null)
                             crearTratamiento = false
                             mensaje = "El tratamiento se creó, pero la cita no se agendó: revísala y toca «Guardar cita»."
-                        }
+                        } else devolverDuracion()
                     }
                     // Sin señal: igual que «Solo crear tratamiento» (la cola avisó); la cita
                     // no se agenda a ciegas.
@@ -1127,6 +1134,7 @@ fun PantallaCrearCita(
                         ?.let { fecha = it }
                 },
                 onCrearYAgendar = { nuevo -> crearYAgendarCita(pacTrat, nuevo) },
+                duracion = duracion,
             ),
             // «Solo crear tratamiento» (y el «Crear tratamiento» de siempre): vuelve a la
             // Nueva cita, que sigue abierta, con el tratamiento ya elegido.

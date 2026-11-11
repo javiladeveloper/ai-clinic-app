@@ -1,0 +1,5 @@
+Varios servicios en un mismo tratamiento, también desde la app.
+---
+• Nueva cita → crear tratamiento de pago único: «＋ Agregar otro servicio» suma más servicios de la misma especialidad (OCT + Campimetría…). Una sola cita que dura lo que suman, un solo cobro y un recibo con cada servicio.
+• Editar un tratamiento de pago único que aún no se atendió: agrega, cambia o quita sus servicios y sus precios.
+---
