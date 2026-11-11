@@ -63,7 +63,8 @@ object DisponibilidadRepo {
                     if (newStart in ini until fin) { startsWithin = true; if (newEnd <= fin) { fullyWithin = true; break } }
                 }
                 if (!startsWithin) {
-                    val rangos = horarios.joinToString(", ") { "${it.first}-${it.second}" }
+                    // La base guarda "08:00:00": al usuario, "08:00 a 13:00" (sin segundos).
+                    val rangos = horarios.joinToString(", ") { "${it.first.take(5)} a ${it.second.take(5)}" }
                     avisoHorario = "Fuera de su horario. Atiende: $rangos"
                 } else if (!fullyWithin) {
                     overflow = "Ojo: la cita termina después del turno del profesional ($duracion min)."

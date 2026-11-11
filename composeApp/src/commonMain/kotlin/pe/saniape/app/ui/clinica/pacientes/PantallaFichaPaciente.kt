@@ -219,6 +219,10 @@ private fun PantallaFichaPacienteContenido(
     var editandoPaciente by remember { mutableStateOf(false) }
     // 📋 Filiación (hoja de la HC) desde el ⋯ de la ficha (pedido de clínica 10/11/2026).
     var verFiliacion by remember { mutableStateOf(false) }
+    /** «📱 QR datos»: el paciente corrige su contacto desde su celular. */
+    var verQrDatos by remember { mutableStateOf(false) }
+    /** Lo que le falta a la hoja de filiación («📋 Filiación ⚠ N» y la lista del diálogo). */
+    var faltantesFicha by remember { mutableStateOf(emptyList<String>()) }
     // «Dar de baja» del ⋯ esperando confirmación.
     var confirmarBaja by remember { mutableStateOf(false) }
     // 💰 El resumen de pagos (antes, la pestaña Pagos): se abre tocando la tarjeta SALDO.
@@ -897,6 +901,11 @@ private fun PantallaFichaPacienteContenido(
                 // Requiere feature reservas (Plus) + email o teléfono.
                 val puedeInvitar = ctx.can("reservas") &&
                     (!paciente.email.isNullOrBlank() || !paciente.telefono.isNullOrBlank())
+                // «📋 Filiación ⚠ N» (paridad web): cuántos datos le faltan a la hoja.
+                val conFiliacionMenu = esPacienteMedico && verHc
+                LaunchedEffect(paciente.id, recargarToken, conFiliacionMenu) {
+                    faltantesFicha = if (conFiliacionMenu) pe.saniape.app.data.staff.cargarFaltantesFiliacion(paciente).orEmpty() else emptyList()
+                }
                 val planFicha = pe.saniape.app.data.staff.accionesMenuFicha(
                     inactivo = inactivo, puedeInvitar = puedeInvitar, conTelefono = !paciente.telefono.isNullOrBlank(),
                     // 📋 Filiación: paciente médico y con historia clínica visible (como la web).
@@ -904,6 +913,7 @@ private fun PantallaFichaPacienteContenido(
                     conHistoria = verHc,
                     puedeAgendar = ctx.puede("agendar"),
                     conDatos = verContacto,
+                    puedeEditarPacientes = ctx.puede("pacientes"),
                 )
                 if (planFicha.enMenu.isNotEmpty()) {
                     val base = pe.saniape.app.data.Supabase.SITE_URL
@@ -916,7 +926,8 @@ private fun PantallaFichaPacienteContenido(
                                 AccionFicha.Agendar -> "📅 Agendar cita"
                                 AccionFicha.Historia -> "📂 Historia clínica"
                                 AccionFicha.Editar -> "✏ Editar datos del ${ctx.terminologiaPaciente.paciente}"
-                                AccionFicha.Filiacion -> "📋 Filiación (historia clínica)"
+                                AccionFicha.Filiacion -> pe.saniape.app.data.staff.etiquetaFiliacion(faltantesFicha.size)
+                                AccionFicha.QrDatos -> "📱 QR para que actualice sus datos"
                                 AccionFicha.Reactivar -> "↻ Reactivar ${ctx.terminologiaPaciente.paciente}"
                                 AccionFicha.InvitarWhatsApp -> "💬 Invitar al portal por WhatsApp"
                                 AccionFicha.CopiarPortal -> "🔗 Copiar enlace del portal"
@@ -940,6 +951,7 @@ private fun PantallaFichaPacienteContenido(
                                 AccionFicha.Historia -> historiaAbierta = true
                                 AccionFicha.Editar -> editandoPaciente = true
                                 AccionFicha.Filiacion -> verFiliacion = true
+                                AccionFicha.QrDatos -> verQrDatos = true
                                 AccionFicha.InvitarWhatsApp -> {
                                     val msg = "Hola ${paciente.nombre.split(" ").first()}, accede a tu portal para ver tus citas y tu tratamiento: $link"
                                     val tel = paciente.telefono.orEmpty().filter { it.isDigit() }
@@ -2070,6 +2082,43 @@ private fun PantallaFichaPacienteContenido(
         )
     }
 
+    // 📱 QR datos (paridad web, 11/11/2026): el paciente escanea y corrige su
+    // teléfono/correo/dirección en SU celular (24 h). Desde el celular de recepción
+    // también se le puede mandar el enlace por WhatsApp.
+    if (verQrDatos) {
+        var qr by remember { mutableStateOf<pe.saniape.app.data.staff.QrDatosRepo.R?>(null) }
+        LaunchedEffect(paciente.id) { qr = pe.saniape.app.data.staff.QrDatosRepo.generar(paciente.id) }
+        val cerrarQr = { verQrDatos = false; recargar() }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = cerrarQr,
+            title = { Text("📱 Que actualice sus datos") },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Sania.dim.md)) {
+                    Text("${paciente.nombre.split(" ").first()} escanea este código con su celular y corrige su teléfono, correo y dirección. Vale por 24 horas.",
+                        color = c.texto, fontSize = Sania.txt.cuerpo)
+                    when (val r = qr) {
+                        null -> Text("Generando…", color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                        is pe.saniape.app.data.staff.QrDatosRepo.R.Error -> Text(r.mensaje, color = c.error, fontSize = Sania.txt.cuerpo)
+                        is pe.saniape.app.data.staff.QrDatosRepo.R.Ok -> {
+                            pe.saniape.app.ui.clinica.equipo.DibujoQr(r.url, Modifier.fillMaxWidth(0.8f))
+                            val tel = paciente.telefono.orEmpty().filter { it.isDigit() }
+                            if (tel.isNotEmpty()) {
+                                androidx.compose.material3.OutlinedButton(onClick = {
+                                    val wa = pe.saniape.app.data.staff.numeroWhatsApp(tel, pe.saniape.app.data.staff.paisActivo())
+                                    acciones.abrirUrl(pe.saniape.app.ui.urlWhatsApp(wa, pe.saniape.app.data.staff.QrDatosRepo.mensajeWhatsApp(paciente.nombre, r.url)))
+                                }, modifier = Modifier.fillMaxWidth()) { Text("💬 Enviarle el enlace por WhatsApp") }
+                            }
+                            androidx.compose.material3.TextButton(onClick = { acciones.copiarTexto(r.url, "Enlace para actualizar datos") }) {
+                                Text("🔗 Copiar enlace")
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = cerrarQr) { Text("Listo") } },
+        )
+    }
+
     // ✕ del recordatorio de recepción: con confirmación.
     borrarRecordatorio?.let { tratId ->
         pe.saniape.app.ui.componentes.DialogoConfirmar(
@@ -2131,10 +2180,10 @@ private fun PantallaFichaPacienteContenido(
     // Modal "Editar paciente" (gestor): datos esenciales + semáforo.
     if (verFiliacion) {
         // La misma hoja que en la atención (DialogoFiliacion): prellena con la HC y
-        // guarda solo lo tocado. Desde la ficha no hay lista de faltantes del servidor.
+        // guarda solo lo tocado. Los faltantes salen de la misma regla que la web.
         pe.saniape.app.ui.clinica.atencion.DialogoFiliacion(
             pacienteId = paciente.id,
-            faltantes = emptyList(),
+            faltantes = faltantesFicha,
             menorDeEdad = (paciente.edad ?: 99) < 18,
             onCancelar = { verFiliacion = false },
             onGuardada = { verFiliacion = false; recargar() },

@@ -9,13 +9,13 @@ package pe.saniape.app.data.staff
 // cabecera web (`lib/acciones-ficha-paciente.ts`, GRUPOS_MENU_FICHA).
 // Solo reparte: quién lo ve (permisos, plan con portal) lo decide la ficha.
 //
-// 10/11/2026 (Jonathan): «que salgan todas las opciones» de la web. Consentimiento,
-// QR de datos y Fusionar todavía no existen en la app (siguen en la web).
+// 10/11/2026 (Jonathan): «que salgan todas las opciones» de la web. 11/11: 📱 QR datos
+// y el «⚠ N» de Filiación. Consentimiento y Fusionar siguen en la web.
 
-enum class AccionFicha { Agendar, Reactivar, Editar, Historia, Filiacion, InvitarWhatsApp, CopiarPortal, DarDeBaja }
+enum class AccionFicha { Agendar, Reactivar, Editar, Historia, Filiacion, QrDatos, InvitarWhatsApp, CopiarPortal, DarDeBaja }
 
 val GRUPOS_MENU_FICHA: List<GrupoMenu<AccionFicha>> = listOf(
-    GrupoMenu("Paciente", listOf(AccionFicha.Agendar, AccionFicha.Reactivar, AccionFicha.Editar, AccionFicha.Historia, AccionFicha.Filiacion)),
+    GrupoMenu("Paciente", listOf(AccionFicha.Agendar, AccionFicha.Reactivar, AccionFicha.Editar, AccionFicha.Historia, AccionFicha.Filiacion, AccionFicha.QrDatos)),
     GrupoMenu("Portal", listOf(AccionFicha.InvitarWhatsApp, AccionFicha.CopiarPortal)),
     GrupoMenu(GRUPO_PELIGRO, listOf(AccionFicha.DarDeBaja)),
 )
@@ -29,10 +29,12 @@ val GRUPOS_MENU_FICHA: List<GrupoMenu<AccionFicha>> = listOf(
  * [puedeAgendar] = permiso de agendar: «📅 Agendar cita».
  * [conDatos] = permiso 'datos_personales': Editar, Reactivar, Portal y Dar de baja
  * (sin él, la ficha es clínica: el médico igual ve Historia y Filiación).
+ * [puedeEditarPacientes] = permiso 'pacientes' (+ datos): «📱 QR datos», como la web.
  */
 fun accionesMenuFicha(
     inactivo: Boolean, puedeInvitar: Boolean, conTelefono: Boolean, conFiliacion: Boolean = false,
     conHistoria: Boolean = false, puedeAgendar: Boolean = false, conDatos: Boolean = true,
+    puedeEditarPacientes: Boolean = false,
 ): PlanAcciones<AccionFicha> {
     val disponibles = buildList {
         if (puedeAgendar && !inactivo) add(AccionFicha.Agendar)
@@ -40,6 +42,7 @@ fun accionesMenuFicha(
         if (conDatos) add(AccionFicha.Editar)
         if (conHistoria) add(AccionFicha.Historia)
         if (conFiliacion && !inactivo) add(AccionFicha.Filiacion)
+        if (conDatos && puedeEditarPacientes && !inactivo) add(AccionFicha.QrDatos)
         if (conDatos && puedeInvitar) {
             if (conTelefono) add(AccionFicha.InvitarWhatsApp)
             add(AccionFicha.CopiarPortal)
