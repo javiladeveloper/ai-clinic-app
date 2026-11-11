@@ -217,6 +217,8 @@ private fun PantallaFichaPacienteContenido(
     // Tras dar de alta (con teléfono y enlace de encuesta): ofrecer pedir la calificación.
     var ofrecerEncuesta by remember { mutableStateOf<String?>(null) }   // enlace de WhatsApp listo
     var editandoPaciente by remember { mutableStateOf(false) }
+    // 📋 Filiación (hoja de la HC) desde el ⋯ de la ficha (pedido de clínica 10/11/2026).
+    var verFiliacion by remember { mutableStateOf(false) }
     // «Dar de baja» del ⋯ esperando confirmación.
     var confirmarBaja by remember { mutableStateOf(false) }
     // 💰 El resumen de pagos (antes, la pestaña Pagos): se abre tocando la tarjeta SALDO.
@@ -896,6 +898,8 @@ private fun PantallaFichaPacienteContenido(
                         (!paciente.email.isNullOrBlank() || !paciente.telefono.isNullOrBlank())
                     val planFicha = pe.saniape.app.data.staff.accionesMenuFicha(
                         inactivo = inactivo, puedeInvitar = puedeInvitar, conTelefono = !paciente.telefono.isNullOrBlank(),
+                        // 📋 Filiación: paciente médico y con historia clínica visible (como la web).
+                        conFiliacion = esPacienteMedico && verHc,
                     )
                     val base = pe.saniape.app.data.Supabase.SITE_URL
                     val link = paciente.email?.takeIf { it.isNotBlank() }
@@ -905,6 +909,7 @@ private fun PantallaFichaPacienteContenido(
                         texto = { a ->
                             when (a) {
                                 AccionFicha.Editar -> "✏ Editar datos del ${ctx.terminologiaPaciente.paciente}"
+                                AccionFicha.Filiacion -> "📋 Filiación (historia clínica)"
                                 AccionFicha.Reactivar -> "↻ Reactivar ${ctx.terminologiaPaciente.paciente}"
                                 AccionFicha.InvitarWhatsApp -> "💬 Invitar al portal por WhatsApp"
                                 AccionFicha.CopiarPortal -> "🔗 Copiar enlace del portal"
@@ -916,6 +921,7 @@ private fun PantallaFichaPacienteContenido(
                         onAccion = { a ->
                             when (a) {
                                 AccionFicha.Editar -> editandoPaciente = true
+                                AccionFicha.Filiacion -> verFiliacion = true
                                 AccionFicha.InvitarWhatsApp -> {
                                     val msg = "Hola ${paciente.nombre.split(" ").first()}, accede a tu portal para ver tus citas y tu tratamiento: $link"
                                     val tel = paciente.telefono.orEmpty().filter { it.isDigit() }
@@ -2094,6 +2100,17 @@ private fun PantallaFichaPacienteContenido(
     }
 
     // Modal "Editar paciente" (gestor): datos esenciales + semáforo.
+    if (verFiliacion) {
+        // La misma hoja que en la atención (DialogoFiliacion): prellena con la HC y
+        // guarda solo lo tocado. Desde la ficha no hay lista de faltantes del servidor.
+        pe.saniape.app.ui.clinica.atencion.DialogoFiliacion(
+            pacienteId = paciente.id,
+            faltantes = emptyList(),
+            menorDeEdad = (paciente.edad ?: 99) < 18,
+            onCancelar = { verFiliacion = false },
+            onGuardada = { verFiliacion = false; recargar() },
+        )
+    }
     if (editandoPaciente) {
         ModalEditarPaciente(
             paciente = paciente,

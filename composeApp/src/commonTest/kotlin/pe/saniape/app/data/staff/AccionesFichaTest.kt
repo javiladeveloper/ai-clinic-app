@@ -29,6 +29,11 @@ class AccionesFichaTest {
 
     @Test
     fun sinTelefonoSoloSeCopiaElEnlace() {
+        val conFil = accionesMenuFicha(inactivo = false, puedeInvitar = false, conTelefono = false, conFiliacion = true)
+        assertEquals(listOf(AccionFicha.Editar, AccionFicha.Filiacion, AccionFicha.DarDeBaja), conFil.enMenu)
+        // Dada de baja: sin filiación (se reactiva primero).
+        assertEquals(listOf(AccionFicha.Editar, AccionFicha.Reactivar),
+            accionesMenuFicha(inactivo = true, puedeInvitar = false, conTelefono = false, conFiliacion = true).enMenu)
         val p = accionesMenuFicha(inactivo = false, puedeInvitar = true, conTelefono = false)
         assertEquals(listOf(AccionFicha.Editar, AccionFicha.CopiarPortal, AccionFicha.DarDeBaja), p.enMenu)
     }

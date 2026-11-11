@@ -9,10 +9,10 @@ package pe.saniape.app.data.staff
 // Solo reparte: quién lo ve (permiso 'datos_personales', plan con portal) lo
 // decide la ficha.
 
-enum class AccionFicha { Editar, Reactivar, InvitarWhatsApp, CopiarPortal, DarDeBaja }
+enum class AccionFicha { Editar, Filiacion, Reactivar, InvitarWhatsApp, CopiarPortal, DarDeBaja }
 
 val GRUPOS_MENU_FICHA: List<GrupoMenu<AccionFicha>> = listOf(
-    GrupoMenu("Paciente", listOf(AccionFicha.Editar, AccionFicha.Reactivar)),
+    GrupoMenu("Paciente", listOf(AccionFicha.Editar, AccionFicha.Filiacion, AccionFicha.Reactivar)),
     GrupoMenu("Portal", listOf(AccionFicha.InvitarWhatsApp, AccionFicha.CopiarPortal)),
     GrupoMenu(GRUPO_PELIGRO, listOf(AccionFicha.DarDeBaja)),
 )
@@ -21,10 +21,13 @@ val GRUPOS_MENU_FICHA: List<GrupoMenu<AccionFicha>> = listOf(
  * El menú de la cabecera. [inactivo] = ficha dada de baja (se ofrece Reactivar en
  * vez de Dar de baja); [puedeInvitar] = plan con portal y el paciente tiene correo
  * o teléfono; [conTelefono] = además se puede invitar por WhatsApp.
+ * [conFiliacion] = paciente médico con historia clínica visible: «📋 Filiación»
+ * (la hoja de la HC, como el botón de la ficha web; pedido de clínica 10/11/2026).
  */
-fun accionesMenuFicha(inactivo: Boolean, puedeInvitar: Boolean, conTelefono: Boolean): PlanAcciones<AccionFicha> {
+fun accionesMenuFicha(inactivo: Boolean, puedeInvitar: Boolean, conTelefono: Boolean, conFiliacion: Boolean = false): PlanAcciones<AccionFicha> {
     val disponibles = buildList {
         add(AccionFicha.Editar)
+        if (conFiliacion && !inactivo) add(AccionFicha.Filiacion)
         if (inactivo) add(AccionFicha.Reactivar)
         if (puedeInvitar) {
             if (conTelefono) add(AccionFicha.InvitarWhatsApp)

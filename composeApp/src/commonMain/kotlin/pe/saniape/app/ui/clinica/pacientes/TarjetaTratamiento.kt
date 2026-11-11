@@ -789,12 +789,12 @@ fun TarjetaTratamiento(
                 if (accionando) return@DialogoConfirmarAlta
                 accionando = true
                 scope.launch {
-                    val ok = PacientesRepo.darDeAlta(t.id)
+                    val r = PacientesRepo.darDeAltaDetalle(t.id)
                     accionando = false
-                    if (ok) {
+                    if (r.registrada) {
                         pe.saniape.app.ui.Toaster.exito("Tratamiento dado de alta")
                         onAltaHecha(t)
-                    } else pe.saniape.app.ui.Toaster.error("No se pudo dar de alta")
+                    } else pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo dar de alta")
                     onCambioRealizado()
                 }
             },

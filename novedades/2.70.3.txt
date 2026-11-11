@@ -1,0 +1,6 @@
+Filiación desde la ficha del paciente y alta solo con el tratamiento pagado.
+---
+• Ficha del paciente → ⋯ → «📋 Filiación»: completa la hoja de la historia clínica (estado civil, grado de instrucción, lugar de nacimiento, seguro, responsable…) sin entrar a una atención.
+• Dar de alta pide el tratamiento pagado: si falta cobrar, te dice cuánto y te lleva a registrar el pago. Si el paciente no volverá, ciérralo con «No volvió».
+• Los tratamientos con varios servicios se ven con todos sus servicios en la ficha y la agenda.
+---

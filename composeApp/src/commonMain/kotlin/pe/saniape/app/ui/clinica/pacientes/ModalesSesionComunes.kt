@@ -121,9 +121,9 @@ fun DialogoConfirmarAlta(
     onCancelar: () -> Unit,
     onConfirmar: () -> Unit,
     /**
-     * Saldo pendiente del tratamiento (null = no se sabe). El alta NO exige pago
-     * (cobrar ≠ atender), pero la deuda se avisa: antes se cerraba sin mencionarla
-     * (reporte 29/09/2026). Gemelo de la confirmación de la web.
+     * Saldo pendiente del tratamiento (null = no se sabe). Con saldo NO se da de
+     * alta (Jonathan 10/11/2026, cambia la regla del 29/09): se dice cuánto falta y
+     * solo se ofrece registrar el pago. El servidor también lo frena (ALTA_CON_DEUDA).
      */
     saldo: Double? = null,
     /** Con permiso de pagos: en vez de "Cancelar", ir a registrar el pago. */
@@ -135,13 +135,13 @@ fun DialogoConfirmarAlta(
     val conDeuda = saldo != null && saldo > 0.005
     AlertDialog(
         onDismissRequest = onCancelar,
-        title = { Text("¿Dar de alta este tratamiento?", fontWeight = FontWeight.Bold) },
+        title = { Text(if (conDeuda) "Falta cobrar para dar de alta" else "¿Dar de alta este tratamiento?", fontWeight = FontWeight.Bold) },
         text = {
             Column {
                 if (conDeuda) {
-                    Text("⚠ Tiene ${formatoSoles(saldo!!)} sin pagar. El alta no borra la deuda: queda por cobrar.",
+                    Text("⚠ Tiene ${formatoSoles(saldo!!)} sin pagar. Registra el pago y vuelve a darle de alta. Si el paciente no volverá, ciérralo con «No volvió».",
                         color = c.error, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(8.dp))
+                    return@Column
                 }
                 pe.saniape.app.data.staff.textoControlesAlta(controlesPendientes)?.let {
                     Text(it, color = c.pend, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold)
@@ -151,16 +151,16 @@ fun DialogoConfirmarAlta(
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirmar) {
-                Text(if (conDeuda) "Dar de alta igual" else "Dar de alta", color = c.ok, fontWeight = FontWeight.Bold)
+            if (conDeuda) {
+                if (onRegistrarPago != null) {
+                    TextButton(onClick = onRegistrarPago) { Text("💵 Registrar pago", color = c.navy, fontWeight = FontWeight.Bold) }
+                } else TextButton(onClick = onCancelar) { Text("Entendido", color = c.navy, fontWeight = FontWeight.Bold) }
+            } else {
+                TextButton(onClick = onConfirmar) { Text("Dar de alta", color = c.ok, fontWeight = FontWeight.Bold) }
             }
         },
         dismissButton = {
-            if (conDeuda && onRegistrarPago != null) {
-                TextButton(onClick = onRegistrarPago) { Text("💵 Registrar pago", color = c.navy, fontWeight = FontWeight.Bold) }
-            } else {
-                TextButton(onClick = onCancelar) { Text("Cancelar", color = c.textoSuave) }
-            }
+            TextButton(onClick = onCancelar) { Text(if (conDeuda) "Cerrar" else "Cancelar", color = c.textoSuave) }
         },
         containerColor = c.superficie,
     )

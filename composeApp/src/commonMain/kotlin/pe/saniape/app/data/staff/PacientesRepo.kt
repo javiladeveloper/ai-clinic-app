@@ -2057,6 +2057,10 @@ object PacientesRepo {
     suspend fun darDeAlta(tratamientoId: String): Boolean =
         postStaff("/api/staff/tratamiento/alta", buildJsonObject { put("tratamientoId", tratamientoId) })
 
+    /** Como [darDeAlta], con el motivo del rechazo (p. ej. ALTA_CON_DEUDA) para mostrarlo. */
+    suspend fun darDeAltaDetalle(tratamientoId: String): pe.saniape.app.data.offline.ResultadoEscritura =
+        postStaffDetalle("/api/staff/tratamiento/alta", buildJsonObject { put("tratamientoId", tratamientoId) })
+
     private fun mapear(o: JsonObject): PacienteStaff {
         val trats = (o["tratamientos"] as? JsonArray ?: emptyList()).mapNotNull { rel ->
             val t = rel as? JsonObject ?: return@mapNotNull null
