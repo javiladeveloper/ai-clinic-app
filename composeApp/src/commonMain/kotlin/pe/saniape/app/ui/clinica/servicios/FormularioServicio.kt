@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import pe.saniape.app.data.staff.ContextoStaff
+import pe.saniape.app.ui.clinica.ajustes.CandadoPlan
 import pe.saniape.app.data.staff.ENLACE_MODO_FIJO
 import pe.saniape.app.data.staff.ENLACE_MODO_MEET
 import pe.saniape.app.data.staff.MODALIDAD_PRESENCIAL
@@ -443,7 +444,13 @@ fun FormularioServicio(
         }
 
         // Serie AUTOPROGRAMADA: al agendar la 1ª sesión se agendan las demás.
-        if (conSesiones) {
+        // Premium/Plus/prueba (11/11/2026, como la web: feature 'protocolos'). En
+        // Básico el candado; lo ya configurado se guarda tal cual.
+        if (conSesiones && !ctx.can("protocolos")) {
+            Espacio()
+            CandadoPlan("Programar todas las sesiones automáticamente", "Al agendar la primera sesión, el resto del plan se agenda solo. Disponible en Premium y Plus.")
+        }
+        if (conSesiones && ctx.can("protocolos")) {
             Espacio()
             Caja {
                 Row(verticalAlignment = Alignment.Top, modifier = Modifier.clickable { f = f.copy(serieAuto = !f.serieAuto) }) {

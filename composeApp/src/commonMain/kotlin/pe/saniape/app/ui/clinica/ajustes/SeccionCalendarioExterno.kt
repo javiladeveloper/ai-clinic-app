@@ -301,16 +301,11 @@ internal fun SeccionCalendarioExterno(onVolver: () -> Unit) {
         val nombreTer = { id: String? -> terapeutas.find { it.first == id }?.second }
         val agregar = puedeAgregarCalendarios(e)
 
-        // Plan Básico: una importación (candado como el resto de la app).
+        // Premium/Plus/prueba (11/11/2026, como la web): en Básico solo el candado.
+        // El servidor responde 403 PLAN_CALENDARIO igual.
         if (!e.sincronizacion) {
-            if (e.importacionUsada) CandadoPlan("Ya usaste la importación de tu plan", TEXTO_PLAN_IMPORTACION_USADA)
-            else {
-                Aviso("🔒 $TEXTO_PLAN_UNA_IMPORTACION", "info")
-                // iOS (guideline 3.1.1): sin enlace a pagar el plan fuera de la app.
-                if (pe.saniape.app.data.permiteEnlacesDePago) {
-                    Boton("💎 Ver planes", primario = false) { acciones.abrirUrl("${Supabase.SITE_URL}/suscripcion") }
-                }
-            }
+            CandadoPlan("Traer tu agenda de Google Calendar", "Traer tu agenda de Google Calendar es de los planes Premium y Plus. Tus citas de Google llegan solas a Sania y se mantienen al día.")
+            return@SubPantalla
         }
 
         // 1. Conectar la cuenta
