@@ -39,6 +39,12 @@ class NovedadesTest {
     }
 
     @Test
+    fun un_guion_de_cierre_no_sale_como_vineta() {
+        val l = Novedades.parsear("Resumen.\n---\n• Uno.\n• Dos.\n---\n")
+        assertEquals(listOf("Uno.", "Dos."), l.map { it.texto })
+    }
+
+    @Test
     fun sin_detalle_muestra_el_resumen_y_sin_comentarios() {
         val l = Novedades.parsear("# nota interna\n• Una mejora.\n\nOtra línea suelta.")
         assertEquals(listOf("Una mejora.", "Otra línea suelta."), l.map { it.texto })

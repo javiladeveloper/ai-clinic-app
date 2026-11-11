@@ -424,7 +424,9 @@ fun ModalCrearTratamiento(
     val procsPermitidos = if (desdeCita) pe.saniape.app.data.staff.serviciosParaCita(procedimientos, especialidadInicialId)
         else procedimientos
     val procsVisibles = procsPermitidos.filter { p ->
-        when {
+        // Un tipo de consulta (Consulta oftalmológica…) no nace tratamiento: el
+        // servidor lo rechaza (SERVICIO_ES_CONSULTA). La web ya no lo lista.
+        p.tipoCita == null && when {
             espId != null -> p.especialidadId == null || p.especialidadId == espId
             terId != null -> p.especialidadId == null || p.especialidadId in espsDelProf
             else -> true
@@ -1159,6 +1161,17 @@ fun ModalCrearTratamiento(
                     // y se agenda con el mismo toque que crea el tratamiento.
                     Spacer(Modifier.height(12.dp))
                     unPaso.bloque()
+                    // Con otros servicios la cita se guarda con la duración de TODOS;
+                    // el bloque muestra la del primero (revisión en pantalla 10/11).
+                    val agregados = if (ofreceOtros) otrosServicios.filter { it.procedimientoId.isNotBlank() } else emptyList()
+                    if (agregados.isNotEmpty()) {
+                        Text(
+                            "⏱ La cita se guarda con ${unPaso.duracion + agregados.sumOf { it.duracion }} min: " +
+                                "${unPaso.duracion} del primer servicio" + agregados.joinToString("") { " + ${it.duracion}" } + ".",
+                            color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 6.dp, start = 4.dp),
+                        )
+                    }
                 } else if (tipoTrat != null && desdeCita) {
                     // Desde la cita: esa cita es su Sesión #1 / su primera atención / su intervención.
                     val nombreCita = pe.saniape.app.data.staff.nombreCitaDelTratamiento(

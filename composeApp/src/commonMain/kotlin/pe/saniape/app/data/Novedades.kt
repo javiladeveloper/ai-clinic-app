@@ -47,7 +47,8 @@ object Novedades {
         val detalle = if (corte >= 0) filas.drop(corte + 1) else emptyList()
         val resumen = if (corte >= 0) filas.take(corte) else filas
         val elegidas = detalle.takeIf { d -> d.any { it.isNotBlank() } } ?: resumen
-        return elegidas.map { it.trim() }.filter { it.isNotEmpty() }.map { l ->
+        // Un «---» de cierre (o de más) no es una viñeta: salía como «--» (2.70.x).
+        return elegidas.map { it.trim() }.filter { it.isNotEmpty() && !it.all { ch -> ch == '-' } }.map { l ->
             val sinVineta = l.removePrefix("•").removePrefix("-").removePrefix("*").trim()
             val esVineta = sinVineta.length != l.length
             Linea(sinVineta, esTitulo = !esVineta && sinVineta.endsWith(":"))

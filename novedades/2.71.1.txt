@@ -1,0 +1,6 @@
+Ficha del paciente con todas sus opciones y mejoras en tratamientos con varios servicios.
+---
+• Ficha del paciente → ⋯: 📅 Agendar cita, ✏ Editar, 📂 Historia clínica, 📋 Filiación y Dar de baja, como en la web. El médico sin acceso a datos personales igual ve la Historia clínica y la Filiación.
+• Un servicio realizado que todavía no se cobró sigue a la vista en la ficha (ya no se esconde en el historial).
+• Nueva cita con varios servicios: se dice con cuántos minutos queda la cita, y la «Consulta» ya no aparece como servicio de tratamiento.
+• Novedades sin renglones vacíos.

@@ -890,17 +890,22 @@ private fun PantallaFichaPacienteContenido(
                 // web): ✏ Editar · ↻ Reactivar · Portal · «Dar de baja» en rojo al final, con
                 // confirmación. Antes: ✏ suelto + una columna que empujaba la ficha hacia
                 // abajo, no se cerraba al tocar afuera y daba de baja de un toque.
-                if (verContacto) {
-                    val inactivo = paciente.estado == "Inactivo"
-                    // Invitar al portal: el paciente entra con su correo y ve sus citas/tratamiento.
-                    // Requiere feature reservas (Plus) + email o teléfono.
-                    val puedeInvitar = ctx.can("reservas") &&
-                        (!paciente.email.isNullOrBlank() || !paciente.telefono.isNullOrBlank())
-                    val planFicha = pe.saniape.app.data.staff.accionesMenuFicha(
-                        inactivo = inactivo, puedeInvitar = puedeInvitar, conTelefono = !paciente.telefono.isNullOrBlank(),
-                        // 📋 Filiación: paciente médico y con historia clínica visible (como la web).
-                        conFiliacion = esPacienteMedico && verHc,
-                    )
+                // Todas las opciones de la cabecera web (10/11/2026). Sin 'datos_personales'
+                // el médico igual ve 📂 Historia y 📋 Filiación (Editar/Portal/Baja, no).
+                val inactivo = paciente.estado == "Inactivo"
+                // Invitar al portal: el paciente entra con su correo y ve sus citas/tratamiento.
+                // Requiere feature reservas (Plus) + email o teléfono.
+                val puedeInvitar = ctx.can("reservas") &&
+                    (!paciente.email.isNullOrBlank() || !paciente.telefono.isNullOrBlank())
+                val planFicha = pe.saniape.app.data.staff.accionesMenuFicha(
+                    inactivo = inactivo, puedeInvitar = puedeInvitar, conTelefono = !paciente.telefono.isNullOrBlank(),
+                    // 📋 Filiación: paciente médico y con historia clínica visible (como la web).
+                    conFiliacion = esPacienteMedico && verHc,
+                    conHistoria = verHc,
+                    puedeAgendar = ctx.puede("agendar"),
+                    conDatos = verContacto,
+                )
+                if (planFicha.enMenu.isNotEmpty()) {
                     val base = pe.saniape.app.data.Supabase.SITE_URL
                     val link = paciente.email?.takeIf { it.isNotBlank() }
                         ?.let { "$base/paciente/login?email=$it" } ?: "$base/paciente/login"
@@ -908,6 +913,8 @@ private fun PantallaFichaPacienteContenido(
                         grupos = planFicha.menu,
                         texto = { a ->
                             when (a) {
+                                AccionFicha.Agendar -> "📅 Agendar cita"
+                                AccionFicha.Historia -> "📂 Historia clínica"
                                 AccionFicha.Editar -> "✏ Editar datos del ${ctx.terminologiaPaciente.paciente}"
                                 AccionFicha.Filiacion -> "📋 Filiación (historia clínica)"
                                 AccionFicha.Reactivar -> "↻ Reactivar ${ctx.terminologiaPaciente.paciente}"
@@ -920,6 +927,17 @@ private fun PantallaFichaPacienteContenido(
                         descripcion = "Más acciones del ${ctx.terminologiaPaciente.paciente}",
                         onAccion = { a ->
                             when (a) {
+                                AccionFicha.Agendar -> {
+                                    // Nueva cita con el paciente ya elegido (como «📅 Agendar ▾» web).
+                                    val hoy = pe.saniape.app.data.staff.hoyClinicaIso()
+                                    crearCita = pe.saniape.app.ui.clinica.PrefillCita(
+                                        tipo = "Consulta", pacienteId = paciente.id, pacienteNombre = paciente.nombre,
+                                        fecha = hoy,
+                                        hora = pe.saniape.app.data.staff.horaInicialNuevaCita(hoy, hoy, pe.saniape.app.ui.proximaHoraEnPunto()),
+                                        terapeutaId = ctx.miTerapeutaId,
+                                    )
+                                }
+                                AccionFicha.Historia -> historiaAbierta = true
                                 AccionFicha.Editar -> editandoPaciente = true
                                 AccionFicha.Filiacion -> verFiliacion = true
                                 AccionFicha.InvitarWhatsApp -> {
@@ -3417,10 +3435,11 @@ private fun ContenidoAtenciones(
 
     // Vivos arriba; los CERRADOS (Alta/Cancelado/Suspendido/Completado) van a un historial
     // colapsado para no hacer ruido — mismo criterio que la web.
-    val vivos = mios.filter { it.estado == "Activo" }
-    val cerrados = mios.filter {
-        it.estado == "Alta" || it.estado == "Cancelado" || it.estado == "Suspendido" || it.estado == "Completado"
+    // Realizado con saldo: sigue arriba hasta cobrarlo (pe.saniape.app.data.staff.vaAlHistorial).
+    val vivos = mios.filter {
+        it.estado == "Activo" || (it.estado == "Completado" && !pe.saniape.app.data.staff.vaAlHistorial(it.estado, it.estadoPago))
     }
+    val cerrados = mios.filter { pe.saniape.app.data.staff.vaAlHistorial(it.estado, it.estadoPago) }
     var verHistorial by remember(paciente.id) { mutableStateOf(false) }
     // El alta pedida puede ser de un tratamiento ya Completado (va al historial): se abre.
     LaunchedEffect(altaPedida) {
