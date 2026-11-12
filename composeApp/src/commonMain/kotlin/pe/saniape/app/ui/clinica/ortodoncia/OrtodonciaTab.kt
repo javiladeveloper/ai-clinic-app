@@ -146,6 +146,8 @@ fun OrtodonciaTab(
     onDejarCuidados: ((citaId: String?, especialidadId: String?) -> Unit)? = null,
     /** `puede('pagos')`: muestra el resumen 💰 de cuotas del tratamiento (como `verCuotas` de la web). */
     puedePagos: Boolean = false,
+    /** «📅 Guardar y agendar en N sem.» del control nuevo (flujo #2): la fecha propuesta y el control. */
+    onAgendarProximo: ((fecha: String, ControlOrtodoncia) -> Unit)? = null,
     /** "Ver pagos →": abre el resumen de pagos de la ficha (tarjeta SALDO); se cobra en Atenciones. */
     onVerPagos: (() -> Unit)? = null,
     /** "Hoy" en la zona de la sede del PACIENTE (`regPac.hoy()` de la web); null = la de la sede activa. */
@@ -239,6 +241,7 @@ fun OrtodonciaTab(
                         onPlanActualizado = { np -> planes = ps.map { if (it.id == np.id) np else it } },
                         onDejarCuidados = onDejarCuidados,
                         puedePagos = puedePagos, onVerPagos = onVerPagos,
+                        onAgendarProximo = onAgendarProximo,
                     )
                 }
             }
@@ -314,6 +317,7 @@ private fun PlanConControles(
     onDejarCuidados: ((String?, String?) -> Unit)?,
     puedePagos: Boolean,
     onVerPagos: (() -> Unit)?,
+    onAgendarProximo: ((String, ControlOrtodoncia) -> Unit)?,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -415,6 +419,7 @@ private fun PlanConControles(
                     cuidadosDe = if (onDejarCuidados != null && ofreceCuidadosBrackets(esNuevo, plan.aparatologia, cita)) ctl.citaId.orEmpty() else null
                 },
                 onGuardadoSinFila = { editor = null; token++ },
+                onGuardarYAgendar = onAgendarProximo,
             )
         }
     }

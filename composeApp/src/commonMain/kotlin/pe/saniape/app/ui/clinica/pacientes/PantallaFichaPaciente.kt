@@ -1767,6 +1767,20 @@ private fun PantallaFichaPacienteContenido(
                             // 💰 Cuotas del tratamiento (solo lectura), como `verCuotas={puede('pagos')}` de la web.
                             puedePagos = ctx.puede("pagos"),
                             onVerPagos = { pagosAbierto = true },
+                            // Flujo #2 (gemelo web): «📅 Guardar y agendar en N sem.» abre la cita
+                            // siguiente con el tratamiento de ortodoncia activo y quien atendió.
+                            onAgendarProximo = if (ctx.puede("agendar") || ctx.puede("sesiones")) ({ fecha, ctl ->
+                                val t = deOrto.firstOrNull { it.estado == "Activo" }
+                                crearCita = pe.saniape.app.ui.clinica.PrefillCita(
+                                    tipo = if (t != null && t.usaSesiones) "Sesión" else "Consulta",
+                                    pacienteId = paciente.id, pacienteNombre = paciente.nombre,
+                                    fecha = fecha,
+                                    hora = pe.saniape.app.data.staff.horaInicialNuevaCita(fecha, pe.saniape.app.data.staff.hoyEnIso(regPac.zona), pe.saniape.app.ui.proximaHoraEnPunto()),
+                                    terapeutaId = ctl.terapeutaId ?: t?.terapeutaId ?: ctx.miTerapeutaId,
+                                    especialidadId = t?.especialidadId,
+                                    tratamientoId = t?.id,
+                                )
+                            }) else null,
                             hoyFicha = pe.saniape.app.data.staff.hoyEnIso(regPac.zona),
                             // Tras la instalación: 📝 con la plantilla base "Cuidados con brackets" (por su clave
                             // del catálogo), vinculada a la cita del control. Se abre UNA vez.

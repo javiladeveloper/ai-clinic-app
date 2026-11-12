@@ -460,6 +460,8 @@ internal fun FormularioControlOrto(
     onYaExiste: (String) -> Unit,
     onGuardado: (ControlOrtodoncia, PlanOrtodoncia?, Boolean) -> Unit,
     onGuardadoSinFila: () -> Unit,
+    /** Flujo #2 (gemelo web): un control NUEVO ofrece «Guardar y agendar en N sem.»; tras guardar, la fecha propuesta. */
+    onGuardarYAgendar: ((fecha: String, ControlOrtodoncia) -> Unit)? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -509,7 +511,8 @@ internal fun FormularioControlOrto(
     }
     val hayElasticos = b.elasticos.isNotEmpty() || anterior?.elasticos?.isNotEmpty() == true
 
-    fun guardar() {
+    /** [agendarEl]: la fecha de la próxima cita a abrir tras guardar («Guardar y agendar»). */
+    fun guardar(agendarEl: String? = null) {
         if (guardando) return
         val envio = b.copy(
             ligaduraColor = if (b.ligaduraTipo == "elasticas") b.ligaduraColor else null,
@@ -539,6 +542,7 @@ internal fun FormularioControlOrto(
                             (planNuevo?.let { " · el plan pasó a: ${faseOrtoPorId(it.fase)?.nombre ?: it.fase}" } ?: ""),
                     )
                     onGuardado(fila, planNuevo, nuevo)
+                    if (agendarEl != null) onGuardarYAgendar?.invoke(agendarEl, fila)
                 }
                 r.registrada -> { Toaster.exito(if (nuevo) "Control registrado" else "Control actualizado"); onGuardadoSinFila() }
                 else -> {
@@ -707,6 +711,17 @@ internal fun FormularioControlOrto(
         val f = b.fecha
         if (sem != null && f != null) {
             Text("≈ ${fechaIndicacion(sumarDiasOrto(f, sem * 7))}", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+            // Flujo #2: el control y la próxima cita en un paso (la otra acción, abajo, solo guarda).
+            if (nuevo && onGuardarYAgendar != null) {
+                val proxima = sumarDiasOrto(f, sem * 7)
+                Box(
+                    Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 44.dp).clip(RoundedCornerShape(Sania.shape.md.dp))
+                        .background(c.navy).clickable(enabled = !guardando) { guardar(proxima) }.padding(horizontal = 12.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(if (guardando) "Guardando…" else "📅 Guardar y agendar en $sem sem.", color = c.sobreNavy, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
         CajaErroresMapa(errores)
     }
