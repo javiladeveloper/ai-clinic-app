@@ -34,7 +34,22 @@ data class PlanCatalogo(
     val incluye: List<FilaPlan>,
 )
 
-data class NivelAddon(val id: String, val nombre: String, val precio: Double, val resumen: String, val cupo: String?, val detalle: List<String>)
+/**
+ * [precio] = el de lista (con él se reconoce el nivel contratado). [precioConPlan] =
+ * lo que paga ESTA clínica: la facturación va incluida en Plus (Básico 0, Ilimitado
+ * la diferencia; web lib/plan.ts precioFacturacionConPlan). null = el de lista.
+ */
+data class NivelAddon(val id: String, val nombre: String, val precio: Double, val resumen: String, val cupo: String?, val detalle: List<String>, val precioConPlan: Double? = null)
+
+/** «Incluida», «+S/40/mes» (diferencia) o «S/39/mes». */
+fun textoPrecioNivel(n: NivelAddon): String {
+    val pm = n.precioConPlan ?: n.precio
+    return when {
+        pm <= 0.0 -> "Incluida"
+        pm != n.precio -> "+S/${pm.toLong()}/mes"
+        else -> "S/${pm.toLong()}/mes"
+    }
+}
 
 data class AddonCatalogo(
     val clave: String,
@@ -151,6 +166,7 @@ object PlanRepo {
                         NivelAddon(
                             n.str("id").orEmpty(), n.str("nombre").orEmpty(), n.dbl("precio") ?: 0.0,
                             n.str("resumen").orEmpty(), n.str("cupo"), n.textos("detalle"),
+                            precioConPlan = n.dbl("precioConPlan"),
                         )
                     },
                 )

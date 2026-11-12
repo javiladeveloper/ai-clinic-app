@@ -353,7 +353,8 @@ private fun TarjetaAddon(a: AddonCatalogo, d: DatosPlan, onVerWeb: () -> Unit) {
                         Text(n.nombre + if (esMio) "  ·  Tu nivel" else "", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         Text(n.cupo ?: n.detalle.firstOrNull().orEmpty(), color = c.textoSuave, fontSize = 11.sp)
                     }
-                    Text("S/${n.precio.toLong()}/mes", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    val precioTxt = pe.saniape.app.data.staff.textoPrecioNivel(n)
+                    Text(precioTxt, color = if (precioTxt == "Incluida") c.ok else c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
             }
         } else {
