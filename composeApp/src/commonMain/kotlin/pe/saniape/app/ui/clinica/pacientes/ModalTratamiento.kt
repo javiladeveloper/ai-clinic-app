@@ -464,10 +464,17 @@ fun ModalCrearTratamiento(
                 renovPend = null
             }
             planPend?.let { pp ->
-                // Paquete (la evaluación psicológica); la del plan de la agenda (T3) si lo pide.
-                f = f.copy(modalidad = pp.modalidad.takeIf { pp.respetarModalidad && (it == "Paquete" || it == "Sesión suelta") } ?: "Paquete")
-                pp.totalSesiones?.takeIf { it > 0 }?.let { f = f.copy(totalSesiones = it.toString()) }
-                pp.precioPaquete?.let { f = f.copy(precioPaquete = formatoNum(it)) }
+                if (pp.respetarModalidad && pp.modalidad == "Unidades") {
+                    // La tricoscopía: N UF al precio c/u del servicio (todo editable).
+                    f = f.copy(modalidad = "Unidades")
+                    pp.cantidadUnidades?.takeIf { it > 0 }?.let { f = f.copy(cantidadUnidades = it.toString()) }
+                    pp.precioUnitario?.let { f = f.copy(precioUnitario = formatoNum(it)) }
+                } else {
+                    // Paquete (la evaluación psicológica); la del plan de la agenda (T3) si lo pide.
+                    f = f.copy(modalidad = pp.modalidad.takeIf { pp.respetarModalidad && (it == "Paquete" || it == "Sesión suelta") } ?: "Paquete")
+                    pp.totalSesiones?.takeIf { it > 0 }?.let { f = f.copy(totalSesiones = it.toString()) }
+                    pp.precioPaquete?.let { f = f.copy(precioPaquete = formatoNum(it)) }
+                }
                 planPend = null
             }
             ponerCampos(f)

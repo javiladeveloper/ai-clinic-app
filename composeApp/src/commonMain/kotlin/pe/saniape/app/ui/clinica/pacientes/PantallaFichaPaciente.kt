@@ -630,6 +630,8 @@ private fun PantallaFichaPacienteContenido(
     // 🩺 Una consulta guiada abierta desde la tarjeta del tratamiento (su cita de origen).
     var consultaAbierta by remember { mutableStateOf<String?>(null) }
     var planPsico by remember { mutableStateOf<Pair<String, pe.saniape.app.data.staff.PrefillPlanPsico>?>(null) }
+    // 🧮 Tricoscopía → «Crear plan con N UF» (flujo #4): Nuevo tratamiento prellenado.
+    var planUF by remember { mutableStateOf<pe.saniape.app.data.staff.PrefillPlanPsico?>(null) }
     // Cuándo empezó la última carga (reloj monótono) y la ráfaga de Realtime que
     // quedó esperando mientras estaba abierto el cierre de sesión. Sin estado de
     // Compose: no se pintan, solo deciden si recargar (ver accionRealtime).
@@ -1529,6 +1531,14 @@ private fun PantallaFichaPacienteContenido(
                             clinicaDireccion = ctx.clinicaDireccion,
                             logoUrl = ctx.logoUrl,
                             colorPrincipal = ctx.colorPrincipal,
+                            // Flujo #4 (gemelo web): las UF de la estimación abren Nuevo tratamiento
+                            // con el servicio de trasplante, por Unidades, cantidad y precio.
+                            onCrearPlanUF = if (ctx.puede("sesiones")) ({ uf ->
+                                scope.launch {
+                                    val procs = runCatching { PacientesRepo.procedimientos() }.getOrDefault(emptyList())
+                                    planUF = pe.saniape.app.data.staff.planDesdeTricoscopia(uf, procs)
+                                }
+                            }) else null,
                         )
                     }
                     // 🏠 Ejercicios de apoyo (fisio): consulta SOLO al abrirse, como la 📏.
@@ -1814,6 +1824,24 @@ private fun PantallaFichaPacienteContenido(
                 renovarDesde = null
                 scope.launch {
                     // Toast, contador de la plantilla y diagnóstico aprendido van adentro.
+                    val r = guardarTratamientoNuevo(paciente.id, nuevo, paciente.nombre)
+                    ofertaPrimera = r.oferta
+                    recargar()
+                }
+            },
+        )
+    }
+
+    planUF?.let { prefill ->
+        ModalCrearTratamiento(
+            pacienteId = paciente.id,
+            miTerapeutaId = ctx.profesionalFijo, terapeutaInicialId = ctx.miTerapeutaId,
+            diagnosticoPrevio = prefill.diagnostico ?: paciente.diagnostico,
+            prefillPlan = prefill,
+            onCancelar = { planUF = null },
+            onGuardar = { nuevo ->
+                planUF = null
+                scope.launch {
                     val r = guardarTratamientoNuevo(paciente.id, nuevo, paciente.nombre)
                     ofertaPrimera = r.oferta
                     recargar()

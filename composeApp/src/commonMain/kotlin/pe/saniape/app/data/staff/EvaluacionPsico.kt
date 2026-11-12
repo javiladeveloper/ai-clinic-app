@@ -451,6 +451,9 @@ data class PrefillPlanPsico(
     val diagnostico: String? = null,
     /** El plan de la agenda tras una evaluación (T3): se respeta su modalidad (la psicológica, siempre Paquete). */
     val respetarModalidad: Boolean = false,
+    /** Por Unidades (la tricoscopía → «Crear plan con N UF», CapilarPlan.kt): cantidad y precio c/u. */
+    val cantidadUnidades: Int? = null,
+    val precioUnitario: Double? = null,
 )
 
 data class SugerenciaSesionesPsico(val clave: String, val nombre: String, val sesiones: Int)

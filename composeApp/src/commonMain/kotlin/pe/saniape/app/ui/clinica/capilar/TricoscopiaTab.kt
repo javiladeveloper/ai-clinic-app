@@ -142,6 +142,8 @@ fun TricoscopiaTab(
     clinicaDireccion: String?,
     logoUrl: String?,
     colorPrincipal: String?,
+    /** «➕ Crear plan con N UF» (flujo #4, gemelo web): abre Nuevo tratamiento con esas UF. null = no se ofrece. */
+    onCrearPlanUF: ((Int) -> Unit)? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -227,6 +229,7 @@ fun TricoscopiaTab(
                 onImprimir = ::imprimir,
                 onEditar = { editor = false to it },
                 onBorrar = { confirmarBorrar = it },
+                onCrearPlanUF = if (puedeEditar) onCrearPlanUF else null,
             )
         }
     }
@@ -807,6 +810,7 @@ private fun HistorialTrico(
     onImprimir: (EvaluacionTricoscopica) -> Unit,
     onEditar: (EvaluacionTricoscopica) -> Unit,
     onBorrar: (EvaluacionTricoscopica) -> Unit,
+    onCrearPlanUF: ((Int) -> Unit)? = null,
 ) {
     val c = Sania.colors
     val recientes = remember(items) { items.reversed() }
@@ -817,7 +821,7 @@ private fun HistorialTrico(
             modifier = Modifier.padding(bottom = 4.dp))
         lista.forEachIndexed { i, ev ->
             if (i > 0) Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).height(1.dp).background(c.borde))
-            FilaEvaluacion(ev, nombreProf(ev.terapeutaId), puedeEditar, { onImprimir(ev) }, { onEditar(ev) }, { onBorrar(ev) })
+            FilaEvaluacion(ev, nombreProf(ev.terapeutaId), puedeEditar, { onImprimir(ev) }, { onEditar(ev) }, { onBorrar(ev) }, onCrearPlanUF)
         }
         if (recientes.size > VISIBLES_AL_INICIO) {
             Text(
@@ -837,6 +841,7 @@ private fun FilaEvaluacion(
     onImprimir: () -> Unit,
     onEditar: () -> Unit,
     onBorrar: () -> Unit,
+    onCrearPlanUF: ((Int) -> Unit)? = null,
 ) {
     val c = Sania.colors
     val clasif = textoClasificacion(ev.escala, ev.grado)
@@ -869,6 +874,11 @@ private fun FilaEvaluacion(
             Text("🧮 Estimación: ${trasplante.ufDisponibles?.let(::milesTrico)} UF disponibles vs " +
                 "${trasplante.ufNecesarias?.let(::milesTrico)} necesarias (${textoNivelTrasplante(trasplante.nivel)})",
                 color = c.texto, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+            val uf = trasplante.ufNecesarias?.toInt() ?: 0
+            if (onCrearPlanUF != null && uf > 0) {
+                Text("➕ Crear plan con ${milesTrico(uf)} UF", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 4.dp).clickable { onCrearPlanUF(uf) }.padding(vertical = 6.dp))
+            }
         }
         ev.observaciones?.let { Text("📝 $it", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp)) }
     }
