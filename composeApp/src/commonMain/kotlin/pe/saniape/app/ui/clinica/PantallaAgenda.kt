@@ -1349,7 +1349,12 @@ fun PantallaAgenda(
             val conCobro = !evalua && cita.tipo == "Sesión" && cita.tratamientoId != null && ctx.puede("pagos") &&
                 vm.estadosPago[cita.id]?.estado != "pagado"
             // 📷 Fotos de la sesión: Sesión de un tratamiento + plan con fotos + clínica sin apagarlas.
-            val fotosSesion = remember(cita.id) { pe.saniape.app.ui.clinica.pacientes.FotosSesionPendientes() }
+            // Estética/capilar: la foto del cierre es la del «Después» (comparador); el resto, «Durante».
+            val fotosSesion = remember(cita.id) {
+                val esp = vm.especialidades.firstOrNull { it.id == (cita.especialidadId ?: cita.especialidadServicioId) }
+                val (etiqueta, momento) = pe.saniape.app.data.staff.fotoCierreDeEspecialidad(esp?.rubro, esp?.nombre)
+                pe.saniape.app.ui.clinica.pacientes.FotosSesionPendientes(etiqueta, momento)
+            }
             val conFotos = verHc && !evalua && cita.tipo == "Sesión" && cita.tratamientoId != null && cita.pacienteId != null &&
                 pe.saniape.app.ui.clinica.pacientes.recordarFotosActivas(ctx.can("fotosEvolutivas")) == true
             // Tras completar: subir las fotos ligadas a la sesión que quedó vinculada a la cita.
@@ -1362,7 +1367,7 @@ fun PantallaAgenda(
                 val visibles = fotosSesion.visiblePaciente
                 return { ok, encolada ->
                     pe.saniape.app.ui.clinica.pacientes.fotosTrasCompletar(ok, encolada, pacId, tratId, fotos, visibles,
-                        citaIdOffline = cita.id) {
+                        citaIdOffline = cita.id, momento = fotosSesion.momento) {
                         pe.saniape.app.data.staff.AgendaRepo.sesionDeCita(cita.id)?.first
                     }
                 }

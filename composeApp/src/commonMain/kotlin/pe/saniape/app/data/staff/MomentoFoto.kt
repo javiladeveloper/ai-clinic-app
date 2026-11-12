@@ -17,6 +17,19 @@ const val MOMENTO_DURANTE = "Durante"
 /** El valor que guarda la web (lib/tipos-imagen.ts): con tilde. */
 const val MOMENTO_DESPUES = "Después"
 
+/**
+ * Qué foto se captura al CERRAR una sesión, por rubro (gemelo de lib/foto-cierre.ts).
+ * Estética y capilar viven del comparador: la foto del cierre es la del «Después».
+ * En todo otro rubro es una de evolución «Durante». Devuelve (etiqueta, momento).
+ */
+fun fotoCierre(rubro: String?): Pair<String, String> =
+    if (rubro == "estetica" || rubro == "capilar") "📷 Foto «Después»" to MOMENTO_DESPUES
+    else "📷 Fotos de la sesión" to MOMENTO_DURANTE
+
+/** [fotoCierre] por la especialidad (su rubro guardado o, si no, el de su nombre). */
+fun fotoCierreDeEspecialidad(rubro: String?, nombre: String?): Pair<String, String> =
+    fotoCierre(rubroDeEspecialidad(rubro, nombre))
+
 /** Los momentos de la evolución, en orden: los que ofrece la app al subir. */
 val MOMENTOS_EVOLUCION: List<String> = listOf(MOMENTO_ANTES, MOMENTO_DURANTE, MOMENTO_DESPUES)
 

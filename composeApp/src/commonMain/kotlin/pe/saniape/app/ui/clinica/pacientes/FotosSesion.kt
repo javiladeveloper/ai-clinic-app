@@ -53,7 +53,12 @@ import pe.saniape.app.ui.theme.Sania
  * diálogo está abierto y se suben TODAS al confirmar (como la web: "Fotos de la
  * sesión", varias, vinculadas a esa sesión + tratamiento, momento "Durante").
  */
-class FotosSesionPendientes {
+class FotosSesionPendientes(
+    /** El título del bloque (estética/capilar: «📷 Foto «Después»», ver [fotoCierre]). */
+    val etiqueta: String = "📷 Fotos de la sesión",
+    /** El momento con que se guardan (estética/capilar: «Después», que alimenta el comparador). */
+    val momento: String = pe.saniape.app.data.staff.MOMENTO_DURANTE,
+) {
     val lista = mutableStateListOf<ArchivoSeleccionado>()
     /** Mostrar al paciente en su app (privadas por defecto, igual que la web). */
     var visiblePaciente by mutableStateOf(false)
@@ -122,7 +127,7 @@ fun BloqueFotosSesion(estado: FotosSesionPendientes) {
             .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)).padding(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("📷 Fotos de la sesión", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+            Text(estado.etiqueta, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f))
             Text(
                 when {
@@ -220,6 +225,8 @@ fun fotosTrasCompletar(
     visiblePaciente: Boolean,
     sesionIdOffline: String? = null,
     citaIdOffline: String? = null,
+    /** [FotosSesionPendientes.momento]. (Las que esperan sin señal se guardan «Durante», como antes.) */
+    momento: String = pe.saniape.app.data.staff.MOMENTO_DURANTE,
     sesionId: suspend () -> String?,
 ) {
     if (fotos.isEmpty()) return
@@ -233,7 +240,7 @@ fun fotosTrasCompletar(
             val (bien, texto) = pe.saniape.app.data.offline.avisoFotosGuardadas(r)
             if (bien) Toaster.exito(texto) else Toaster.error(texto)
         }
-        else -> subirFotosSesion(pacienteId, tratamientoId, fotos, visiblePaciente, sesionId)
+        else -> subirFotosSesion(pacienteId, tratamientoId, fotos, visiblePaciente, sesionId, momento)
     }
 }
 
@@ -249,6 +256,7 @@ fun subirFotosSesion(
     fotos: List<ArchivoSeleccionado>,
     visiblePaciente: Boolean,
     sesionId: suspend () -> String?,
+    momento: String = pe.saniape.app.data.staff.MOMENTO_DURANTE,
 ) {
     if (fotos.isEmpty() || pacienteId.isBlank()) return
     alcanceSubidas.launch {
@@ -260,7 +268,7 @@ fun subirFotosSesion(
                     ?: return@runCatching false
                 FotosRepo.registrarFoto(
                     pacienteId, tratamientoId, sesion, archivo.nombre, subido.first, subido.second,
-                    "Durante", null, visiblePaciente,
+                    momento, null, visiblePaciente,
                 )
             }.getOrDefault(false)
             if (!ok) fallidas++

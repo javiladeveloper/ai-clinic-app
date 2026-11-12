@@ -2325,7 +2325,13 @@ private fun PantallaFichaPacienteContenido(
         val ses = req.ses
         val anterior = req.anterior
         // 📷 Fotos de la sesión (como la web): plan con fotos + la clínica no las apagó.
-        val fotosSesion = remember(ses.id) { FotosSesionPendientes() }
+        // Estética/capilar: la foto del cierre es la del «Después» (comparador); el resto, «Durante».
+        val fotosSesion = remember(ses.id) {
+            val nombreEsp = req.trat.especialidadNombre
+                ?: especialidadesClinica.firstOrNull { it.id == req.trat.especialidadId }?.nombre
+            val (etiqueta, momento) = pe.saniape.app.data.staff.fotoCierreDeEspecialidad(null, nombreEsp)
+            FotosSesionPendientes(etiqueta, momento)
+        }
         // Las fotos de la sesión son clínicas: sin 'historia_clinica' no se ofrecen.
         val conFotos = verHc && recordarFotosActivas(ctx.can("fotosEvolutivas")) == true
         // 🏠 "¿Le dejas ejercicios de apoyo?" (como el cierre de la web): solo en una
@@ -2382,7 +2388,7 @@ private fun PantallaFichaPacienteContenido(
                     // Fotos de la sesión: en segundo plano, ligadas a esta sesión y su
                     // tratamiento. Sin señal (encolada) o sin completar: se avisa.
                     fotosTrasCompletar(ok, r.encolada, paciente.id, req.trat.id, fotosElegidas, fotosVisibles,
-                        sesionIdOffline = ses.id) { ses.id }
+                        sesionIdOffline = ses.id, momento = fotosSesion.momento) { ses.id }
                     pe.saniape.app.ui.clinica.escalas.escalasTrasCompletar(ok, r.encolada, paciente.id, citaDeSesion,
                         req.trat.especialidadId, escalasMarcadas)
                     // Cobro en el mismo paso (si lo activó): vinculado a la sesión. No hay un
