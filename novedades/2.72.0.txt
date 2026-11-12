@@ -1,0 +1,7 @@
+Odontograma en vivo y ficha más completa.
+---
+• Odontograma: si otra persona marca un diente desde la web o desde otro celular, lo ves al instante sin volver a abrirlo.
+• Ficha del paciente → ⋯: «📋 Filiación ⚠» te avisa cuántos datos faltan, y «📱 QR datos» muestra el código para que el paciente complete los suyos.
+• Horarios más claros: «08:00 a 13:00», sin segundos.
+• Mi Plan: en el plan Plus la facturación electrónica aparece como incluida.
+• Programar todas las sesiones automáticamente y traer la agenda de Google Calendar son de Premium en adelante (en Básico verás el candado).
