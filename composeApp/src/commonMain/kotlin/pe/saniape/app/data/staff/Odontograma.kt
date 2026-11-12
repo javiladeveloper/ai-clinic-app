@@ -73,7 +73,39 @@ data class LineaPresupuesto(
     val porBoca: Boolean = false,
     /** Servicio con precio según caras: lo que vale cada pieza. null = precio único. */
     val preciosPieza: List<PrecioPieza>? = null,
+    /**
+     * Hallazgo de RANGO (puente, ortodoncia…): cuántos APARATOS se cobran (I8,
+     * gemelo de lib/odontograma.ts). null = se cobra por pieza.
+     */
+    val aparatos: Int? = null,
 )
+
+/** Cuántas unidades se cobran de la línea: 1 de boca, los aparatos si es de rango, si no las piezas. */
+fun unidadesCobro(l: LineaPresupuesto): Int = when {
+    l.porBoca || "BOCA" in l.piezas -> 1
+    l.aparatos != null -> l.aparatos
+    else -> l.piezas.size
+}
+
+/**
+ * Cuántos aparatos son: cada fila con tramo es uno; las piezas sueltas se juntan
+ * si son vecinas en la misma arcada. Nunca menos de 1. Gemelo de `contarAparatos`.
+ */
+fun contarAparatos(filas: List<Pair<String, String?>>): Int {
+    val conTramo = filas.count { (d, h) -> h != null && h != d }
+    val sueltas = filas.filter { (d, h) -> h == null || h == d }.map { it.first }.distinct()
+    val porArcada = linkedMapOf<String, MutableList<Int>>()
+    for (d in sueltas) {
+        val arcada = piezasDeLaArcada(d) ?: continue
+        porArcada.getOrPut(arcada.joinToString(",")) { mutableListOf() }.add(arcada.indexOf(d))
+    }
+    var grupos = 0
+    for (idx in porArcada.values) {
+        val orden = idx.sorted()
+        orden.forEachIndexed { i, x -> if (i == 0 || x != orden[i - 1] + 1) grupos++ }
+    }
+    return maxOf(1, conTramo + grupos)
+}
 
 /** Qué color lleva cada cara del diente, y si la pieza está ausente. */
 data class PintadoDiente(
@@ -393,6 +425,8 @@ fun agruparPresupuesto(
         val piezas = mutableListOf<String>()
         val ids = mutableListOf<String>()
         var porBoca = false
+        /** I8: filas de hallazgos de RANGO; null = la línea tiene alguno que no lo es. */
+        var rango: MutableList<Pair<String, String?>>? = mutableListOf()
     }
     val porProc = linkedMapOf<String, Acum>()
     val sinProcedimiento = mutableListOf<DienteHallazgo>()
@@ -417,6 +451,7 @@ fun agruparPresupuesto(
         // Basta UN hallazgo de boca para que la línea sea de boca. Solo lo es el
         // hallazgo `porBoca`: estar en "BOCA" ya no basta.
         if (hal.porBoca) acum.porBoca = true
+        if (esHallazgoDeRango(hal.nombre)) acum.rango?.add(r.diente to r.dienteHasta) else acum.rango = null
         if (r.diente !in acum.piezas) acum.piezas.add(r.diente)
         val clave = "${proc.id}|${r.diente}"
         val sup = r.superficies?.takeIf { it.isNotEmpty() }
@@ -434,7 +469,9 @@ fun agruparPresupuesto(
     val lineas = porProc.values.map { a ->
         val unitario = precioEnPresupuesto(a.proc)
         val tramos = a.proc.precioPorCaras
-        var subtotal = if (a.porBoca) unitario else unitario * a.piezas.size
+        // Rango (puente, ortodoncia…): por APARATO, no por pieza (I8).
+        val aparatos = a.rango?.takeIf { !a.porBoca && it.isNotEmpty() }?.let { contarAparatos(it) }
+        var subtotal = if (a.porBoca) unitario else unitario * (aparatos ?: a.piezas.size)
         var preciosPieza: List<PrecioPieza>? = null
         if (!a.porBoca && precioSegunCaras(tramos, 1) != null) {
             preciosPieza = a.piezas.map { p ->
@@ -453,6 +490,7 @@ fun agruparPresupuesto(
             subtotal = subtotal,
             porBoca = a.porBoca,
             preciosPieza = preciosPieza,
+            aparatos = aparatos,
         )
     }
     return Triple(lineas, sinProcedimiento, sinPieza)
@@ -577,7 +615,7 @@ fun esLineaDeBoca(l: LineaPresupuesto): Boolean = l.porBoca || "BOCA" in l.pieza
  */
 fun planTratamiento(l: LineaPresupuesto, proc: ProcedimientoRef?): PlanTratamiento {
     val deBoca = esLineaDeBoca(l)
-    val cantidad = if (deBoca) 1 else l.piezas.size
+    val cantidad = if (deBoca) 1 else unidadesCobro(l)
     val diag = when {
         deBoca && "BOCA" in l.piezas -> "${l.hallazgoNombre} (Boca completa)"
         deBoca -> "${l.hallazgoNombre} generalizado"

@@ -147,7 +147,7 @@ internal fun PresupuestoOdontograma(
     val lineas = remember(lineasBase, precios) {
         lineasBase.map { l ->
             val pu = precios[l.procedimientoId] ?: return@map l
-            l.copy(precioUnitario = pu, subtotal = if (esLineaDeBoca(l)) pu else pu * l.piezas.size)
+            l.copy(precioUnitario = pu, subtotal = pu * pe.saniape.app.data.staff.unidadesCobro(l))
         }
     }
     // Por sesiones con paquete: el precio del paquete (I9, precioEnPresupuesto).
@@ -278,7 +278,7 @@ internal fun PresupuestoOdontograma(
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        if (deBoca) l.nombre else "${l.nombre} ×${l.piezas.size}",
+                        if (deBoca || pe.saniape.app.data.staff.unidadesCobro(l) == 1) l.nombre else "${l.nombre} ×${pe.saniape.app.data.staff.unidadesCobro(l)}",
                         color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                     )
                     Text(
@@ -479,7 +479,7 @@ internal fun PresupuestoOdontograma(
             nombre = nombre,
             // En una línea por piezas se edita el precio POR PIEZA: es lo que
             // el médico negocia ("la resina te la dejo en 50").
-            porPieza = linea != null && !esLineaDeBoca(linea) && linea.piezas.size > 1,
+            porPieza = linea != null && !esLineaDeBoca(linea) && pe.saniape.app.data.staff.unidadesCobro(linea) > 1,
             actual = precios[id] ?: base,
             base = base,
             onCerrar = { editandoPrecio = null },

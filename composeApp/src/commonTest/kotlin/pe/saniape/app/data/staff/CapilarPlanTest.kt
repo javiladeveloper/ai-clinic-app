@@ -36,3 +36,16 @@ class CapilarPlanTest {
         assertEquals(800, sin.cantidadUnidades)
     }
 }
+
+/** I8 (gemelo de presupuesto-rango-por-aparato.test.ts): el puente se cobra por aparato. */
+class RangoPorAparatoTest {
+    @Test fun unTramoOPiezasVecinasSonUnAparato() {
+        assertEquals(1, contarAparatos(listOf("13" to "23")))
+        assertEquals(1, contarAparatos(listOf("14" to null, "15" to null, "16" to null)))
+        assertEquals(2, contarAparatos(listOf("14" to null, "16" to null)))
+        assertEquals(1, contarAparatos(listOf("11" to null, "21" to null)))
+        assertEquals(2, contarAparatos(listOf("16" to null, "46" to null)))
+        val l = LineaPresupuesto("p", "Puente", "Prótesis fija (puente)", listOf("24", "25", "26"), listOf("a", "b", "c"), 1800.0, 1800.0, aparatos = 1)
+        assertEquals(1, unidadesCobro(l))
+    }
+}
