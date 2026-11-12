@@ -172,7 +172,7 @@ class DialogosAtencionTest {
             ),
         )
         assertEquals("Cefalea tensional; Faringitis aguda; Lumbalgia", texto)
-        assertEquals("J02.9", codigo) // el PRIMERO con código
+        assertEquals("J02.9, M54.5", codigo) // TODOS los códigos, en orden
         assertEquals(null to null, diagnosticoParaReceta(emptyList()))
     }
 

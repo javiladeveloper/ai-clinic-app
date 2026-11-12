@@ -461,7 +461,7 @@ internal fun DialogoReceta(
     val nadiePrescribe = profesionales.none { it.puedePrescribir }
     var vigencia by remember { mutableStateOf(VIGENCIA_POR_DEFECTO.toString()) }
     var dx by remember { mutableStateOf(diagnostico.orEmpty()) }
-    var cie by remember { mutableStateOf(cie10.orEmpty().uppercase().take(7)) }
+    var cie by remember { mutableStateOf(cie10.orEmpty().uppercase().take(60)) }
     var indicacionesGen by remember { mutableStateOf(indicaciones.orEmpty()) }
     var infoQf by remember { mutableStateOf("") }
     var verInfoQf by remember { mutableStateOf(false) }
@@ -609,7 +609,7 @@ internal fun DialogoReceta(
             // ── Diagnóstico ──
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CampoDialogo("Diagnóstico", dx, { dx = it }, "Ej. Faringitis aguda", modifier = Modifier.weight(1f))
-                CampoDialogo("CIE-10 (opcional)", cie, { cie = it.uppercase().take(7) }, "J02.9",
+                CampoDialogo("CIE-10 (opcional)", cie, { cie = it.uppercase().take(60) }, "J02.9 (varios: F41.1, F32.1)",
                     capitalizacion = KeyboardCapitalization.Characters, modifier = Modifier.width(120.dp))
             }
 

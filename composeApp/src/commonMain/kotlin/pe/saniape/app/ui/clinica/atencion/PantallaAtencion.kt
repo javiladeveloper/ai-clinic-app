@@ -388,7 +388,7 @@ private fun ColumnScope.ContenidoAtencion(
 /**
  * Diagnóstico y CIE-10 con que se prellena la receta (dxTexto / dxCodigo de
  * ConsultaGuiada.tsx): las descripciones unidas por "; " (null si no hay) y el
- * código del PRIMER diagnóstico que lo tenga.
+ * los códigos de todos los diagnósticos que lo tengan ("F41.1, F32.1").
  */
 internal fun diagnosticoParaReceta(dx: List<pe.saniape.app.data.staff.DiagnosticoCie>): Pair<String?, String?> {
     // normalizarDiagnosticos de la web: sin vacíos ni repetidos; sin descripción, el código.
@@ -402,7 +402,8 @@ internal fun diagnosticoParaReceta(dx: List<pe.saniape.app.data.staff.Diagnostic
         descripcion.ifEmpty { codigo.orEmpty() } to codigo
     }
     val texto = normalizados.joinToString("; ") { it.first }.ifBlank { null }
-    return texto to normalizados.firstNotNullOfOrNull { it.second }
+    // TODOS los códigos, en orden (MindLima 12/11: dos diagnósticos, un solo código). Gemelo web.
+    return texto to normalizados.mapNotNull { it.second }.distinct().joinToString(", ").ifBlank { null }
 }
 
 /** Aviso de solo lectura, con el motivo (como la web). */
