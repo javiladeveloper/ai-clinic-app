@@ -1,0 +1,8 @@
+Menos pasos en estética, capilar, ortodoncia y odontología.
+---
+• Estética: al guardar el mapa de aplicaciones, «💰 Cobrar N U» fija la cantidad y abre el cobro en un toque.
+• Fotos: la del cierre de una sesión de estética o capilar se guarda como «Después», y al subir una foto se propone sola «Antes» o «Después».
+• Capilar: desde la tricoscopía, «➕ Crear plan con N UF» abre el tratamiento ya armado.
+• Ortodoncia: «📅 Guardar y agendar en N sem.» registra el control y abre la próxima cita.
+• Ficha → ⋯: «✍ Consentimiento» para firmarlo en el celular y «🔀 Fusionar» fichas duplicadas.
+• Odontología: el paquete por sesiones se presupuesta a su precio, y solo se reenvía la última versión del presupuesto.
