@@ -169,6 +169,12 @@ fun AplicacionesTab(
     /** Abre el formulario del tratamiento con la cantidad pre-llenada (el usuario confirma). */
     onUsarUnidades: ((tratamientoId: String, cantidad: Int) -> Unit)? = null,
     /**
+     * Flujo #1 (gemelo web, Opción A): «💰 Cobrar N U · S/ X» en un toque. Fija la
+     * cantidad y el acordado (N × precio c/u) y abre el cobro con el saldo. Sin
+     * precio c/u (o sin este callback) queda el flujo de [onUsarUnidades].
+     */
+    onCobrarUnidades: ((tratamientoId: String, cantidad: Int, monto: Double) -> Unit)? = null,
+    /**
      * «💉 Mapa de aplicación» del ⋯ de una cita de la agenda (gemelo de
      * `?tab=aplicaciones&cita=` de la web): abre el mapa de ESA cita (el suyo si ya
      * lo tiene; si no, uno nuevo vinculado a ella). Vale una vez.
@@ -273,7 +279,7 @@ fun AplicacionesTab(
                     BotonMapa("🖨 Registro de aplicación") { imprimir(g) }
                     onDejarIndicaciones?.let { cb -> BotonMapa("📝 Dejar indicaciones") { cb(servicioParaIndicaciones(g.aplicaciones), g.citaId) } }
                 }
-                if (puedeEditar && onUsarUnidades != null) BotonUnidades(g, tratDe(g.tratamientoId), onUsarUnidades)
+                if (puedeEditar && onUsarUnidades != null) BotonUnidades(g, tratDe(g.tratamientoId), onUsarUnidades, onCobrarUnidades)
             }
         }
 
@@ -377,12 +383,31 @@ fun AplicacionesTab(
 
 /** "🔢 Usar … como … cobradas", con su confirmación (tratamiento por unidades y cantidad distinta). */
 @Composable
-private fun BotonUnidades(a: AplicacionEstetica, t: TratamientoParaMapa?, onUsarUnidades: (String, Int) -> Unit) {
+private fun BotonUnidades(
+    a: AplicacionEstetica, t: TratamientoParaMapa?, onUsarUnidades: (String, Int) -> Unit,
+    onCobrarUnidades: ((String, Int, Double) -> Unit)? = null,
+) {
     val c = Sania.colors
     val uc = ofertaUnidadesCobradas(a.aplicaciones, t) ?: return
     if (t == null) return
     var confirmar by remember { mutableStateOf(false) }
+    var cobrando by remember { mutableStateOf(false) }
     val etiqueta = t.unidadLabel ?: "unidades"
+    // Flujo #1: con precio c/u, un toque fija la cantidad y el acordado y abre el cobro.
+    val monto = pe.saniape.app.data.staff.montoUnidadesMapa(uc.cantidad, t.precioUnitario)
+    if (onCobrarUnidades != null && monto > 0.0) {
+        Column(Modifier.padding(top = 8.dp)) {
+            // Si falla, la ficha avisa; el botón se libera solo.
+            androidx.compose.runtime.LaunchedEffect(cobrando) { if (cobrando) { kotlinx.coroutines.delay(4000); cobrando = false } }
+            BotonMapa(if (cobrando) "Preparando el cobro…" else "💰 Cobrar ${uc.texto} · ${pe.saniape.app.data.staff.dineroActivo(monto)}", lleno = true) {
+                if (!cobrando) { cobrando = true; onCobrarUnidades(t.id, uc.cantidad, monto) }
+            }
+            if (uc.mezclaMarcas) Text("⚠ Aproximado: se sumaron U de marcas que no son equivalentes (Dysport ≈ ×2,5 de Botox/Xeomin).",
+                color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+            Text("El monto queda editable al cobrar.", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
+        }
+        return
+    }
     Box(Modifier.padding(top = 8.dp)) {
         if (!confirmar) BotonMapa("🔢 Usar ${uc.texto} como $etiqueta cobradas") { confirmar = true }
         else Column(

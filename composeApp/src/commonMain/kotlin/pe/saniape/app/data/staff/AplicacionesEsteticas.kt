@@ -785,7 +785,16 @@ data class TratamientoParaMapa(
     val modalidad: String?,
     val unidadLabel: String?,
     val cantidadUnidades: Int?,
+    /** Precio por unidad del tratamiento: con él, «💰 Cobrar N U · S/ X» en un toque (flujo #1). */
+    val precioUnitario: Double? = null,
 )
+
+/** Lo que se cobra por las U del mapa (precio c/u × cantidad, a 2 decimales); 0 = sin precio. Gemelo de sugeridoUnidades. */
+fun montoUnidadesMapa(cantidad: Int, precioUnitario: Double?): Double {
+    val u = precioUnitario ?: return 0.0
+    if (u <= 0.0 || cantidad <= 0) return 0.0
+    return kotlin.math.round(cantidad * u * 100) / 100
+}
 
 /**
  * ¿Ofrecer "🔢 Usar … como unidades cobradas"? Solo si el tratamiento cobra por

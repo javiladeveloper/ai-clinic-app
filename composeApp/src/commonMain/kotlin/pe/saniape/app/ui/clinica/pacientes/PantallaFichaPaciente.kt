@@ -239,6 +239,10 @@ private fun PantallaFichaPacienteContenido(
     var ampliarTratamiento by remember { mutableStateOf<TratamientoPaciente?>(null) }
     // «✓ Dar de alta» pedido desde la agenda: (tratamiento, señal) para su tarjeta.
     var altaPedida by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    // «💰 Cobrar N U» del mapa de estética (flujo #1): (tratamiento, señal) → «Registrar pago» en su tarjeta.
+    var pagoPedido by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    // El cobro pedido que espera que la ficha recargue el acordado nuevo: (tratamiento, monto).
+    var cobroUnidadesPend by remember { mutableStateOf<Pair<String, Double>?>(null) }
     // La acción de la agenda se abre UNA vez, con la ficha ya cargada.
     var accionPendiente by remember { mutableStateOf(accionTratamientoAlAbrir) }
     var editarTratamiento by remember { mutableStateOf<TratamientoPaciente?>(null) }
@@ -255,6 +259,12 @@ private fun PantallaFichaPacienteContenido(
             else if (presupuestosAlAbrir && pe.saniape.app.data.staff.puedeVerPresupuestos { ctx.puede(it) }) "presupuestos"
             else nutricionAlAbrir?.tab ?: "atenciones",
         )
+    }
+    /** «💰 Cobrar N U» (flujo #1): a Atenciones con «Registrar pago» abierto en ese tratamiento. */
+    fun abrirCobroUnidades(tratamientoId: String) {
+        cobroUnidadesPend = null
+        tab = "atenciones"
+        pagoPedido = tratamientoId to ((pagoPedido?.second ?: 0) + 1)
     }
     // Sin 'historia_clinica', una apertura hacia una pestaña clínica (desde la
     // agenda: 🏠, 📝, 😁, 🦶…) cae en Atenciones en vez de montar lo clínico.
@@ -1316,6 +1326,7 @@ private fun PantallaFichaPacienteContenido(
                         onRegistrarAtencion = { registrarAtencion = it },
                         soloLectura = pe.saniape.app.data.staff.fichaInactiva(paciente.estado),
                         altaPedida = altaPedida,
+                        pagoPedido = pagoPedido,
                         // Alta hecha → ofrecer la encuesta (solo con teléfono y enlace, como la web).
                         onAltaHecha = { t ->
                             scope.launch {
@@ -1699,7 +1710,7 @@ private fun PantallaFichaPacienteContenido(
                             tratamientos = deEstetica.map {
                                 pe.saniape.app.data.staff.TratamientoParaMapa(
                                     it.id, it.procedimiento ?: it.especialidadNombre ?: "Tratamiento", it.estado.orEmpty(),
-                                    it.modalidad, it.unidadLabel, it.cantidadUnidades,
+                                    it.modalidad, it.unidadLabel, it.cantidadUnidades, it.precioUnitario,
                                 )
                             },
                             nombresServicio = paciente.tratamientos.mapNotNull { t -> t.procedimientoId?.let { id -> t.procedimiento?.let { id to it } } }.toMap(),
@@ -1722,6 +1733,23 @@ private fun PantallaFichaPacienteContenido(
                                 }?.let { editarTratamiento = it.copy(cantidadUnidades = cantidad) }
                                 Unit
                             }.takeIf { ctx.puede("sesiones") && !inactiva },
+                            // 💰 Flujo #1 (gemelo web): fija cantidad y acordado (N × c/u) y abre el cobro
+                            // en la tarjeta del tratamiento, con el saldo (editable al cobrar).
+                            onCobrarUnidades = { tratamientoId: String, cantidad: Int, monto: Double ->
+                                scope.launch {
+                                    val ok = runCatching {
+                                        PacientesRepo.editarTratamiento(tratamientoId, null, null, null, monto, cantidadUnidades = cantidad)
+                                    }.getOrDefault(false)
+                                    if (!ok) { pe.saniape.app.ui.Toaster.error("No se pudo preparar el cobro"); return@launch }
+                                    // El cobro se abre cuando la ficha ya trae el acordado nuevo (su saldo
+                                    // se precarga con él); si no llega a tiempo, se abre igual.
+                                    cobroUnidadesPend = tratamientoId to monto
+                                    recargar()
+                                    kotlinx.coroutines.delay(3000)
+                                    if (cobroUnidadesPend?.first == tratamientoId) abrirCobroUnidades(tratamientoId)
+                                }
+                                Unit
+                            }.takeIf { ctx.puede("pagos") && ctx.puede("sesiones") && !inactiva },
                             citaInicial = flujoApli,
                             onCitaInicialUsada = { flujoApli = null },
                         )
@@ -1844,6 +1872,13 @@ private fun PantallaFichaPacienteContenido(
                 }
             },
         )
+    }
+
+    // «💰 Cobrar N U»: en cuanto la ficha recargada trae el acordado nuevo, se abre el cobro.
+    LaunchedEffect(paciente, cobroUnidadesPend) {
+        val (id, monto) = cobroUnidadesPend ?: return@LaunchedEffect
+        val t = paciente.tratamientos.firstOrNull { it.id == id } ?: return@LaunchedEffect
+        if (kotlin.math.abs(t.montoAcordado - monto) < 0.01) abrirCobroUnidades(id)
     }
 
     planUF?.let { prefill ->
@@ -3533,6 +3568,8 @@ private fun ContenidoAtenciones(
     onAltaHecha: (TratamientoPaciente) -> Unit = {},
     /** «✓ Dar de alta» pedido desde la agenda: (tratamiento, señal) → la confirmación de su tarjeta. */
     altaPedida: Pair<String, Int>? = null,
+    /** «💰 Cobrar N U» del mapa (flujo #1): (tratamiento, señal) → abre «Registrar pago» en su tarjeta. */
+    pagoPedido: Pair<String, Int>? = null,
 ) {
     val c = Sania.colors
     // Sin 'historia_clinica': la evaluación psicológica (su espacio de trabajo) no se ofrece.
@@ -3617,6 +3654,7 @@ private fun ContenidoAtenciones(
             soloLectura = soloLectura,
             onAltaHecha = onAltaHecha,
             pedirAltaToken = altaPedida?.takeIf { it.first == t.id }?.second ?: 0,
+            pedirPagoToken = pagoPedido?.takeIf { it.first == t.id }?.second ?: 0,
             esEvaluacionPsico = t.procedimientoId != null && t.procedimientoId in procsEvalPsico,
             bloqueEvaluacionPsico = if (verHc && t.procedimientoId != null && t.procedimientoId in procsEvalPsico) {
                 {

@@ -148,6 +148,8 @@ fun TarjetaTratamiento(
      * y sus avisos. 0 = nada que abrir.
      */
     pedirAltaToken: Int = 0,
+    /** «💰 Cobrar N U» del mapa (flujo #1): al cambiar (> 0) expande la tarjeta y abre «Registrar pago» con el saldo. */
+    pedirPagoToken: Int = 0,
     /**
      * Evaluación psicológica (servicio con `tipo_clinico`): sus botones van en
      * [bloqueEvaluacionPsico] y no se ofrece "➕ Ampliar" (las citas se suman sin
@@ -243,6 +245,9 @@ fun TarjetaTratamiento(
     val terminado = t.estado == "Alta" || t.estado == "Cancelado" || t.estado == "Suspendido"
     // Alta pedida desde la agenda: la misma confirmación que el botón de abajo (y la
     // tarjeta se abre, para contar las sesiones pendientes en el aviso).
+    LaunchedEffect(pedirPagoToken) {
+        if (pedirPagoToken > 0) { expandido = true; abrirPagoToken++ }
+    }
     LaunchedEffect(pedirAltaToken) {
         if (pedirAltaToken > 0 && !terminado && puedeSesionesEf) { expandido = true; confirmarAlta = true }
     }
