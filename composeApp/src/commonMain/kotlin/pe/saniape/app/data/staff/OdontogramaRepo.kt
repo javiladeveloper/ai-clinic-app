@@ -177,7 +177,7 @@ object OdontogramaRepo {
 
     private suspend fun hallazgosRed(pacienteId: String): List<DienteHallazgo>? = try {
         Supabase.client.postgrest["dientes_hallazgos"]
-            .select(Columns.list("id, paciente_id, diente, hallazgo_id, superficies, estado, cita_id, tratamiento_id, notas, fecha, sesion_id, diente_hasta")) {
+            .select(Columns.list("id, paciente_id, diente, hallazgo_id, superficies, estado, cita_id, tratamiento_id, notas, fecha, sesion_id, diente_hasta, created_at")) {
                 filter { eq("paciente_id", pacienteId) }
                 order("fecha", Order.DESCENDING)
             }
@@ -200,6 +200,7 @@ object OdontogramaRepo {
                     fecha = o.str("fecha") ?: "",
                     sesionId = o.str("sesion_id"),
                     dienteHasta = o.str("diente_hasta"),
+                    createdAt = o.str("created_at"),
                 )
             }
     } catch (e: CancellationException) { throw e } catch (_: Exception) { null }

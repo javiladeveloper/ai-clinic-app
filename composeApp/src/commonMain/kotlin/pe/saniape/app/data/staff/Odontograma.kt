@@ -48,7 +48,19 @@ data class DienteHallazgo(
     val sesionId: String? = null,
     /** Hallazgo de VARIAS piezas (puente, brackets, diastema): la pieza final. */
     val dienteHasta: String? = null,
+    /** Cuándo se registró (ISO con hora). `fecha` es solo el día. */
+    val createdAt: String? = null,
 )
+
+/**
+ * ¿`r` se registró ANTES de que la pieza se marcara ausente? Por la hora de
+ * registro: «Ausente 36» + «Implante 36» el MISMO día comparaban solo el día y el
+ * implante desaparecía del presupuesto (auditoría dental 09/11, I1; gemelo de
+ * anteriorALaAusencia en la web). Sin hora (filas viejas), por el día.
+ * Los ISO de la base vienen en UTC con el mismo formato: se comparan como texto.
+ */
+fun anteriorALaAusencia(rFecha: String, rCreado: String?, ausFecha: String, ausCreado: String?): Boolean =
+    if (!rCreado.isNullOrBlank() && !ausCreado.isNullOrBlank()) rCreado < ausCreado else rFecha <= ausFecha
 
 data class LineaPresupuesto(
     val procedimientoId: String,
@@ -351,18 +363,19 @@ fun agruparPresupuesto(
     val porId = catalogo.associateBy { it.id }
     val procPorId = procedimientos.associateBy { it.id }
 
-    val ausenteDesde = hashMapOf<String, String>()
+    // La PRIMERA ausencia de cada pieza (por hora de registro si la hay; I1).
+    val ausenteDesde = hashMapOf<String, DienteHallazgo>()
     for (r in hallazgos) {
         if (porId[r.hallazgoId]?.marcaAusente != true) continue
         val previa = ausenteDesde[r.diente]
-        if (previa == null || r.fecha < previa) ausenteDesde[r.diente] = r.fecha
+        if (previa == null || anteriorALaAusencia(r.fecha, r.createdAt, previa.fecha, previa.createdAt)) ausenteDesde[r.diente] = r
     }
     fun trabajoPrevio(h: HallazgoDental?) = h != null && h.color.equals(COLOR_REALIZADO, ignoreCase = true) && h.procedimientoId == null
     val abiertos = hallazgos.filter { r ->
         val h = porId[r.hallazgoId]
         r.estado == "Pendiente" && r.tratamientoId == null &&
             h?.marcaAusente != true && !trabajoPrevio(h) &&
-            !(ausenteDesde[r.diente]?.let { r.fecha <= it } ?: false)
+            !(ausenteDesde[r.diente]?.let { a -> anteriorALaAusencia(r.fecha, r.createdAt, a.fecha, a.createdAt) } ?: false)
     }
 
     class Acum(val proc: ProcedimientoRef) {
