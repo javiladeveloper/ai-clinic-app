@@ -294,8 +294,15 @@ private val NO_TRATAMIENTO = Regex(
  * 2. fuera los «no-tratamiento» si queda alguno que sí trate;
  * 3. fuera los que la rama evita (cirugías de cordal) si queda otro;
  * 4. entre los preferidos de la rama, si hay alguno;
- * 5. desempate: el orden del catálogo.
+ * 5. desempate: por nombre (sin tildes), no por el orden de llegada (I4).
  */
+/** «Extracción Simple» → «extraccion simple»: orden estable, igual en web y app. */
+fun claveOrdenServicio(nombre: String): String = buildString {
+    for (ch in nombre.lowercase()) append(
+        when (ch) { 'á', 'à', 'ä' -> 'a'; 'é', 'è', 'ë' -> 'e'; 'í', 'ì', 'ï' -> 'i'; 'ó', 'ò', 'ö' -> 'o'; 'ú', 'ù', 'ü' -> 'u'; 'ñ' -> 'n'; else -> ch }
+    )
+}
+
 fun buscarProcedimientoSugerido(nombre: String, procedimientos: List<ProcedimientoRef>): ProcedimientoRef? {
     val n = nombre.lowercase()
     fun re(s: String) = Regex(s, RegexOption.IGNORE_CASE)
@@ -310,7 +317,10 @@ fun buscarProcedimientoSugerido(nombre: String, procedimientos: List<Procedimien
             val hit = candidatos.filter { pref.containsMatchIn(it.nombre) }
             if (hit.isNotEmpty()) { candidatos = hit; break }
         }
-        return candidatos.firstOrNull()
+        // Desempate por NOMBRE (sin tildes, minúsculas), no por el orden de llegada:
+        // el mismo odontograma sugería servicios distintos según quién cargó la lista
+        // (auditoría dental I4). Gemelo de claveOrdenServicio (lib/odontograma.ts).
+        return candidatos.sortedWith(compareBy<ProcedimientoRef>({ claveOrdenServicio(it.nombre) }, { it.nombre })).firstOrNull()
     }
     return when {
         // Una caries se restaura: nunca una CARILLA ni una CORONA aunque digan
