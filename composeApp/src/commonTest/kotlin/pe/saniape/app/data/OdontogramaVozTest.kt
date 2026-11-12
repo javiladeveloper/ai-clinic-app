@@ -120,4 +120,46 @@ class InterpretarDictadoTest {
         assertTrue(interpretarDictadoDental("", CAT).isEmpty())
         assertTrue(interpretarDictadoDental("el paciente refiere que todo bien", CAT).isEmpty())
     }
+
+    // 12/11/2026 — falsos positivos (gemelo de odontograma-voz.test.ts).
+    private fun unico(texto: String) = interpretarDictadoDental(texto).filter { it.tipo == "diente" }
+
+    @Test
+    fun coronal_no_es_una_corona() {
+        val r = unico("pieza 11 fractura coronal")
+        assertEquals(1, r.size)
+        assertEquals("Fractura", r[0].hallazgoNombre)
+    }
+
+    @Test
+    fun fosas_y_fisuras_no_es_una_fractura() {
+        assertEquals("Sellante", unico("16 sellante de fosas y fisuras")[0].hallazgoNombre)
+        assertTrue(unico("16 fosas y fisuras profundas").isEmpty())
+        assertEquals("Fractura", unico("21 fisura vertical")[0].hallazgoNombre)
+    }
+
+    @Test
+    fun lo_negado_no_cuenta() {
+        assertTrue(unico("36 sin caries").isEmpty())
+        assertTrue(unico("36 no presenta caries").isEmpty())
+        assertTrue(unico("36 libre de caries oclusal").isEmpty())
+        assertTrue(unico("11 no hay fractura").isEmpty())
+        assertEquals("Corona", unico("36 sin caries con corona")[0].hallazgoNombre)
+    }
+
+    @Test
+    fun falta_de_pendiente_y_perdida_de_hueso_no_son_ausencia() {
+        assertTrue(unico("16 falta restaurar").isEmpty())
+        assertTrue(unico("16 hace falta control").isEmpty())
+        assertTrue(unico("46 pérdida ósea").isEmpty())
+        assertEquals("Ausente", unico("46 falta")[0].hallazgoNombre)
+        assertEquals("Ausente", unico("46 pieza perdida")[0].hallazgoNombre)
+    }
+
+    @Test
+    fun sin_hallazgo_nombrado_no_se_inventa_caries() {
+        assertTrue(unico("paciente de 25 años sin molestias").isEmpty())
+        assertEquals("Restauración existente", unico("16 resina oclusal")[0].hallazgoNombre)
+        assertTrue(interpretarDictadoDental("boca sin sarro ni gingivitis").none { it.tipo == "boca" })
+    }
 }

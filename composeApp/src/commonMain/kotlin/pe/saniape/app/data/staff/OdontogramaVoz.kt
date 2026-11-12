@@ -100,31 +100,88 @@ private fun extraerSuperficies(texto: String): List<String>? {
     return res.toList().takeIf { it.isNotEmpty() }
 }
 
-/** Condiciones de la boca entera, que no son de una pieza. */
-private fun detectarHallazgosBoca(texto: String): List<String> {
-    val t = texto.lowercase()
-    val r = mutableListOf<String>()
-    if (re("sarro|tartaro|tártaro|calculo dental|cálculo dental").containsMatchIn(t)) r.add("Sarro")
-    if (re("gingivitis|encias sangrantes|encías sangrantes|encias inflamadas").containsMatchIn(t)) r.add("Gingivitis")
-    if (re("bruxismo|apretamiento|desgaste general").containsMatchIn(t)) r.add("Bruxismo")
-    if (re("profilaxis|limpieza general|limpieza profunda").containsMatchIn(t)) r.add("Profilaxis")
-    return r
+// ── Qué se dijo ─────────────────────────────────────────────────────────────
+//
+// Gemelo de lib/odontograma-voz.ts (12/11/2026 — falsos positivos del dictado).
+// Se buscaban trozos de palabra: «fractura coronal» marcaba una Corona, «fosas y
+// fisuras» una Fractura, «falta sellar» una pieza Ausente y «sin caries» una
+// Caries; y lo que no se reconocía era Caries por defecto. Ahora: palabras
+// completas sobre el texto sin acentos, lo negado no cuenta, y sin hallazgo
+// nombrado no se marca nada.
+
+private fun sinAcentos(t: String): String = t.lowercase()
+    .replace('á', 'a').replace('é', 'e').replace('í', 'i').replace('ó', 'o').replace('ú', 'u').replace('ü', 'u')
+
+/** Lo que va justo antes de un término y lo niega: «sin», «no presenta», «libre de»… */
+private val NEGADOR = Regex(
+    """\b(?:sin|no|ni|niega|descarta|tampoco|ningun[ao]?|libre de|ausencia de)\s+(?:(?:hay|presenta|tiene|se observan?|se aprecian?|se evidencian?|signos? de|evidencia de|presencia de|lesion(?:es)? de)\s+)?$""",
+)
+
+/** first = aparece AFIRMADO; second = apareció, pero negado. */
+private fun afirmado(texto: String, patron: Regex): Pair<Boolean, Boolean> {
+    var negado = false
+    for (m in patron.findAll(texto)) {
+        if (m.value.isEmpty()) continue
+        val antes = texto.substring(maxOf(0, m.range.first - 40), m.range.first)
+        if (!NEGADOR.containsMatchIn(antes)) return true to negado
+        negado = true
+    }
+    return false to negado
 }
 
-/** Qué se dijo de una pieza. Si no nombra nada reconocible, es Caries (lo más dictado). */
-private fun detectarHallazgoDiente(texto: String): String {
-    val t = texto.lowercase()
-    return when {
-        re("ausente|falta|perdido|perdida|extraido|extraído|vacio|vacío|sin pieza").containsMatchIn(t) -> "Ausente"
-        re("corona|funda|protesis fija|prótesis fija").containsMatchIn(t) -> "Corona"
-        re("endodoncia|conducto|tratamiento de conducto").containsMatchIn(t) -> "Endodoncia"
-        re("fractura|fracturado|roto|partido|fisura").containsMatchIn(t) -> "Fractura"
-        re("extraccion indicada|extracción indicada|por extraer|resto radicular").containsMatchIn(t) -> "Extracción indicada"
-        re("implante").containsMatchIn(t) -> "Implante"
-        re("perno").containsMatchIn(t) -> "Perno"
-        re("restauracion existente|restauración existente|obturado|resina existente|amalgama existente").containsMatchIn(t) -> "Restauración existente"
-        else -> "Caries"
+private val REGLAS_BOCA = listOf(
+    "Sarro" to Regex("""\bsarro\b|\btartaro\b|\bcalculos? dental(?:es)?\b"""),
+    "Gingivitis" to Regex("""\bgingivitis\b|\bencias sangrantes\b|\bencias inflamadas\b"""),
+    "Bruxismo" to Regex("""\bbruxismo\b|\bapretamiento\b|\bdesgaste general\b"""),
+    "Profilaxis" to Regex("""\bprofilaxis\b|\blimpieza general\b|\blimpieza profunda\b"""),
+)
+
+/** Condiciones de la boca entera, que no son de una pieza. */
+private fun detectarHallazgosBoca(texto: String): List<String> {
+    val t = sinAcentos(texto)
+    return REGLAS_BOCA.filter { afirmado(t, it.second).first }.map { it.first }
+}
+
+/** Reglas por pieza, en orden de prioridad. Patrones sobre texto sin acentos. */
+private val REGLAS_DIENTE = listOf(
+    // "Extracción indicada" antes que "Ausente": "por extraer" no es "extraído".
+    "Extracción indicada" to Regex("""\bextraccion indicada\b|\bpor extraer\b|\bindicad[oa] para extraccion\b|\brestos? radicular(?:es)?\b|\bremanente radicular\b"""),
+    // «falta» seguida de un verbo o de «de» es un pendiente, no una ausencia.
+    "Ausente" to Regex("""\bausentes?\b|\bfaltante\b|\bfalta\b(?! (?:de\b|por\b|[a-z]+(?:ar|er|ir)\b))|\bperdid[oa]\b(?! (?:de|del|osea|oseo)\b)|\bextraid[oa]\b|\bvaci[oa]\b|\bsin pieza\b"""),
+    // «coronal» / «coronario» son zonas del diente, no una corona.
+    "Corona" to Regex("""\bcoronas?\b|\bfundas?\b|\bprotesis fija\b"""),
+    "Endodoncia" to Regex("""\bendodoncias?\b|\bconductos?\b"""),
+    // Antes que Fractura: «sellante de fosas y fisuras» no es una fisura.
+    "Sellante" to Regex("""\bsellantes?\b|\bsellad[oa]\b"""),
+    // «fisuras» en plural es anatomía (fosas y fisuras); la grieta es «fisura» o «fisurado».
+    "Fractura" to Regex("""\bfracturas?\b|\bfracturad[oa]s?\b|\brot[oa]\b|\bpartid[oa]\b|\bfisurad[oa]\b|\bfisura\b"""),
+    "Implante" to Regex("""\bimplantes?\b"""),
+    "Perno" to Regex("""\bpernos?\b"""),
+    "Restauración existente" to Regex("""\brestauracion(?:es)? existentes?\b|\bobturad[oa]\b|\bresinas?\b|\bamalgamas?\b|\bcuracion(?:es)?\b|\bincrustacion(?:es)?\b"""),
+    "Caries" to Regex("""\bcaries\b|\bcariad[oa]\b|\bpicad[oa]\b"""),
+)
+private val FALTA_DE_PENDIENTE = Regex("""\b(?:hace|hacen|haria|le|les) falta\b""")
+private val HAY_FOSAS = Regex("""\bfosas?\b""")
+private val GRIETA_CLARA = Regex("""\bfractura|\brot[oa]\b|\bpartid[oa]\b|\bfisurad[oa]\b""")
+
+/**
+ * Qué se dijo de una pieza. null = no se nombró ningún hallazgo: el número no
+ * era una pieza ("paciente de 25 años") o faltó decir qué tiene. Antes el valor
+ * por defecto era Caries, y así se inventaban caries.
+ */
+private fun detectarHallazgoDiente(texto: String): String? {
+    val t = sinAcentos(texto).replace(FALTA_DE_PENDIENTE, " ")
+    var huboNegacion = false
+    for ((nombre, patron) in REGLAS_DIENTE) {
+        val (si, negado) = afirmado(t, patron)
+        if (negado) huboNegacion = true
+        if (!si) continue
+        if (nombre == "Fractura" && HAY_FOSAS.containsMatchIn(t) && !GRIETA_CLARA.containsMatchIn(t)) continue
+        return nombre
     }
+    // Solo caras, sin nombre ("16 oclusal"): en la práctica es una caries. Pero no
+    // si la frase negó algo ("16 sin caries oclusal").
+    return if (!huboNegacion && extraerSuperficies(t) != null) "Caries" else null
 }
 
 /** Minúsculas, sin puntuación, y los números hablados convertidos a FDI. */
@@ -173,10 +230,9 @@ fun interpretarDictadoDental(
     }
 
     val cubiertos = mutableSetOf<String>()
-    fun agregarDiente(diente: String, resto: String, clave: String) {
+    fun agregarDiente(diente: String, resto: String, nombre: String, clave: String) {
         if (clave in cubiertos) return
         cubiertos.add(clave)
-        val nombre = detectarHallazgoDiente(resto)
         val cat = buscar(nombre)
         resultados.add(
             HallazgoInterpretado(
@@ -194,9 +250,9 @@ fun interpretarDictadoDental(
     for (m in REGEX_DIENTE.findAll(norm)) {
         val diente = m.groupValues[1]
         val resto = m.groupValues[2]
-        val nombre = detectarHallazgoDiente(resto)
+        val nombre = detectarHallazgoDiente(resto) ?: continue
         val caras = extraerSuperficies(resto)?.joinToString("") ?: ""
-        agregarDiente(diente, resto, "$diente-$nombre-$caras")
+        agregarDiente(diente, resto, nombre, "$diente-$nombre-$caras")
     }
 
     // 3. Estrategia B: dictado corto que la A no tomó ("26 ausente").
@@ -206,7 +262,8 @@ fun interpretarDictadoDental(
             val p = palabras[i]
             if (!ES_PIEZA.matches(p)) continue
             val segmento = palabras.drop(i + 1).take(5).joinToString(" ")
-            agregarDiente(p, segmento, "$p-${detectarHallazgoDiente(segmento)}")
+            val nombre = detectarHallazgoDiente(segmento) ?: continue
+            agregarDiente(p, segmento, nombre, "$p-$nombre")
         }
     }
     return resultados
