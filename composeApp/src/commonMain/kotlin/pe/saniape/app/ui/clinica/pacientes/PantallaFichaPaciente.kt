@@ -221,6 +221,9 @@ private fun PantallaFichaPacienteContenido(
     var verFiliacion by remember { mutableStateOf(false) }
     /** «📱 QR datos»: el paciente corrige su contacto desde su celular. */
     var verQrDatos by remember { mutableStateOf(false) }
+    // ✍ Consentimiento y 🔀 Fusionar (paridad web, 11/11/2026).
+    var verConsentimiento by remember { mutableStateOf(false) }
+    var verFusionar by remember { mutableStateOf(false) }
     /** Lo que le falta a la hoja de filiación («📋 Filiación ⚠ N» y la lista del diálogo). */
     var faltantesFicha by remember { mutableStateOf(emptyList<String>()) }
     // «Dar de baja» del ⋯ esperando confirmación.
@@ -914,6 +917,7 @@ private fun PantallaFichaPacienteContenido(
                     puedeAgendar = ctx.puede("agendar"),
                     conDatos = verContacto,
                     puedeEditarPacientes = ctx.puede("pacientes"),
+                    puedeFusionar = ctx.esAdmin,
                 )
                 if (planFicha.enMenu.isNotEmpty()) {
                     val base = pe.saniape.app.data.Supabase.SITE_URL
@@ -928,6 +932,8 @@ private fun PantallaFichaPacienteContenido(
                                 AccionFicha.Editar -> "✏ Editar datos del ${ctx.terminologiaPaciente.paciente}"
                                 AccionFicha.Filiacion -> pe.saniape.app.data.staff.etiquetaFiliacion(faltantesFicha.size)
                                 AccionFicha.QrDatos -> "📱 QR para que actualice sus datos"
+                                AccionFicha.Consentimiento -> "✍ Consentimiento (firma en su celular)"
+                                AccionFicha.Fusionar -> "🔀 Fusionar con otra ficha"
                                 AccionFicha.Reactivar -> "↻ Reactivar ${ctx.terminologiaPaciente.paciente}"
                                 AccionFicha.InvitarWhatsApp -> "💬 Invitar al portal por WhatsApp"
                                 AccionFicha.CopiarPortal -> "🔗 Copiar enlace del portal"
@@ -952,6 +958,8 @@ private fun PantallaFichaPacienteContenido(
                                 AccionFicha.Editar -> editandoPaciente = true
                                 AccionFicha.Filiacion -> verFiliacion = true
                                 AccionFicha.QrDatos -> verQrDatos = true
+                                AccionFicha.Consentimiento -> verConsentimiento = true
+                                AccionFicha.Fusionar -> verFusionar = true
                                 AccionFicha.InvitarWhatsApp -> {
                                     val msg = "Hola ${paciente.nombre.split(" ").first()}, accede a tu portal para ver tus citas y tu tratamiento: $link"
                                     val tel = paciente.telefono.orEmpty().filter { it.isDigit() }
@@ -2117,6 +2125,19 @@ private fun PantallaFichaPacienteContenido(
             },
             confirmButton = { androidx.compose.material3.TextButton(onClick = cerrarQr) { Text("Listo") } },
         )
+    }
+
+    if (verConsentimiento) {
+        DialogoConsentimientoFirma(paciente.id, paciente.nombre, paciente.telefono, acciones) { firmo ->
+            verConsentimiento = false
+            if (firmo) recargar()
+        }
+    }
+    if (verFusionar) {
+        DialogoFusionarFicha(paciente.id, paciente.nombre, tpl.paciente) { fusiono ->
+            verFusionar = false
+            if (fusiono) recargar()
+        }
     }
 
     // ✕ del recordatorio de recepción: con confirmación.
