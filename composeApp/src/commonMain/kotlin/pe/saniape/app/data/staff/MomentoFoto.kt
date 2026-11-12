@@ -30,6 +30,13 @@ fun fotoCierre(rubro: String?): Pair<String, String> =
 fun fotoCierreDeEspecialidad(rubro: String?, nombre: String?): Pair<String, String> =
     fotoCierre(rubroDeEspecialidad(rubro, nombre))
 
+/**
+ * El momento que se propone al subir (gemelo de `momentoSugerido`, lib/momento-foto.ts):
+ * sin un «Antes» en el tratamiento → «Antes»; con uno → «Después». Se puede cambiar.
+ */
+fun momentoSugerido(existentes: List<String?>): String =
+    if (existentes.any { esMomento(it, MOMENTO_ANTES) }) MOMENTO_DESPUES else MOMENTO_ANTES
+
 /** Los momentos de la evolución, en orden: los que ofrece la app al subir. */
 val MOMENTOS_EVOLUCION: List<String> = listOf(MOMENTO_ANTES, MOMENTO_DURANTE, MOMENTO_DESPUES)
 

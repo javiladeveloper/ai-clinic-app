@@ -197,6 +197,8 @@ fun GaleriaFotos(
     pendiente?.let { archivo ->
         ModalSubirFoto(
             archivo = archivo, sesiones = sesiones, subiendo = subiendo,
+            // Flujo #3: sin «Antes» se propone «Antes»; con uno, «Después».
+            momentoInicial = pe.saniape.app.data.staff.momentoSugerido(delTratamiento.map { it.momento }),
             onCancelar = { if (!subiendo) pendiente = null },
             onGuardar = { momento, sesionId, nota, visible ->
                 scope.launch {
@@ -392,9 +394,10 @@ private fun ModalSubirFoto(
     subiendo: Boolean,
     onCancelar: () -> Unit,
     onGuardar: (momento: String, sesionId: String?, nota: String?, visible: Boolean) -> Unit,
+    momentoInicial: String = pe.saniape.app.data.staff.MOMENTO_ANTES,
 ) {
     val c = Sania.colors
-    var momento by remember { mutableStateOf(pe.saniape.app.data.staff.MOMENTO_ANTES) }
+    var momento by remember { mutableStateOf(momentoInicial) }
     var sesionId by remember { mutableStateOf<String?>(null) }
     var sesionAbierta by remember { mutableStateOf(false) }
     var nota by remember { mutableStateOf("") }

@@ -12,6 +12,12 @@ class FotoCierreTest {
         assertEquals(MOMENTO_DURANTE, fotoCierre(null).second)
     }
 
+    @Test fun momentoSugeridoAlSubir() {
+        assertEquals(MOMENTO_ANTES, momentoSugerido(emptyList()))
+        assertEquals(MOMENTO_ANTES, momentoSugerido(listOf("Durante", null)))
+        assertEquals(MOMENTO_DESPUES, momentoSugerido(listOf("antes")))   // sin tilde ni mayúscula, igual
+    }
+
     @Test fun porLaEspecialidadElRubroGuardadoManda() {
         assertEquals(MOMENTO_DESPUES, fotoCierreDeEspecialidad("estetica", "Cualquier nombre").second)
         assertEquals(MOMENTO_DURANTE, fotoCierreDeEspecialidad("fisio", "Medicina estética").second)
