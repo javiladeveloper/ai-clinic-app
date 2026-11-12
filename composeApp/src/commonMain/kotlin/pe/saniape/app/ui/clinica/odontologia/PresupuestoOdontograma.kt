@@ -49,6 +49,8 @@ import pe.saniape.app.data.staff.ProcedimientoRef
 import pe.saniape.app.data.staff.agruparPresupuesto
 import pe.saniape.app.data.staff.esLineaDeBoca
 import pe.saniape.app.data.staff.planTratamiento
+import pe.saniape.app.data.staff.paqueteDelServicio
+import pe.saniape.app.data.staff.precioEnPresupuesto
 import pe.saniape.app.ui.Toaster
 import pe.saniape.app.ui.clinica.pacientes.DialogoForm
 import pe.saniape.app.ui.clinica.pacientes.EtqForm
@@ -148,7 +150,8 @@ internal fun PresupuestoOdontograma(
             l.copy(precioUnitario = pu, subtotal = if (esLineaDeBoca(l)) pu else pu * l.piezas.size)
         }
     }
-    fun precioExtra(e: ProcedimientoRef) = precios[e.id] ?: e.precio
+    // Por sesiones con paquete: el precio del paquete (I9, precioEnPresupuesto).
+    fun precioExtra(e: ProcedimientoRef) = precios[e.id] ?: precioEnPresupuesto(e)
     // Todas marcadas por defecto: lo normal es presupuestar todo lo encontrado.
     // La clave son los SERVICIOS, no `lineas`: `lineas` cambia al editar un
     // precio, y con esa clave editar un precio volvía a marcar lo desmarcado.
@@ -471,7 +474,7 @@ internal fun PresupuestoOdontograma(
 
     editandoPrecio?.let { (id, nombre) ->
         val linea = lineasBase.firstOrNull { it.procedimientoId == id }
-        val base = linea?.precioUnitario ?: extras.firstOrNull { it.id == id }?.precio ?: 0.0
+        val base = linea?.precioUnitario ?: extras.firstOrNull { it.id == id }?.let { precioEnPresupuesto(it) } ?: 0.0
         EditarPrecio(
             nombre = nombre,
             // En una línea por piezas se edita el precio POR PIEZA: es lo que
@@ -616,7 +619,7 @@ private suspend fun crearTodo(
         val ok = crear(PacientesRepo.cuerpoCrearTratamiento(
             pacienteId = pacienteId, procedimientoId = e.id, terapeutaId = null,
             modalidad = if (porSesiones) "Paquete" else "Sesión suelta",
-            totalSesiones = if (porSesiones) (e.tarifarios.firstOrNull()?.cantidadSesiones ?: 1) else 1,
+            totalSesiones = if (porSesiones) (paqueteDelServicio(e)?.cantidadSesiones ?: 1) else 1,
             precioPaquete = if (porSesiones) e.precio else null,
             precioPorSesion = if (porSesiones) null else e.precio, precioAcordado = e.precio,
             diagnostico = "${e.nombre} (Tratamiento complementario)", citaOrigenId = citaId,

@@ -97,6 +97,27 @@ class PresupuestoDentalEnlaceTest {
         assertNull(presupuestoReutilizable(listOf(enviado.copy(venceAt = "2026-10-01T00:00:00Z")), "h1", true, ahora)) // vencido
         assertEquals("Vencido", estadoVisiblePresupuesto("Enviado", "no es fecha", ahora))
         assertEquals("Enviado", estadoVisiblePresupuesto("Enviado", null, ahora))
+        // I3: un Enviado más viejo que otro quedó reemplazado → no se reutiliza.
+        val otro = PresupuestoDentalGuardado("e2", "tk-e2", "Enviado", futuro, "h2", pideFirma = true)
+        assertNull(presupuestoReutilizable(listOf(otro, enviado), "h1", true, ahora))
+    }
+
+    @Test fun i9ElPaqueteDeMenosSesionesFijaElPrecioYElTratamiento() {
+        val orto = ProcedimientoRef(
+            "orto", "Ortodoncia", 150.0, null, null, true,
+            listOf(TarifarioRef("t24", 24, 3600.0), TarifarioRef("t12", 12, 1900.0), TarifarioRef("t0", 6, 0.0)),
+            modoCobro = "sesiones",
+        )
+        val endo = ProcedimientoRef("endo", "Endodoncia", 120.0, null, null, true, emptyList(), modoCobro = "sesiones")
+        assertEquals(12, paqueteDelServicio(orto)?.cantidadSesiones)
+        assertEquals(1900.0, precioEnPresupuesto(orto))
+        assertNull(paqueteDelServicio(endo))
+        assertEquals(120.0, precioEnPresupuesto(endo))
+        assertNull(paqueteDelServicio(orto.copy(modoCobro = "simple")))
+        val linea = LineaPresupuesto("orto", "Ortodoncia", "Maloclusión", listOf("BOCA"), listOf("m"), 1900.0, 1900.0, porBoca = true)
+        val plan = planTratamiento(linea, orto)
+        assertEquals(12, plan.totalSesiones)
+        assertEquals(1900.0, plan.precioPaquete)
     }
 
     @Test fun elTokenTiene64Hex() {

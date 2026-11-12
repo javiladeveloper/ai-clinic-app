@@ -422,7 +422,7 @@ fun agruparPresupuesto(
     }
 
     val lineas = porProc.values.map { a ->
-        val unitario = a.proc.precio
+        val unitario = precioEnPresupuesto(a.proc)
         val tramos = a.proc.precioPorCaras
         var subtotal = if (a.porBoca) unitario else unitario * a.piezas.size
         var preciosPieza: List<PrecioPieza>? = null
@@ -520,6 +520,22 @@ fun diagnosticoDesdeHallazgos(
     return texto.replaceFirstChar { it.uppercase() } + "."
 }
 
+/**
+ * El paquete de un servicio «por sesiones» (auditoría dental I9): el tarifario
+ * de MENOS sesiones que tenga precio (orden fijo: la base no lo garantiza).
+ * null si no es por sesiones o no tiene. Gemelo de paqueteDelServicio (lib/odontograma.ts).
+ */
+fun paqueteDelServicio(p: ProcedimientoRef?): TarifarioRef? =
+    if (p?.modoCobro != "sesiones") null
+    else p.tarifarios.filter { it.cantidadSesiones > 0 && it.precioTotal > 0.0 }.minByOrNull { it.cantidadSesiones }
+
+/**
+ * Precio c/u de un servicio en el presupuesto: por sesiones con paquete → el
+ * total del paquete (antes, el de UNA sesión con la etiqueta «Paquete N
+ * sesiones»); si no, el de lista. Gemelo de precioEnPresupuesto.
+ */
+fun precioEnPresupuesto(p: ProcedimientoRef): Double = paqueteDelServicio(p)?.precioTotal ?: p.precio
+
 /** Cómo se crea el tratamiento de una línea del presupuesto. */
 data class PlanTratamiento(
     val procedimientoId: String,
@@ -560,7 +576,7 @@ fun planTratamiento(l: LineaPresupuesto, proc: ProcedimientoRef?): PlanTratamien
     return when {
         proc?.modoCobro == "sesiones" -> PlanTratamiento(
             procedimientoId = l.procedimientoId, modalidad = "Sesiones",
-            totalSesiones = proc.tarifarios.firstOrNull()?.cantidadSesiones ?: 1,
+            totalSesiones = paqueteDelServicio(proc)?.cantidadSesiones ?: 1,
             precioPaquete = l.subtotal, cantidadUnidades = null,
             precioUnitario = if (deBoca) l.subtotal else l.precioUnitario,
             precioAcordado = l.subtotal, diagnostico = diag, hallazgoIds = l.hallazgoIds,

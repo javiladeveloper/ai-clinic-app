@@ -194,16 +194,18 @@ fun estadoVisiblePresupuesto(estado: String, venceAt: String?, ahoraMs: Long): S
  * Gemelo de `guardadoReutilizable` (sin alternativas: la misma huella implica
  * las mismas elecciones). [guardados] del más reciente al más viejo:
  *  · el ÚLTIMO Aceptado con la misma huella → ese (no se pisa la aceptación);
- *  · si no, un Enviado vigente con la misma huella y la misma firma pedida;
+ *  · si no, el ÚLTIMO si está Enviado vigente con la misma huella y la misma
+ *    firma pedida. Uno más viejo quedó «Reemplazado» por el que vino después y
+ *    su enlace ya no se acepta (auditoría dental I3, web lib/presupuesto-publico);
  *  · si no, null → se congela uno nuevo.
  */
 fun presupuestoReutilizable(
     guardados: List<PresupuestoDentalGuardado>, huella: String, pideFirma: Boolean, ahoraMs: Long,
 ): PresupuestoDentalGuardado? {
-    val ultimo = guardados.firstOrNull()
-    if (ultimo != null && estadoVisiblePresupuesto(ultimo.estado, ultimo.venceAt, ahoraMs) == "Aceptado" &&
+    val ultimo = guardados.firstOrNull() ?: return null
+    if (estadoVisiblePresupuesto(ultimo.estado, ultimo.venceAt, ahoraMs) == "Aceptado" &&
         ultimo.huella == huella && ultimo.eleccionesTodasA) return ultimo
-    return guardados.firstOrNull {
+    return ultimo.takeIf {
         estadoVisiblePresupuesto(it.estado, it.venceAt, ahoraMs) == "Enviado" && it.huella == huella &&
             it.pideFirma == pideFirma && it.eleccionesTodasA
     }
