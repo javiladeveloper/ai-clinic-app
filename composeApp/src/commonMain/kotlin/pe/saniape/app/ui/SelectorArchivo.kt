@@ -14,6 +14,13 @@ data class ArchivoSeleccionado(
  * abre el picker del sistema; cuando el usuario elige, llama [onElegido].
  * expect/actual: en Android usa ActivityResultContracts.GetContent.
  */
+/**
+ * Selector de VARIAS imágenes de una (flujo #3, como el `multiple` de la web).
+ * Android: GetMultipleContents. iOS: una a la vez (el selector de siempre).
+ */
+@Composable
+expect fun recordarSelectorImagenes(onElegidas: (List<ArchivoSeleccionado>) -> Unit): () -> Unit
+
 @Composable
 expect fun recordarSelectorArchivo(
     /** Tipos que ofrece el selector: por defecto todo (PDF e imágenes); "image/…" (cualquier imagen) = solo imágenes. */

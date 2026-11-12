@@ -77,7 +77,8 @@ fun GaleriaFotos(
     var fotos by remember { mutableStateOf<List<FotoEvolutiva>?>(null) }
     var urls by remember { mutableStateOf<Map<String, String>>(emptyMap()) }   // path -> url firmada
     var subiendo by remember { mutableStateOf(false) }
-    var pendiente by remember { mutableStateOf<ArchivoSeleccionado?>(null) }    // archivo elegido, esperando datos
+    // Archivos elegidos, esperando los datos (varios desde la galería: flujo #3).
+    var pendientes by remember { mutableStateOf<List<ArchivoSeleccionado>>(emptyList()) }
     var lightbox by remember { mutableStateOf<FotoEvolutiva?>(null) }
     // Foto a borrar, esperando la confirmación (o null).
     var borrarFoto by remember { mutableStateOf<FotoEvolutiva?>(null) }
@@ -96,18 +97,18 @@ fun GaleriaFotos(
     // También tras subir fotos desde "Completar sesión" (FotosSesionVersion).
     LaunchedEffect(tratamientoId, FotosSesionVersion.valor) { recargar() }
 
-    val abrirSelector = recordarSelectorArchivo { archivo ->
+    // Varias a la vez (como la web): un mismo momento, sesión, nota y visibilidad para todas.
+    val abrirSelector = pe.saniape.app.ui.recordarSelectorImagenes { archivos ->
         // Solo imágenes (igual que la web).
-        if (archivo.mime?.startsWith("image/") == true || archivo.nombre.substringAfterLast('.', "")
-                .lowercase() in listOf("jpg", "jpeg", "png", "webp", "heic")) {
-            pendiente = archivo
-        }
+        val imagenes = archivos.filter { esImagenSubible(it) }
+        if (imagenes.isNotEmpty()) pendientes = imagenes
+        else pe.saniape.app.ui.Toaster.error("Elige imágenes (JPG, PNG o WEBP)")
     }
     // La bandera se baja ANTES de abrir: un selector cancelado no llama al
     // callback y la bandera quedaba en true (el botón ya no volvía a abrirlo).
     LaunchedEffect(pedirArchivo) { if (pedirArchivo) { pedirArchivo = false; abrirSelector() } }
     // Tomar la foto con la CÁMARA (nativa) — el momento natural en consultorio.
-    val abrirCamara = recordarCamaraFoto { archivo -> pendiente = archivo }
+    val abrirCamara = recordarCamaraFoto { archivo -> pendientes = listOf(archivo) }
 
     val delTratamiento = fotos?.filter { it.tratamientoId == tratamientoId } ?: emptyList()
 
@@ -194,30 +195,37 @@ fun GaleriaFotos(
     }
 
     // Modal de subida (momento + sesión opcional + nota + visibilidad).
-    pendiente?.let { archivo ->
+    if (pendientes.isNotEmpty()) {
+        val archivos = pendientes
         ModalSubirFoto(
-            archivo = archivo, sesiones = sesiones, subiendo = subiendo,
+            archivos = archivos, sesiones = sesiones, subiendo = subiendo,
             // Flujo #3: sin «Antes» se propone «Antes»; con uno, «Después».
             momentoInicial = pe.saniape.app.data.staff.momentoSugerido(delTratamiento.map { it.momento }),
-            onCancelar = { if (!subiendo) pendiente = null },
+            onCancelar = { if (!subiendo) pendientes = emptyList() },
             onGuardar = { momento, sesionId, nota, visible ->
                 scope.launch {
                     subiendo = true
-                    // Comprimir ANTES de subir (1600px / JPEG 70, como la web): una foto de
-                    // cámara de ~5-8 MB baja a ~200-500 KB → no satura el storage.
-                    val listo = comprimirImagen(archivo)
-                    val subido = SolicitudesRepo.subirArchivo(
-                        pacienteId, listo.nombre, listo.bytes, listo.mime, "foto")
-                    if (subido != null) {
-                        val (path, tipo) = subido
-                        FotosRepo.registrarFoto(
-                            pacienteId, tratamientoId, sesionId, listo.nombre, path, tipo,
-                            momento, nota, visible)
-                        pe.saniape.app.ui.Toaster.exito("Foto subida")
-                    } else {
-                        pe.saniape.app.ui.Toaster.error("No se pudo subir la foto")
+                    var fallidas = 0
+                    for (archivo in archivos) {
+                        // Comprimir ANTES de subir (1600px / JPEG 70, como la web): una foto de
+                        // cámara de ~5-8 MB baja a ~200-500 KB → no satura el storage.
+                        val ok = runCatching {
+                            val listo = comprimirImagen(archivo)
+                            val subido = SolicitudesRepo.subirArchivo(
+                                pacienteId, listo.nombre, listo.bytes, listo.mime, "foto") ?: return@runCatching false
+                            val (path, tipo) = subido
+                            FotosRepo.registrarFoto(
+                                pacienteId, tratamientoId, sesionId, listo.nombre, path, tipo,
+                                momento, nota, visible)
+                        }.getOrDefault(false)
+                        if (!ok) fallidas++
                     }
-                    subiendo = false; pendiente = null; recargar()
+                    when {
+                        fallidas == 0 -> pe.saniape.app.ui.Toaster.exito(if (archivos.size == 1) "Foto subida" else "${archivos.size} fotos subidas")
+                        fallidas == archivos.size -> pe.saniape.app.ui.Toaster.error(if (archivos.size == 1) "No se pudo subir la foto" else "No se pudieron subir las fotos")
+                        else -> pe.saniape.app.ui.Toaster.error("Se subieron ${archivos.size - fallidas} de ${archivos.size} fotos")
+                    }
+                    subiendo = false; pendientes = emptyList(); recargar()
                 }
             },
         )
@@ -389,7 +397,7 @@ private fun Thumb(
 
 @Composable
 private fun ModalSubirFoto(
-    archivo: ArchivoSeleccionado,
+    archivos: List<ArchivoSeleccionado>,
     sesiones: List<SesionFicha>,
     subiendo: Boolean,
     onCancelar: () -> Unit,
@@ -405,9 +413,9 @@ private fun ModalSubirFoto(
     val sesSel = sesiones.find { it.id == sesionId }
 
     DialogoForm(
-        titulo = "Agregar foto",
-        subtitulo = "📎 ${archivo.nombre}",
-        textoAccion = if (subiendo) "Subiendo…" else "Guardar foto",
+        titulo = if (archivos.size == 1) "Agregar foto" else "Agregar ${archivos.size} fotos",
+        subtitulo = if (archivos.size == 1) "📎 ${archivos[0].nombre}" else "📎 Mismo momento, sesión y nota para todas",
+        textoAccion = if (subiendo) "Subiendo…" else if (archivos.size == 1) "Guardar foto" else "Guardar ${archivos.size} fotos",
         accionHabilitada = !subiendo,
         onCancelar = onCancelar,
         onAccion = { onGuardar(momento, sesionId, nota.trim().ifBlank { null }, visible) },

@@ -10,6 +10,28 @@ import androidx.compose.ui.platform.LocalContext
  * del Uri elegido y resuelve nombre + mime. Los archivos clínicos son ≤15 MB → en memoria.
  */
 @Composable
+actual fun recordarSelectorImagenes(onElegidas: (List<ArchivoSeleccionado>) -> Unit): () -> Unit {
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        val resolver = context.contentResolver
+        val archivos = uris.mapNotNull { uri ->
+            try {
+                var nombre = "foto"
+                resolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx)?.let { nombre = it }
+                }
+                val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return@mapNotNull null
+                ArchivoSeleccionado(nombre = nombre, bytes = bytes, mime = resolver.getType(uri))
+            } catch (_: Exception) { null }   // ilegible: se salta
+        }
+        if (archivos.isNotEmpty()) onElegidas(archivos)
+    }
+    return { launcher.launch("image/*") }
+}
+
+@Composable
 actual fun recordarSelectorArchivo(mime: String, onElegido: (ArchivoSeleccionado) -> Unit): () -> Unit {
     val context = LocalContext.current
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->

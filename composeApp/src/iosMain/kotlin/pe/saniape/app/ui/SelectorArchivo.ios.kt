@@ -18,6 +18,10 @@ import platform.darwin.NSObject
  * de Android. Los archivos clínicos son ≤15 MB, así que se cargan en memoria.
  */
 @Composable
+actual fun recordarSelectorImagenes(onElegidas: (List<ArchivoSeleccionado>) -> Unit): () -> Unit =
+    recordarSelectorArchivo("image/*") { onElegidas(listOf(it)) }
+
+@Composable
 actual fun recordarSelectorArchivo(mime: String, onElegido: (ArchivoSeleccionado) -> Unit): () -> Unit {
     val handler = remember { SelectorHandler(onElegido, soloImagenes = mime.startsWith("image/")) }
     return { handler.abrir() }
