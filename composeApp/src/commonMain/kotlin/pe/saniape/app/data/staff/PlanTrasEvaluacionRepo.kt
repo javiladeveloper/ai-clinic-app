@@ -16,11 +16,20 @@ import pe.saniape.app.data.Supabase
 object PlanTrasEvaluacionRepo {
 
     /** ¿Ya tiene un plan abierto? null = no se pudo leer (no se concluye que no tenga). */
-    suspend fun tieneTratamientoActivo(pacienteId: String): Boolean? = runCatching {
-        Supabase.client.postgrest["tratamientos"].select(Columns.raw("id")) {
+    /**
+     * Solo cuentan los de la ESPECIALIDAD de la cita (gemelo de la web,
+     * 12/11/2026: creando un tratamiento de odontología aparecía la
+     * rehabilitación de fisioterapia). Sin especialidad, todos.
+     */
+    suspend fun tieneTratamientoActivo(pacienteId: String, especialidadId: String? = null): Boolean? = runCatching {
+        val filas = Supabase.client.postgrest["tratamientos"].select(Columns.raw("id, procedimiento:procedimientos(especialidad_id)")) {
             filter { eq("paciente_id", pacienteId); eq("estado", "Activo") }
-            limit(1)
-        }.decodeList<JsonObject>().isNotEmpty()
+            limit(50)
+        }.decodeList<JsonObject>()
+        filas.any { f ->
+            val esp = ((f["procedimiento"] as? JsonObject)?.get("especialidad_id") as? JsonPrimitive)?.content?.takeIf { it != "null" }
+            esDeLaEspecialidad(esp, especialidadId)
+        }
     }.getOrNull()
 
     /** Qué servicios se eligen tras una evaluación en esta clínica (los últimos 300 planes). */

@@ -145,7 +145,7 @@ fun HojaPlanTrasEvaluacion(
     // y qué se elige tras una evaluación (el «más usado»).
     LaunchedEffect(cita.id) {
         if (otraMoneda) { onMasOpciones(null, null); return@LaunchedEffect }
-        val activo = PlanTrasEvaluacionRepo.tieneTratamientoActivo(pid)
+        val activo = PlanTrasEvaluacionRepo.tieneTratamientoActivo(pid, cita.especialidadId ?: cita.especialidadServicioId)
         // Sin poder leer sus planes no se concluye que no tenga: la lista de siempre lo resuelve.
         if (activo != false) { onYaTienePlan(); return@LaunchedEffect }
         procedimientos = runCatching { PacientesRepo.procedimientos() }.getOrDefault(emptyList())

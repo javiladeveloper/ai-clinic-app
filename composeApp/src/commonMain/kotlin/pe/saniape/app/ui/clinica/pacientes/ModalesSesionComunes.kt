@@ -282,7 +282,12 @@ fun BloqueCobroSesion(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
             .background(if (cobrar) c.chipBg else c.fondo)
             .border(1.dp, if (cobrar) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-            .clickable { onCobrar(!cobrar) }
+            .clickable {
+                // Al decir que pagó, el monto ya viene con lo que debe (gemelo de la
+                // web, 12/11/2026: salía vacío si la sesión no tiene costo propio).
+                if (!cobrar && monto.isBlank() && (chipsSaldo ?: 0.0) > 0.0) onMonto(formatoSoles(chipsSaldo ?: 0.0))
+                onCobrar(!cobrar)
+            }
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

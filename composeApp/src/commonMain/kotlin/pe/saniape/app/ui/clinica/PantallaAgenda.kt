@@ -490,7 +490,9 @@ fun PantallaAgenda(
             tratProximas = proximasD.await()
             cargandoFicha = false
             tratPac = pac
-            if (pac?.tratamientos.orEmpty().none { it.estado == "Activo" }) tratForm = true
+            // Solo los de la especialidad de la cita: uno de otra no es el que se viene a agendar.
+            val espCita = cita.especialidadId ?: cita.especialidadServicioId
+            if (pac?.tratamientos.orEmpty().none { it.estado == "Activo" && pe.saniape.app.data.staff.esDeLaEspecialidad(it.especialidadId, espCita) }) tratForm = true
         }
     }
     // ── Evaluación dental en UN paso (29/09/2026, gemelo de la web del 28/09) ──
@@ -1835,7 +1837,8 @@ fun PantallaAgenda(
     // Ya tiene tratamientos abiertos: se listan antes de crear otro.
     val pacTrat = tratPac
     if (tratCita != null && !tratForm && pacTrat != null) {
-        val activos = pacTrat.tratamientos.filter { it.estado == "Activo" }
+        val espCitaTrat = tratCita?.let { it.especialidadId ?: it.especialidadServicioId }
+        val activos = pacTrat.tratamientos.filter { it.estado == "Activo" && pe.saniape.app.data.staff.esDeLaEspecialidad(it.especialidadId, espCitaTrat) }
         if (activos.isNotEmpty()) {
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = { cerrarTratamiento() },

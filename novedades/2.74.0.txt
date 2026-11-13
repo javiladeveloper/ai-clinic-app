@@ -1,0 +1,8 @@
+La receta calcula sola la cantidad y el cobro llega con el monto puesto.
+---
+• Receta: la «Cantidad total» se llena sola con la dosis, la frecuencia y los días (entiende «c/8h», «3 x día», «1 tab VO», «por siete días»). Si la escribes tú, manda la tuya.
+• Receta: salen todos los códigos CIE-10 de los diagnósticos, no solo el primero.
+• Cobro: al marcar «¿pagó esta sesión?», el monto ya viene con lo que debe.
+• Agenda: al crear un tratamiento desde una cita solo se listan los de esa especialidad.
+• Odontología: el dictado por voz ya no marca hallazgos que no dijiste («coronal» no es corona, «sin caries» no es caries).
+• Odontología: un puente o prótesis de varias piezas vecinas se presupuesta como un solo aparato.

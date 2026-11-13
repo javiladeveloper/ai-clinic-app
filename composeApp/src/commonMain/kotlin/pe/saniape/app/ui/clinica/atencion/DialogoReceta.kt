@@ -317,6 +317,8 @@ internal data class ItemRecetaForm(
     val cantidad: String = "",
     val unidad: String = "",
     val indicaciones: String = "",
+    /** La cantidad la escribió el médico: la sugerida (RecetaCantidad.kt) ya no la pisa. */
+    val cantidadAMano: Boolean = false,
     /** Identidad estable de la fila en la UI (key): quitar una no le pasa su estado a la siguiente. */
     val uid: Long = Random.nextLong(),
 ) {
@@ -626,7 +628,7 @@ internal fun DialogoReceta(
                     key(fila.uid) {
                         FilaMedicamento(
                             n = i + 1, item = fila, banco = banco, perfil = perfil,
-                            onCambio = { nuevo -> items[i] = nuevo },
+                            onCambioFila = { nuevo -> items[i] = nuevo },
                             onQuitar = if (items.size > 1) ({ items.removeAt(i) }) else null,
                         )
                         Spacer(Modifier.height(10.dp))
@@ -683,9 +685,11 @@ private fun FilaMedicamento(
     banco: BancoMedicamentos,
     /** Profesión del prescriptor: decide los frecuentes que se ven sin escribir (null = no prescribe). */
     perfil: String?,
-    onCambio: (ItemRecetaForm) -> Unit,
+    onCambioFila: (ItemRecetaForm) -> Unit,
     onQuitar: (() -> Unit)?,
 ) {
+    // Todo cambio pasa por la cantidad sugerida (dosis × tomas al día × días).
+    val onCambio: (ItemRecetaForm) -> Unit = { n -> onCambioFila(conCantidadSugerida(item, n)) }
     val c = Sania.colors
     val forma = RoundedCornerShape(Sania.shape.sm.dp)
     // Se abre al ENFOCAR el campo (no hace falta escribir) y se cierra al elegir o al salir.

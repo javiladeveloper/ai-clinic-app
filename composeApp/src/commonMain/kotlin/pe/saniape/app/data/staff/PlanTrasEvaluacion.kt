@@ -197,3 +197,11 @@ fun desdePlanTrasAtencion(hoy: String, fechaAtencion: String?, horario: List<Dia
     }
     return sumarDiasIso(if (a.isNotEmpty() && a > h) a else h, 1)
 }
+
+/**
+ * ¿Un tratamiento cuenta para una cita de esa especialidad? Los que no dicen la
+ * suya se quedan; sin especialidad en la cita, todos (gemelo de
+ * soloDeLaEspecialidad de la web).
+ */
+fun esDeLaEspecialidad(especialidadTratamiento: String?, especialidadCita: String?): Boolean =
+    especialidadCita.isNullOrBlank() || especialidadTratamiento.isNullOrBlank() || especialidadTratamiento == especialidadCita
