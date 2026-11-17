@@ -43,6 +43,9 @@ import kotlinx.serialization.json.put
 import pe.saniape.app.data.staff.Apoderado
 import pe.saniape.app.data.staff.DatosApoderado
 import pe.saniape.app.data.staff.FichaDeBaja
+import pe.saniape.app.data.staff.FichaSinDocumento
+import pe.saniape.app.data.staff.FichasSinDocumentoRepo
+import pe.saniape.app.data.staff.datosFichaSinDocumento
 import pe.saniape.app.data.staff.ReactivarRepo
 import pe.saniape.app.data.staff.documentoCompleto
 import pe.saniape.app.data.staff.textoFichaDeBaja
@@ -112,9 +115,15 @@ fun ModalNuevoPaciente(
     var buscandoDni by remember { mutableStateOf(false) }
     var avisoDni by remember { mutableStateOf<String?>(null) }
     var existente by remember { mutableStateOf<PacienteStaff?>(null) }   // duplicado detectado
+    // Fichas SIN documento con el mismo nombre (importados, 17/11/2026): «¿Es esta
+    // persona?» antes de crear otra. [sinDocIgnorado] = «es otra» para ese nombre +
+    // documento: el siguiente «Crear» crea igual.
+    var sinDoc by remember { mutableStateOf<List<FichaSinDocumento>?>(null) }
+    var sinDocIgnorado by remember { mutableStateOf<String?>(null) }
+    var asignandoSinDoc by remember { mutableStateOf<String?>(null) }
     fun elegirTipo(v: String) {
         if (v != paisDoc) { paisDoc = v; tipoTocado = true }
-        avisoDni = null; existente = null
+        avisoDni = null; existente = null; sinDoc = null
     }
     var guardando by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -186,7 +195,7 @@ fun ModalNuevoPaciente(
     fun buscarDni() {
         val d = dni.trim()
         if (!pe.saniape.app.data.staff.buscaPadronDoc(paisSede, paisDoc) || d.length != 8 || buscandoDni) return
-        buscandoDni = true; avisoDni = null; existente = null
+        buscandoDni = true; avisoDni = null; existente = null; sinDoc = null
         scope.launch {
             // 1) ¿Ya existe en la clínica? (anti-duplicados)
             val ya = PacientesRepo.porDni(d)
@@ -262,6 +271,12 @@ fun ModalNuevoPaciente(
                     if (baja != null) { cargarFichaBaja(baja); return@launch }
                 }
                 if (ya != null) { existente = ya; avisoDni = "Ya registrado: ${ya.nombre}"; guardando = false; return@launch }
+                // ¿Ya está SIN documento (importado de otro sistema)? Se pregunta antes de crear.
+                val claveSinDoc = "${nombre.trim().lowercase()}|$d"
+                if (d.isNotBlank() && sinDocIgnorado != claveSinDoc) {
+                    val fichas = FichasSinDocumentoRepo.buscar(nombre)
+                    if (fichas.isNotEmpty()) { sinDoc = fichas; sinDocIgnorado = claveSinDoc; guardando = false; return@launch }
+                }
                 val creado = PacientesRepo.crearPaciente(
                     nombre = nombre, dni = d.ifBlank { null },
                     telefono = telefono.trim().ifBlank { null },
@@ -331,7 +346,7 @@ fun ModalNuevoPaciente(
                             // ("12345678-9") y un pasaporte letras. Filtrar todo a
                             // dígitos dejaba a los extranjeros SIN documento.
                             dni = if (esDniPeruano) it.filter { ch -> ch.isDigit() }.take(8) else it.take(20)
-                            avisoDni = null; existente = null
+                            avisoDni = null; existente = null; sinDoc = null
                         },
                         placeholder = { Text(when (paisDoc) {
                             "DNI" -> "8 dígitos"; "RUT" -> "12345678-9"; "Pasaporte" -> "Nº de pasaporte"
@@ -382,6 +397,58 @@ fun ModalNuevoPaciente(
                         .background(c.navy).clickable { onCreado(p) }.padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center,
                 ) { Text("→ Abrir la ficha de ${p.nombre}", color = c.sobreNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+            }
+
+            // Ya existe SIN documento con este nombre (pacientes de antes): ponerle el
+            // documento a esa ficha en vez de crear otra (la historia quedaría partida).
+            sinDoc?.takeIf { it.isNotEmpty() }?.let { fichas ->
+                Spacer(Modifier.height(8.dp))
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .background(c.pend.copy(alpha = 0.10f))
+                        .border(1.5.dp, c.pend, RoundedCornerShape(Sania.shape.sm.dp))
+                        .padding(12.dp),
+                ) {
+                    Text("¿Es esta persona?", color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        (if (fichas.size == 1) "Ya hay una ficha" else "Ya hay ${fichas.size} fichas") +
+                            " SIN documento con el nombre «${nombre.trim()}». Si es " + (if (fichas.size == 1) "ella" else "una de ellas") +
+                            ", se le pone el documento y conserva su historia.",
+                        color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+                    )
+                    fichas.forEach { fi ->
+                        Column(
+                            Modifier.fillMaxWidth().padding(bottom = 6.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(c.superficie)
+                                .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable(enabled = asignandoSinDoc == null) {
+                                    asignandoSinDoc = fi.id
+                                    scope.launch {
+                                        val r = FichasSinDocumentoRepo.asignar(
+                                            fi.id, dni.trim(),
+                                            pe.saniape.app.data.staff.tipoDocumentoAGuardar(paisDoc, dni.trim(), tipoTocado),
+                                            telefono.trim().ifBlank { null },
+                                        )
+                                        asignandoSinDoc = null
+                                        if (!r.ok || r.id == null) { error = r.error; return@launch }
+                                        pe.saniape.app.ui.Toaster.exito("Listo: ${fi.nombre} ya tiene su documento")
+                                        val p = runCatching { PacientesRepo.porId(r.id) }.getOrNull()
+                                        if (p != null) onCreado(p) else onCancelar()
+                                    }
+                                }
+                                .padding(horizontal = 10.dp, vertical = 9.dp),
+                        ) {
+                            Text(fi.nombre, color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Text(datosFichaSinDocumento(fi), color = c.textoSuave, fontSize = 11.sp)
+                            Text(
+                                if (asignandoSinDoc == fi.id) "Guardando…" else "✓ Es esta: ponerle el documento y abrir su ficha",
+                                color = c.ok, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 2.dp),
+                            )
+                        }
+                    }
+                    Text("Si es otra persona, toca «Crear» de nuevo y se crea una ficha nueva.",
+                        color = c.textoSuave, fontSize = 11.sp)
+                }
             }
 
             // Volvió un paciente dado de baja: su ficha, con sus datos.

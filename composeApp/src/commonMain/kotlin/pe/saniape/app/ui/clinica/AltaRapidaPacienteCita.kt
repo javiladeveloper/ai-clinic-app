@@ -32,6 +32,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import pe.saniape.app.data.staff.AltaRapidaRepo
 import pe.saniape.app.data.staff.FichaDeBaja
+import pe.saniape.app.data.staff.FichaSinDocumento
+import pe.saniape.app.data.staff.FichasSinDocumentoRepo
+import pe.saniape.app.data.staff.datosFichaSinDocumento
 import pe.saniape.app.data.staff.HallazgoPadron
 import pe.saniape.app.data.staff.LocalTerminologiaPaciente
 import pe.saniape.app.data.staff.ReactivarRepo
@@ -48,6 +51,8 @@ import pe.saniape.app.ui.theme.Sania
  *    El botón "🔍 Buscar" queda para reintentar.
  *  - RENIEC sin datos, documento extranjero o sede de otro país → nombre a mano → "✓ Registrar".
  *  - Si el documento es de una ficha DADA DE BAJA → se ofrece reactivarla (con su historial).
+ *  - Antes de crear: si hay fichas SIN documento con el mismo nombre (pacientes
+ *    importados, 17/11/2026) → «¿Es esta persona?» y se le pone el documento a esa.
  * Al registrar/reactivar, el paciente queda elegido en la cita ([onListo]).
  */
 @Composable
@@ -69,6 +74,9 @@ internal fun PanelAltaRapida(
     // Teléfono (opcional) en la MISMA tarjeta del alta: queda en la ficha desde el
     // primer guardado (recordatorio de WhatsApp), sin el diálogo de después.
     var telefono by remember(documento) { mutableStateOf("") }
+    // «¿Es esta persona?»: fichas SIN documento con el mismo nombre (nombre, tipo, fichas).
+    var sinDoc by remember(documento) { mutableStateOf<Triple<String, String?, List<FichaSinDocumento>>?>(null) }
+    var asignandoId by remember(documento) { mutableStateOf<String?>(null) }
     val conPadron = consultaPadron(documento, pais)
     // Documento que no es un DNI peruano: su tipo se elige. Se MUESTRA el que se
     // deduce (RUT en Perú como siempre, CI en Bolivia…), pero solo se guarda si
@@ -93,10 +101,15 @@ internal fun PanelAltaRapida(
         }
     }
 
-    fun registrar(nombre: String, tipo: String?) {
+    fun registrar(nombre: String, tipo: String?, revisarSinDoc: Boolean = true) {
         if (nombre.isBlank() || hallazgo == HallazgoPadron.Creando) return
         hallazgo = HallazgoPadron.Creando
         scope.launch {
+            // ¿Ya existe SIN documento con este nombre (importado)? Se pregunta antes de crear otra.
+            if (revisarSinDoc) {
+                val fichas = FichasSinDocumentoRepo.buscar(nombre)
+                if (fichas.isNotEmpty()) { hallazgo = null; sinDoc = Triple(nombre.trim(), tipo, fichas); return@launch }
+            }
             val r = AltaRapidaRepo.registrar(nombre, documento, tipo, telefono)
             when {
                 !r.ok -> hallazgo = HallazgoPadron.Error(r.error ?: "No se pudo registrar.")
@@ -115,6 +128,19 @@ internal fun PanelAltaRapida(
         }
     }
 
+    /** «Es esta»: se le pone el documento a la ficha que ya existía sin él y queda elegida. */
+    fun asignar(f: FichaSinDocumento, tipo: String?) {
+        if (asignandoId != null) return
+        asignandoId = f.id
+        scope.launch {
+            val r = FichasSinDocumentoRepo.asignar(f.id, documento, tipo, telefono)
+            asignandoId = null
+            if (!r.ok || r.id == null) { hallazgo = HallazgoPadron.Error(r.error ?: "No se pudo guardar el documento."); sinDoc = null; return@launch }
+            Toaster.exito("Listo: ${f.nombre} ya tiene su documento")
+            onListo(RefNombre(r.id, f.nombre, documento, telefono = pe.saniape.app.data.staff.telefonoDeAlta(telefono)), false)
+        }
+    }
+
     fun reactivar(f: FichaDeBaja) {
         if (reactivando) return
         reactivando = true
@@ -128,6 +154,37 @@ internal fun PanelAltaRapida(
     }
 
     Column(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp)) {
+        val sd = sinDoc
+        if (sd != null) {
+            val (nombreSd, tipoSd, fichas) = sd
+            Text("¿Es esta persona?", color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text(
+                (if (fichas.size == 1) "Ya hay una ficha" else "Ya hay ${fichas.size} fichas") +
+                    " SIN documento con el nombre «$nombreSd». Si es " + (if (fichas.size == 1) "ella" else "una de ellas") +
+                    ", se le pone el documento $documento y conserva su historia.",
+                color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+            )
+            fichas.forEach { f ->
+                Column(
+                    Modifier.fillMaxWidth().padding(bottom = 6.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                        .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                        .clickable(enabled = asignandoId == null) { asignar(f, tipoSd) }
+                        .padding(horizontal = 10.dp, vertical = 9.dp),
+                ) {
+                    Text(f.nombre, color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text(datosFichaSinDocumento(f), color = c.textoSuave, fontSize = 11.sp)
+                    Text(
+                        if (asignandoId == f.id) "Guardando…" else "✓ Es esta: ponerle el documento $documento",
+                        color = c.ok, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
+            BotonPanel("＋ No, es otra persona: registrar nueva", null, habilitado = asignandoId == null) {
+                sinDoc = null
+                registrar(nombreSd, tipoSd, revisarSinDoc = false)
+            }
+            return@Column
+        }
         val b = baja
         if (b != null && hallazgo == null) {
             // Estaba DADO DE BAJA: se reactiva su ficha en vez de registrarlo otra vez.

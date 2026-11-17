@@ -1,0 +1,4 @@
+Al registrar por DNI a un paciente que ya estaba sin DNI, no se duplica su ficha.
+---
+• Registrar por DNI: si ya existe una ficha SIN DNI con el mismo nombre (por ejemplo, pacientes importados de otro sistema), la app pregunta «¿Es esta persona?» y le pone el DNI a esa ficha, con toda su historia. Si es otra persona, se registra una nueva como siempre.
+• Funciona en la Nueva cita y en «Nuevo paciente».
