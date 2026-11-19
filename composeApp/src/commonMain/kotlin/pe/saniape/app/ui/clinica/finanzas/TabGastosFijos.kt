@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
 import pe.saniape.app.data.staff.Finanzas
 import pe.saniape.app.data.staff.FinanzasRepo
 import pe.saniape.app.data.staff.GastoFijo
+import pe.saniape.app.data.staff.dineroActivo
 import pe.saniape.app.data.staff.dineroDeFila
 import pe.saniape.app.data.staff.simboloActivo
 import pe.saniape.app.ui.CargandoLista
@@ -65,6 +66,8 @@ internal fun TabGastosFijos(
     datos: List<GastoFijo>?,
     categorias: List<String>,
     fallo: String?,
+    /** «Este mes tus fijos suman…» (del servidor). null = no se muestra. */
+    proyeccion: pe.saniape.app.data.staff.ProyeccionFijos? = null,
     onRecargar: () -> Unit,
 ) {
     val c = Sania.colors
@@ -98,6 +101,8 @@ internal fun TabGastosFijos(
                             color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
                     }
                 }
+                // Proyección del mes (gemelo de /finanzas web, 18/11/2026).
+                proyeccion?.takeIf { it.total > 0 }?.let { pr -> item { TarjetaProyeccion(pr) } }
                 if (visibles.isEmpty() && unicos.isEmpty()) item {
                     EstadoVacio("🔁", "Aún no tienes gastos fijos", "Agrega los fijos de tu clínica para llevarlos al día.")
                 }
@@ -304,6 +309,39 @@ private fun DialogoGasto(
                 // Si ya tenía una categoría fuera de la lista (texto libre viejo), se conserva.
                 (listOfNotNull(categoria.takeIf { it.isNotBlank() && it !in categorias }) + categorias).forEach { cat ->
                     ChipFin(cat, categoria == cat) { categoria = cat }
+                }
+            }
+        }
+    }
+}
+
+
+/** «📅 Fijos de este mes»: suman · pagado · falta, y los cobros que vienen. */
+@Composable
+private fun TarjetaProyeccion(pr: pe.saniape.app.data.staff.ProyeccionFijos) {
+    val c = Sania.colors
+    TarjetaFin {
+        RotuloFin("📅 Fijos de este mes", modifier = Modifier.padding(bottom = 6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text("Suman", color = c.textoSuave, fontSize = 11.sp)
+                Text(dineroActivo(pr.total), color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            }
+            Column(Modifier.weight(1f)) {
+                Text("Pagado", color = c.textoSuave, fontSize = 11.sp)
+                Text(dineroActivo(pr.pagado), color = c.ok, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            }
+            Column(Modifier.weight(1f)) {
+                Text("Falta", color = c.textoSuave, fontSize = 11.sp)
+                Text(dineroActivo(pr.pendiente), color = if (pr.pendiente > 0) c.pend else c.textoSuave, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        if (pr.porVenir.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            pr.porVenir.take(6).forEach { (nombre, monto, fecha) ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                    Text("${fechaCortaFin(fecha)} · $nombre", color = c.texto, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    Text(dineroActivo(monto), color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }

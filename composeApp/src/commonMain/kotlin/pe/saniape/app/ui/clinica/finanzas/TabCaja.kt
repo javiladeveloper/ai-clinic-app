@@ -107,6 +107,12 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
     var registrando by remember { mutableStateOf(false) }
     var metodoDe by remember { mutableStateOf<MovimientoKardex?>(null) }
     var borrarDe by remember { mutableStateOf<MovimientoKardex?>(null) }
+    // «− Registrar gasto» / «+ Otro ingreso»: el tipo lo da el botón (18/11/2026).
+    var tipoNuevo by remember { mutableStateOf("Egreso") }
+    // 🔎 Buscador de la lista (concepto, categoría, paciente, comprobante, medio).
+    var busca by remember { mutableStateOf("") }
+    // El mismo tramo del periodo anterior, para «↑ 8% vs. el mes pasado» (null = sin comparar).
+    var anterior by remember { mutableStateOf<List<MovimientoKardex>?>(null) }
 
     val sede by SedeActiva.estado.collectAsState()
     // Al volver la app al frente también se recarga (y se recalcula "hoy").
@@ -123,6 +129,13 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
                 if (movs != null) Toaster.error("No se pudo actualizar la caja. Revisa tu conexión.")
             }
         visibles = Finanzas.POR_PAGINA
+    }
+    // El periodo anterior (una lectura más, en paralelo a lo de arriba). Si falla, no se compara.
+    LaunchedEffect(periodo, rangoManual, sede.filtro, recarga) {
+        anterior = null
+        val pa = pe.saniape.app.data.staff.periodoAnterior(periodo, LocalDate.parse(hoyClinicaIso()), rangoManual) ?: return@LaunchedEffect
+        anterior = runCatching { FinanzasRepo.kardex(pe.saniape.app.data.staff.RangoFechas(pa.desde, pa.hasta)).first }
+            .onFailure { if (it is kotlin.coroutines.cancellation.CancellationException) throw it }.getOrNull()
     }
 
     fun aplicarRango(d: String?, h: String?) {
@@ -160,7 +173,15 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
             // Totales y lista: hasta hoy (con periodo); el gráfico, todo lo pedido (como la web).
             val vigentes = Finanzas.hastaHoy(lista, hoy, rangoManual)
             val resumen = Finanzas.resumen(vigentes)
-            val listaVista = Finanzas.filtrar(vigentes, verTipo, verMetodo, verCategoria)
+            val listaVista = pe.saniape.app.data.staff.buscarMovimientos(Finanzas.filtrar(vigentes, verTipo, verMetodo, verCategoria), busca)
+            // Comparación (no con varias monedas: no se comparan soles con bolivianos).
+            val pa = pe.saniape.app.data.staff.periodoAnterior(periodo, hoy, rangoManual)
+            val resAnt = anterior?.takeIf { !multimoneda }?.let { Finanzas.resumen(it) }
+            fun variacion(actual: Double, ant: Double?, campo: String): Pair<String, Boolean>? {
+                if (pa == null || ant == null) return null
+                val t = pe.saniape.app.data.staff.textoVariacion(actual, ant, pa.etiqueta) ?: return null
+                return t to pe.saniape.app.data.staff.variacionEsBuena(actual, ant, campo)
+            }
             val catsEgreso = Finanzas.categoriasEgreso(vigentes)
             val metodos = Finanzas.metodosUsados(vigentes)
             val barras = remember(lista, periodo, rangoManual, hoy) { Finanzas.barras(lista, periodo, hoy, rangoManual) }
@@ -204,9 +225,12 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
                 // Totales del periodo (no cambian con los filtros de la lista)
                 item {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        CifraFin("Ingresos", resumen.ingresos, c.ok, Modifier.weight(1f), moneda)
-                        CifraFin("Egresos", resumen.egresos, c.error, Modifier.weight(1f), moneda)
-                        CifraFin("Balance", resumen.balance, if (resumen.balance < 0) c.error else c.navy, Modifier.weight(1f), moneda)
+                        CifraFin("Ingresos", resumen.ingresos, c.ok, Modifier.weight(1f), moneda,
+                            variacion(resumen.ingresos, resAnt?.ingresos, "ingresos"))
+                        CifraFin("Egresos", resumen.egresos, c.error, Modifier.weight(1f), moneda,
+                            variacion(resumen.egresos, resAnt?.egresos, "egresos"))
+                        CifraFin("Balance", resumen.balance, if (resumen.balance < 0) c.error else c.navy, Modifier.weight(1f), moneda,
+                            variacion(resumen.balance, resAnt?.balance?.takeIf { it > 0 }, "balance"))
                     }
                 }
                 if (resumen.porMetodo.isNotEmpty()) item {
@@ -239,10 +263,25 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
                 }
                 // Encabezado de la lista + registrar
                 item {
-                    Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RotuloFin("📋 Movimientos ($etiquetaPeriodo)", modifier = Modifier.weight(1f))
-                        BotonFin("+ Registrar", Modifier.tourAncla("finanzas.registrar")) { formulario = null; registrando = true }
+                    Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                        RotuloFin("📋 Movimientos ($etiquetaPeriodo)")
+                        Spacer(Modifier.height(6.dp))
+                        // Gasto rápido (18/11/2026): el tipo lo da el botón. Los gastos son
+                        // lo que más se olvida (DALU: 1.398 ingresos vs 108 egresos en 60 días).
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            BotonFin("− Registrar gasto", Modifier.tourAncla("finanzas.registrar")) {
+                                formulario = null; tipoNuevo = "Egreso"; registrando = true
+                            }
+                            BotonFin("+ Otro ingreso") { formulario = null; tipoNuevo = "Ingreso"; registrando = true }
+                        }
                     }
+                }
+                item {
+                    OutlinedTextField(
+                        value = busca, onValueChange = { busca = it.take(60); visibles = Finanzas.POR_PAGINA }, singleLine = true,
+                        placeholder = { Text("🔎 Buscar concepto, paciente, comprobante…", color = c.textoSuave, fontSize = 13.sp) },
+                        colors = coloresCampoForm(), modifier = Modifier.fillMaxWidth(),
+                    )
                 }
                 // Filtros de la lista
                 item {
@@ -250,7 +289,6 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
                         listOf(null to "Todo", "Ingreso" to "Ingresos", "Egreso" to "Egresos").forEach { (v, etq) ->
                             ChipFin(etq, verTipo == v) {
                                 verTipo = v; visibles = Finanzas.POR_PAGINA
-                                if (v == "Egreso") verMetodo = null
                                 if (v == "Ingreso") verCategoria = null
                             }
                         }
@@ -259,20 +297,22 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
                             ChipFin(cat, verCategoria == cat) {
                                 val quitar = verCategoria == cat
                                 verCategoria = if (quitar) null else cat
-                                if (!quitar) { verTipo = "Egreso"; verMetodo = null }
+                                if (!quitar) verTipo = "Egreso"
                                 visibles = Finanzas.POR_PAGINA
                             }
                         }
-                        // Los egresos no llevan método: el filtro se oculta al ver solo egresos.
-                        if (verTipo != "Egreso" && metodos.isNotEmpty()) {
+                        // El medio también en los gastos (los egresos guardan método desde 08/10):
+                        // «¿cuánto salió en efectivo?» (gemelo de la web, 18/11/2026).
+                        val metodosVista = Finanzas.metodosUsados(Finanzas.filtrar(vigentes, verTipo, null, verCategoria)).ifEmpty { metodos }
+                        if (metodosVista.isNotEmpty()) {
                             ChipFin("Todos los métodos", verMetodo == null) { verMetodo = null }
-                            metodos.forEach { met ->
-                                ChipFin(met, verMetodo == met) { verMetodo = met; verTipo = "Ingreso"; verCategoria = null; visibles = Finanzas.POR_PAGINA }
+                            metodosVista.forEach { met ->
+                                ChipFin(met, verMetodo == met) { verMetodo = if (verMetodo == met) null else met; visibles = Finanzas.POR_PAGINA }
                             }
                         }
                     }
                 }
-                if (verTipo != null || verMetodo != null || verCategoria != null) item {
+                if (verTipo != null || verMetodo != null || verCategoria != null || busca.isNotBlank()) item {
                     val neto = Finanzas.neto(listaVista)
                     Row(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.fondo)
@@ -317,6 +357,7 @@ internal fun TabCaja(ctx: ContextoStaff, categorias: CategoriasFin) {
     if (registrando) {
         DialogoMovimiento(
             editando = formulario,
+            tipoInicial = tipoNuevo,
             sugerencias = { tipo ->
                 val base = if (tipo == "Egreso") categorias.egreso else categorias.ingreso
                 (base + FinanzasRepo.categoriasUsadas(lista.orEmpty(), tipo)).distinct()
@@ -431,12 +472,14 @@ private fun AccionFila(icono: String, onClick: () -> Unit) {
 @Composable
 private fun DialogoMovimiento(
     editando: MovimientoKardex?,
+    /** Al registrar: el tipo lo da el botón («− Registrar gasto» / «+ Otro ingreso»). */
+    tipoInicial: String = "Egreso",
     sugerencias: (String) -> List<String>,
     onCancelar: () -> Unit,
     onGuardar: (tipo: String, categoria: String, descripcion: String, monto: Double, metodo: String?, comprobante: String?, fecha: String?) -> Unit,
 ) {
     val c = Sania.colors
-    var tipo by remember { mutableStateOf(editando?.tipo ?: "Egreso") }
+    var tipo by remember { mutableStateOf(editando?.tipo ?: tipoInicial) }
     var categoria by remember { mutableStateOf(editando?.categoria ?: "") }
     var descripcion by remember { mutableStateOf(editando?.descripcion ?: "") }
     var monto by remember { mutableStateOf(editando?.monto?.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() } ?: "") }
@@ -445,24 +488,26 @@ private fun DialogoMovimiento(
     var eligiendoFecha by remember { mutableStateOf(false) }
     var metodo by rememberMetodoPagoInicial(null)
     val montoNum = Finanzas.parsearMonto(monto)
-    val valido = (montoNum ?: 0.0) > 0 && descripcion.isNotBlank() && categoria.isNotBlank()
+    // El concepto es opcional al registrar: vacío = la categoría (gasto rápido, 18/11/2026).
+    val valido = (montoNum ?: 0.0) > 0 && categoria.isNotBlank() && (editando == null || descripcion.isNotBlank())
 
     if (eligiendoFecha) DialogoFecha(inicial = fecha, onElegir = { fecha = it }, onCerrar = { eligiendoFecha = false })
 
     DialogoForm(
-        titulo = if (editando != null) "Corregir movimiento" else "Registrar movimiento",
+        titulo = if (editando != null) "Corregir movimiento" else if (tipo == "Egreso") "− Registrar gasto" else "+ Otro ingreso",
         subtitulo = if (editando != null) "Solo movimientos registrados a mano" else "Entra a la caja de hoy",
         textoAccion = if (editando != null) "Guardar cambios" else "✓ Registrar",
         accionHabilitada = valido,
         onCancelar = onCancelar,
         onAccion = {
-            onGuardar(tipo, categoria.trim(), descripcion.trim(), montoNum ?: return@DialogoForm,
+            onGuardar(tipo, categoria.trim(), descripcion.trim().ifBlank { categoria.trim() }, montoNum ?: return@DialogoForm,
                 if (editando == null) metodo else null, comprobante.trim().ifBlank { null }, fecha)
         },
     ) {
         TarjetaForm(titulo = "Movimiento", icono = "🧾") {
-            EtqForm("Tipo")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // El tipo se elige con el botón; aquí solo al CORREGIR.
+            if (editando != null) EtqForm("Tipo")
+            if (editando != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Egreso" to "− Egreso (gasto)", "Ingreso" to "+ Ingreso").forEach { (v, etq) ->
                     val activo = tipo == v
                     val col = if (v == "Ingreso") c.ok else c.error
@@ -492,7 +537,7 @@ private fun DialogoMovimiento(
                 }
             }
             Spacer(Modifier.height(10.dp))
-            EtqForm("Descripción / concepto *")
+            EtqForm(if (editando == null) "Concepto (opcional)" else "Descripción / concepto *")
             OutlinedTextField(
                 colors = coloresCampoForm(), value = descripcion, onValueChange = { descripcion = it.take(300) },
                 placeholder = { Text("Ej. Compra de 500 agujas", color = c.textoSuave) },

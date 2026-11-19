@@ -78,6 +78,7 @@ fun PantallaFinanzas(ctx: ContextoStaff, onSalir: () -> Unit) = PantallaTutorial
 
     // Gastos fijos + categorías sugeridas: una sola lectura que usan dos pestañas.
     var gastos by remember { mutableStateOf<List<GastoFijo>?>(null) }
+    var proyeccion by remember { mutableStateOf<pe.saniape.app.data.staff.ProyeccionFijos?>(null) }
     var categorias by remember { mutableStateOf(CategoriasFin.SEMILLAS) }
     var falloGastos by remember { mutableStateOf<String?>(null) }
     var recargaGastos by remember { mutableIntStateOf(0) }
@@ -89,6 +90,7 @@ fun PantallaFinanzas(ctx: ContextoStaff, onSalir: () -> Unit) = PantallaTutorial
         val (r, err) = FinanzasRepo.gastos()
         if (r == null) { falloGastos = err ?: "No se pudieron cargar los gastos fijos."; return@LaunchedEffect }
         gastos = r.gastos
+        proyeccion = r.proyeccion
         categorias = CategoriasFin(
             egreso = r.catEgreso.ifEmpty { CategoriasFin.SEMILLAS.egreso },
             ingreso = r.catIngreso.ifEmpty { CategoriasFin.SEMILLAS.ingreso },
@@ -140,7 +142,7 @@ fun PantallaFinanzas(ctx: ContextoStaff, onSalir: () -> Unit) = PantallaTutorial
                     TabFin.Caja -> TabCaja(ctx, categorias)
                     TabFin.Cierre -> TabCierre(puedeAjustar = ctx.puede("finanzas"))
                     TabFin.PorCobrar -> TabPorCobrar()
-                    TabFin.Gastos -> TabGastosFijos(gastos, categorias.gastoFijo, falloGastos) { recargaGastos++ }
+                    TabFin.Gastos -> TabGastosFijos(gastos, categorias.gastoFijo, falloGastos, proyeccion) { recargaGastos++ }
                 }
             }
         }

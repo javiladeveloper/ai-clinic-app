@@ -45,7 +45,11 @@ internal fun RotuloFin(texto: String, color: Color = Sania.colors.textoSuave, mo
 
 /** Tarjeta de cifra: rótulo arriba, monto grande abajo. */
 @Composable
-internal fun CifraFin(titulo: String, monto: Double, color: Color, modifier: Modifier = Modifier, moneda: String = monedaActiva()) {
+internal fun CifraFin(
+    titulo: String, monto: Double, color: Color, modifier: Modifier = Modifier, moneda: String = monedaActiva(),
+    /** «↑ 8% vs. el mes pasado a la misma fecha» (null = sin comparación) y si es buena (verde) o mala (rojo). */
+    variacion: Pair<String, Boolean>? = null,
+) {
     val c = Sania.colors
     Column(
         modifier.clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
@@ -55,6 +59,11 @@ internal fun CifraFin(titulo: String, monto: Double, color: Color, modifier: Mod
         Text(titulo.uppercase(), color = c.textoSuave, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp, textAlign = TextAlign.Center)
         Spacer(Modifier.height(3.dp))
         Text(formatearDinero(monto, moneda), color = color, fontSize = 15.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        variacion?.let { (texto, buena) ->
+            Spacer(Modifier.height(2.dp))
+            Text(texto, color = if (texto.startsWith("=")) c.textoSuave else if (buena) c.ok else c.error,
+                fontSize = 9.sp, lineHeight = 11.sp, textAlign = TextAlign.Center)
+        }
     }
 }
 

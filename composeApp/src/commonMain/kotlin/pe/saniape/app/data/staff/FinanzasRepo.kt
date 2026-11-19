@@ -102,6 +102,17 @@ data class GastosYCategorias(
     val catEgreso: List<String>,
     val catIngreso: List<String>,
     val catGastoFijo: List<String>,
+    /** Lo que salen los fijos este mes (lo calcula el servidor: proyeccionMes). null = servidor viejo. */
+    val proyeccion: ProyeccionFijos? = null,
+)
+
+/** «Este mes tus fijos suman…» (gemelo de la tarjeta de /finanzas web, 18/11/2026). */
+data class ProyeccionFijos(
+    val total: Double,
+    val pagado: Double,
+    val pendiente: Double,
+    /** Los cobros que faltan este mes: (nombre, monto, fecha YYYY-MM-DD). */
+    val porVenir: List<Triple<String, Double, String>>,
 )
 
 /** Consulta/evaluación atendida y sin cobrar (bloque "Por cobrar"). */
@@ -444,6 +455,17 @@ object FinanzasRepo {
                     unicoCerrado = g.bool("unicoCerrado") ?: false,
                     proximo = g.str("proximo"),
                     sedeId = g.str("sedeId") ?: g.str("sede_id"),
+                )
+            },
+            proyeccion = (o["proyeccion"] as? JsonObject)?.let { pr ->
+                ProyeccionFijos(
+                    total = pr.dbl("total") ?: 0.0,
+                    pagado = pr.dbl("pagado") ?: 0.0,
+                    pendiente = pr.dbl("pendiente") ?: 0.0,
+                    porVenir = (pr["porVenir"] as? JsonArray).orEmpty().mapNotNull { e ->
+                        val x = e as? JsonObject ?: return@mapNotNull null
+                        Triple(x.str("nombre") ?: "", x.dbl("monto") ?: 0.0, x.str("fecha") ?: return@mapNotNull null)
+                    },
                 )
             },
             catEgreso = lista("egreso"),
