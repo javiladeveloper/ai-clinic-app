@@ -260,7 +260,7 @@ internal fun sinCoincidenciasMedicamento(texto: String, opciones: List<Sugerenci
 
 /** El pie de la lista de medicamentos (el `<li>` final de RecetaForm.tsx). */
 internal fun pieListaMedicamentos(vacio: Boolean, sinCoincidencias: Boolean, total: TotalPetitorio?): String = when {
-    sinCoincidencias -> "No está en el petitorio: escribe la DCI completa y queda guardada para la próxima."
+    sinCoincidencias -> "No está en el petitorio: escribe la DCI completa y queda guardada en el banco de medicamentos de Sania."
     vacio -> if (total != null && total.medicamentos > 0) {
         "Escribe para buscar en el Petitorio del MINSA (${total.medicamentos} medicamentos" +
             (if (total.presentaciones > 0) ", ${total.presentaciones} presentaciones" else "") + ")."
@@ -762,8 +762,12 @@ private fun FilaMedicamento(
                                 color = c.texto, fontSize = 13.sp, modifier = Modifier.weight(1f),
                             )
                             Spacer(Modifier.width(6.dp))
-                            if (s.origen == "clinica") Text("recetado ${s.usos}×", color = c.teal, fontSize = 11.sp)
-                            else Text("PNUME", color = c.textoSuave, fontSize = 11.sp)
+                            when (s.origen) {
+                                "clinica" -> Text("recetado ${s.usos}×", color = c.teal, fontSize = 11.sp)
+                                // Banco compartido de Sania (19/11/2026): lo recetó otra clínica.
+                                "banco" -> Text("otras clínicas", color = c.purple, fontSize = 11.sp)
+                                else -> Text("PNUME", color = c.textoSuave, fontSize = 11.sp)
+                            }
                             // Controlado (IVB…): se avisa ANTES de elegirlo; el servidor valida al emitir.
                             controlDeSustancia(s.dci)?.let { ctl ->
                                 Spacer(Modifier.width(4.dp))

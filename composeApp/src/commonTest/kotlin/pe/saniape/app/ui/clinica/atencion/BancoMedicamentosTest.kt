@@ -141,7 +141,7 @@ class BancoMedicamentosTest {
             pieListaMedicamentos(vacio = true, sinCoincidencias = false, total = null),
         )
         assertEquals(
-            "No está en el petitorio: escribe la DCI completa y queda guardada para la próxima.",
+            "No está en el petitorio: escribe la DCI completa y queda guardada en el banco de medicamentos de Sania.",
             pieListaMedicamentos(vacio = false, sinCoincidencias = true, total = TotalPetitorio(158, 252)),
         )
     }

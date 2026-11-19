@@ -40,7 +40,7 @@ data class SugerenciaMedicamento(
     val forma: String? = null,
     val via: String? = null,
     val usos: Int = 0,
-    /** "clinica" | "petitorio" */
+    /** "clinica" | "petitorio" | "banco" (lo recetó otra clínica de Sania, desde 2026-11-19) */
     val origen: String? = null,
 )
 
