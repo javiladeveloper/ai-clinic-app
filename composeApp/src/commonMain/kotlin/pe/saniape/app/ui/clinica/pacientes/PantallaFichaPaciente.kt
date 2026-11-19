@@ -2341,10 +2341,16 @@ private fun PantallaFichaPacienteContenido(
         // 📋 Escalas marcadas en el cierre: se guardan tras completar, ligadas a la cita.
         val escalasCierre = remember(ses.id) { mutableStateOf<Map<String, List<Int?>>>(emptyMap()) }
         val citaDeSesion = hitos?.citaPorSesion?.get(ses.id)
+        // 🩺 Signos vitales (opcional): el triaje de la cita de la sesión, si la clínica lo toma aquí.
+        val vitalesCierre = pe.saniape.app.ui.clinica.fisio.recordarVitalesCierre(
+            activo = verHc && pe.saniape.app.data.staff.triajeEnCitaDe(ctx.modulosClinicos, req.trat.especialidadId, null, false),
+            citaId = citaDeSesion, sesionId = ses.id, pacienteId = paciente.id, camposClinica = ctx.modulosClinicos.camposTriaje,
+        )
         ModalCompletarSesion(
             ses = ses,
             anterior = anterior,
             escalas = if (verHc && ctx.can("escalas")) escalasCierre else null,
+            vitales = vitalesCierre,
             fotosSesion = if (conFotos) fotosSesion else null,
             tecnicasSugeridas = req.tecnicasSugeridas,
             // Paquete ya pagado completo: no se pregunta "¿pagó esta sesión?". En una
@@ -2391,6 +2397,8 @@ private fun PantallaFichaPacienteContenido(
                         sesionIdOffline = ses.id, momento = fotosSesion.momento) { ses.id }
                     pe.saniape.app.ui.clinica.escalas.escalasTrasCompletar(ok, r.encolada, paciente.id, citaDeSesion,
                         req.trat.especialidadId, escalasMarcadas)
+                    // 🩺 Signos vitales de la sesión: el triaje de su cita.
+                    pe.saniape.app.ui.clinica.fisio.vitalesTrasCompletar(ok, vitalesCierre?.takeIf { verHc })
                     // Cobro en el mismo paso (si lo activó): vinculado a la sesión. No hay un
                     // endpoint que haga las dos cosas juntas, así que si el cobro falla se
                     // dice claro y se ofrece reintentar SOLO el cobro (no volver a completar).
@@ -2598,6 +2606,8 @@ internal fun ModalCompletarSesion(
      * completar (escalasTrasCompletar). null = no aparece.
      */
     escalas: androidx.compose.runtime.MutableState<Map<String, List<Int?>>>? = null,
+    /** 🩺 Signos vitales (opcional): el triaje de la cita de la sesión. Quien llama guarda tras completar. */
+    vitales: pe.saniape.app.ui.clinica.fisio.EstadoVitalesCierre? = null,
     onCancelar: () -> Unit,
     // pago = (monto, método) si activó "¿pagó esta sesión?" — el cobro sale en el
     // MISMO paso que el completar, como la web (antes eran 2 viajes: ✓ y luego 💳).
@@ -2771,6 +2781,9 @@ internal fun ModalCompletarSesion(
                 dolorInicio, dolorFin, onInicio = { dolorInicio = it }, onFin = { dolorFin = it },
             )
             Spacer(Modifier.height(12.dp))
+        }
+        if (verClinico && vitales != null) {
+            pe.saniape.app.ui.clinica.fisio.BloqueSignosVitalesCierre(vitales)
         }
 
         if (esPsico) {

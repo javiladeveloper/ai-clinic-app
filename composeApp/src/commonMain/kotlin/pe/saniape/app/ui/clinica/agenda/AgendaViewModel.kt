@@ -634,6 +634,10 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         )
     }
 
+    /** Llegó y falta el triaje (opcional): la fila de la franja pone un «🩺» chico junto al cierre. */
+    fun triajeOpcionalFranja(c: CitaStaff): Boolean =
+        verHc && etapaDe(c) == pe.saniape.app.data.staff.EtapaLlegada.LLEGO && triajeEnCita(c)
+
     /** «⋯ Volver a la sala / Llegó por error»: solo en la sala de todas las clínicas (no en la médica, resolución 10). */
     fun menuFranja(c: CitaStaff): Boolean = puedeMoverSala && etapaDe(c) == null
 

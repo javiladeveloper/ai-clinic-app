@@ -142,6 +142,12 @@ fun ModalCompletar(
      * completar (EscalasCierreRepo.guardar). null = no aparece.
      */
     escalas: androidx.compose.runtime.MutableState<Map<String, List<Int?>>>? = null,
+    /**
+     * 🩺 Signos vitales (opcional) de esta sesión o evaluación: el triaje de la cita
+     * (gemelo de SignosVitalesCierre web). Quien llama guarda tras completar
+     * ([pe.saniape.app.ui.clinica.fisio.EstadoVitalesCierre.guardar]). null = no aparece.
+     */
+    vitales: pe.saniape.app.ui.clinica.fisio.EstadoVitalesCierre? = null,
 ) {
     val c = Sania.colors
     var terapeutaElegido by remember { mutableStateOf<String?>(null) }
@@ -243,6 +249,9 @@ fun ModalCompletar(
                         dolorInicio, dolorFin, onInicio = { dolorInicio = it }, onFin = { dolorFin = it },
                     )
                     Spacer(Modifier.height(Sania.dim.lg))
+                }
+                if (verClinico && vitales != null) {
+                    pe.saniape.app.ui.clinica.fisio.BloqueSignosVitalesCierre(vitales)
                 }
                 if (!verClinico) {
                     // Nada clínico que escribir: solo quién atendió y el cobro (abajo).

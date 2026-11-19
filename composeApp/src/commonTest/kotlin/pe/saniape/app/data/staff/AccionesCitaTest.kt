@@ -115,8 +115,9 @@ class AccionesCitaTest {
             estado = "Confirmada", tipo = "Consulta",
             sala = SalaAcciones(EtapaLlegada.LLEGO, triajeOn = true, medica = true, clinicaConTriaje = true),
         ))
-        assertEquals(AccionTarjeta.Triaje, llego.primaria?.accion)
-        assertEquals(AccionTarjeta.Atender, llego.secundaria?.accion)
+        // El triaje es opcional (18/11/2026): el cierre manda, el triaje al lado.
+        assertEquals(AccionTarjeta.Atender, llego.primaria?.accion)
+        assertEquals(AccionTarjeta.Triaje, llego.secundaria?.accion)
         val triaje = planAccionesCita(EntradaAccionesCita(
             estado = "Confirmada", tipo = "Consulta",
             sala = SalaAcciones(EtapaLlegada.TRIAJE, triajeOn = true, medica = true, triajeHecho = true, clinicaConTriaje = true),
@@ -158,17 +159,27 @@ class AccionesCitaTest {
         }
     }
 
-    // ── Triaje: primaria solo si llegó, la clínica lo toma y falta ──
+    // ── Triaje: opcional — llegó y falta, va de secundaria junto al cierre ──
 
     @Test
-    fun llegoSinTriajeLaPrimariaEsTriajeYLaSecundariaAtender() {
+    fun llegoSinTriajeElCierreManda_yElTriajeVaAlLado() {
         val p = planAccionesCita(EntradaAccionesCita(
             estado = "Confirmada", tipo = "Consulta",
             sala = SalaAcciones(EtapaLlegada.LLEGO, triajeOn = true, medica = true),
         ))
-        assertEquals(AccionTarjeta.Triaje, p.primaria?.accion)
-        assertEquals("🩺 Triaje", p.primaria?.texto)
-        assertEquals(AccionTarjeta.Atender, p.secundaria?.accion)
+        assertEquals(AccionTarjeta.Atender, p.primaria?.accion)
+        assertEquals(AccionTarjeta.Triaje, p.secundaria?.accion)
+        assertEquals("🩺 Triaje", p.secundaria?.texto)
+    }
+
+    @Test
+    fun llegoSinTriajeEnUnaSesionElCompletarManda() {
+        val p = planAccionesCita(EntradaAccionesCita(
+            estado = "Confirmada", tipo = "Sesión",
+            sala = SalaAcciones(EtapaLlegada.LLEGO, triajeOn = true, medica = false),
+        ))
+        assertEquals(AccionTarjeta.Completar, p.primaria?.accion)
+        assertEquals(AccionTarjeta.Triaje, p.secundaria?.accion)
     }
 
     @Test

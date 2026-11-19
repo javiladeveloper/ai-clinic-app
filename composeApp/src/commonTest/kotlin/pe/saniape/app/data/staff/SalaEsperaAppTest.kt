@@ -107,13 +107,14 @@ class SalaEsperaAppTest {
 
     @Test
     fun elBotonDeLaFilaConSalaMedicaEsElPasoDeSiempre() {
-        assertEquals(BotonFilaSala.TRIAJE, botonFilaSala(EstadoSala.ESPERANDO, salaMedica = true, medica = true, directa = false, faltaTriaje = true))
+        // Triaje opcional: la fila lleva el cierre (el 🩺 va aparte, chico).
+        assertEquals(BotonFilaSala.ATENDER, botonFilaSala(EstadoSala.ESPERANDO, salaMedica = true, medica = true, directa = false, faltaTriaje = true))
         assertEquals(BotonFilaSala.ATENDER, botonFilaSala(EstadoSala.ESPERANDO, salaMedica = true, medica = true, directa = false, faltaTriaje = false))
         assertEquals(BotonFilaSala.CONTINUAR, botonFilaSala(EstadoSala.EN_CONSULTA, salaMedica = true, medica = true, directa = false, faltaTriaje = false))
         // Clínica con triaje, cita que no es de la consulta guiada (fisio) y el triaje ya tomado:
         // su cierre de siempre (✓ Completar), NUNCA ▶ Pasar.
         assertEquals(BotonFilaSala.COMPLETAR, botonFilaSala(EstadoSala.ESPERANDO, salaMedica = true, medica = false, directa = false, faltaTriaje = false))
-        assertEquals(BotonFilaSala.TRIAJE, botonFilaSala(EstadoSala.ESPERANDO, salaMedica = true, medica = false, directa = false, faltaTriaje = true))
+        assertEquals(BotonFilaSala.COMPLETAR, botonFilaSala(EstadoSala.ESPERANDO, salaMedica = true, medica = false, directa = false, faltaTriaje = true))
     }
 
     @Test

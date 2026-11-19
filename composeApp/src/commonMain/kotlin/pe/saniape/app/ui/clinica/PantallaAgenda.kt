@@ -974,6 +974,7 @@ fun PantallaAgenda(
                             moviendo = vm.moviendoSala + listOfNotNull(vm.decidiendoCita),
                             botonDe = { f, estado -> deFila(f)?.let { vm.botonFranja(it, estado) } },
                             menuDe = { f -> deFila(f)?.let { vm.menuFranja(it) } == true },
+                            triajeDe = { f -> deFila(f)?.let { vm.triajeOpcionalFranja(it) } == true },
                             onBoton = { f, b ->
                                 deFila(f)?.let { cita ->
                                     when (b) {
@@ -1376,15 +1377,23 @@ fun PantallaAgenda(
             }
             // 📋 Escalas marcadas en el cierre: se guardan tras completar, ligadas a la cita.
             val escalasCierre = remember(cita.id) { mutableStateOf<Map<String, List<Int?>>>(emptyMap()) }
+            // 🩺 Signos vitales (opcional): el triaje de esta cita, si la clínica lo toma aquí.
+            val vitalesCierre = pe.saniape.app.ui.clinica.fisio.recordarVitalesCierre(
+                activo = verHc && vm.triajeEnCita(cita), citaId = cita.id, sesionId = null,
+                pacienteId = cita.pacienteId, camposClinica = vm.camposTriaje,
+            )
             fun alCompletar(): ((Boolean, Boolean) -> Unit)? {
                 val fotos = alCompletarConFotos()
                 val marcadas = escalasCierre.value
                 val pacId = cita.pacienteId
-                if (!verHc || marcadas.isEmpty() || pacId == null) return fotos
+                val vit = vitalesCierre?.takeIf { verHc && it.valores != null }
+                val conEscalas = verHc && marcadas.isNotEmpty() && pacId != null
+                if (!conEscalas && vit == null) return fotos
                 val espId = vm.especialidadDeCita(cita)
                 return { ok, encolada ->
                     fotos?.invoke(ok, encolada)
-                    pe.saniape.app.ui.clinica.escalas.escalasTrasCompletar(ok, encolada, pacId, cita.id, espId, marcadas)
+                    if (conEscalas) pe.saniape.app.ui.clinica.escalas.escalasTrasCompletar(ok, encolada, pacId!!, cita.id, espId, marcadas)
+                    pe.saniape.app.ui.clinica.fisio.vitalesTrasCompletar(ok, vit)
                 }
             }
             // 🏠 "¿Le dejas ejercicios de apoyo?" (como la web y la ficha): solo en una sesión
@@ -1395,6 +1404,7 @@ fun PantallaAgenda(
                 fotosSesion = if (conFotos) fotosSesion else null,
                 dejarEjercicios = if (ofreceEjercicios) dejarEjercicios else null,
                 escalas = if (verHc && ctx.can("escalas") && cita.pacienteId != null) escalasCierre else null,
+                vitales = vitalesCierre,
                 cita = cita, especialidades = vm.especialidades, flujo = flujoCita,
                 especialidadId = vm.especialidadDeCita(cita),
                 esDental = verHc && vm.esDental(cita),

@@ -478,7 +478,9 @@ fun botonFilaSala(
     // Esperando.
     val conSalaMedica = salaMedica || medica || faltaTriaje
     if (!conSalaMedica) return BotonFilaSala.PASAR
-    return if (faltaTriaje) BotonFilaSala.TRIAJE else cierre
+    // El triaje es OPCIONAL (18/11/2026): la fila lleva el cierre y la franja
+    // pone un «🩺» chico al lado (FranjaSalaEspera, triajeDe). Gemelo de la web.
+    return cierre
 }
 
 // ── «Sigue» del Inicio (agenda de hoy de /api/dashboard/stats) ──────────────

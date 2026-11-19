@@ -347,7 +347,9 @@ fun planAccionesCita(e: EntradaAccionesCita): PlanAccionesCita {
             val faltaTriaje = sala != null && sala.etapa == EtapaLlegada.LLEGO && sala.triajeOn
             when {
                 porLlegarConTriaje -> de(AccionTarjeta.Llego) ?: cierre
-                faltaTriaje -> de(AccionTarjeta.Triaje) ?: cierre
+                // El triaje es OPCIONAL (DALU 18/11/2026: «si quieren lo skipean»):
+                // el cierre manda y el triaje va de secundaria. Gemelo de la web.
+                faltaTriaje -> cierre ?: de(AccionTarjeta.Triaje)
                 else -> cierre
             }
         }
@@ -363,6 +365,8 @@ fun planAccionesCita(e: EntradaAccionesCita): PlanAccionesCita {
             // Con «🔔 Llegó» de principal, el cierre va a la vista antes que confirmar:
             // el profesional atiende aunque recepción no haya marcado la llegada.
             cierre?.takeIf { primaria?.accion == AccionTarjeta.Llego },
+            // Llegó y falta el triaje (opcional): a la vista, junto al cierre.
+            de(AccionTarjeta.Triaje)?.takeIf { e.sala?.etapa == EtapaLlegada.LLEGO && e.sala.triajeOn },
             de(AccionTarjeta.Confirmar),
             cierre?.takeIf { primaria?.accion == AccionTarjeta.Triaje },
             de(AccionTarjeta.PasarEvaluacion),

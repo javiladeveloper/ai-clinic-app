@@ -421,8 +421,14 @@ fun PantallaSesiones(
         val ofreceEjercicios = esFisio && ctx.puede("sesiones") && !sg.pacienteId.isNullOrBlank()
         // 📋 Escalas marcadas en el cierre: se guardan tras completar.
         val escalasCierre = remember(sg.id) { mutableStateOf<Map<String, List<Int?>>>(emptyMap()) }
+        // 🩺 Signos vitales (opcional): el triaje de la cita de la sesión, si la clínica lo toma aquí.
+        val vitalesCierre = pe.saniape.app.ui.clinica.fisio.recordarVitalesCierre(
+            activo = verHc && pe.saniape.app.data.staff.triajeEnCitaDe(ctx.modulosClinicos, cc.especialidadId, null, false),
+            citaId = null, sesionId = sg.id, pacienteId = sg.pacienteId, camposClinica = ctx.modulosClinicos.camposTriaje,
+        )
         pe.saniape.app.ui.clinica.pacientes.ModalCompletarSesion(
             escalas = if (verHc && ctx.can("escalas") && !sg.pacienteId.isNullOrBlank()) escalasCierre else null,
+            vitales = vitalesCierre,
             fotosSesion = if (conFotos) fotosSesion else null,
             dejarEjercicios = if (ofreceEjercicios) dejarEjercicios else null,
             ses = cc.ses,
@@ -465,6 +471,8 @@ fun PantallaSesiones(
                         if (!r.encolada) tecnicas?.let {
                             pe.saniape.app.data.staff.TecnicasRepo.registrar(it, cc.especialidadId, sg.pacienteNombre)
                         }
+                        // 🩺 Signos vitales de la sesión: el triaje de su cita.
+                        pe.saniape.app.ui.clinica.fisio.vitalesTrasCompletar(true, vitalesCierre?.takeIf { verHc })
                         val tratId = sg.tratamientoId
                         if (tratId != null) {
                             pe.saniape.app.ui.clinica.pacientes.fotosTrasCompletar(

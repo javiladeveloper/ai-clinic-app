@@ -64,6 +64,8 @@ fun FranjaSalaEspera(
     botonDe: (FilaSala, EstadoSala) -> BotonFilaSala?,
     /** ¿La fila ofrece «⋯» (Volver a la sala / Llegó por error)? */
     menuDe: (FilaSala) -> Boolean,
+    /** Llegó y falta el triaje: «🩺» chico y opcional junto al cierre. */
+    triajeDe: (FilaSala) -> Boolean = { false },
     onBoton: (FilaSala, BotonFilaSala) -> Unit,
     onAccionSala: (FilaSala, AccionSala) -> Unit,
 ) {
@@ -118,7 +120,7 @@ fun FranjaSalaEspera(
                         colorEtiqueta = if (i == 0) c.pend else c.textoSuave,
                         texto = f.paciente + if (espera.isEmpty()) "" else " · $espera",
                         boton = botonDe(f, EstadoSala.ESPERANDO), principal = i == 0, moviendo = f.citaId in moviendo,
-                        menu = menuDe(f), conVolver = false,
+                        menu = menuDe(f), conVolver = false, triaje = triajeDe(f),
                         onBoton = { onBoton(f, it) }, onAccionSala = { onAccionSala(f, it) },
                     )
                 }
@@ -139,6 +141,8 @@ private fun FilaFranja(
     menu: Boolean,
     /** En consulta: «↩ Volver a la sala» además de «Llegó por error». */
     conVolver: Boolean,
+    /** «🩺» opcional junto al cierre (llegó y falta el triaje). */
+    triaje: Boolean = false,
     onBoton: (BotonFilaSala) -> Unit,
     onAccionSala: (AccionSala) -> Unit,
 ) {
@@ -149,11 +153,15 @@ private fun FilaFranja(
             Text(texto, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
+        if (triaje) {
+            Spacer(Modifier.width(8.dp))
+            BotonTarjeta(texto = "🩺", color = c.info, habilitado = !moviendo, lleno = false) { onBoton(BotonFilaSala.TRIAJE) }
+        }
         if (boton != null) {
             Spacer(Modifier.width(8.dp))
             BotonTarjeta(
                 texto = if (moviendo) "…" else boton.texto,
-                color = if (boton == BotonFilaSala.TRIAJE) c.info else c.navy,
+                color = c.navy,
                 habilitado = !moviendo,
                 lleno = principal,
             ) { onBoton(boton) }
