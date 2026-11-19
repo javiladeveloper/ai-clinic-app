@@ -1,0 +1,7 @@
+Signos vitales en cada sesión, triaje opcional, campañas con «Aplicar» y caja más rápida.
+---
+• Completar sesión o evaluación: nuevo bloque «🩺 Signos vitales» (presión, frecuencia cardiaca, saturación…), opcional. Si el paciente tiene hipertensión, diabetes u otro antecedente, se abre solo con un aviso. Quedan en su historial de signos vitales.
+• Triaje opcional: cuando el paciente llega, «✓ Completar» / «Atender» queda como botón principal y el triaje al lado, para tomarlo solo si hace falta.
+• Nueva cita: las campañas ya no se aplican solas. Se muestran con su precio y un botón «Aplicar» (y «✕ Quitar»).
+• Campañas: «Todos los servicios» ya no descuenta la consulta ni la evaluación, y se puede limitar una promo a ciertas especialidades.
+• Finanzas: botones «− Registrar gasto» y «+ Otro ingreso» (el concepto es opcional), buscador de movimientos, filtro por medio también en los gastos, comparación con el periodo anterior y lo que suman tus gastos fijos este mes.
