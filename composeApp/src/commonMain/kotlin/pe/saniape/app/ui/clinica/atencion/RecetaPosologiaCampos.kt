@@ -41,9 +41,16 @@ internal fun CampoDosisReceta(valor: String, forma: String, modifier: Modifier, 
     var libre by remember { mutableStateOf(valor.isNotBlank() && leido == null) }
     val cantidad = leido?.first.orEmpty()
     val unidad = leido?.second?.ifEmpty { null } ?: unidadDosisDeForma(forma)
-    // La unidad sigue a la forma mientras el médico no la eligió.
+    // La unidad sigue a la forma mientras el médico no la cambió a mano: si la que está
+    // es la que tocaba a la forma anterior (o ninguna), pasa a la de la nueva.
+    var formaAntes by remember { mutableStateOf(forma) }
     LaunchedEffect(forma) {
-        if (!libre && cantidad.isNotEmpty() && leido?.second.isNullOrEmpty()) onCambio(textoDosis(cantidad, unidadDosisDeForma(forma)))
+        val antes = formaAntes
+        formaAntes = forma
+        if (libre || cantidad.isEmpty()) return@LaunchedEffect
+        val nueva = unidadDosisDeForma(forma)
+        val actual = leido?.second.orEmpty()
+        if ((actual.isEmpty() || actual == unidadDosisDeForma(antes)) && actual != nueva) onCambio(textoDosis(cantidad, nueva))
     }
     if (libre) {
         Column(modifier) {

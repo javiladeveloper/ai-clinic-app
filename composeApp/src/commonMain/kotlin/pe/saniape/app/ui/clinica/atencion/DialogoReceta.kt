@@ -789,7 +789,12 @@ private fun FilaMedicamento(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SelectorDialogo("Forma", item.forma, FORMAS_FARMACEUTICAS.map { it to it }, Modifier.weight(1f)) { f ->
-                onCambio(item.copy(forma = f, via = item.via.ifBlank { viaSugerida(f) }, unidad = item.unidad.ifBlank { unidadSugerida(f) }))
+                // Vía y unidad siguen a la forma mientras sean las sugeridas (no las cambió el médico).
+                onCambio(item.copy(
+                    forma = f,
+                    via = if (item.via.isBlank() || item.via == viaSugerida(item.forma)) viaSugerida(f).ifBlank { item.via } else item.via,
+                    unidad = if (item.unidad.isBlank() || item.unidad == unidadSugerida(item.forma)) unidadSugerida(f).ifBlank { item.unidad } else item.unidad,
+                ))
             }
             SelectorDialogo("Vía", item.via, VIAS_ADMINISTRACION.map { it to it }, Modifier.weight(1f)) { v ->
                 onCambio(item.copy(via = v))

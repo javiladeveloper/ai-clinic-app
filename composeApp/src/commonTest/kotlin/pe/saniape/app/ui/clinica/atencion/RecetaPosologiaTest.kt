@@ -36,4 +36,13 @@ class RecetaPosologiaTest {
         assertEquals(1, cantidadAutomatica("5 ml", "cada 8 horas", "7 días", "Jarabe"))
         assertEquals(0.25, unidadesPorToma("¼ tableta", "Tableta"))
     }
+
+    @Test
+    fun envases() {
+        assertEquals(2, cantidadAutomatica("5 ml", "cada 8 horas", "10 días", "Jarabe"))
+        assertEquals(2, cantidadAutomatica("500 mg", "cada 8 horas", "7 días", "Suspensión", "250mg/5mL"))
+        assertEquals(2, cantidadAutomatica("20 gotas", "cada 8 horas", "10 días", "Gotas orales"))
+        assertEquals(2, cantidadAutomatica("2 inhalaciones", "cada 6 horas", "30 días", "Inhalador"))
+        assertEquals(1, cantidadAutomatica("5 ml", "si hay dolor", "5 días", "Jarabe"))
+    }
 }

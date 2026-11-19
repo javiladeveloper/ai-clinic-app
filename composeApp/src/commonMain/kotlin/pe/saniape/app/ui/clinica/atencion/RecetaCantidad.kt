@@ -168,8 +168,65 @@ internal fun seDispensaPorEnvase(forma: String?): Boolean =
  * dosis × tomas × días o, en líquidos, gotas, cremas e inhaladores, 1 envase (antes
  * quedaba vacía y salía «la cantidad total debe ser mayor que cero»).
  */
-internal fun cantidadAutomatica(dosis: String?, frecuencia: String?, duracion: String?, forma: String?, concentracion: String? = null): Int? =
-    cantidadSugerida(dosis, frecuencia, duracion, forma, concentracion) ?: if (seDispensaPorEnvase(forma)) 1 else null
+internal fun cantidadAutomatica(dosis: String?, frecuencia: String?, duracion: String?, forma: String?, concentracion: String? = null): Int? {
+    cantidadSugerida(dosis, frecuencia, duracion, forma, concentracion)?.let { return it }
+    if (!seDispensaPorEnvase(forma)) return null
+    return cantidadEnEnvases(dosis, frecuencia, duracion, forma, concentracion) ?: 1
+}
+
+// ─── Envases: jarabes, gotas, inhaladores (19/11/2026, gemelo de cantidadEnEnvases web) ──
+// Lo que se toma (ml, gotas, inhalaciones) × tomas × días ÷ lo que trae un envase típico
+// (jarabe 120 ml, gotas 15 ml, colirio 5 ml, inhalador 200 dosis, spray 120). El médico
+// corrige si su presentación es otra. Sin días o sin tomas: null (queda 1 envase).
+
+private const val GOTAS_POR_ML = 20.0
+
+/** (lo que trae el envase, ¿se mide en ml?). */
+private fun capacidadEnvase(forma: String?): Pair<Double, Boolean>? {
+    val f = sinTildes(forma.orEmpty())
+    return when {
+        Regex("oftalm|otica").containsMatchIn(f) -> 5.0 to true
+        "gotas" in f -> 15.0 to true
+        Regex("jarabe|suspension|liquido|solucion oral").containsMatchIn(f) -> 120.0 to true
+        "inhal" in f -> 200.0 to false
+        "spray" in f || "nasal" in f -> 120.0 to false
+        else -> null
+    }
+}
+
+private fun mgPorMl(concentracion: String?): Double? {
+    val m = Regex("""(\d+(?:[.,]\d+)?)\s*mg\s*/\s*(\d+(?:[.,]\d+)?)?\s*ml""").find(sinTildes(concentracion.orEmpty())) ?: return null
+    val mg = numDe(m.groupValues[1])
+    val ml = numDe(m.groupValues[2].ifEmpty { "1" })
+    return if (mg > 0 && ml > 0) mg / ml else null
+}
+
+private fun porTomaEnMedida(dosis: String?, enMl: Boolean, concentracion: String?): Double? {
+    val d = sinTildes(dosis.orEmpty().replace("½", " 1/2").replace("¼", " 1/4").replace("¾", " 3/4")).trim()
+    val m = Regex("""^(?:(\d+)\s+)?(\d+(?:[.,]\d+)?)(?:\s*/\s*(\d+))?\s*(.*)$""").find(d) ?: return null
+    val n = if (m.groupValues[3].isNotEmpty()) (m.groupValues[1].toDoubleOrNull() ?: 0.0) + numDe(m.groupValues[2]) / m.groupValues[3].toDouble()
+        else numDe(m.groupValues[2])
+    if (n.isNaN() || n <= 0) return null
+    val u = m.groupValues[4].trim().split(Regex("""[\s(,;]+""")).first().trimEnd('.')
+    if (!enMl) return if (Regex("^(inhalacion|inhalaciones|puff|puffs|pulverizacion|pulverizaciones|aplicacion|aplicaciones|dosis|disparos?)?$").matches(u)) n else null
+    return when {
+        Regex("^(ml|mls|cc|mililitros?)$").matches(u) -> n
+        Regex("^gotas?$").matches(u) -> n / GOTAS_POR_ML
+        Regex("^cucharaditas?$").matches(u) -> n * 5
+        Regex("^cucharadas?$").matches(u) -> n * 15
+        u == "mg" -> mgPorMl(concentracion)?.let { n / it }
+        else -> null
+    }
+}
+
+private fun cantidadEnEnvases(dosis: String?, frecuencia: String?, duracion: String?, forma: String?, concentracion: String?): Int? {
+    val (cap, enMl) = capacidadEnvase(forma) ?: return null
+    val porToma = porTomaEnMedida(dosis, enMl, concentracion) ?: return null
+    val tomas = tomasPorDia(frecuencia) ?: return null
+    val dias = diasDeDuracion(duracion) ?: return null
+    val envases = maxOf(1.0, ceil(porToma * tomas * dias / cap - 1e-9))
+    return if (envases > 99) null else envases.roundToInt()
+}
 
 /**
  * La fila tras un cambio: si se tocó la cantidad, manda lo escrito (a mano hasta
