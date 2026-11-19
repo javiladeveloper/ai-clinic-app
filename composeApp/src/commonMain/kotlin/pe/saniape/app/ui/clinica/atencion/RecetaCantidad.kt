@@ -43,6 +43,11 @@ internal fun tomasPorDia(frecuencia: String?): Double? {
         .replace(Regex("""\s*(?:/|\bx)\s*(dia|semana)\b""")) { " por ${it.groupValues[1]}" }
         .replace(Regex("""\s+"""), " ")
     if (f.isEmpty()) return null
+    // «8» a secas = cada 8 horas (19/11/2026: una receta quedó con 56 tabletas donde iban 21).
+    Regex("""^(\d{1,2})$""").find(f)?.let { m ->
+        val h = m.groupValues[1].toInt()
+        if (h in listOf(4, 6, 8, 12, 24)) return 24.0 / h
+    }
     if (SEGUN_NECESIDAD.containsMatchIn(f)) return null
     if (DOSIS_UNICA.containsMatchIn(f)) return 1.0
     CADA_HORAS.find(f)?.let { val h = numDe(it.groupValues[1]); return if (h > 0) 24 / h else null }
@@ -107,7 +112,7 @@ private val EN_PALABRA = Regex("""^(media|medio|$PAL)\s+(.*)$""")
  * concentración: 500 mg de tabletas de 500 mg es 1.
  */
 internal fun unidadesPorToma(dosis: String?, forma: String?, concentracion: String? = null): Double? {
-    val d = sinTildes(dosis.orEmpty().replace("½", " 1/2")).trim()
+    val d = sinTildes(dosis.orEmpty().replace("½", " 1/2").replace("¼", " 1/4").replace("¾", " 3/4")).trim()
     if (d.isEmpty()) return null
     val n: Double
     var unidad: String
@@ -154,6 +159,18 @@ internal fun cantidadSugerida(dosis: String?, frecuencia: String?, duracion: Str
     return total.roundToInt()
 }
 
+/** Formas que se dispensan por envase (frasco, tubo, inhalador): la cantidad son envases. */
+internal fun seDispensaPorEnvase(forma: String?): Boolean =
+    forma.orEmpty().isNotBlank() && unidadSugerida(forma) in setOf("frascos", "tubos", "inhaladores")
+
+/**
+ * La cantidad que se pone sola (19/11/2026, gemelo de cantidadAutomatica web): la de
+ * dosis × tomas × días o, en líquidos, gotas, cremas e inhaladores, 1 envase (antes
+ * quedaba vacía y salía «la cantidad total debe ser mayor que cero»).
+ */
+internal fun cantidadAutomatica(dosis: String?, frecuencia: String?, duracion: String?, forma: String?, concentracion: String? = null): Int? =
+    cantidadSugerida(dosis, frecuencia, duracion, forma, concentracion) ?: if (seDispensaPorEnvase(forma)) 1 else null
+
 /**
  * La fila tras un cambio: si se tocó la cantidad, manda lo escrito (a mano hasta
  * que se borre); si cambió un dato del que sale la cuenta y la cantidad no es a
@@ -165,7 +182,7 @@ internal fun conCantidadSugerida(antes: ItemRecetaForm, despues: ItemRecetaForm)
     val cambioLaCuenta = despues.dosis != antes.dosis || despues.frecuencia != antes.frecuencia ||
         despues.duracion != antes.duracion || despues.forma != antes.forma || despues.concentracion != antes.concentracion
     if (!cambioLaCuenta) return despues
-    val sugerida = cantidadSugerida(despues.dosis, despues.frecuencia, despues.duracion, despues.forma, despues.concentracion)
+    val sugerida = cantidadAutomatica(despues.dosis, despues.frecuencia, despues.duracion, despues.forma, despues.concentracion)
         ?: return despues
     return despues.copy(cantidad = sugerida.toString())
 }

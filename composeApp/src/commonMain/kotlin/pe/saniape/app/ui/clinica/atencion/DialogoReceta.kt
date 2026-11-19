@@ -93,11 +93,6 @@ internal val VIGENCIAS_SUGERIDAS = listOf(7, 15, 30, 60, 90)
 internal const val VIGENCIA_POR_DEFECTO = 30
 internal const val MAX_ITEMS_RECETA = 12
 
-private val FRECUENCIAS = listOf(
-    "cada 4 horas", "cada 6 horas", "cada 8 horas", "cada 12 horas", "cada 24 horas",
-    "una vez al día", "dos veces al día", "tres veces al día", "antes de dormir", "condicional a dolor",
-)
-private val DURACIONES = listOf("1 día", "3 días", "5 días", "7 días", "10 días", "14 días", "21 días", "30 días", "uso continuo")
 
 internal const val AVISO_PRESCRIPTOR_NO_MEDICO =
     "Legalmente solo los médicos, cirujano-dentistas y obstetras prescriben medicamentos (Ley 26842, art. 26). " +
@@ -800,16 +795,13 @@ private fun FilaMedicamento(
                 onCambio(item.copy(via = v))
             }
         }
+        // Dosis, frecuencia y duración estandarizadas (RecetaPosologiaCampos, 19/11/2026).
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CampoDialogo("Dosis por toma", item.dosis, { onCambio(item.copy(dosis = it)) }, "1 tableta", modifier = Modifier.weight(1f))
-            CampoConPresets("Frecuencia", item.frecuencia, FRECUENCIAS, "cada 8 horas", Modifier.weight(1f)) {
-                onCambio(item.copy(frecuencia = it))
-            }
+            CampoDosisReceta(item.dosis, item.forma, Modifier.weight(1f)) { onCambio(item.copy(dosis = it)) }
+            CampoFrecuenciaReceta(item.frecuencia, Modifier.weight(1f)) { onCambio(item.copy(frecuencia = it)) }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CampoConPresets("Duración", item.duracion, DURACIONES, "7 días", Modifier.weight(1f)) {
-                onCambio(item.copy(duracion = it))
-            }
+            CampoDuracionReceta(item.duracion, Modifier.weight(1f)) { onCambio(item.copy(duracion = it)) }
             CampoDialogo("Cantidad total", item.cantidad,
                 { v -> onCambio(item.copy(cantidad = v.filter { it.isDigit() || it == '.' || it == ',' }.take(7))) },
                 teclado = KeyboardType.Decimal, modifier = Modifier.weight(1f))
