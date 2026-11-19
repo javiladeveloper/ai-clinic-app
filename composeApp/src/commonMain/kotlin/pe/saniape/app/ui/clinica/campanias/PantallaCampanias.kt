@@ -378,6 +378,10 @@ private fun FormularioCampania(
     var reintentoRegalos by remember { mutableIntStateOf(0) }
     var regaloAbierto by remember { mutableStateOf<Int?>(null) }
     var buscaServicio by remember { mutableStateOf("") }
+    // Especialidades activas de la clínica, para «Solo para estas especialidades».
+    val especialidades by androidx.compose.runtime.produceState<List<pe.saniape.app.data.staff.EspecialidadRef>>(emptyList()) {
+        value = runCatching { pe.saniape.app.data.staff.AgendaRepo.especialidades() }.getOrDefault(emptyList())
+    }
 
     // Los regalos viven en otra tabla: se leen al abrir (query plana, como la web).
     LaunchedEffect(inicial?.id, reintentoRegalos) {
@@ -537,6 +541,40 @@ private fun FormularioCampania(
                         }
                     }
                 }
+            }
+            if (f.alcance == "todos") {
+                Spacer(Modifier.height(10.dp))
+                Text("Los tratamientos y servicios. No toca la ${pe.saniape.app.data.staff.nombreCitaEntrada(flujo)}: para descontarla, elige «Consulta / evaluación».",
+                    color = c.textoSuave, fontSize = 12.sp)
+            }
+            // Por especialidad (18/11/2026, gemelo de la web): con una sola especialidad
+            // activa no hay nada que elegir; con servicios elegidos a mano, tampoco.
+            if (especialidades.size > 1 && f.alcance != "servicios") {
+                Spacer(Modifier.height(12.dp))
+                EtqForm("Solo para estas especialidades (opcional)")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    especialidades.forEach { e ->
+                        val sel = e.id in f.especialidadIds
+                        Text(
+                            (if (sel) "✓ " else "") + e.nombre,
+                            color = if (sel) c.sobreNavy else c.texto, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+                                .background(if (sel) c.navy else c.fondo)
+                                .border(1.dp, if (sel) c.navy else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
+                                .clickable { f = f.copy(especialidadIds = if (sel) f.especialidadIds - e.id else f.especialidadIds + e.id) }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+                val nombres = especialidades.filter { it.id in f.especialidadIds }.joinToString(", ") { it.nombre }
+                Text(
+                    when {
+                        f.especialidadIds.isEmpty() -> "Sin marcar ninguna, vale para toda la clínica."
+                        f.alcance == "citas" -> "Solo la ${pe.saniape.app.data.staff.nombreCitaEntrada(flujo)} de $nombres."
+                        else -> "Solo los servicios de $nombres (también los que agregues después)."
+                    },
+                    color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp),
+                )
             }
         }
         // «Incluye la evaluación»: solo campañas de tratamiento (con alcance 'citas'

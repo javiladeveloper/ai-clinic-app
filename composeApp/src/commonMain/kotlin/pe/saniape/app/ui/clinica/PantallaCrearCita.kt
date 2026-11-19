@@ -437,9 +437,10 @@ fun PantallaCrearCita(
             campanias = runCatching { CatalogosCobroRepo.campaniasVigentes() }.getOrDefault(emptyList())
             val tipoIni = prefill?.tipo ?: "Consulta"
             val baseIni = if (tipoIni == "Evaluación") pe else pc
-            val (precioIni, promoIni) = CatalogosCobroRepo.precioCitaConCampania(campanias, tipoIni, baseIni)
-            promoAplicada = promoIni
-            costo = precioIni.toString()
+            // La campaña ya NO se aplica sola (GLAUCOMA 18/11/2026): precio de lista y,
+            // abajo, las campañas con «Aplicar». Gemelo de CampaniasDeCita web.
+            promoAplicada = null
+            costo = baseIni.toString()
             // Resolver referencias del pre-llenado (→ Evaluación).
             prefill?.let { pf ->
                 paciente = pf.pacienteId?.let { id ->
@@ -486,14 +487,22 @@ fun PantallaCrearCita(
     }
     val precioConsultaEf = if (atencionDirectaForm && precioConsulta <= 0) precioSugeridoDirecta ?: precioConsulta else precioConsulta
 
-    // Costo por defecto según tipo, con la MEJOR campaña vigente ya descontada.
+    // Costo por defecto según tipo: el de LISTA. Las campañas se ofrecen con
+    // «Aplicar» junto al costo (ya no se aplican solas; GLAUCOMA 18/11/2026).
     // (La clave del precio solo cuenta en psicología: en otro rubro, como siempre, por tipo.)
     LaunchedEffect(tipo, if (atencionDirectaForm) precioConsultaEf else null) {
-        if (tipo == "Sesión") { costo = "0"; promoAplicada = null; return@LaunchedEffect }
+        promoAplicada = null
+        if (tipo == "Sesión") { costo = "0"; return@LaunchedEffect }
         val base = if (tipo == "Evaluación") precioEvaluacion else precioConsultaEf
-        val (precio, promo) = CatalogosCobroRepo.precioCitaConCampania(campanias, tipo, base)
-        promoAplicada = promo
-        costo = precio.toString()
+        costo = base.toString()
+    }
+    // Si cambia la especialidad y la campaña puesta ya no le corresponde, se quita.
+    LaunchedEffect(especialidad?.id) {
+        val puesta = promoAplicada ?: return@LaunchedEffect
+        if (!puesta.aplicaACita(tipo, null, especialidad?.id)) {
+            promoAplicada = null
+            costo = (if (tipo == "Evaluación") precioEvaluacion else precioConsultaEf).toString()
+        }
     }
     // Tratamientos del paciente (para tipo Sesión / control vinculado)
     LaunchedEffect(paciente?.id) {
@@ -1512,12 +1521,37 @@ fun PantallaCrearCita(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    promoAplicada?.let { promo ->
-                        Text(
-                            "🎉 ${promo.nombre} — ${promo.etiqueta()} · antes ${simboloMoneda(moneda)} ${if (precioBase % 1.0 == 0.0) precioBase.toInt() else precioBase}",
-                            color = c.ok, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(top = 4.dp),
-                        )
+                    // 🎉 Campañas que se pueden aplicar a ESTA cita (por tipo y especialidad):
+                    // «Aplicar» / «✕ Quitar». Gemelo de CampaniasDeCita web.
+                    val opcionesPromo = if (tipo == "Consulta" || tipo == "Evaluación")
+                        CatalogosCobroRepo.campaniasParaCita(campanias, tipo, precioBase, null, especialidad?.id) else emptyList()
+                    fun montoTxt(v: Double) = "${simboloMoneda(moneda)} ${if (v % 1.0 == 0.0) v.toInt() else v}"
+                    opcionesPromo.forEach { (promo, precioPromo) ->
+                        val puesta = promoAplicada?.id == promo.id
+                        Row(
+                            Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)).background(c.superficie)
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("🎉 ${promo.nombre}", color = c.ok, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "${promo.etiqueta()} · " + if (puesta) "aplicada · antes ${montoTxt(precioBase)}" else "queda en ${montoTxt(precioPromo)}",
+                                    color = c.textoSuave, fontSize = 11.sp,
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            if (puesta) {
+                                Text("✕ Quitar", color = c.error, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.clickable { promoAplicada = null; costo = precioBase.toString() }.padding(4.dp))
+                            } else {
+                                Text("Aplicar", color = c.sobreNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(c.ok)
+                                        .clickable { promoAplicada = promo; costo = precioPromo.toString() }
+                                        .padding(horizontal = 10.dp, vertical = 5.dp))
+                            }
+                        }
                     }
                 }
 

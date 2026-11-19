@@ -52,6 +52,8 @@ data class CampaniaGestion(
     val serviciosIds: List<String> = emptyList(),
     /** «Incluye la evaluación» (cita de entrada): solo campañas de tratamiento. */
     val incluyeEntrada: Boolean = false,
+    /** «Solo para estas especialidades» (vacío = toda la clínica; 18/11/2026). */
+    val especialidadIds: List<String> = emptyList(),
 )
 
 /** Estado de una campaña frente a hoy (espejo de la lista web). */
@@ -121,6 +123,8 @@ data class FormCampania(
     val incluyeEntrada: Boolean = false,
     /** Lo que tenía guardado: apagarla se manda; si nunca la tuvo, no se manda el campo. */
     val incluyeEntradaInicial: Boolean = false,
+    /** «Solo para estas especialidades» (vacío = toda la clínica). */
+    val especialidadIds: List<String> = emptyList(),
 ) {
     companion object {
         fun desde(c: CampaniaGestion?, hoy: String): FormCampania = if (c == null) FormCampania(desde = hoy) else FormCampania(
@@ -139,6 +143,7 @@ data class FormCampania(
             regalosCargados = false,
             incluyeEntrada = c.incluyeEntrada,
             incluyeEntradaInicial = c.incluyeEntrada,
+            especialidadIds = c.especialidadIds,
         )
     }
 }
@@ -184,6 +189,8 @@ fun cuerpoGuardarCampania(f: FormCampania, id: String?): JsonObject = buildJsonO
     put("valor", if (f.tipo == "porcentaje" || f.tipo == "monto_fijo") aDec(f.valor) else null)
     put("activo", f.activo)
     put("servicios_ids", buildJsonArray { if (f.alcance == "servicios") f.serviciosIds.forEach { add(JsonPrimitive(it)) } })
+    // Por especialidad: no aplica a una lista de servicios elegidos a mano (como la web).
+    put("especialidad_ids", buildJsonArray { if (f.alcance != "servicios") f.especialidadIds.forEach { add(JsonPrimitive(it)) } })
     // Solo si aplica (campoIncluyeEntrada): un servidor sin la columna no recibe el campo.
     campoIncluyeEntrada(f.incluyeEntrada, f.alcance, f.incluyeEntradaInicial)?.let { put("incluye_entrada", it) }
     if (f.regalosCargados) put("regalos", buildJsonArray {
@@ -217,6 +224,8 @@ internal fun parsearCampania(o: JsonObject): CampaniaGestion? {
         serviciosIds = (o["campania_servicios"] as? JsonArray)
             ?.mapNotNull { ((it as? JsonObject)?.str("procedimiento_id")) }.orEmpty(),
         incluyeEntrada = o.str("incluye_entrada") == "true",
+        especialidadIds = (o["especialidad_ids"] as? JsonArray)
+            ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.takeIf { s -> s != "null" } }.orEmpty(),
     )
 }
 
