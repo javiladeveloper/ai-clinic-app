@@ -274,8 +274,8 @@ android {
         //       se pregunta antes del tipo de cita. De paso: la pantalla de
         //       crear cita ofrecía SIEMPRE los tres tipos con los nombres
         //       internos — RENOVA veía una "Consulta" que no hace.
-        versionCode = 169
-        versionName = "2.76.0"
+        versionCode = 170
+        versionName = "2.77.0"
     }
     signingConfigs {
         create("release") {
