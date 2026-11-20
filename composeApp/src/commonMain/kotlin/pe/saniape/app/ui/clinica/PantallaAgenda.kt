@@ -475,7 +475,8 @@ fun PantallaAgenda(
     var tratPrefill by remember { mutableStateOf<pe.saniape.app.data.staff.PrefillPlanPsico?>(null) }
     // 🩺 «Plan de tratamiento» tras completar la evaluación (T3): la hoja corta
     // (HojaPlanTrasEvaluacion) y, al crear, el plan entero de sus sesiones.
-    var planEval by remember { mutableStateOf<Pair<CitaStaff, String?>?>(null) }
+    // Triple: (cita, diagnóstico, pendiente = la evaluación aún sin completar).
+    var planEval by remember { mutableStateOf<Triple<CitaStaff, String?, Boolean>?>(null) }
     var planEnteroAgenda by remember { mutableStateOf<pe.saniape.app.ui.clinica.pacientes.PlanEnteroInicial?>(null) }
     fun cerrarTratamiento() { tratCita = null; tratDiag = null; tratPac = null; tratProximas = emptyMap(); tratForm = false; tratPrefill = null }
     fun abrirTratamientoDeCita(cita: CitaStaff, diagnostico: String?) {
@@ -626,7 +627,7 @@ fun PantallaAgenda(
             if (vm.esPsicologia(o.cita)) ofertaPlanPsico = o
             // T3: la hoja corta del plan (servicio, sesiones y precio propuestos);
             // lo dental lo resuelve su revisión con el popup de siempre.
-            else if (!vm.esDental(o.cita)) planEval = o.cita to o.diagnostico
+            else if (!vm.esDental(o.cita)) planEval = Triple(o.cita, o.diagnostico, false)
             else abrirTratamientoDeCita(o.cita, o.diagnostico)
         }
     }
@@ -789,9 +790,11 @@ fun PantallaAgenda(
                         } ?: repetirDesde(cita)
                     }
                     AccionTarjeta.Odontograma -> odontogramaCita = cita
-                    // Evaluación ya completada → la hoja corta del plan (T3); el resto, lo de siempre.
-                    AccionTarjeta.CrearTratamiento -> if (cita.estado == "Completada" && vm.flujoDe(cita).esCitaQueEvalua(cita.tipo) &&
-                        !vm.esPsicologia(cita) && !vm.esDental(cita)) planEval = cita to null
+                    // UN SOLO plan de tratamiento (20/11/2026, gemelo de la web): la hoja corta
+                    // también con la evaluación sin completar. Psicología, dental y una cita de
+                    // un tratamiento existente siguen en su formulario (tienen pasos propios).
+                    AccionTarjeta.CrearTratamiento -> if (cita.estado != "Cancelada" && vm.flujoDe(cita).esCitaQueEvalua(cita.tipo) &&
+                        !vm.esPsicologia(cita) && !vm.esDental(cita)) planEval = Triple(cita, null, cita.estado != "Completada")
                     else abrirTratamientoDeCita(cita, null)
                     AccionTarjeta.Llego -> vm.marcarLlegada(cita)
                     AccionTarjeta.Triaje -> triajeCita = cita
@@ -1930,7 +1933,7 @@ fun PantallaAgenda(
     }
     // 🩺 Plan de tratamiento tras la evaluación (T3, gemelo de la web): todo propuesto;
     // «Crear plan y agendar» sigue con el plan entero de sus sesiones.
-    planEval?.let { (cita, diag) ->
+    planEval?.let { (cita, diag, pendiente) ->
         pe.saniape.app.ui.clinica.agenda.modales.HojaPlanTrasEvaluacion(
             ctx = ctx, cita = cita, diagnostico = diag,
             onMasOpciones = { servicioId, modalidad ->
@@ -1950,11 +1953,19 @@ fun PantallaAgenda(
                 vm.refrescar()
                 if (agendar) planEnteroAgenda = pe.saniape.app.ui.clinica.pacientes.PlanEnteroInicial(
                     plan.tratamientoId, plan.nombre, plan.desde, plan.hora, plan.terapeutaId, plan.faltan,
+                    // «La 1.ª sesión es hoy»: el día de la evaluación (si no pasó ya).
+                    diaAtencion = cita.fecha.take(10).takeIf { it >= vm.hoy },
                 )
             },
             // El MISMO «✓ Se realizó en esta visita» de la tarjeta (un solo camino,
             // toque recepción primero «✓ Completar» o esa acción).
-            enVisita = pe.saniape.app.data.staff.ofreceServicioEnVisita(
+            pendiente = pendiente,
+            onArmarPresupuesto = if (ofrecePresupuesto) ({
+                planEval = null
+                cita.pacienteId?.let { abrirFichaPresupuesto(it, cita.id) }
+            }) else null,
+            presupuestoBloqueado = !ctx.can("presupuestos"),
+            enVisita = !pendiente && pe.saniape.app.data.staff.ofreceServicioEnVisita(
                 tipo = cita.tipo, estado = "Completada", fecha = cita.fecha, hoy = vm.hoy,
                 dental = vm.esDental(cita), puedeSesiones = ctx.puede("sesiones"), soloLectura = false,
                 pacienteInactivo = pe.saniape.app.data.staff.fichaInactiva(cita.pacienteEstado),

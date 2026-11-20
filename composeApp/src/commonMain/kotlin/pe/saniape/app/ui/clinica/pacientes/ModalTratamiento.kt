@@ -107,6 +107,8 @@ data class TratamientoNuevo(
      * desde la Nueva cita. Vacío = el de siempre. [precioAcordado] ya es la suma.
      */
     val servicios: List<pe.saniape.app.data.staff.LineaServicio> = emptyList(),
+    /** Plan desde una evaluación AÚN sin completar: avisar al profesional (20/11/2026). */
+    val avisarEvaluacionPendiente: Boolean = false,
 ) {
     /** Cuánto dura la cita con todos sus servicios (null = sin servicios agregados). */
     val duracionServicios: Int? get() = servicios.takeIf { it.size > 1 }?.sumOf { it.duracion ?: 30 }
@@ -1304,6 +1306,7 @@ private fun cuerpoDe(pacienteId: String, nuevo: TratamientoNuevo) = PacientesRep
     fechaInicio = nuevo.fechaInicio,
     primeraFecha = nuevo.primeraFecha, primeraHora = nuevo.primeraHora,
     servicios = nuevo.servicios,
+    avisarEvaluacionPendiente = nuevo.avisarEvaluacionPendiente,
 )
 
 /**

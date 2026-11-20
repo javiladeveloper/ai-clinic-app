@@ -2537,6 +2537,12 @@ internal data class PlanEnteroInicial(
     val hora: String,
     val terapeutaId: String?,
     val faltan: Int,
+    /**
+     * El día de la atención que abrió el plan (la evaluación): con él se ofrece
+     * «La 1.ª sesión es hoy/ese día» aunque no sea uno de los días marcados
+     * (20/11/2026, gemelo de PlanEnteroAgendar web). null = no se ofrece.
+     */
+    val diaAtencion: String? = null,
 )
 
 /** Un cobro que falló justo después de completar su sesión (para reintentarlo solo). */
@@ -4329,6 +4335,7 @@ internal fun ModalPlanEntero(
     var hora by remember { mutableStateOf(inicial.hora) }
     var desde by remember { mutableStateOf(inicial.desde) }
     var cantidad by remember { mutableStateOf(inicial.faltan.toString()) }
+    var primeraEseDia by remember { mutableStateOf(false) }
     var filas by remember { mutableStateOf<List<pe.saniape.app.data.staff.FilaPlanSesion>?>(null) }
     var trabajando by remember { mutableStateOf(false) }
     var mostrarFecha by remember { mutableStateOf(false) }
@@ -4379,19 +4386,29 @@ internal fun ModalPlanEntero(
     // botón «Ver fechas» era un paso que nadie entendía). Cambiar el patrón cancela
     // el pedido anterior (LaunchedEffect), así una respuesta vieja no pisa la nueva.
     var errorFechas by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(dias, hora, desde, cantidad) {
+    LaunchedEffect(dias, hora, desde, cantidad, primeraEseDia) {
         filas = null; errorFechas = null
         if (dias.isEmpty() || desde.isBlank() || hora.isBlank()) return@LaunchedEffect
         kotlinx.coroutines.delay(350)
         trabajando = true
         try {
-            when (val r = pe.saniape.app.data.staff.ProximaCitaRepo.previsualizarPlan(
-                inicial.tratamientoId, inicial.terapeutaId, hora, desde, dias.toList().sorted(),
-                (cantidad.toIntOrNull() ?: inicial.faltan).coerceIn(1, 40),
-            )) {
-                is pe.saniape.app.data.staff.ProximaCitaRepo.Previa.Ok -> filas = r.filas
-                is pe.saniape.app.data.staff.ProximaCitaRepo.Previa.Error -> errorFechas = r.mensaje
-            }
+            // El mismo cálculo del servidor (horario, cupo, feriados, otra cita): para el
+            // día de la atención (si se marcó) y para el patrón, que sigue desde el día
+            // siguiente con una sesión menos.
+            val total = (cantidad.toIntOrNull() ?: inicial.faltan).coerceIn(1, 40)
+            val dia = inicial.diaAtencion?.takeIf { primeraEseDia }
+            val repo = pe.saniape.app.data.staff.ProximaCitaRepo
+            val ese = dia?.let { repo.previsualizarPlan(inicial.tratamientoId, inicial.terapeutaId, hora, it,
+                listOf(pe.saniape.app.data.staff.diaSemanaPlan(it)), 1) }
+            val restantes = total - (if (dia != null) 1 else 0)
+            val desdePatron = if (dia != null && desde <= dia) pe.saniape.app.data.staff.sumarDiasIso(dia, 1) else desde
+            val patron = if (restantes > 0) repo.previsualizarPlan(
+                inicial.tratamientoId, inicial.terapeutaId, hora, desdePatron, dias.toList().sorted(), restantes,
+            ) else pe.saniape.app.data.staff.ProximaCitaRepo.Previa.Ok(emptyList())
+            val fallo = listOfNotNull(ese, patron).filterIsInstance<pe.saniape.app.data.staff.ProximaCitaRepo.Previa.Error>().firstOrNull()
+            if (fallo != null) errorFechas = fallo.mensaje
+            else filas = ((ese as? pe.saniape.app.data.staff.ProximaCitaRepo.Previa.Ok)?.filas.orEmpty().take(1)) +
+                (patron as pe.saniape.app.data.staff.ProximaCitaRepo.Previa.Ok).filas
         } finally { trabajando = false }
     }
     // Hora de UNA fecha: el patrón pone la misma a todas, pero un día puede ir a otra.
@@ -4488,10 +4505,29 @@ internal fun ModalPlanEntero(
             Spacer(Modifier.height(10.dp))
             EtqForm("Sesiones")
             CampoFicha("", cantidad, soloNumero = true) { cantidad = it; horasCambiadas = emptySet() }
+            inicial.diaAtencion?.let { dia ->
+                val esHoy = dia == pe.saniape.app.data.staff.hoyClinicaIso()
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable { primeraEseDia = !primeraEseDia; horasCambiadas = emptySet() },
+                ) {
+                    androidx.compose.material3.Checkbox(
+                        checked = primeraEseDia,
+                        onCheckedChange = { primeraEseDia = it; horasCambiadas = emptySet() },
+                        colors = androidx.compose.material3.CheckboxDefaults.colors(checkedColor = c.navy),
+                    )
+                    Text(
+                        "La 1.ª sesión es ${if (esHoy) "hoy" else "ese día"} (${pe.saniape.app.ui.fechaDMA(dia)}), aunque no sea uno de los días marcados",
+                        color = c.texto, fontSize = 13.sp,
+                    )
+                }
+            }
             val frase = pe.saniape.app.data.staff.fraseDelPatron(dias, hora12(hora), desde)
             if (frase.isNotEmpty()) {
                 Spacer(Modifier.height(10.dp))
-                Text("📅 $frase", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                val previo = inicial.diaAtencion?.takeIf { primeraEseDia }?.let { "${pe.saniape.app.ui.fechaDMA(it)} y luego: " }.orEmpty()
+                Text("📅 $previo$frase", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
         }
         Spacer(Modifier.height(12.dp))

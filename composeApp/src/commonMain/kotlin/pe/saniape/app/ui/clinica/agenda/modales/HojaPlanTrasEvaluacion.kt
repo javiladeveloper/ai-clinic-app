@@ -106,6 +106,16 @@ fun HojaPlanTrasEvaluacion(
     /** El catálogo de una vez de la agenda (con tipo_clinico); si falta, se deduce del servicio. */
     serviciosUnaVez: List<ServicioUnaVez> = emptyList(),
     onServicioEnVisita: ((servicioId: String) -> Unit)? = null,
+    /**
+     * La evaluación TODAVÍA no se completó (recepción arma el plan antes, 20/11/2026,
+     * gemelo de la web): sin «Se realizó en esta visita» y, al crear, el servidor
+     * avisa al profesional para que la complete.
+     */
+    pendiente: Boolean = false,
+    /** 🧾 «¿Lo está pensando? Arma un presupuesto» (null = sin permiso, no se ofrece). */
+    onArmarPresupuesto: (() -> Unit)? = null,
+    /** Plan sin presupuestos (Básico / vencido): el atajo lleva a mejorar el plan. */
+    presupuestoBloqueado: Boolean = false,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -128,11 +138,15 @@ fun HojaPlanTrasEvaluacion(
     var metodo by rememberMetodoPagoInicial(pid)
     var guardando by remember(cita.id) { mutableStateOf(false) }
     var error by remember(cita.id) { mutableStateOf<String?>(null) }
-    val puedeEnVisita = enVisita && onServicioEnVisita != null
+    val puedeEnVisita = enVisita && !pendiente && onServicioEnVisita != null
+    // 🎁 Campañas del servicio: se aplican con «Aplicar», nunca solas (regla del proyecto).
+    var campanias by remember(cita.id) { mutableStateOf<List<pe.saniape.app.data.staff.CampaniaApp>>(emptyList()) }
+    var campaniaId by remember(cita.id) { mutableStateOf<String?>(null) }
     fun unaVezDe(p: ProcedimientoRef): ServicioUnaVez = serviciosUnaVez.find { it.id == p.id } ?: p.aServicioUnaVez()
 
     fun elegir(p: ProcedimientoRef) {
         servicio = p
+        campaniaId = null
         val s = p.aServicioPlan()
         val pre = planPrellenado(s)
         modalidad = pre.modalidad
@@ -150,6 +164,7 @@ fun HojaPlanTrasEvaluacion(
         if (activo != false) { onYaTienePlan(); return@LaunchedEffect }
         procedimientos = runCatching { PacientesRepo.procedimientos() }.getOrDefault(emptyList())
         terapeutas = runCatching { PacientesRepo.terapeutasConEspecialidad() }.getOrDefault(emptyList())
+        campanias = runCatching { pe.saniape.app.data.staff.CatalogosCobroRepo.campaniasVigentes() }.getOrDefault(emptyList())
         val usos = PlanTrasEvaluacionRepo.usosTrasEvaluacion()
         val espsProf = terapeutas.find { it.id == cita.terapeutaId }?.especialidadIds.orEmpty()
         val candidatos = candidatosDelPlan(procedimientos, cita.especialidadId, espsProf)
@@ -176,6 +191,26 @@ fun HojaPlanTrasEvaluacion(
     val previa = if (s != null && modo == "sesiones") valoresDelPlan(
         s, modalidad, sesiones, precio, diag, terapeutaId, cita.id, pe.saniape.app.data.staff.hoyClinicaIso(), moneda,
     ) else null
+    val campaniasDelServicio = servicio?.takeIf { modo == "sesiones" }
+        ?.let { pe.saniape.app.data.staff.CatalogosCobroRepo.paraProcedimiento(campanias, it.id) }.orEmpty()
+    // Port de aplicarCampania (web): un combo fija sesiones y precio; el resto, el precio.
+    fun aplicarCampania(camp: pe.saniape.app.data.staff.CampaniaApp) {
+        val sv = s ?: return
+        campaniaId = camp.id
+        when (camp.tipo) {
+            "paquete_fijo" -> {
+                modalidad = MODALIDAD_PAQUETE
+                camp.cantidad?.let { sesiones = it.toString() }
+                camp.precio?.let { precio = textoPrecioCampo(it) }
+            }
+            "precio_fijo" -> camp.precio?.let { precio = textoPrecioCampo(it) }
+            else -> {
+                val escrito = leerPrecio(precio, moneda).let { l -> l.valor?.takeIf { l.ok && it > 0 } }
+                val base = escrito ?: listaDelPlan(sv, modalidad, n) ?: 0.0
+                if (base > 0) precio = textoPrecioCampo(camp.precioCon(base))
+            }
+        }
+    }
     val lecturaAbono = leerPrecio(abono, moneda)
     val montoAbono = if (lecturaAbono.ok) lecturaAbono.valor ?: 0.0 else 0.0
 
@@ -194,6 +229,8 @@ fun HojaPlanTrasEvaluacion(
                 totalSesiones = v.totalSesiones, precioPaquete = v.precioPaquete, precioPorSesion = v.precioPorSesion,
                 precioAcordado = v.precioAcordado, diagnostico = v.diagnostico, citaOrigenId = v.citaOrigenId,
                 medicacion = null, proximoControl = null, fechaInicio = v.fechaInicio,
+                campaniaId = campaniaId,
+                avisarEvaluacionPendiente = pendiente,
             )
             val r = pe.saniape.app.ui.clinica.pacientes.guardarTratamientoNuevo(
                 pid, nuevo, cita.pacienteNombre,
@@ -257,7 +294,11 @@ fun HojaPlanTrasEvaluacion(
             Text("Preparando el plan…", color = c.textoSuave, fontSize = 13.sp)
             return@DialogoForm
         }
-        Text("Desde la evaluación · todo viene propuesto, cámbialo si hace falta.", color = c.textoSuave, fontSize = 12.sp)
+        Text(
+            if (pendiente) "La evaluación aún no se completa: al crear el plan le avisamos al profesional para que ponga su diagnóstico."
+            else "Desde la evaluación · todo viene propuesto, cámbialo si hace falta.",
+            color = c.textoSuave, fontSize = 12.sp,
+        )
         Spacer(Modifier.height(10.dp))
         TarjetaForm(titulo = "Plan", icono = "📋") {
             if (verHc) {
@@ -373,6 +414,33 @@ fun HojaPlanTrasEvaluacion(
             )
         }
 
+        if (campaniasDelServicio.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            TarjetaForm(titulo = "Campañas de este servicio", icono = "🎁") {
+                campaniasDelServicio.forEach { camp ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(camp.nombre, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(camp.etiqueta(moneda), color = c.textoSuave, fontSize = 11.sp)
+                        }
+                        if (campaniaId == camp.id) {
+                            Text("✓ Aplicada · Quitar", color = c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clickable(enabled = !guardando) {
+                                    campaniaId = null
+                                    precio = textoPrecioCampo(listaDelPlan(s, modalidad, n))
+                                }.padding(4.dp))
+                        } else {
+                            Box(
+                                Modifier.clip(RoundedCornerShape(50)).background(c.navy)
+                                    .clickable(enabled = !guardando) { aplicarCampania(camp) }
+                                    .padding(horizontal = 14.dp, vertical = 7.dp),
+                            ) { Text("Aplicar", color = c.sobreNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                        }
+                    }
+                }
+            }
+        }
+
         // «¿Pagó?» del plan recién creado: opcional, nada lo bloquea.
         val total = (previa as? ResultadoValoresPlan.Ok)?.valores?.total ?: 0.0
         if (cobra && enSesiones && total > 0) {
@@ -396,12 +464,22 @@ fun HojaPlanTrasEvaluacion(
             Text(it, color = c.error, fontSize = 12.sp)
         }
         Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        onArmarPresupuesto?.let { armar ->
+            val acciones = pe.saniape.app.ui.recordarAcciones()
+            Text(
+                (if (presupuestoBloqueado) "🔒" else "🧾") + " ¿Lo está pensando? Arma un presupuesto →",
+                color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable(enabled = !guardando) {
+                    if (presupuestoBloqueado) acciones.abrirUrl("${pe.saniape.app.data.Supabase.SITE_URL}/suscripcion") else armar()
+                }.padding(vertical = 6.dp),
+            )
+        }
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             if (enSesiones) {
                 Text("Solo crear plan", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.clickable(enabled = !guardando) { crear(false) }.padding(vertical = 6.dp))
             }
-            Text(if (enVisitaAhora) "Programarlo →" else "Más opciones →", color = c.textoSuave, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+            Text(if (enVisitaAhora) "Programarlo →" else "Más opciones (plantilla…) →", color = c.textoSuave, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable(enabled = !guardando) { onMasOpciones(servicio?.id, if (enSesiones) modalidad else null) }.padding(vertical = 6.dp))
         }
     }

@@ -421,10 +421,21 @@ fun PantallaCrearCita(
         disponibilidad = if (terId != null) {
             runCatching {
                 pe.saniape.app.data.staff.DisponibilidadRepo.verificar(
-                    terId, fecha, hora, duracion, pacienteId = paciente?.id,
+                    terId, fecha, hora, duracion, pacienteId = paciente?.id, tipo = tipo,
                 )
             }.getOrNull()
         } else null
+    }
+    // Profesionales SIN disponibilidad a esa fecha/hora: en gris y con el motivo en
+    // el selector (19/11/2026, gemelo de la web). Se pueden elegir igual.
+    var motivosProf by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    val idsProf = terapeutas.map { it.id }
+    LaunchedEffect(idsProf, fecha, hora, tipo, duracion) {
+        kotlinx.coroutines.delay(300)
+        motivosProf = runCatching {
+            pe.saniape.app.data.staff.DisponibilidadRepo.deVarios(idsProf, fecha, hora, duracion, tipo)
+                .mapNotNull { (id, d) -> pe.saniape.app.data.staff.motivoNoDisponible(d)?.let { id to it } }.toMap()
+        }.getOrDefault(emptyMap())
     }
 
     LaunchedEffect(Unit) {
@@ -673,6 +684,7 @@ fun PantallaCrearCita(
                 mostrarHorarios = false
             },
             onCerrar = { mostrarHorarios = false },
+            tipo = tipo,
         )
     }
 
@@ -917,7 +929,7 @@ fun PantallaCrearCita(
         if ((pasada && esRegularizacion) || terId == null) return null
         // Igual que la verificación de pantalla: un fallo de red no frena.
         val r = runCatching {
-            pe.saniape.app.data.staff.DisponibilidadRepo.verificar(terId, fecha, hora, duracion, pacienteId = paciente?.id)
+            pe.saniape.app.data.staff.DisponibilidadRepo.verificar(terId, fecha, hora, duracion, pacienteId = paciente?.id, tipo = tipo)
         }.getOrNull() ?: return null
         disponibilidad = r
         return if (!r.disponible) r.motivo ?: "El horario no está disponible" else null
@@ -1078,6 +1090,7 @@ fun PantallaCrearCita(
                     SelectorLista(
                         items = terapeutasFiltrados, elegido = terapeuta, etiqueta = { it.nombre },
                         onElegir = { elegirProfesional(it) }, placeholder = "Sin asignar",
+                        motivo = { motivosProf[it.id] },
                     )
                 }
             }
@@ -1441,6 +1454,7 @@ fun PantallaCrearCita(
                         items = terapeutasFiltrados, elegido = terapeuta, etiqueta = { it.nombre },
                         onElegir = { t -> elegirProfesional(t) },
                         placeholder = "Sin asignar",
+                        motivo = { motivosProf[it.id] },
                     )
                     if (elegidoFueraDeSede) {
                         Text("⚠ No atiende en esta sede ese día", color = c.pend, fontSize = 11.sp,
@@ -1765,6 +1779,8 @@ internal fun SelectorBoton(valor: String, bloqueado: Boolean = false, onClick: (
 @Composable
 private fun <T> SelectorLista(
     items: List<T>, elegido: T?, etiqueta: (T) -> String, onElegir: (T) -> Unit, placeholder: String,
+    /** Por qué no conviene (sin disponibilidad): se ve en gris con el motivo, y se puede elegir igual. */
+    motivo: (T) -> String? = { null },
 ) {
     val c = Sania.colors
     var abierto by remember { mutableStateOf(false) }
@@ -1775,9 +1791,12 @@ private fun <T> SelectorLista(
                 .clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.superficie)
                 .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp))) {
                 items.take(50).forEach { item ->
-                    Text(etiqueta(item), color = c.texto, fontSize = Sania.txt.cuerpo,
-                        modifier = Modifier.fillMaxWidth().clickable { onElegir(item); abierto = false }
-                            .padding(horizontal = 14.dp, vertical = 12.dp))
+                    val m = motivo(item)
+                    Column(Modifier.fillMaxWidth().clickable { onElegir(item); abierto = false }
+                        .padding(horizontal = 14.dp, vertical = if (m != null) 8.dp else 12.dp)) {
+                        Text(etiqueta(item), color = if (m != null) c.textoSuave else c.texto, fontSize = Sania.txt.cuerpo)
+                        if (m != null) Text(m, color = c.textoSuave, fontSize = 11.sp)
+                    }
                 }
             }
         }
@@ -1798,12 +1817,13 @@ private fun ModalVerHorarios(
     fecha: String, hora: String, duracion: Int,
     soloTerapeutaIds: List<String>?,
     onElegir: (String) -> Unit, onCerrar: () -> Unit,
+    tipo: String? = null,
 ) {
     val c = Sania.colors
     var estado by remember { mutableStateOf<List<EstadoProfesional>?>(null) }
-    LaunchedEffect(fecha, hora, duracion) {
+    LaunchedEffect(fecha, hora, duracion, tipo) {
         estado = runCatching {
-            AgendaRepo.disponibilidadProfesionales(fecha, hora, duracion, soloTerapeutaIds)
+            AgendaRepo.disponibilidadProfesionales(fecha, hora, duracion, soloTerapeutaIds, tipo)
         }.getOrDefault(emptyList())
     }
 

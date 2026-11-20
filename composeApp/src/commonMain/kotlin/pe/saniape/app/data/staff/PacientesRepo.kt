@@ -1449,8 +1449,11 @@ object PacientesRepo {
         // Primera sesión en el mismo paso (servidor: lib/primera-sesion.ts). null = no.
         primeraFecha: String? = null, primeraHora: String? = null,
         servicios: List<LineaServicio> = emptyList(),
+        /** Plan creado con la evaluación sin completar: el servidor avisa al profesional (20/11/2026). */
+        avisarEvaluacionPendiente: Boolean = false,
     ): JsonObject = buildJsonObject {
         put("accion", "crear"); put("pacienteId", pacienteId); put("procedimientoId", procedimientoId)
+        if (avisarEvaluacionPendiente) put("avisarEvaluacionPendiente", true)
         if (!primeraFecha.isNullOrBlank()) put("primeraSesion", buildJsonObject {
             put("fecha", primeraFecha); put("hora", primeraHora ?: "09:00")
         })

@@ -960,13 +960,14 @@ object AgendaRepo {
     suspend fun disponibilidadProfesionales(
         fecha: String, hora: String, duracion: Int,
         soloTerapeutaIds: List<String>? = null,
+        tipo: String? = null,
     ): List<EstadoProfesional> {
         val activos = terapeutasActivos()
         val filtrados = if (soloTerapeutaIds != null) activos.filter { it.id in soloTerapeutaIds } else activos
+        // Tres lecturas para todos (antes, tres por profesional).
+        val todos = runCatching { DisponibilidadRepo.deVarios(filtrados.map { it.id }, fecha, hora, duracion, tipo) }.getOrNull()
         return filtrados.map { ter ->
-            val d = runCatching {
-                DisponibilidadRepo.verificar(ter.id, fecha, hora, duracion)
-            }.getOrNull()
+            val d = todos?.get(ter.id)
             val libre = d?.disponible == true && d.esAdvertencia == false
             EstadoProfesional(
                 terapeutaId = ter.id,
