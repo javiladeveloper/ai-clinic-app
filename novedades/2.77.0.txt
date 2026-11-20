@@ -1,0 +1,8 @@
+Adelanto de la evaluación, «Cobros de hoy» en la caja, plan de tratamiento en una hoja y profesionales sin disponibilidad en gris.
+---
+• Cobrar una consulta o evaluación: «Solo deja un adelanto» (por ejemplo S/ 20 de S/ 40 para separar la cita). La cita muestra «Ya dejó S/ X · falta S/ Y» y lo que falta se cobra cuando venga.
+• «↩ Revertir cobro» (administrador): deshace el cobro o el adelanto de una cita y la deja por cobrar. Sirve para cualquier cobro, no solo los de varios medios.
+• Cerrar mi caja: «💰 Cobros de hoy» con cada cobro a pacientes (quién, qué, cómo pagó y a qué hora), también para recepción sin acceso a finanzas.
+• «Crear tratamiento» desde una evaluación abre siempre la hoja compacta del plan, aunque la evaluación no esté completada (se le avisa al profesional), con las campañas del servicio («Aplicar») y el atajo a presupuesto.
+• Agendar las sesiones del plan: «La 1.ª sesión es hoy», aunque no sea uno de los días marcados.
+• Nueva cita: los profesionales sin disponibilidad a esa hora aparecen en gris con el motivo. La cita entera tiene que caber en su turno, y la consulta y la evaluación no se cruzan con otra cita.
