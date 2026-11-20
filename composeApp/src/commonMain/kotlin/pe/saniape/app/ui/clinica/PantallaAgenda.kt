@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -199,6 +200,9 @@ fun PantallaAgenda(
     }
     // 🧮 Cerrar mi caja (quien cobra, hoy): la pestaña de cierre a pantalla completa.
     var cerrandoCaja by remember { mutableStateOf(false) }
+    // 🕘 Horarios y 💰 Cobros de hoy a un toque (20/11/2026, gemelo de la web).
+    var verHorarios by remember { mutableStateOf(false) }
+    var verCobrosHoy by remember { mutableStateOf(false) }
     // Derivación cuya evaluación se está agendando: se marca procesada SOLO si la
     // cita se guarda (antes se marcaba al abrir el form, aunque se cancelara).
     var derivacionPendiente by remember { mutableStateOf<String?>(null) }
@@ -719,6 +723,16 @@ fun PantallaAgenda(
                 // línea de tiempo no queda aplastada (ni con letra grande).
                 if (!vm.calendarioAbierto) {
                     TiraDias(hoy = vm.hoy, seleccionado = vm.fechaSel, onSeleccionar = { vm.seleccionarDia(it) })
+                }
+                // Recepción, a un toque: el día de cada profesional, lo cobrado hoy y la caja.
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState())
+                        .padding(horizontal = Sania.dim.lg, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    BotonRecepcion("🕘 Horarios") { verHorarios = true }
+                    if (ctx.puede("pagos")) BotonRecepcion("💰 Cobros de hoy") { verCobrosHoy = true }
+                    if (pe.saniape.app.data.staff.ofreceCerrarMiCaja(ctx.puede("pagos"), ctx.puede("finanzas"), ctx.can("finanzas"))) BotonRecepcion("🧮 Caja") { cerrandoCaja = true }
                 }
             }
 
@@ -2103,6 +2117,16 @@ fun PantallaAgenda(
         }
     }
 
+    if (verHorarios) {
+        Box(Modifier.fillMaxSize().background(c.fondo)) {
+            pe.saniape.app.ui.clinica.agenda.PantallaHorariosDia(vm.fechaSel, esHoy = vm.fechaSel == vm.hoy) { verHorarios = false }
+        }
+    }
+    if (verCobrosHoy) {
+        Box(Modifier.fillMaxSize().background(c.fondo)) {
+            pe.saniape.app.ui.clinica.agenda.PantallaCobrosHoy(vm.hoy, if (vm.fechaSel == vm.hoy) vm.citas else emptyList()) { verCobrosHoy = false }
+        }
+    }
     if (cerrandoCaja) {
         Box(Modifier.fillMaxSize().background(c.fondo)) {
             pe.saniape.app.ui.clinica.finanzas.PantallaCerrarMiCaja(ctx) { cerrandoCaja = false }
@@ -2239,3 +2263,15 @@ private data class RevisionHecha(
     val diagnostico: String,
     val tratamientoResuelto: Boolean,
 )
+
+/** Botón de recepción de la cabecera de la agenda (Horarios / Cobros / Caja). */
+@Composable
+private fun BotonRecepcion(texto: String, onClick: () -> Unit) {
+    val c = Sania.colors
+    Text(
+        texto, color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+        modifier = Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.superficie)
+            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.pill.dp)).clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    )
+}

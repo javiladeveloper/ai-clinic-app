@@ -1,0 +1,5 @@
+Agenda: «Horarios» y «Cobros de hoy» a un toque, para responder rápido en recepción.
+---
+• «🕘 Horarios» (arriba de la agenda): el día de cada profesional hora por hora. En verde cuando atiende, en rojo lo ocupado con su hora y su duración («4:00–4:45 p. m. · 45 min»), y debajo sus horas libres. Hoy, además, «Libre ahora» u «Ocupado hasta…». Los ausentes (vacaciones, licencia) salen en gris y los permisos por horas, marcados.
+• «💰 Cobros de hoy»: lo cobrado hoy a los pacientes (quién, qué, cómo pagó y a qué hora), el total por medio de pago y quién dejó adelanto con cuánto le falta.
+• «🧮 Caja» también queda a un toque desde la agenda.
