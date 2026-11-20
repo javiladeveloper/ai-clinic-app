@@ -348,7 +348,7 @@ fun TarjetaCita(
                 // servicio ni costo): sin precio no hay 💰, así que se le pone aquí.
                 ponerPrecio = puedeCobrar && cita.tipo != "Sesión" && (cita.costo ?: 0.0) <= 0 &&
                     cita.estado != "Cancelada" && !pagada,
-                anularCobro = anularCobro && pagada,
+                anularCobro = anularCobro && (pagada || cita.abonado > 0),
                 // 🧾 Comprobante: el recibo del cobro YA hecho, otra vez (gemelo de /citas web).
                 comprobante = pe.saniape.app.data.staff.ofreceComprobanteCita(
                     cita.tipo, cita.costo, cita.pagadaAt, cita.estado, puedeCobrar) ||

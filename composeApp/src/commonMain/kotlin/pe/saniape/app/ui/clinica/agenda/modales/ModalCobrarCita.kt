@@ -86,7 +86,7 @@ import pe.saniape.app.ui.clinica.presupuestos.CampoPrecioPresu
 fun ModalCobrarCita(
     cita: CitaStaff,
     onCancelar: () -> Unit,
-    onConfirmar: (metodo: String, modo: String, fecha: String, pagos: List<PartePago>?, costoAcordado: Double?) -> Unit,
+    onConfirmar: (metodo: String, modo: String, fecha: String, pagos: List<PartePago>?, costoAcordado: Double?, adelanto: Double?) -> Unit,
     guardando: Boolean,
     /** Cómo llama el flujo de la clínica al tipo de la cita ("Diagnóstico"…). */
     nombreTipo: String = cita.tipo ?: "Cita",
@@ -107,7 +107,7 @@ fun ModalCobrarCita(
         val pid = cita.pacienteId
         try {
             if (cita.tipo != "Sesión" && pid != null &&
-                pe.saniape.app.data.staff.CampaniaEntradaRepo.debeAbonar(pid, cita.id) && !modoElegido && modo == "cobrar"
+                cita.abonado <= 0 && pe.saniape.app.data.staff.CampaniaEntradaRepo.debeAbonar(pid, cita.id) && !modoElegido && modo == "cobrar"
             ) modo = "abonar"
         } finally { leyendoCampania = false }
     }
@@ -128,8 +128,19 @@ fun ModalCobrarCita(
     val total = precioCobro.total
     val precioInvalido = precioCobro.invalido
     val conDivision = dividido && modo != "gratis"
-    val reparto = if (conDivision) repartoValido(filas, total) else null
-    val monto = textoSoles(total, moneda)
+    // ADELANTO (20/11/2026, gemelo de /citas web): lo ya adelantado y lo que falta;
+    // o, si no dejó nada, «Solo deja un adelanto» (el resto se cobra al venir).
+    val abonado = cita.abonado.coerceAtLeast(0.0)
+    val falta = pe.saniape.app.data.staff.faltaDeCita(total, abonado)
+    var conAdelanto by remember(cita.id) { mutableStateOf(false) }
+    var adelantoTxt by remember(cita.id) { mutableStateOf("") }
+    val ofreceAdelanto = modo == "cobrar" && abonado <= 0 && !dividido && cita.tipo != "Sesión"
+    val pideAdelanto = conAdelanto && ofreceAdelanto
+    val adelanto = if (pideAdelanto) pe.saniape.app.data.staff.adelantoValido(adelantoTxt, falta, moneda) else null
+    // Con el adelanto marcado y sin un monto válido no se cobra (nunca el total por descuido).
+    val adelantoInvalido = pideAdelanto && adelanto == null
+    val reparto = if (conDivision) repartoValido(filas, falta) else null
+    val monto = textoSoles(adelanto ?: falta, moneda)
     val tipoMin = nombreTipo.lowercase()
 
     if (mostrarFecha) {
@@ -159,17 +170,19 @@ fun ModalCobrarCita(
             guardando -> "Guardando…"
             modo == "gratis" -> "Marcar sin costo"
             modo == "abonar" -> "Cobrar y abonar $monto"
+            adelanto != null -> "Cobrar $monto de adelanto"
+            abonado > 0 -> "Cobrar $monto que falta"
             else -> "Cobrar $monto"
         },
         accionHabilitada = !guardando && (!conDivision || reparto != null) && (!leyendoCampania || modoElegido) &&
-            (modo == "gratis" || !precioInvalido),
+            (modo == "gratis" || (!precioInvalido && !adelantoInvalido)),
         ancla = "cobro",
         anclaAccion = "cobro.confirmar",
         onCancelar = { if (!guardando) onCancelar() },
         onAccion = {
             val acordado = if (modo != "gratis") precioCobro.costoAcordado else null
-            if (conDivision) reparto?.let { onConfirmar(metodo, modo, fecha, it, acordado) }
-            else onConfirmar(metodo, modo, fecha, null, acordado)
+            if (conDivision) reparto?.let { onConfirmar(metodo, modo, fecha, it, acordado, null) }
+            else onConfirmar(metodo, modo, fecha, null, acordado, adelanto)
         },
     ) {
         // Qué se cobra: tipo · paciente, y el monto grande.
@@ -180,6 +193,10 @@ fun ModalCobrarCita(
         ) {
             Text("$nombreTipo · ${cita.pacienteNombre ?: "${LocalTerminologiaPaciente.current.Paciente}"}", color = c.textoSuave, fontSize = 12.sp)
             Text(if (modo == "gratis") textoSoles(0.0, moneda) else monto, color = c.texto, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            if (abonado > 0) {
+                Text("Ya dejó ${textoSoles(abonado, moneda)} de adelanto · falta ${textoSoles(falta, moneda)}",
+                    color = c.pend, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
         }
 
         // Precio acordado: el de la cita es la sugerencia; si se acuerda otro, se cobra ese.
@@ -201,10 +218,14 @@ fun ModalCobrarCita(
         // ¿A dónde va este cobro? Si el paciente decidió entrar en tratamiento,
         // recepción puede abonarlo a su tratamiento o perdonarlo.
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf(
+            listOfNotNull(
                 Triple("cobrar", "Cobrar normal", "Entra a caja como pago de la $tipoMin"),
-                Triple("abonar", "Cobrar y abonar al tratamiento", "El monto se descuenta de la deuda del tratamiento del ${LocalTerminologiaPaciente.current.paciente}"),
-                Triple("gratis", "No cobrar", "Sigue a tratamiento: la $tipoMin queda en ${simboloMoneda(moneda)} 0"),
+                // Con adelanto, lo que falta se cobra como cita (el servidor rechaza abonarlo).
+                Triple("abonar", "Cobrar y abonar al tratamiento", "El monto se descuenta de la deuda del tratamiento del ${LocalTerminologiaPaciente.current.paciente}")
+                    .takeIf { abonado <= 0 },
+                Triple("gratis", "No cobrar",
+                    if (abonado > 0) "Se perdona lo que falta: la $tipoMin queda en lo que ya dejó"
+                    else "Sigue a tratamiento: la $tipoMin queda en ${simboloMoneda(moneda)} 0"),
             ).forEach { (valor, titulo, detalle) ->
                 OpcionModo(titulo, detalle, activo = modo == valor) { if (!guardando) { modo = valor; modoElegido = true } }
             }
@@ -214,6 +235,39 @@ fun ModalCobrarCita(
             Spacer(Modifier.height(14.dp))
             Etiqueta("MÉTODO DE PAGO")
             if (!dividido) ChipsMetodoPago(metodo) { metodo = it }
+            // Solo un adelanto: deja una parte para separar la cita; el resto al venir.
+            if (ofreceAdelanto) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable(enabled = !guardando) { conAdelanto = !conAdelanto; if (!conAdelanto) adelantoTxt = "" },
+                ) {
+                    Checkbox(
+                        checked = conAdelanto,
+                        onCheckedChange = { conAdelanto = it; if (!it) adelantoTxt = "" },
+                        enabled = !guardando,
+                        colors = CheckboxDefaults.colors(checkedColor = c.navy),
+                    )
+                    Text("Solo deja un adelanto", color = c.texto, fontSize = 13.sp)
+                }
+                if (conAdelanto) {
+                    androidx.compose.material3.OutlinedTextField(
+                        colors = pe.saniape.app.ui.clinica.pacientes.coloresCampoForm(),
+                        value = adelantoTxt,
+                        onValueChange = { t -> adelantoTxt = t.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                        placeholder = { Text("Monto del adelanto, ej. 20", color = c.textoSuave) },
+                        singleLine = true,
+                        enabled = !guardando,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    when {
+                        adelanto != null -> Text("Queda ${textoSoles(pe.saniape.app.data.staff.faltaDeCita(falta, adelanto), moneda)} por pagar cuando venga.",
+                            color = c.pend, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+                        adelantoTxt.isNotBlank() -> Text("El adelanto tiene que ser menor que ${textoSoles(falta, moneda)}.",
+                            color = c.error, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
+            }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.tourAncla("cobro.dividir").clickable(enabled = !guardando) {
@@ -266,7 +320,8 @@ fun ModalCobrarCita(
             when (modo) {
                 "gratis" -> "No entra dinero a caja: la $tipoMin queda saldada con ${simboloMoneda(moneda)} 0."
                 "abonar" -> "Entra a caja como pago del tratamiento: lo verás sumado en la ficha del ${LocalTerminologiaPaciente.current.paciente}."
-                else -> if (conDivision) "Entra a caja un ingreso por cada medio, en la fecha del pago (el arqueo por método cuadra)."
+                else -> if (adelanto != null) "Entra a caja solo el adelanto; la $tipoMin queda debiendo el resto hasta que venga."
+                    else if (conDivision) "Entra a caja un ingreso por cada medio, en la fecha del pago (el arqueo por método cuadra)."
                     else "Entra a caja en la fecha del pago, con este método. Si el ${LocalTerminologiaPaciente.current.paciente} aún no paga, puedes atenderlo igual y cobrarle después."
             },
             color = c.textoSuave, fontSize = 12.sp, lineHeight = 16.sp,

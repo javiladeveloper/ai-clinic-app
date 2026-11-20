@@ -66,6 +66,17 @@ data class DiaCierre(
      * servidor anterior (siempre completo).
      */
     val alcance: String? = null,
+    /**
+     * 💰 Cobros a pacientes del día (20/11/2026): la recepción sin finanzas los ve
+     * con nombre y hora, sin gastos ni retiros. Servidor viejo → vacío.
+     */
+    val cobros: List<CobroDelDia> = emptyList(),
+)
+
+/** Un cobro a paciente del día (lo que ve la recepción en «Cobros de hoy»). */
+data class CobroDelDia(
+    val monto: Double, val metodoPago: String?, val descripcion: String?,
+    val paciente: String?, val createdAt: String?, val moneda: String?,
 )
 
 /** Totales de un día en UNA moneda (consolidado multipaís). */
@@ -410,6 +421,17 @@ object FinanzasRepo {
             cierrePosterior = o.str("cierrePosterior")?.takeIf { it.isNotBlank() },
             ajustesDisponibles = o.bool("ajustesDisponibles") ?: false,
             alcance = o.str("alcance")?.takeIf { it.isNotBlank() },
+            cobros = (o["cobros"] as? JsonArray).orEmpty().mapNotNull { e ->
+                val x = e as? JsonObject ?: return@mapNotNull null
+                CobroDelDia(
+                    monto = x.dbl("monto") ?: 0.0,
+                    metodoPago = x.str("metodoPago")?.takeIf { it.isNotBlank() },
+                    descripcion = x.str("descripcion")?.takeIf { it.isNotBlank() },
+                    paciente = x.str("paciente")?.takeIf { it.isNotBlank() },
+                    createdAt = x.str("createdAt"),
+                    moneda = x.str("moneda")?.let(::normalizarMoneda),
+                )
+            },
             totalesPorMoneda = (o["totalesPorMoneda"] as? JsonArray).orEmpty().mapNotNull { e ->
                 val x = e as? JsonObject ?: return@mapNotNull null
                 TotalMoneda(

@@ -81,16 +81,15 @@ class MediosCobroCitaTest {
     }
 
     @Test
-    fun anular_cobro_solo_admin_con_cobro_dividido() {
+    fun revertir_cobro_solo_admin_cobrada_o_con_adelanto() {
         fun puede(rol: String? = "Admin", pagos: Boolean = true, tipo: String? = "Consulta", costo: Double? = 40.0,
-                  estado: String? = "Completada", pagada: String? = "2026-10-05T10:00:00Z", medios: String? = "Efectivo + Yape") =
-            puedeAnularCobro(rol, pagos, tipo, costo, estado, pagada, medios)
-        assertTrue(puede())
+                  estado: String? = "Completada", pagada: String? = "2026-10-05T10:00:00Z", abonado: Double = 0.0) =
+            puedeAnularCobro(rol, pagos, tipo, costo, estado, pagada, abonado)
+        assertTrue(puede())                         // cobro simple también (19/11/2026)
         assertTrue(puede(estado = "Confirmada"))   // pagó por adelantado
+        assertTrue(puede(pagada = null, abonado = 20.0))  // solo dejó un adelanto
         assertFalse(puede(rol = "Recepcionista"))
         assertFalse(puede(pagos = false))
-        assertFalse(puede(medios = "Yape"))         // cobro simple: el servidor respondería 409
-        assertFalse(puede(medios = null))           // aún no se sabe con qué se pagó
         assertFalse(puede(pagada = null))
         assertFalse(puede(tipo = "Sesión"))
         assertFalse(puede(costo = 0.0))

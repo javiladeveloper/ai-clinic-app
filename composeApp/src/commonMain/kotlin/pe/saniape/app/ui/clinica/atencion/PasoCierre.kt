@@ -430,16 +430,20 @@ private fun BloqueCobro(vm: AtencionViewModel, d: DatosConsultaApp, ctx: Context
         ModalCobrarCita(
             cita = citaStaffDeConsulta(d),
             onCancelar = { if (!cobrando) abierto = false },
-            onConfirmar = { metodo, modo, fecha, pagos, acordado ->
+            onConfirmar = { metodo, modo, fecha, pagos, acordado, adelanto ->
                 if (!cobrando) {
                     vm.lanzar("cobrar") {
                         // Precio acordado en caja: el servidor lo guarda en la cita antes de cobrar.
-                        val r = AgendaRepo.cobrarCita(cita.id, metodo, modo, fecha, pagos, costoAcordado = acordado)
+                        // Adelanto: aquí no se conoce lo ya adelantado; con uno puesto, el servidor no duplica.
+                        val r = AgendaRepo.cobrarCita(cita.id, metodo, modo, fecha, pagos, costoAcordado = acordado,
+                            adelanto = adelanto, primerAdelanto = adelanto != null)
                         if (r.registrada) {
                             abierto = false
                             val cobrado = acordado?.let { textoSoles(it, moneda) } ?: monto
                             // Encolada: enviarOEncolar ya avisó "se registrará al volver la señal".
-                            if (!r.encolada) {
+                            if (!r.encolada && adelanto != null) {
+                                Toaster.exito(if (r.yaEstaba) "Ese adelanto ya estaba registrado." else "Adelanto de ${textoSoles(adelanto, moneda)} registrado")
+                            } else if (!r.encolada) {
                                 val aviso = textoCobrado(nombreTipo, cobrado, modo, fecha, pe.saniape.app.data.staff.hoyClinicaIso(), pagos, r.yaEstaba)
                                 // Facturación SUNAT activa: «¿Boleta o factura?» de esta cita.
                                 if (modo == "gratis" || r.yaEstaba || !pe.saniape.app.ui.clinica.comprobante.FacturacionSunat.ofrecer("cita", cita.id, aviso)) Toaster.exito(aviso)

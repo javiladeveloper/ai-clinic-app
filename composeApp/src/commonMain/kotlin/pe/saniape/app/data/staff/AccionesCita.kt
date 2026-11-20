@@ -265,7 +265,7 @@ fun accionesCita(e: EntradaAccionesCita): List<AccionCitaItem> {
     // 🧾 El recibo del cobro ya hecho, junto al dinero (como el menú de /citas web).
     if (e.comprobante) add("🧾 Comprobante", AccionTarjeta.Comprobante, TonoAccion.NAVY)
     // Corregir un cobro dividido es anularlo y volver a cobrar (como la web, solo Admin).
-    if (e.anularCobro && estado != "Cancelada") add("↺ Anular cobro", AccionTarjeta.AnularCobro, TonoAccion.ERROR)
+    if (e.anularCobro && estado != "Cancelada") add("↩ Revertir cobro", AccionTarjeta.AnularCobro, TonoAccion.ERROR)
     if (estado != "Cancelada" && estado != "Completada") {
         add("✏ Editar o reprogramar", AccionTarjeta.Editar, TonoAccion.SUAVE)
         // La falta, no la cancelación: en una Sesión, cancelar borraba la sesión.

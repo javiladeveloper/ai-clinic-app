@@ -57,6 +57,8 @@ data class CitaStaff(
      * El método no vive en la cita (está en el movimiento de caja que generó el cobro).
      */
     val pagadaAt: String? = null,
+    /** Adelanto ya cobrado de una Consulta/Evaluación (20/11/2026). Saldo = costo − abonado. */
+    val abonado: Double = 0.0,
     /** "Menor" / "Con apoderado" / null (de fecha_nacimiento, edad y requiere_apoderado). */
     val pacienteBadgeApoderado: String? = null,
     /** El servicio del tratamiento (p. ej. para saber si es una evaluación psicológica). */
@@ -239,7 +241,7 @@ object AgendaRepo {
 
     /** Columnas comunes de una cita (con joins). Una sola fuente. */
     const val SELECT_CITA =
-        "id, fecha, hora, estado, tipo, costo, pagada_at, duracion, origen, confirmada_por_paciente, notas, " +
+        "id, fecha, hora, estado, tipo, costo, pagada_at, abonado, duracion, origen, confirmada_por_paciente, notas, " +
             "terapeuta_id, paciente_id, tratamiento_id, especialidad_id, procedimiento_id, sede_id, sesion_id, confirmacion_token, created_at, " +
             "paciente:pacientes(nombre, telefono, edad, fecha_nacimiento, requiere_apoderado, estado), terapeuta:terapeutas(nombre), " +
             "tratamiento:tratamientos!citas_tratamiento_id_fkey(nota_recepcion, estado, modalidad, total_sesiones, sesiones_completadas, " +
@@ -315,6 +317,7 @@ object AgendaRepo {
                 notaRecepcion = (obj("tratamiento")?.get("nota_recepcion") as? JsonPrimitive)
                     ?.content?.takeIf { it != "null" && it.isNotBlank() },
                 pagadaAt = s("pagada_at"),
+                abonado = s("abonado")?.toDoubleOrNull() ?: 0.0,
                 confirmacionToken = s("confirmacion_token")?.takeIf { it.isNotBlank() },
                 creadaAt = s("created_at"),
                 // El del tratamiento embebido o, si la RLS no lo dejó ver (quien atiende
@@ -444,8 +447,11 @@ object AgendaRepo {
         citaId: String, metodo: String, modo: String, fecha: String?,
         pagos: List<PartePago>? = null,
         costoAcordado: Double? = null,
+        /** Solo un adelanto (ver [cuerpoCobrarCita]). */
+        adelanto: Double? = null,
+        primerAdelanto: Boolean = false,
     ): ResultadoCobro {
-        val cuerpo = cuerpoCobrarCita(citaId, metodo, modo, fecha, pagos, costoAcordado)
+        val cuerpo = cuerpoCobrarCita(citaId, metodo, modo, fecha, pagos, costoAcordado, adelanto, primerAdelanto)
         val firma = cuerpo.toString()
         val clave = mutexClavesCobro.withLock { clavesCobroInciertas[firma] }
             ?: pe.saniape.app.data.offline.nuevaIdemKey()

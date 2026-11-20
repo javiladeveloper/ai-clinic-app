@@ -1246,7 +1246,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
 
     /** ¿Ofrecer "Anular cobro" en esta cita? (Admin + pagos + cobro con varios medios). */
     fun puedeAnularCobro(cita: CitaStaff): Boolean = pe.saniape.app.data.staff.puedeAnularCobro(
-        ctx.rol, ctx.puede("pagos"), cita.tipo, cita.costo, cita.estado, cita.pagadaAt, mediosPago[cita.id],
+        ctx.rol, ctx.puede("pagos"), cita.tipo, cita.costo, cita.estado, cita.pagadaAt, cita.abonado,
     )
 
     /**
@@ -1311,7 +1311,7 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
             accionando = true
             val error = pe.saniape.app.ui.conIndicador { pe.saniape.app.data.staff.CobroRepo.anularCobro(cita.id) }
             if (error == null) {
-                pe.saniape.app.ui.Toaster.exito("Cobro anulado: la cita quedó por cobrar")
+                pe.saniape.app.ui.Toaster.exito("Cobro revertido: la cita quedó por cobrar")
                 mediosPago = mediosPago - cita.id
                 recargarCitas()
                 recargarBanners()
@@ -1868,18 +1868,33 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         pagos: List<pe.saniape.app.data.staff.PartePago>? = null,
         /** Precio acordado en caja distinto del de la cita (null = el de la cita). */
         costoAcordado: Double? = null,
+        /** Solo un adelanto (20/11/2026): la cita queda debiendo el resto. */
+        adelanto: Double? = null,
         onFin: (Boolean) -> Unit = {},
     ) {
         if (accionando) return
         viewModelScope.launch {
             accionando = true
-            val r = AgendaRepo.cobrarCita(cita.id, metodo, modo, fecha, pagos, costoAcordado = costoAcordado)
-            if (r.registrada) {
+            val r = AgendaRepo.cobrarCita(cita.id, metodo, modo, fecha, pagos, costoAcordado = costoAcordado,
+                adelanto = adelanto, primerAdelanto = adelanto != null && cita.abonado <= 0)
+            val monedaCita = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)
+            // Con adelanto previo se cobra LO QUE FALTA (el servidor lo calcula igual).
+            val cobrado = pe.saniape.app.data.staff.faltaDeCita(costoAcordado ?: cita.costo ?: 0.0, cita.abonado)
+            if (r.registrada && adelanto != null && !r.encolada) {
+                val falta = pe.saniape.app.data.staff.faltaDeCita(cobrado, adelanto)
+                pe.saniape.app.ui.Toaster.exito(
+                    if (r.yaEstaba) "Ese adelanto ya estaba registrado."
+                    else "Adelanto de ${pe.saniape.app.ui.clinica.agenda.modales.textoSoles(adelanto, monedaCita)} registrado · " +
+                        "falta ${pe.saniape.app.ui.clinica.agenda.modales.textoSoles(falta, monedaCita)}",
+                )
+                recargarCitas()
+                recargarBanners()
+            } else if (r.registrada) {
                 // Encolada: enviarOEncolar ya avisó "se registrará al volver la señal".
                 if (!r.encolada) {
                     val aviso = pe.saniape.app.ui.clinica.atencion.textoCobrado(
                         flujoDe(cita).nombreTipo(cita.tipo),
-                        pe.saniape.app.ui.clinica.agenda.modales.textoSoles(costoAcordado ?: cita.costo ?: 0.0, pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)),
+                        pe.saniape.app.ui.clinica.agenda.modales.textoSoles(cobrado, monedaCita),
                         // Bugs caja 2026-10-08: "fechado el…" solo si no es HOY (de la sede activa).
                         modo, fecha, hoyIso(), pagos, r.yaEstaba,
                     )

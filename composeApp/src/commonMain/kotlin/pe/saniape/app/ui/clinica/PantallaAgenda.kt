@@ -1670,12 +1670,16 @@ fun PantallaAgenda(
         val medios = vm.mediosPago[cita.id]
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { if (!vm.accionando) anularCobroCita = null },
-            title = { Text("↺ ¿Anular este cobro?", fontWeight = FontWeight.Bold) },
+            title = { Text("↩ ¿Revertir este cobro?", fontWeight = FontWeight.Bold) },
             text = {
+                val soloAdelanto = cita.pagadaAt == null && cita.abonado > 0
+                val monto = if (soloAdelanto) cita.abonado else cita.costo ?: 0.0
                 Text(
-                    "${cita.pacienteNombre ?: "El ${LocalTerminologiaPaciente.current.paciente}"} pagó ${pe.saniape.app.ui.clinica.agenda.modales.textoSoles(cita.costo ?: 0.0, pe.saniape.app.data.staff.monedaDeFila(cita.sedeId))}" +
-                        (medios?.let { " con $it" } ?: "") + ". Se borrarán de caja TODAS sus partes y la cita volverá a " +
-                        "\"por cobrar\" para cobrarla de nuevo. La atención, el diagnóstico y el historial no cambian.",
+                    "${cita.pacienteNombre ?: "El ${LocalTerminologiaPaciente.current.paciente}"} " +
+                        (if (soloAdelanto) "dejó un adelanto de " else "pagó ") +
+                        pe.saniape.app.ui.clinica.agenda.modales.textoSoles(monto, pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)) +
+                        (medios?.let { " con $it" } ?: "") + ". Se borra de la caja lo cobrado y la cita vuelve a " +
+                        "\"por cobrar\". La atención, el diagnóstico y el historial no cambian.",
                     color = c.textoSuave, fontSize = 13.sp,
                 )
             },
@@ -1683,7 +1687,7 @@ fun PantallaAgenda(
                 androidx.compose.material3.TextButton(
                     enabled = !vm.accionando,
                     onClick = { vm.anularCobro(cita) { anularCobroCita = null } },
-                ) { Text(if (vm.accionando) "Anulando…" else "Anular cobro", color = c.error, fontWeight = FontWeight.Bold) }
+                ) { Text(if (vm.accionando) "Revirtiendo…" else "Sí, revertir cobro", color = c.error, fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
                 androidx.compose.material3.TextButton(enabled = !vm.accionando, onClick = { anularCobroCita = null }) {
@@ -1697,8 +1701,8 @@ fun PantallaAgenda(
         ModalCobrarCita(
             cita = cita,
             onCancelar = { cobrar = null },
-            onConfirmar = { metodo, modo, fecha, pagos, acordado ->
-                vm.cobrar(cita, metodo, modo, fecha, pagos, costoAcordado = acordado) { ok -> if (ok) cobrar = null }
+            onConfirmar = { metodo, modo, fecha, pagos, acordado, adelanto ->
+                vm.cobrar(cita, metodo, modo, fecha, pagos, costoAcordado = acordado, adelanto = adelanto) { ok -> if (ok) cobrar = null }
             },
             guardando = vm.accionando,
             nombreTipo = vm.flujoDe(cita).nombreTipo(cita.tipo),

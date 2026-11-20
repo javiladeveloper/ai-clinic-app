@@ -175,9 +175,18 @@ fun cuerpoCobrarCita(
     citaId: String, metodo: String, modo: String, fecha: String?, pagos: List<PartePago>? = null,
     /** El precio negociado de ESTA cita (la atención directa cobra otro monto): null = el de la cita. */
     costoAcordado: Double? = null,
+    /** Solo un adelanto (20/11/2026): deja este monto y la cita queda debiendo el resto. */
+    adelanto: Double? = null,
+    /** Es el PRIMER adelanto: un reintento (cola offline) que llega con uno ya puesto no duplica. */
+    primerAdelanto: Boolean = false,
 ): JsonObject = buildJsonObject {
     put("citaId", citaId)
     val dividido = !pagos.isNullOrEmpty() && modo != "gratis"
+    if (adelanto != null && modo == "cobrar" && !dividido) {
+        put("adelanto", true)
+        put("monto", adelanto)
+        if (primerAdelanto) put("primerAdelanto", true)
+    }
     if (dividido) {
         put("pagos", JsonArray(pagos!!.map { p ->
             buildJsonObject { put("metodo", p.metodo); put("monto", p.monto) }
@@ -206,6 +215,22 @@ fun precioCobroCita(texto: String, costoCita: Double?, moneda: String?): PrecioC
     val cambiado = aCentimos(total) != aCentimos(costo)
     return PrecioCobroCita(total, if (cambiado) total else null, invalido = !l.ok || l.valor == 0.0)
 }
+
+/**
+ * El adelanto escrito en el cobro (gemelo de `adelantoCobro` de /citas web, 19/11/2026):
+ * vale si es un monto > 0 y MENOR que lo que falta (si lo cubre todo, es un cobro
+ * completo). Vacío o inválido → null.
+ */
+fun adelantoValido(texto: String, falta: Double, moneda: String?): Double? {
+    if (texto.isBlank()) return null
+    val l = leerPrecio(texto, moneda)
+    val v = l.valor ?: return null
+    return v.takeIf { l.ok && it > 0 && aCentimos(it) < aCentimos(falta) }
+}
+
+/** Lo que falta cobrar de una cita con adelanto: total − abonado, nunca negativo. */
+fun faltaDeCita(total: Double, abonado: Double): Double =
+    kotlin.math.max(0L, aCentimos(total) - aCentimos(abonado.coerceAtLeast(0.0))) / 100.0
 
 /** ¿El rechazo es "incierto" (5xx / timeout de Vercel)? El cobro pudo haber entrado. */
 fun rechazoIncierto(r: RechazoServidor?): Boolean = r != null && r.status >= 500
@@ -301,15 +326,16 @@ fun metodosPorCita(base: List<MovimientoCobroCita>, extra: List<MovimientoCobroC
 }
 
 /**
- * ¿Ofrecer "Anular cobro"? Gemelo del menú de /citas web: solo el Admin con
- * permiso de pagos, en una Consulta/Evaluación con costo ya cobrada con VARIOS
- * medios. Un cobro simple se corrige de otra forma (el servidor responde 409).
+ * ¿Ofrecer "↩ Revertir cobro"? Gemelo del menú de /citas web (19/11/2026: antes
+ * solo los cobros divididos): el Admin con permiso de pagos, en una
+ * Consulta/Evaluación ya cobrada o con un adelanto. Una cancelada va por
+ * "Devolver". Lo pagado en línea por el paciente lo rechaza el servidor (409).
  */
 fun puedeAnularCobro(
     rol: String?, puedePagos: Boolean, tipo: String?, costo: Double?, estado: String?,
-    pagadaAt: String?, medios: String?,
-): Boolean = rol == "Admin" && puedePagos && tipo != "Sesión" && (costo ?: 0.0) > 0 &&
-    estado != "Cancelada" && pagadaAt != null && esCobroDividido(medios)
+    pagadaAt: String?, abonado: Double,
+): Boolean = rol == "Admin" && puedePagos && tipo != "Sesión" && estado != "Cancelada" &&
+    ((pagadaAt != null && (costo ?: 0.0) > 0) || abonado > 0)
 
 /**
  * El resultado de "Anular cobro", legible. [status] 0 = sin respuesta (sin

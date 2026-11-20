@@ -364,6 +364,32 @@ internal fun TabCierre(
                         }
                     }
                 }
+                // 💰 Cobros de hoy (20/11/2026): la recepción sin finanzas no veía los
+                // pagos que iba haciendo. Solo cobros a pacientes: quién, qué, cómo y a qué hora.
+                if ((sinDetalle || d.alcance == "mi-caja") && d.cobros.isNotEmpty()) TarjetaFin {
+                    RotuloFin("💰 Cobros de hoy (${d.cobros.size})")
+                    Spacer(Modifier.height(6.dp))
+                    d.cobros.sortedByDescending { it.createdAt ?: "" }.forEach { k ->
+                        val monedaK = k.moneda ?: moneda
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(k.createdAt?.let { horaFin(it) } ?: "—", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.width(48.dp))
+                            Text(iconoMetodoFin(k.metodoPago), fontSize = 12.sp)
+                            Spacer(Modifier.width(6.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(k.paciente ?: k.descripcion ?: "Cobro", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                if (k.paciente != null && k.descripcion != null) Text(k.descripcion, color = c.textoSuave, fontSize = 11.sp, maxLines = 1)
+                            }
+                            Text(formatearDinero(k.monto, monedaK), color = c.ok, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    val porMoneda = d.cobros.groupBy { it.moneda ?: moneda }
+                    porMoneda.forEach { (mon, lista) ->
+                        Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                            Text("Total cobrado", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            Text(formatearDinero(lista.sumOf { it.monto }, mon), color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
                 // Movimientos del día: si el arqueo no cuadra, se revisan aquí mismo.
                 // «Cerrar mi caja» sin finanzas: no (el servidor tampoco manda el listado).
                 if (!sinDetalle && d.alcance != "mi-caja") TarjetaFin {
