@@ -237,15 +237,23 @@ fun PantallaLogin(onLogueado: () -> Unit) {
             // Quien llega desde Play Store SIN cuenta no debe chocar con un muro:
             // el registro de la clínica vive en la web (wizard + prueba de 30 días)
             // y la cuenta creada ahí entra a la app normal.
-            Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("¿Tienes una clínica?", color = Muted, fontSize = 13.sp)
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    "Créala gratis — 30 días",
-                    color = Navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable { acciones.abrirUrl("https://www.saniape.com/register") },
-                )
+            //
+            // EN iOS NO (22-nov-2026, rechazo de App Review 2.75.0, guía 4): el
+            // enlace sacaba al usuario a Safari para registrarse. Además invita a
+            // empezar una suscripción que no se cobra con In-App Purchase (3.1.1),
+            // así que va detrás de la misma bandera que oculta «Ver planes»: en
+            // iPhone la cuenta de la clínica se crea en la web y aquí solo se entra.
+            if (pe.saniape.app.data.permiteEnlacesDePago) {
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("¿Tienes una clínica?", color = Muted, fontSize = 13.sp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "Créala gratis — 30 días",
+                        color = Navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable { acciones.abrirUrl("https://www.saniape.com/register") },
+                    )
+                }
             }
 
             Spacer(Modifier.height(16.dp))
