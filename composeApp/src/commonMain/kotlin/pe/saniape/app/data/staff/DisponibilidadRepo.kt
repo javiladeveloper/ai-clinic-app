@@ -48,10 +48,18 @@ fun evaluarDisponibilidad(
     flexible: Boolean, diaNombre: String, horarios: List<Pair<String, String>>,
     citasProf: List<Pair<String, Int>>, citasPac: List<Pair<String, Int>>,
     hora: String, duracion: Int, tipo: String?,
+    /**
+     * Tiene horario cargado OTROS días y ninguno este (22/11/2026: un doctor con
+     * L–S marcado «a demanda» y la cita en domingo no avisaba nada). Manda sobre
+     * «a demanda»: sale en plomo con «Sin horarios». Gemelo de `diaSinHorario` (web).
+     */
+    sinHorarioEseDia: Boolean = false,
 ): Disponibilidad {
     val inicio = minutosDe(hora); val fin = inicio + duracion
     var avisoHorario: String? = null
-    if (!flexible) {
+    if (sinHorarioEseDia) {
+        avisoHorario = "Sin horarios los $diaNombre"
+    } else if (!flexible) {
         if (horarios.isEmpty()) {
             avisoHorario = "No atiende los $diaNombre"
         } else {
@@ -75,6 +83,10 @@ fun evaluarDisponibilidad(
     val aviso = avisoHorario ?: solapeProf ?: solapePac
     return Disponibilidad(true, aviso, aviso != null)
 }
+
+/** ¿Tiene horario otros días y ninguno este? Sin horario cargado en absoluto NO es «día libre». */
+fun diaSinHorario(diasConHorario: Collection<String>, dia: String): Boolean =
+    diasConHorario.isNotEmpty() && dia !in diasConHorario
 
 /**
  * Por qué NO conviene este profesional a esa hora (para pintarlo en gris en el
@@ -110,9 +122,11 @@ object DisponibilidadRepo {
     ): Disponibilidad {
         val flexible = esFlexible(terapeutaId)
         val dia = diaDe(fecha)
+        val semana = horariosSemana(listOf(terapeutaId))[terapeutaId].orEmpty()
         return evaluarDisponibilidad(
             flexible = flexible, diaNombre = dia,
-            horarios = if (flexible) emptyList() else horariosDelDia(terapeutaId, dia),
+            horarios = if (flexible) emptyList() else semana.filter { it.first == dia }.map { it.second },
+            sinHorarioEseDia = diaSinHorario(semana.map { it.first }, dia),
             citasProf = citasDe("terapeuta_id", terapeutaId, fecha, excludeCitaId),
             citasPac = if (pacienteId != null) citasDe("paciente_id", pacienteId, fecha, excludeCitaId) else emptyList(),
             hora = hora, duracion = duracion, tipo = tipo,
@@ -133,16 +147,9 @@ object DisponibilidadRepo {
             .select(Columns.list("id, horario_flexible")) { filter { isIn("id", ids) } }
             .decodeList<JsonObject>()
             .filter { it.s("horario_flexible") == "true" }.mapNotNull { it.s("id") }.toSet()
-        val horarios = Supabase.client.postgrest["horarios_terapeuta"]
-            .select(Columns.list("terapeuta_id, hora_inicio, hora_fin")) {
-                filter { isIn("terapeuta_id", ids); eq("activo", true); eq("dia", dia) }
-            }
-            .decodeList<JsonObject>()
-            .mapNotNull { o ->
-                val t = o.s("terapeuta_id"); val i = o.s("hora_inicio"); val f = o.s("hora_fin")
-                if (t != null && i != null && f != null) t to (i to f) else null
-            }
-            .groupBy({ it.first }, { it.second })
+        // Toda la semana (no solo este día): hace falta saber si hoy es su día sin horario.
+        val semana = horariosSemana(ids)
+        val horarios = semana.mapValues { (_, l) -> l.filter { it.first == dia }.map { it.second } }
         val citas = Supabase.client.postgrest["citas"]
             .select(Columns.list("id, terapeuta_id, hora, duracion")) {
                 filter {
@@ -159,6 +166,7 @@ object DisponibilidadRepo {
         return ids.associateWith { id ->
             evaluarDisponibilidad(
                 flexible = id in flexibles, diaNombre = dia, horarios = horarios[id].orEmpty(),
+                sinHorarioEseDia = diaSinHorario(semana[id].orEmpty().map { it.first }, dia),
                 citasProf = citas[id].orEmpty(), citasPac = emptyList(),
                 hora = hora, duracion = duracion, tipo = tipo,
             )
@@ -172,6 +180,20 @@ object DisponibilidadRepo {
         return o?.s("horario_flexible") == "true"
     }
 
+    /** Las franjas activas de TODA la semana por profesional: (día, (inicio, fin)). */
+    private suspend fun horariosSemana(ids: List<String>): Map<String, List<Pair<String, Pair<String, String>>>> =
+        Supabase.client.postgrest["horarios_terapeuta"]
+            .select(Columns.list("terapeuta_id, dia, hora_inicio, hora_fin")) {
+                filter { isIn("terapeuta_id", ids); eq("activo", true) }
+            }
+            .decodeList<JsonObject>()
+            .mapNotNull { o ->
+                val t = o.s("terapeuta_id"); val d = o.s("dia"); val i = o.s("hora_inicio"); val f = o.s("hora_fin")
+                if (t != null && d != null && i != null && f != null) t to (d to (i to f)) else null
+            }
+            .groupBy({ it.first }, { it.second })
+
+    @Suppress("unused")
     private suspend fun horariosDelDia(terapeutaId: String, dia: String): List<Pair<String, String>> {
         return Supabase.client.postgrest["horarios_terapeuta"]
             .select(Columns.list("dia, hora_inicio, hora_fin, activo")) {

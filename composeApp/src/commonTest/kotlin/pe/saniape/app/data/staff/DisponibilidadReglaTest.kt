@@ -2,6 +2,7 @@ package pe.saniape.app.data.staff
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -57,5 +58,16 @@ class DisponibilidadReglaTest {
         val d = evaluarDisponibilidad(false, "Lun", turno, emptyList(), listOf("10:00" to 30), "10:00", 30, "Sesión")
         assertTrue(d.motivo!!.startsWith("El paciente"))
         assertNull(motivoNoDisponible(d))
+    }
+
+    @Test fun `sin horario ese dia sale en plomo, tambien el a demanda`() {
+        assertTrue(diaSinHorario(listOf("Lun", "Mar", "Sáb"), "Dom"))
+        assertFalse(diaSinHorario(listOf("Lun", "Mar", "Sáb"), "Sáb"))
+        assertFalse(diaSinHorario(emptyList(), "Dom")) // sin horario cargado: a demanda de verdad
+        val d = evaluarDisponibilidad(true, "Dom", emptyList(), emptyList(), emptyList(), "12:30", 15, "Consulta", sinHorarioEseDia = true)
+        assertEquals("Sin horarios los Dom", d.motivo)
+        assertEquals("Sin horarios los Dom", motivoNoDisponible(d))
+        // A demanda sin horario cargado: libre, como siempre.
+        assertEquals(null, evaluarDisponibilidad(true, "Dom", emptyList(), emptyList(), emptyList(), "12:30", 15, "Consulta").motivo)
     }
 }
