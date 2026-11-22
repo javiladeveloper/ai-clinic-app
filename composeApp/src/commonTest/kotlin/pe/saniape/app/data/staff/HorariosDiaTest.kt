@@ -56,4 +56,28 @@ class HorariosDiaTest {
         assertNull(beto.ausente)
         assertEquals(listOf("9:00–10:00 a. m.", "10:45–11:00 a. m.", "12:00–1:00 p. m."), beto.libres.map(::tramoTexto))
     }
+
+    // 🚪 Consultorios (21/11/2026): gemelo del chip de «🕘 Horarios» de la web.
+    private fun json(t: String) = kotlinx.serialization.json.Json.parseToJsonElement(t) as kotlinx.serialization.json.JsonObject
+
+    @Test
+    fun consultorio_de_todo_el_dia_por_tramo_y_cambio_puntual() {
+        val r = consultoriosPorProfesional(json("""{"disponible":true,"porProfesional":[
+            {"terapeutaId":"t1","tramos":[{"consultorioId":"c1","consultorio":"Consultorio 1","desde":null,"hasta":null,"puntual":false}]},
+            {"terapeutaId":"t2","tramos":[
+              {"consultorio":"Consultorio 2","desde":"09:00","hasta":"13:00","puntual":false},
+              {"consultorio":"Sala de procedimientos","desde":"15:00","hasta":"18:00","puntual":true}]}
+        ]}"""))
+        assertEquals(listOf("Consultorio 1"), r["t1"])
+        assertEquals(listOf("Consultorio 2 · 9:00 a. m.–1:00 p. m.", "Sala de procedimientos · 3:00–6:00 p. m. (solo hoy)"), r["t2"])
+    }
+
+    @Test
+    fun sin_consultorios_o_con_un_servidor_viejo_no_muestra_nada() {
+        assertTrue(consultoriosPorProfesional(null).isEmpty())
+        assertTrue(consultoriosPorProfesional(json("""{"disponible":false,"consultorios":[],"porProfesional":[],"choques":[]}""")).isEmpty())
+        assertTrue(consultoriosPorProfesional(json("""{"error":"x"}""")).isEmpty())
+        // Tramo sin nombre de consultorio, o profesional sin id: se ignora, no rompe.
+        assertTrue(consultoriosPorProfesional(json("""{"porProfesional":[{"terapeutaId":"t1","tramos":[{"desde":"09:00"}]},{"tramos":[{"consultorio":"X"}]}]}""")).isEmpty())
+    }
 }

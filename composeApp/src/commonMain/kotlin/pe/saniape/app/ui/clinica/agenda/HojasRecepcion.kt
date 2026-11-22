@@ -164,6 +164,16 @@ private fun TarjetaHorario(f: FilaHorario, rango: Tramo, ahora: Int?) {
         Spacer(Modifier.height(6.dp))
         Text(estado, color = colorEstado, fontSize = 11.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.clip(RoundedCornerShape(50)).background(fondoEstado).padding(horizontal = 10.dp, vertical = 3.dp))
+        // 🚪 Dónde atiende hoy (consultorios, 21/11/2026). Solo si la clínica los usa.
+        if (f.consultorios.isNotEmpty() && f.ausente == null) {
+            Spacer(Modifier.height(6.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                f.consultorios.forEach { t ->
+                    Text("🚪 $t", color = c.navy, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clip(RoundedCornerShape(50)).background(c.chipBg).padding(horizontal = 10.dp, vertical = 3.dp))
+                }
+            }
+        }
         Spacer(Modifier.height(10.dp))
         BarraDiaApp(f, rango, ahora)
         if (f.atiende) {

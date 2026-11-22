@@ -1,11 +1,22 @@
 package pe.saniape.app.data.staff
 
+import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.request.parameter
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.isSuccess
 import kotlinx.datetime.LocalDate
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonObject
 import pe.saniape.app.data.Supabase
+import pe.saniape.app.data.crearHttpClient
 
 // «🕘 Horarios» de la agenda (20/11/2026, gemelo de lib/horarios-dia.ts y
 // components/citas/HorariosDelDia.tsx de la web). Jonathan: «imagínate que está
@@ -90,6 +101,8 @@ data class FilaHorario(
     val libres: List<Tramo>,
     /** «🌴 De vacaciones» si está ausente todo el día; null si atiende. */
     val ausente: String?,
+    /** 🚪 Dónde atiende ese día: «Consultorio 2» o «Consultorio 2 · 9:00 a. m.–1:00 p. m.» (web: chip de Horarios, 21/11/2026). */
+    val consultorios: List<String> = emptyList(),
 ) {
     val atiende: Boolean get() = ausente == null && (flexible || turno.isNotEmpty())
 }
@@ -122,7 +135,43 @@ fun armarDiaHorarios(d: DatosHorarios): DiaHorarios {
     return DiaHorarios(rango, filas)
 }
 
+/**
+ * Puro: los consultorios de cada profesional, de la respuesta de GET /api/staff/consultorios
+ * (`porProfesional: [{ terapeutaId, tramos: [{ consultorio, desde, hasta, puntual }] }]`).
+ * `desde`/`hasta` null = todo el día. Un cambio puntual de ese día se marca «(solo hoy)».
+ * Respuesta sin consultorios, de un backend viejo o de un plan sin la función: mapa vacío.
+ */
+fun consultoriosPorProfesional(o: JsonObject?): Map<String, List<String>> {
+    fun JsonObject.s(k: String): String? = (this[k] as? JsonPrimitive)?.content?.takeIf { it != "null" && it.isNotBlank() }
+    val lista = o?.get("porProfesional") as? JsonArray ?: return emptyMap()
+    val out = LinkedHashMap<String, List<String>>()
+    for (e in lista) {
+        val p = e as? JsonObject ?: continue
+        val id = p.s("terapeutaId") ?: continue
+        val textos = (p["tramos"] as? JsonArray).orEmpty().mapNotNull { t ->
+            val x = t as? JsonObject ?: return@mapNotNull null
+            val nombre = x.s("consultorio") ?: return@mapNotNull null
+            val a = aMin(x.s("desde")); val b = aMin(x.s("hasta"))
+            val horas = if (a != null && b != null) " · ${tramoTexto(Tramo(a, b))}" else ""
+            val puntual = if ((x["puntual"] as? JsonPrimitive)?.booleanOrNull == true) " (solo hoy)" else ""
+            "$nombre$horas$puntual"
+        }.distinct()
+        if (textos.isNotEmpty()) out[id] = textos
+    }
+    return out
+}
+
 object HorariosDiaRepo {
+    private val http = crearHttpClient()
+
+    /** Consultorios del día (servidor: plan desde Premium). Nunca rompe la hoja: ante cualquier fallo, sin consultorios. */
+    private suspend fun consultorios(fecha: String): Map<String, List<String>> = runCatching {
+        val tk = Supabase.client.auth.currentSessionOrNull()?.accessToken ?: return emptyMap()
+        val r = http.get("${Supabase.SITE_URL}/api/staff/consultorios") { header("Authorization", "Bearer $tk"); parameter("fecha", fecha) }
+        if (!r.status.isSuccess()) return emptyMap()
+        consultoriosPorProfesional(Json.parseToJsonElement(r.bodyAsText()).jsonObject)
+    }.getOrDefault(emptyMap())
+
     private val DIA = listOf("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom")
     private fun JsonObject.s(k: String): String? = (this[k] as? JsonPrimitive)?.content?.takeIf { it != "null" }
 
@@ -141,7 +190,9 @@ object HorariosDiaRepo {
                 filter { lte("desde", fecha); gte("hasta", fecha) }
             }.decodeList<JsonObject>().map { o -> listOf(o.s("terapeuta_id"), o.s("motivo"), o.s("hora_desde")?.take(5), o.s("hora_hasta")?.take(5)) }
         }.getOrDefault(emptyList())
-        return armarDiaHorarios(DatosHorarios(profs, turnos, citas, ausencias))
+        val dondeAtiende = consultorios(fecha)
+        val d = armarDiaHorarios(DatosHorarios(profs, turnos, citas, ausencias))
+        return if (dondeAtiende.isEmpty()) d else d.copy(filas = d.filas.map { f -> dondeAtiende[f.terapeutaId]?.let { f.copy(consultorios = it) } ?: f })
     }
 }
 
