@@ -1,0 +1,6 @@
+Reumatología: evaluación articular con mapa, y mejoras en la agenda.
+---
+• Reumatología — «🦴 Evaluación articular» en la ficha: toca cada articulación en el mapa (dolor, inflamación o ambas), marca las escalas y la actividad se calcula sola. En cada control ves qué cambió y puedes partir de la evaluación anterior.
+• Nueva cita: el profesional que no tiene horario ese día sale en gris con «Sin horarios».
+• «🕘 Horarios» muestra el consultorio de cada profesional.
+• «📢 Llamar en pantalla» desde la tarjeta de la cita, para la sala de espera.
