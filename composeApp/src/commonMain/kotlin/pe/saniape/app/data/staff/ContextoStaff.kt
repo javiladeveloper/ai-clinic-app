@@ -185,6 +185,8 @@ data class ContextoStaff(
      * Un backend sin el campo deja el mapa vacío y la pestaña no aparece.
      */
     val mapaPodologia: MapaPodologia = MapaPodologia(),
+    /** Qué especialidades son de reumatología (pestaña 🦴 Evaluación articular). Backend sin el campo = vacío. */
+    val mapaReumatologia: MapaReumatologia = MapaReumatologia(),
     /**
      * Qué especialidades son de estética (pestaña 💉 Aplicaciones, por paciente
      * con `pacienteEsEstetica`; solo el rubro guardado: capilar no cuenta). Un

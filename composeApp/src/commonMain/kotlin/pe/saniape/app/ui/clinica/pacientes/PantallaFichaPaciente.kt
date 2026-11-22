@@ -420,20 +420,24 @@ private fun PantallaFichaPacienteContenido(
     val puedeTricoscopia = ctx.puede("pacientes") || ctx.puede("sesiones")
     val mixtaCapilar = puedeTricoscopia && ctx.mapaCapilar.ids.isNotEmpty() && !ctx.mapaCapilar.solo
     val mixtaPodo = ctx.mapaPodologia.ids.isNotEmpty() && !ctx.mapaPodologia.solo
+    val mixtaReuma = ctx.mapaReumatologia.ids.isNotEmpty() && !ctx.mapaReumatologia.solo
     val mixtaEstetica = ctx.mapaEstetica.ids.isNotEmpty() && !ctx.mapaEstetica.solo
     val mixtaGineco = ctx.mapaGineco.ids.isNotEmpty() && !ctx.mapaGineco.solo
     var tieneEmbarazos by remember(paciente.id) { mutableStateOf(false) }
     var datosCapilar by remember(paciente.id) { mutableStateOf(false to emptyList<String>()) }
     var tieneEvalPodo by remember(paciente.id) { mutableStateOf(false) }
+    var tieneEvalReuma by remember(paciente.id) { mutableStateOf(false) }
     var tieneAplicaciones by remember(paciente.id) { mutableStateOf(false) }
-    LaunchedEffect(paciente.id, mixtaCapilar, mixtaPodo, mixtaEstetica, mixtaGineco) {
+    LaunchedEffect(paciente.id, mixtaCapilar, mixtaPodo, mixtaEstetica, mixtaGineco, mixtaReuma) {
         coroutineScope {
             val ginecoD = async { if (mixtaGineco) pe.saniape.app.data.staff.EmbarazoRepo.tieneEmbarazos(paciente.id) else null }
             val capilarD = async { if (mixtaCapilar) pe.saniape.app.data.staff.TricoscopiaRepo.datosMixta(paciente.id, ctx.miTerapeutaId) else null }
             val podoD = async { if (mixtaPodo) pe.saniape.app.data.staff.EvaluacionPodologicaRepo.tieneEvaluaciones(paciente.id) else null }
+            val reumaD = async { if (mixtaReuma) pe.saniape.app.data.staff.EvaluacionReumatologicaRepo.tieneEvaluaciones(paciente.id) else null }
             val esteticaD = async { if (mixtaEstetica) pe.saniape.app.data.staff.AplicacionesEsteticasRepo.tieneAplicaciones(paciente.id) else null }
             capilarD.await()?.let { datosCapilar = it }
             podoD.await()?.let { tieneEvalPodo = it }
+            reumaD.await()?.let { tieneEvalReuma = it }
             esteticaD.await()?.let { tieneAplicaciones = it }
             ginecoD.await()?.let { tieneEmbarazos = it }
         }
@@ -450,6 +454,11 @@ private fun PantallaFichaPacienteContenido(
         datosDentales.especialidadesDeCitas.map { pe.saniape.app.data.staff.AtencionFisio(especialidadId = it) }
     val esPacientePodologia = pieAlAbrir != null || pe.saniape.app.data.staff.pacienteEsPodologia(
         ctx.mapaPodologia, atenciones = atencionesConCitas, tieneEvaluaciones = tieneEvalPodo,
+        especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
+    )
+    // 🦴 Reumatología (evaluación articular): misma cadena que podología.
+    val esPacienteReuma = pe.saniape.app.data.staff.pacienteEsReumatologia(
+        ctx.mapaReumatologia, atenciones = atencionesConCitas, tieneEvaluaciones = tieneEvalReuma,
         especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
     )
     // 🤰 Gineco-obstetricia (carné perinatal): misma cadena, solo por el rubro guardado.
@@ -1178,6 +1187,8 @@ private fun PantallaFichaPacienteContenido(
                     if (esPacienteEstetica) add("aplicaciones" to "💉 Aplicaciones")
                     // SOLO pacientes de podología (`esPacientePodologia`): mapa del pie + riesgo IWGDF.
                     if (esPacientePodologia) add("evaluacion_pie" to "🦶 Evaluación del pie")
+                    // SOLO pacientes de reumatología: mapa articular + actividad (CDAI / DAS28).
+                    if (esPacienteReuma) add("evaluacion_articular" to "🦴 Evaluación articular")
                     // SOLO pacientes de pediatría (`esPacientePediatria`): curvas OMS + 💉 carné de vacunas.
                     if (esPacientePediatria) add("crecimiento" to "👶 Crecimiento")
                     // SOLO pacientes de gineco-obstetricia (`esPacienteGineco`): el carné perinatal.
@@ -1582,6 +1593,14 @@ private fun PantallaFichaPacienteContenido(
                             pacienteDocumento = paciente.dni,
                         )
                     }
+                    // 🦴 Evaluación articular (reumatología): consulta SOLO al abrirse.
+                    "evaluacion_articular" -> if (esPacienteReuma) {
+                        val inactiva = pe.saniape.app.data.staff.fichaInactiva(paciente.estado)
+                        pe.saniape.app.ui.clinica.reumatologia.EvaluacionReumaTab(
+                            pacienteId = paciente.id,
+                            puedeEditar = (ctx.puede("pacientes") || ctx.puede("sesiones")) && !inactiva,
+                        )
+                    } else Unit
                     // 🦶 Evaluación del pie (podología): consulta SOLO al abrirse. Escribe quien
                     // puede 'pacientes' o 'sesiones' (como el API); el resto la ve e imprime.
                     "evaluacion_pie" -> if (esPacientePodologia) {
