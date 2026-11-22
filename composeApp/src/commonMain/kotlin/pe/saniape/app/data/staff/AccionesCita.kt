@@ -53,6 +53,8 @@ enum class AccionTarjeta {
     MapaAplicacion,
     /** «✓ Se realizó en esta visita»: el servicio de una vez hecho en esta evaluación/consulta (ServicioEnVisita.kt). */
     ServicioEnVisita,
+    /** «📢 Llamar en pantalla»: el televisor de la sala de espera muestra a quién le toca (LlamadoPantalla.kt). */
+    LlamarPantalla,
 }
 
 /** La acción de la tarjeta para cada documento (lib/agenda-dia → AgendaDia.kt). null = no hay en la app. */
@@ -172,6 +174,8 @@ data class EntradaAccionesCita(
     val documentos: List<DocumentoCita> = emptyList(),
     /** «✓ Se realizó en esta visita» ([ofreceServicioEnVisita], ya con permisos): lo decide la pantalla. */
     val servicioEnVisita: Boolean = false,
+    /** «📢 Llamar en pantalla» ([ofreceLlamarPantalla] + permiso de sala): lo decide la pantalla. */
+    val llamarPantalla: Boolean = false,
 )
 
 /**
@@ -230,6 +234,8 @@ fun accionesCita(e: EntradaAccionesCita): List<AccionCitaItem> {
     } else if (estado == "Pendiente") add("✓ Confirmar", AccionTarjeta.Confirmar, TonoAccion.OK)
     // «🔔 Llegó» de la sala de TODAS las clínicas (sin sala médica): a «⋯ Más» o a la vista.
     if (e.llegoSimple && activa && sala == null) add("🔔 Llegó", AccionTarjeta.Llego, TonoAccion.OK)
+    // 📢 Llamar al paciente en el televisor de la sala (cita de hoy en curso): a «⋯ Más», como la web.
+    if (e.llamarPantalla && activa) add("📢 Llamar en pantalla", AccionTarjeta.LlamarPantalla, TonoAccion.NAVY)
     // Evaluación psicológica: el espacio de trabajo, en cualquier estado (como la web).
     if (e.evaluacionPsico && estado != "Cancelada") add("🧠 Evaluación", AccionTarjeta.EvaluacionPsico, TonoAccion.PURPLE)
     if (e.pasarA != null && activa) add("→ ${e.pasarA}", AccionTarjeta.PasarEvaluacion, TonoAccion.INFO)

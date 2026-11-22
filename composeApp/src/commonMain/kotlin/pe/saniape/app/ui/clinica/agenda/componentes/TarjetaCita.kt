@@ -178,6 +178,8 @@ fun TarjetaCita(
      * registra la falta en vez de cancelar. Lo decide la pantalla.
      */
     noVino: Boolean = false,
+    /** «📢 Llamar en pantalla» en «⋯ Más» (cita de hoy en curso y pantalla activa): lo decide la pantalla. */
+    llamarPantalla: Boolean = false,
     /**
      * Documentos de ESTA atención (📄 informe / 🛌 descanso / 📄 constancia, 💉
      * mapa): documentosDeCita, ya con sus permisos. Lo decide la pantalla.
@@ -367,6 +369,7 @@ fun TarjetaCita(
                 // Lo clínico (documentos de la atención) pide la historia clínica, como el resto.
                 documentos = if (verClinico) documentos else emptyList(),
                 servicioEnVisita = servicioEnVisita && cita.pacienteId != null,
+                llamarPantalla = llamarPantalla && cita.pacienteId != null,
             ))
 
             // Chips: costo, Web, Asignar (discretos, en una línea)

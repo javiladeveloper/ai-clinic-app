@@ -551,6 +551,29 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     /** Marcar / pasar / volver: permiso agendar o sesiones (el del endpoint). */
     private val puedeMoverSala: Boolean get() = ctx.puede("agendar") || ctx.puede("sesiones")
 
+    // ── 📢 Llamado en pantalla (sala de espera, plan Plus) ──
+    /** Pantallas activas de la clínica; vacío = no se ofrece el botón (sin plan, sin pantalla o sin señal). */
+    private var pantallasLlamado by mutableStateOf<List<pe.saniape.app.data.staff.PantallaLlamadoRef>>(emptyList())
+    /** La cita que se está llamando ahora (para no disparar dos veces). */
+    var llamandoCita by mutableStateOf<String?>(null); private set
+
+    /** ¿Se ofrece «📢 Llamar en pantalla» en esta cita? (hoy, en curso, con pantalla y permiso de sala). */
+    fun ofreceLlamarEn(c: CitaStaff): Boolean =
+        puedeMoverSala && pantallasLlamado.isNotEmpty() && pe.saniape.app.data.staff.ofreceLlamarPantalla(
+            c.estado, c.fecha, pe.saniape.app.data.staff.ahoraEn(ctx.zonaDeSede(c.sedeId)).fecha, c.sedeId, pantallasLlamado,
+        )
+
+    /** Pide el llamado y avisa lo que salió en el televisor («📢 Elena H. → Consultorio 1»). */
+    fun llamarEnPantalla(c: CitaStaff) {
+        if (llamandoCita != null) return
+        llamandoCita = c.id
+        viewModelScope.launch {
+            val r = pe.saniape.app.data.staff.LlamadoPantallaRepo.llamar(c.id)
+            if (r.ok) pe.saniape.app.ui.Toaster.exito(r.texto) else pe.saniape.app.ui.Toaster.error(r.texto)
+            llamandoCita = null
+        }
+    }
+
     /** id → nombre de los profesionales que se conocen (nombra al profesional si la cita no lo trae). */
     private val mapaTerapeutas: Map<String, String> get() = terapeutas.associate { it.id to it.nombre }
 
@@ -763,6 +786,8 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
     private var realtimeJob: kotlinx.coroutines.Job? = null
 
     init {
+        // 📢 Pantallas de la sala de espera: se leen una vez (cambian muy poco).
+        if (puedeMoverSala) viewModelScope.launch { pantallasLlamado = pe.saniape.app.data.staff.LlamadoPantallaRepo.pantallasActivas() }
         // Lo que eligió la última vez en este teléfono (se valida al llegar las especialidades).
         seleccionEspGuardada = claveFiltroEsp?.let { clave ->
             runCatching {

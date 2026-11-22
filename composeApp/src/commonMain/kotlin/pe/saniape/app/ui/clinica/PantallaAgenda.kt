@@ -845,6 +845,8 @@ fun PantallaAgenda(
                     AccionTarjeta.AtenderDirecto, AccionTarjeta.Evolucion -> atencionDirectaId = cita.id
                     // 🚫 La falta del mismo día: el modal de siempre (motivo + reponer).
                     AccionTarjeta.NoVino -> noVino = cita
+                    // 📢 El televisor de la sala de espera: el servidor arma el nombre y el consultorio.
+                    AccionTarjeta.LlamarPantalla -> vm.llamarEnPantalla(cita)
                     AccionTarjeta.DocInforme, AccionTarjeta.DocDescanso, AccionTarjeta.DocOrden, AccionTarjeta.DocConstancia ->
                         vm.documentosDe(cita, verHc)
                             .firstOrNull { pe.saniape.app.data.staff.accionDeDocumento(it.clave) == accion }
@@ -1115,6 +1117,8 @@ fun PantallaAgenda(
                                 ),
                                 // 🚫 No vino el mismo día (hoy ya empezada o días anteriores; permiso 'citas').
                                 noVino = vm.ofreceNoVinoEn(cita),
+                                // 📢 Llamar en la pantalla de la sala (hoy, en curso, con pantalla activa).
+                                llamarPantalla = vm.ofreceLlamarEn(cita),
                                 // 📄 Documentos y 💉 mapa de ESTA atención (con sus permisos).
                                 documentos = vm.documentosDe(cita, verHc),
                                 // ✓ El servicio de una vez hecho en esta evaluación/consulta (no dental).
