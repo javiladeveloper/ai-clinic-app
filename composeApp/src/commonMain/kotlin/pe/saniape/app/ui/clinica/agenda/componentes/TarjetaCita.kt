@@ -178,6 +178,8 @@ fun TarjetaCita(
      * registra la falta en vez de cancelar. Lo decide la pantalla.
      */
     noVino: Boolean = false,
+    /** «🏷️ Cambiar especialidad» en «⋯ Más» (ofreceCambiarEspecialidad): lo decide la pantalla. */
+    cambiarEspecialidad: Boolean = false,
     /** «📢 Llamar en pantalla» en «⋯ Más» (cita de hoy en curso y pantalla activa): lo decide la pantalla. */
     llamarPantalla: Boolean = false,
     /**
@@ -366,6 +368,7 @@ fun TarjetaCita(
                 directa = verClinico && atencionDirecta == pe.saniape.app.data.staff.OfertaAtencionDirecta.ATENDER,
                 evolucion = botonEvolucion?.takeIf { verClinico && atencionDirecta == pe.saniape.app.data.staff.OfertaAtencionDirecta.EVOLUCION },
                 noVino = noVino,
+                cambiarEspecialidad = cambiarEspecialidad,
                 // Lo clínico (documentos de la atención) pide la historia clínica, como el resto.
                 documentos = if (verClinico) documentos else emptyList(),
                 servicioEnVisita = servicioEnVisita && cita.pacienteId != null,

@@ -156,6 +156,35 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
      * ya empezada (o de días anteriores), con permiso 'citas' (el del endpoint).
      * El "hoy" y la hora son los de la sede de la cita.
      */
+    /** Las especialidades del profesional de una cita (vacío = no se sabe). */
+    fun especialidadesDeProfesional(terapeutaId: String?): List<String> =
+        terapeutas.find { it.id == terapeutaId }?.especialidadIds ?: emptyList()
+
+    /** «🏷️ Cambiar especialidad» de esta cita (regla y permisos: data/staff/CitaEspecialidad.kt). */
+    fun ofreceCambiarEspecialidadEn(cita: CitaStaff): Boolean = pe.saniape.app.data.staff.ofreceCambiarEspecialidad(
+        cita.tipo, cita.estado, especialidades.size, ctx.puede("citas"), ctx.puede("sesiones"))
+
+    /**
+     * Guarda la especialidad corregida. [onFin] recibe true si quedó registrada
+     * (el diálogo solo se cierra entonces).
+     */
+    fun cambiarEspecialidad(cita: CitaStaff, especialidadId: String, onFin: (Boolean) -> Unit) {
+        if (accionando) return
+        viewModelScope.launch {
+            accionando = true
+            val r = AgendaRepo.cambiarEspecialidad(cita.id, especialidadId)
+            if (r.registrada) {
+                recargarCitas()
+                if (!r.encolada) pe.saniape.app.ui.Toaster.exito(
+                    "Especialidad cambiada a ${especialidades.find { it.id == especialidadId }?.nombre ?: "la elegida"}")
+            } else {
+                pe.saniape.app.ui.Toaster.error(r.rechazo?.error ?: "No se pudo cambiar la especialidad")
+            }
+            accionando = false
+            onFin(r.registrada)
+        }
+    }
+
     fun ofreceNoVinoEn(cita: CitaStaff): Boolean {
         if (!ctx.puede("citas")) return false
         val a = pe.saniape.app.data.staff.ahoraEn(ctx.zonaDeSede(cita.sedeId))

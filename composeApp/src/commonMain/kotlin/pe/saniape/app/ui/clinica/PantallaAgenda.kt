@@ -186,6 +186,8 @@ fun PantallaAgenda(
     }
     // "✗ No vino" de una vencida (o «🚫 No vino» del ⋯ de la de hoy): confirmación con motivo + "📅 Reponer".
     var noVino by remember { mutableStateOf<CitaStaff?>(null) }
+    // 🏷️ Cambiar especialidad de una consulta/evaluación por atender (se agendó en la equivocada).
+    var cambiarEspecialidadCita by remember { mutableStateOf<CitaStaff?>(null) }
     // 📄 Informe / descanso / constancia del ⋯ de una cita atendida (prellenado con ESA atención).
     var docCita by remember { mutableStateOf<Pair<CitaStaff, pe.saniape.app.data.staff.DocumentoCita>?>(null) }
     // «✓ Se realizó en esta visita» (ServicioEnVisita.kt): la cita y los servicios de
@@ -845,6 +847,7 @@ fun PantallaAgenda(
                     AccionTarjeta.AtenderDirecto, AccionTarjeta.Evolucion -> atencionDirectaId = cita.id
                     // 🚫 La falta del mismo día: el modal de siempre (motivo + reponer).
                     AccionTarjeta.NoVino -> noVino = cita
+                    AccionTarjeta.CambiarEspecialidad -> cambiarEspecialidadCita = cita
                     // 📢 El televisor de la sala de espera: el servidor arma el nombre y el consultorio.
                     AccionTarjeta.LlamarPantalla -> vm.llamarEnPantalla(cita)
                     AccionTarjeta.DocInforme, AccionTarjeta.DocDescanso, AccionTarjeta.DocOrden, AccionTarjeta.DocConstancia ->
@@ -1117,6 +1120,7 @@ fun PantallaAgenda(
                                 ),
                                 // 🚫 No vino el mismo día (hoy ya empezada o días anteriores; permiso 'citas').
                                 noVino = vm.ofreceNoVinoEn(cita),
+                                cambiarEspecialidad = vm.ofreceCambiarEspecialidadEn(cita),
                                 // 📢 Llamar en la pantalla de la sala (hoy, en curso, con pantalla activa).
                                 llamarPantalla = vm.ofreceLlamarEn(cita),
                                 // 📄 Documentos y 💉 mapa de ESTA atención (con sus permisos).
@@ -1677,6 +1681,17 @@ fun PantallaAgenda(
             guardando = vm.accionando,
             onCancelar = { if (!vm.accionando) abonarPaqueteCita = null },
             onConfirmar = { monto, metodo -> vm.abonarPaquete(cita, monto, metodo) { ok -> if (ok) abonarPaqueteCita = null } },
+        )
+    }
+    cambiarEspecialidadCita?.let { cita ->
+        pe.saniape.app.ui.clinica.agenda.modales.DialogoCambiarEspecialidad(
+            cita = cita,
+            especialidades = vm.especialidades,
+            actualId = cita.especialidadId ?: cita.especialidadServicioId,
+            especialidadesDelProfesional = vm.especialidadesDeProfesional(cita.terapeutaId),
+            guardando = vm.accionando,
+            onCancelar = { if (!vm.accionando) cambiarEspecialidadCita = null },
+            onGuardar = { espId -> vm.cambiarEspecialidad(cita, espId) { ok -> if (ok) cambiarEspecialidadCita = null } },
         )
     }
     ponerPrecioCita?.let { cita ->

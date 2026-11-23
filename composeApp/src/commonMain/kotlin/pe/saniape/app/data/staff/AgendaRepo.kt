@@ -390,6 +390,16 @@ object AgendaRepo {
         return enviarOEncolarDetalle("cita:reprogramar", "/api/staff/cita/reprogramar", cuerpo)
     }
 
+    /**
+     * 🏷️ Corregir la especialidad de una consulta/evaluación por atender, VÍA
+     * SERVIDOR (`/api/staff/cita/especialidad`, el mismo de la web): valida que la
+     * cita siga por atender y que la especialidad esté activa.
+     */
+    suspend fun cambiarEspecialidad(citaId: String, especialidadId: String): pe.saniape.app.data.offline.ResultadoEscritura {
+        val cuerpo = buildJsonObject { put("citaId", citaId); put("especialidadId", especialidadId) }
+        return enviarOEncolarDetalle("cita:especialidad", "/api/staff/cita/especialidad", cuerpo)
+    }
+
     // ── Acciones complejas vía endpoints (kardex/comisión/contador) ──
     suspend fun completar(
         citaId: String,

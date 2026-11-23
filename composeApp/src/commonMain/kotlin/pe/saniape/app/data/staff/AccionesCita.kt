@@ -47,6 +47,8 @@ enum class AccionTarjeta {
     Evolucion,
     /** «🚫 No vino» el mismo día: registra la falta (no cancela; la sesión no se borra). */
     NoVino,
+    /** «🏷️ Cambiar especialidad»: la cita se agendó en la equivocada (data/staff/CitaEspecialidad.kt). */
+    CambiarEspecialidad,
     /** Documentos de la atención completada: 📄 informe, 🛌 descanso, 🧪 orden, 📄 constancia. */
     DocInforme, DocDescanso, DocOrden, DocConstancia,
     /** 💉 Mapa de aplicación (estética): la ficha en la pestaña con ESA cita. */
@@ -170,6 +172,8 @@ data class EntradaAccionesCita(
     val evolucion: BotonEvolucionCita? = null,
     /** «🚫 No vino» (ofreceNoVino + permiso 'citas'): lo decide la pantalla. */
     val noVino: Boolean = false,
+    /** «🏷️ Cambiar especialidad» ([ofreceCambiarEspecialidad], ya con permisos): lo decide la pantalla. */
+    val cambiarEspecialidad: Boolean = false,
     /** Documentos de la atención (documentosDeCita, ya con sus permisos). */
     val documentos: List<DocumentoCita> = emptyList(),
     /** «✓ Se realizó en esta visita» ([ofreceServicioEnVisita], ya con permisos): lo decide la pantalla. */
@@ -274,6 +278,8 @@ fun accionesCita(e: EntradaAccionesCita): List<AccionCitaItem> {
     if (e.anularCobro && estado != "Cancelada") add("↩ Revertir cobro", AccionTarjeta.AnularCobro, TonoAccion.ERROR)
     if (estado != "Cancelada" && estado != "Completada") {
         add("✏ Editar o reprogramar", AccionTarjeta.Editar, TonoAccion.SUAVE)
+        // Agendada en la especialidad equivocada: corregirla antes de atender (como la web).
+        if (e.cambiarEspecialidad) add("🏷️ Cambiar especialidad", AccionTarjeta.CambiarEspecialidad, TonoAccion.SUAVE)
         // La falta, no la cancelación: en una Sesión, cancelar borraba la sesión.
         if (e.noVino) add("🚫 No vino", AccionTarjeta.NoVino, TonoAccion.PEND)
         add("✕ Cancelar", AccionTarjeta.Cancelar, TonoAccion.ERROR)
@@ -304,7 +310,7 @@ fun grupoDe(a: AccionTarjeta): GrupoAccion = when (a) {
     AccionTarjeta.Cobrar, AccionTarjeta.AbonarPaquete, AccionTarjeta.PonerPrecio,
     AccionTarjeta.Comprobante, AccionTarjeta.AnularCobro -> GrupoAccion.COBRO
     AccionTarjeta.Confirmar, AccionTarjeta.Editar, AccionTarjeta.Repetir,
-    AccionTarjeta.Revertir, AccionTarjeta.NoVino, AccionTarjeta.Cancelar -> GrupoAccion.CITA
+    AccionTarjeta.Revertir, AccionTarjeta.NoVino, AccionTarjeta.CambiarEspecialidad, AccionTarjeta.Cancelar -> GrupoAccion.CITA
     else -> GrupoAccion.ATENCION
 }
 
@@ -312,6 +318,7 @@ fun grupoDe(a: AccionTarjeta): GrupoAccion = when (a) {
 private fun ordenCita(a: AccionTarjeta): Int = when (a) {
     AccionTarjeta.Confirmar -> 0
     AccionTarjeta.Editar -> 1
+    AccionTarjeta.CambiarEspecialidad -> 2
     AccionTarjeta.Repetir -> 2
     AccionTarjeta.Revertir -> 3
     AccionTarjeta.NoVino -> 8
