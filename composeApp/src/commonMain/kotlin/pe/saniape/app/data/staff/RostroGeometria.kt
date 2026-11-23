@@ -21,8 +21,21 @@ object RostroGeometria {
 
     private fun e(cx: Float, cy: Float, rx: Float, ry: Float, rot: Float = 0f) = FormaMapa.Elipse(cx, cy, rx, ry, rot)
 
-    /** Vista frontal. Pares: la derecha del paciente con x < 120. */
-    val FRONTAL: Map<String, FormaMapa.Elipse> = mapOf(
+    // El rostro es una ILUSTRACIÓN (la misma de la web, 22/11/2026). Las zonas se
+    // pensaron para el dibujo de líneas, que tenía los ojos muy juntos: `ajustarX`
+    // las lleva a su sitio sobre la cara real (la altura ya coincide). Gemelo de
+    // `ajustarX` / IMAGEN_FRONTAL / IMAGEN_PERFIL en components/estetica/MapaFacial.tsx.
+    /** Dónde va la imagen dentro del lienzo: x, y, ancho, alto. */
+    val IMAGEN_FRONTAL = floatArrayOf(16f, -19f, 210f, 317f)
+    val IMAGEN_PERFIL = floatArrayOf(12f, 6f, 215.5f, 300f)
+    fun ajustarX(x: Float): Float {
+        val d = x - 120f; val a = kotlin.math.abs(d)
+        val n = if (a <= 31f) a * 41f / 31f else 41f + (a - 31f) * 0.78f
+        return kotlin.math.round((120f + (if (d < 0) -n else n)) * 10f) / 10f
+    }
+
+    /** Vista frontal, sobre el dibujo ORIGINAL. Pares: la derecha del paciente con x < 120. */
+    private val FRONTAL_BASE: Map<String, FormaMapa.Elipse> = mapOf(
         "frente" to e(120f, 56f, 52f, 20f),
         "glabela" to e(120f, 100f, 11f, 11f),
         "cola_ceja_der" to e(66f, 97f, 9f, 6f, 15f),
@@ -51,14 +64,16 @@ object RostroGeometria {
         "masetero_izq" to e(188f, 188f, 9f, 17f),
         "cuello" to e(120f, 294f, 30f, 13f),
     )
+    /** Vista frontal, ya sobre la ilustración. */
+    val FRONTAL: Map<String, FormaMapa.Elipse> = FRONTAL_BASE.mapValues { (_, f) -> f.copy(cx = ajustarX(f.cx)) }
 
     /** Perfil DERECHO (mira a la derecha). El izquierdo es su espejo. */
     val PERFIL: Map<String, FormaMapa.Elipse> = mapOf(
-        "dorso_nasal" to e(188f, 141f, 5f, 15f, -28f),
-        "punta_nasal" to e(198f, 165f, 6f, 6f),
-        "menton_proyeccion" to e(183f, 244f, 8f, 12f),
-        "angulo_mandibular_der" to e(112f, 236f, 12f, 9f),
-        "angulo_mandibular_izq" to e(112f, 236f, 12f, 9f),
+        "dorso_nasal" to e(209f, 122f, 5f, 15f, -28f),
+        "punta_nasal" to e(220f, 146f, 6f, 6f),
+        "menton_proyeccion" to e(201f, 210f, 8f, 12f),
+        "angulo_mandibular_der" to e(105f, 190f, 12f, 9f),
+        "angulo_mandibular_izq" to e(105f, 190f, 12f, 9f),
     )
 
     /** La forma de una zona en su vista (sin espejo). */

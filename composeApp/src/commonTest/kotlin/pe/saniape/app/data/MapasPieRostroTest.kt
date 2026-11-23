@@ -84,15 +84,15 @@ class MapasPieRostroTest {
 
     @Test fun elAreaDeToqueRespetaElMinimoPedido() {
         // Con un radio mínimo mayor (rostro dibujado chico), la zona se alcanza desde más lejos.
-        assertNull(RostroGeometria.zonaEn("frontal", 144f, 226f))
-        assertEquals("comisura_izq", RostroGeometria.zonaEn("frontal", 144f, 226f, radioMin = 16f))
+        assertNull(RostroGeometria.zonaEn("frontal", 151.7f, 226f))
+        assertEquals("comisura_izq", RostroGeometria.zonaEn("frontal", 151.7f, 226f, radioMin = 16f))
     }
 
     @Test fun perfilIzquierdoEnEspejo() {
-        assertEquals("punta_nasal", RostroGeometria.zonaEn("lateral_der", 198f, 165f))
-        assertEquals("punta_nasal", RostroGeometria.zonaEn("lateral_izq", 240f - 198f, 165f))
-        assertEquals("angulo_mandibular_izq", RostroGeometria.zonaEn("lateral_izq", 240f - 112f, 236f))
-        assertEquals("angulo_mandibular_der", RostroGeometria.zonaEn("lateral_der", 112f, 236f))
+        assertEquals("punta_nasal", RostroGeometria.zonaEn("lateral_der", 220f, 146f))
+        assertEquals("punta_nasal", RostroGeometria.zonaEn("lateral_izq", 240f - 220f, 146f))
+        assertEquals("angulo_mandibular_izq", RostroGeometria.zonaEn("lateral_izq", 240f - 105f, 190f))
+        assertEquals("angulo_mandibular_der", RostroGeometria.zonaEn("lateral_der", 105f, 190f))
     }
 
     @Test fun elipseRotadaSeTocaEnSuEje() {

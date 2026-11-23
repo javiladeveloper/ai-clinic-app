@@ -1,5 +1,10 @@
 package pe.saniape.app.ui.clinica.estetica
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -74,7 +79,7 @@ fun MapaFacial(
     val lavanda = Color(0xFF8892C8)
     val titulo = if (vista == "frontal") "Rostro, vista frontal" else "Rostro, perfil ${if (vista == "lateral_der") "derecho" else "izquierdo"}"
     BoxWithConstraints(
-        modifier.aspectRatio(RostroGeometria.ANCHO / RostroGeometria.ALTO)
+        modifier.aspectRatio(RostroGeometria.ANCHO / RostroGeometria.ALTO).clipToBounds()
             .semantics { contentDescription = titulo }
             .then(if (onZona != null) Modifier.pointerInput(vista) {
                 detectTapGestures { p ->
@@ -86,16 +91,18 @@ fun MapaFacial(
             } else Modifier),
     ) {
         val escalaDp = maxWidth.value / RostroGeometria.ANCHO
+        // El rostro: la ilustración de la web (frente o perfil; el perfil izquierdo, en espejo).
+        val img = if (vista == "frontal") RostroGeometria.IMAGEN_FRONTAL else RostroGeometria.IMAGEN_PERFIL
+        Box(Modifier.fillMaxSize().graphicsLayer { scaleX = if (espejo) -1f else 1f }) {
+            coil3.compose.AsyncImage(
+                model = "${pe.saniape.app.data.Supabase.SITE_URL}/estetica/rostro-${if (vista == "frontal") "frente" else "perfil"}.webp",
+                contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.FillBounds,
+                modifier = Modifier.offset(x = (img[0] * escalaDp).dp, y = (img[1] * escalaDp).dp).size((img[2] * escalaDp).dp, (img[3] * escalaDp).dp),
+            )
+        }
         Canvas(Modifier.fillMaxSize()) {
             val s = size.width / RostroGeometria.ANCHO
             scale(scaleX = if (espejo) -1f else 1f, scaleY = 1f, pivot = Offset(size.width / 2f, 0f)) {
-                if (vista == "frontal") {
-                    dibujarTrazo(TrazosRostro.frontal[0], s, tinta)
-                    RostroGeometria.FRONTAL_OREJAS.forEach { dibujarForma(it, s, fondo, tinta, 1.3f) }
-                    dibujarTrazo(TrazosRostro.contorno, s, tinta, relleno = fondo)
-                    TrazosRostro.frontal.drop(1).forEach { dibujarTrazo(it, s, tinta) }
-                    RostroGeometria.FRONTAL_PUPILAS.forEach { dibujarForma(it, s, tinta, null) }
-                } else TrazosRostro.perfil.forEach { dibujarTrazo(it, s, tinta) }
                 zonas.forEach { z ->
                     val r = porZona[z.id]
                     if (compacto && r == null) return@forEach
