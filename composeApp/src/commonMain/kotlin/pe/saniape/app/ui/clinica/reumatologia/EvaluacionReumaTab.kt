@@ -7,6 +7,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -38,6 +41,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.window.Dialog
+import coil3.compose.AsyncImage
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -63,7 +70,16 @@ import pe.saniape.app.data.staff.NivelActividadReuma
 import pe.saniape.app.data.staff.PUNTOS_DOLOROSOS_REUMA
 import pe.saniape.app.data.staff.PacientesRepo
 import pe.saniape.app.data.staff.actividadReuma
-import pe.saniape.app.data.staff.articulacionEn
+import pe.saniape.app.data.staff.ArticulacionDef
+import pe.saniape.app.data.staff.PROPORCION_MANO_REUMA
+import pe.saniape.app.data.staff.PROPORCION_PIE_REUMA
+import pe.saniape.app.data.staff.PUNTOS_MANO_REUMA
+import pe.saniape.app.data.staff.PUNTOS_PIE_REUMA
+import pe.saniape.app.data.staff.ToqueMapaReuma
+import pe.saniape.app.data.staff.toqueEnMapaReuma
+import pe.saniape.app.data.staff.toqueEnZonaReuma
+import pe.saniape.app.data.staff.zonaReumaEnEspejo
+import pe.saniape.app.data.Supabase
 import pe.saniape.app.data.staff.cdaiReuma
 import pe.saniape.app.data.staff.compararEvaluacionesReuma
 import pe.saniape.app.data.staff.conteosReuma
@@ -96,9 +112,11 @@ import pe.saniape.app.ui.theme.Sania
  * actividad EN VIVO y el comparativo contra la evaluación anterior.
  */
 
-private val COLOR_DOLOR = Color(0xFFD97706)
-private val COLOR_INFLAMADA = Color(0xFF2563EB)
-private val COLOR_AMBAS = Color(0xFFDC2626)
+private val COLOR_DOLOR = Color(0xFFF59E0B)
+// Morado y no azul: el azul se perdía sobre el cuerpo azul.
+private val COLOR_INFLAMADA = Color(0xFFA855F7)
+private val COLOR_AMBAS = Color(0xFFEF4444)
+private val BORDE_PUNTO = Color(0xFF1E3A8A)
 
 private fun colorEstado(e: EstadoArticulacion?): Color? = when {
     e == null -> null
@@ -120,58 +138,140 @@ private fun limpio(n: Double?): String = when {
     else -> n.toString()
 }
 
-/** El dibujo: figura de frente (el lado derecho del paciente a la izquierda) con cada articulación tocable. */
+/** Las ilustraciones son las mismas de la web (cuerpo, mano y pie): se cargan de ahí y quedan en caché. */
+private fun urlFiguraReuma(nombre: String) = "${Supabase.SITE_URL}/reumatologia/$nombre.webp"
+
+private fun nombreZonaReuma(zona: String, lado: String) =
+    (if (zona == "mano") "Mano" else "Pie") + " " + if (lado == "der") (if (zona == "mano") "derecha" else "derecho") else (if (zona == "mano") "izquierda" else "izquierdo")
+
+/**
+ * El cuerpo (ilustración) con las articulaciones grandes encima. Cada mano y cada
+ * pie lleva una BOLITA: al tocarla se abre la mano o el pie en grande para marcar
+ * nudillos y dedos. La bolita muestra cuántas hay marcadas y el color del peor
+ * hallazgo. Gemelo de `components/reumatologia/MapaArticular.tsx`.
+ */
 @Composable
 fun MapaArticular(
     valor: Map<String, EstadoArticulacion>,
     completo: Boolean,
     onCambiar: ((Map<String, EstadoArticulacion>) -> Unit)? = null,
 ) {
-    val c = Sania.colors
     val visibles = remember(completo, valor) { ARTICULACIONES_REUMA.filter { completo || it.en28 || valor.containsKey(it.id) } }
+    var abierta by remember { mutableStateOf<Pair<String, String>?>(null) }
     val alCambiar by rememberUpdatedState(onCambiar)
     val actual by rememberUpdatedState(valor)
     val visiblesAhora by rememberUpdatedState(visibles)
     val resumen = conteosReuma(valor).let { "Mapa articular: ${it.dolorosas} dolorosas, ${it.inflamadas} inflamadas" }
+    // Las bolitas (mano / pie por lado) que tienen algo que mostrar.
+    val zonas = remember(visibles) { visibles.mapNotNull { a -> a.zona?.let { Triple(it, a.lado, a) } }.distinctBy { it.first + it.second } }
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        Canvas(
-            Modifier.widthIn(max = 380.dp).fillMaxWidth().aspectRatio(MapaArticularGeo.ANCHO / MapaArticularGeo.ALTO)
+        BoxWithConstraints(
+            Modifier.widthIn(max = 270.dp).fillMaxWidth().aspectRatio(MapaArticularGeo.ANCHO / MapaArticularGeo.ALTO)
                 .semantics { contentDescription = resumen }
-                .then(if (onCambiar != null) Modifier.pointerInput(Unit) {
+                .pointerInput(Unit) {
                     detectTapGestures { p ->
                         val s = size.width / MapaArticularGeo.ANCHO
-                        articulacionEn(p.x / s, p.y / s, visiblesAhora)?.let { a ->
-                            val sig = rotarEstadoArticulacion(actual[a.id])
-                            alCambiar?.invoke(if (sig == null) actual - a.id else actual + (a.id to sig))
+                        when (val t = toqueEnMapaReuma(p.x / s, p.y / s, visiblesAhora)) {
+                            is ToqueMapaReuma.Articulacion -> alCambiar?.let { cb ->
+                                val sig = rotarEstadoArticulacion(actual[t.id])
+                                cb(if (sig == null) actual - t.id else actual + (t.id to sig))
+                            }
+                            is ToqueMapaReuma.Zona -> abierta = t.zona to t.lado
+                            null -> Unit
                         }
                     }
-                } else Modifier),
+                },
         ) {
-            val s = size.width / MapaArticularGeo.ANCHO
-            fun p(x: Float, y: Float) = Offset(x * s, y * s)
-            fun linea(pts: List<Pair<Float, Float>>, grosor: Float) {
-                pts.zipWithNext().forEach { (a, b) -> drawLine(c.borde, p(a.first, a.second), p(b.first, b.second), grosor * s, StrokeCap.Round) }
-            }
-            // Cabeza y columna
-            drawCircle(c.borde, 22f * s, p(160f, 40f), style = Stroke(5f * s))
-            linea(listOf(160f to 62f, 160f to 222f), 5f)
-            listOf(false, true).forEach { espejo ->
-                fun x(n: Float) = if (espejo) MapaArticularGeo.ANCHO - n else n
-                linea(listOf(x(160f) to 82f, x(112f) to 82f, x(86f) to 140f, x(66f) to 196f), 5f)
-                linea(listOf(x(160f) to 222f, x(136f) to 222f, x(136f) to 300f, x(136f) to 362f, x(130f) to 388f), 5f)
-                listOf(88f, 73f, 58f, 43f, 28f).forEachIndexed { k, dx ->
-                    linea(buildList {
-                        add(x(66f) to 196f); add(x(dx) to 228f); add(x(dx) to 254f)
-                        if (k > 0 && completo) add(x(dx) to 278f)
-                    }, 3f)
+            val escala = maxWidth.value / MapaArticularGeo.ANCHO
+            AsyncImage(model = urlFiguraReuma("cuerpo"), contentDescription = null, contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize())
+            Canvas(Modifier.fillMaxSize()) {
+                val s = size.width / MapaArticularGeo.ANCHO
+                visibles.filter { it.zona == null }.forEach { a ->
+                    val color = colorEstado(valor[a.id])
+                    drawCircle(color ?: Color.White, 8.5f * s, Offset(a.x * s, a.y * s))
+                    drawCircle(if (color != null) Color.White else BORDE_PUNTO, 8.5f * s, Offset(a.x * s, a.y * s), style = Stroke(2f * s))
                 }
             }
-            visibles.forEach { a ->
-                val color = colorEstado(valor[a.id])
-                val r = (if (a.chica) 5.5f else 9f) * s
-                drawCircle(color ?: c.superficie, r, p(a.x, a.y))
-                drawCircle(color ?: c.borde, r, p(a.x, a.y), style = Stroke((if (a.chica) 1.6f else 2.2f) * s))
+            zonas.forEach { (zona, lado, ref) ->
+                val suyas = visibles.filter { it.zona == zona && it.lado == lado }
+                val marcadas = suyas.filter { valor[it.id] != null }
+                val hayD = marcadas.any { valor[it.id]?.d == true }; val hayI = marcadas.any { valor[it.id]?.i == true }
+                val peor = if (hayD && hayI) COLOR_AMBAS else if (hayI) COLOR_INFLAMADA else if (hayD) COLOR_DOLOR else null
+                val radio = 12f * escala
+                Box(
+                    Modifier.offset(x = (ref.x * escala - radio).dp, y = (ref.y * escala - radio).dp).size((radio * 2).dp)
+                        .clip(CircleShape).background(peor ?: Color.White).border(1.5.dp, if (peor != null) Color.White else BORDE_PUNTO, CircleShape)
+                        .semantics { contentDescription = "${nombreZonaReuma(zona, lado)}: ${if (marcadas.isEmpty()) "sin marcar" else "${marcadas.size} marcadas"}. Abrir para ver los dedos" },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(if (marcadas.isEmpty()) "+" else "${marcadas.size}", color = if (peor != null) Color.White else BORDE_PUNTO,
+                        fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
             }
+        }
+    }
+    abierta?.let { (zona, lado) ->
+        DialogoZonaReuma(zona, lado, valor, visibles, onCambiar, onCerrar = { abierta = null })
+    }
+}
+
+/** La mano o el pie en grande, con sus articulaciones para tocar. */
+@Composable
+private fun DialogoZonaReuma(
+    zona: String, lado: String,
+    valor: Map<String, EstadoArticulacion>,
+    visibles: List<ArticulacionDef>,
+    onCambiar: ((Map<String, EstadoArticulacion>) -> Unit)?,
+    onCerrar: () -> Unit,
+) {
+    val c = Sania.colors
+    val proporcion = if (zona == "mano") PROPORCION_MANO_REUMA else PROPORCION_PIE_REUMA
+    val puntos = if (zona == "mano") PUNTOS_MANO_REUMA else PUNTOS_PIE_REUMA
+    val espejo = zonaReumaEnEspejo(zona, lado)
+    val suyas = visibles.filter { it.zona == zona && it.lado == lado }
+    val alCambiar by rememberUpdatedState(onCambiar)
+    val actual by rememberUpdatedState(valor)
+    val visiblesAhora by rememberUpdatedState(visibles)
+    val marcadas = suyas.count { valor[it.id] != null }
+    Dialog(onDismissRequest = onCerrar) {
+        Column(Modifier.clip(RoundedCornerShape(16.dp)).background(c.superficie).padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(nombreZonaReuma(zona, lado) + if (marcadas > 0) " · $marcadas" else "", color = c.texto, fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("✕", color = c.textoSuave, fontSize = 16.sp,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onCerrar).padding(horizontal = 12.dp, vertical = 8.dp))
+            }
+            Box(
+                Modifier.padding(top = 6.dp).widthIn(max = 260.dp).fillMaxWidth().aspectRatio(proporcion)
+                    .semantics { contentDescription = "Articulaciones: ${nombreZonaReuma(zona, lado)}" }
+                    .then(if (onCambiar != null) Modifier.pointerInput(zona, lado) {
+                        detectTapGestures { p ->
+                            toqueEnZonaReuma(zona, lado, p.x * 100f / size.width, p.y * 100f / size.height, visiblesAhora, proporcion)?.let { id ->
+                                val sig = rotarEstadoArticulacion(actual[id])
+                                alCambiar?.invoke(if (sig == null) actual - id else actual + (id to sig))
+                            }
+                        }
+                    } else Modifier),
+            ) {
+                AsyncImage(model = urlFiguraReuma(zona), contentDescription = null, contentScale = ContentScale.FillBounds,
+                    modifier = Modifier.fillMaxSize().graphicsLayer { scaleX = if (espejo) -1f else 1f })
+                Canvas(Modifier.fillMaxSize()) {
+                    val r = size.width * 0.05f
+                    suyas.forEach { a ->
+                        val p = puntos[a.id.substringBeforeLast('_')] ?: return@forEach
+                        val x = (if (espejo) 100f - p.first else p.first) * size.width / 100f
+                        val y = p.second * size.height / 100f
+                        val color = colorEstado(valor[a.id])
+                        drawCircle(color ?: Color.White, r, Offset(x, y))
+                        drawCircle(if (color != null) Color.White else BORDE_PUNTO, r, Offset(x, y), style = Stroke(r * 0.28f))
+                    }
+                }
+            }
+            if (onCambiar != null) {
+                Text("Toca cada articulación: un toque dolor, dos inflamación, tres ambas.", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+            }
+            Text("Listo", color = c.sobreNavy, fontSize = 14.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 10.dp).fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(c.navy).clickable(onClick = onCerrar).padding(vertical = 12.dp))
         }
     }
 }

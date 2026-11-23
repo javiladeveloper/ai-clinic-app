@@ -50,13 +50,50 @@ fun pacienteEsReumatologia(
 const val EVALUACION_REUMA_NO_DISPONIBLE = "La evaluación articular aún no está disponible en este servidor."
 
 // ── El mapa ──────────────────────────────────────────────────────────────────
-/** Dibujo: viewBox 320 × 410. El lado derecho del PACIENTE va a la izquierda de quien mira. */
-object MapaArticularGeo { const val ANCHO = 320f; const val ALTO = 410f }
+/**
+ * Dibujo: la ilustración del cuerpo (la misma de la web, `/reumatologia/cuerpo.webp`)
+ * en un lienzo de 240 × 539. El lado derecho del PACIENTE va a la izquierda de
+ * quien mira. Gemelo de `MAPA_ARTICULAR` en lib/evaluacion-reumatologica.ts.
+ */
+object MapaArticularGeo {
+    const val ANCHO = 240f
+    const val ALTO = 539f
+    /** La bolita de la mano y del pie DERECHOS del paciente (el izquierdo: x' = ANCHO − x). */
+    val BOLITA: Map<String, Pair<Float, Float>> = mapOf("mano" to (21f to 292f), "pie" to (74f to 526f))
+}
 
 data class ArticulacionDef(val id: String, val nombre: String, val lado: String, val en28: Boolean, val x: Float, val y: Float) {
-    /** Las de los dedos se dibujan chicas. */
-    val chica: Boolean get() = id.startsWith("mcf") || id.startsWith("ifp") || id.startsWith("ifd") || id.startsWith("mtf")
+    /** "mano" | "pie" si se marca en el cuadro ampliado; null si va sobre el cuerpo. */
+    val zona: String? get() = zonaAmpliadaDe(id)
 }
+
+/** Las articulaciones chicas (dedos) se marcan en la mano / el pie ampliado, no sobre el cuerpo. */
+fun zonaAmpliadaDe(id: String): String? = when {
+    id.startsWith("mcf") || id.startsWith("ifp") || id.startsWith("ifd") -> "mano"
+    id.startsWith("mtf") -> "pie"
+    else -> null
+}
+
+/**
+ * Dónde va cada articulación DENTRO de la imagen ampliada, en % (x, y). La mano es
+ * la derecha con la palma al frente y el pulgar a la izquierda; el pie, el derecho
+ * visto desde arriba con el dedo gordo a la izquierda. Gemelo de PUNTOS_MANO / PUNTOS_PIE (web).
+ */
+val PUNTOS_MANO_REUMA: Map<String, Pair<Float, Float>> = mapOf(
+    "mcf1" to (24f to 60f), "ifp1" to (13f to 49f),
+    "mcf2" to (41f to 42.5f), "ifp2" to (38f to 26f), "ifd2" to (36f to 14f),
+    "mcf3" to (57f to 40f), "ifp3" to (57f to 22.5f), "ifd3" to (57f to 10f),
+    "mcf4" to (72f to 41f), "ifp4" to (75f to 25.6f), "ifd4" to (77f to 14f),
+    "mcf5" to (84f to 47.5f), "ifp5" to (88f to 35f), "ifd5" to (92f to 25.6f),
+)
+val PUNTOS_PIE_REUMA: Map<String, Pair<Float, Float>> = mapOf(
+    "mtf1" to (18f to 40f), "mtf2" to (42f to 38f), "mtf3" to (59f to 42f), "mtf4" to (74f to 47f), "mtf5" to (88f to 53f),
+)
+/** Proporción ancho / alto de cada imagen ampliada. */
+const val PROPORCION_MANO_REUMA = 150f / 207f
+const val PROPORCION_PIE_REUMA = 150f / 216f
+/** La mano derecha se usa tal cual y la izquierda en espejo; el pie, al revés (dedo gordo hacia el centro). */
+fun zonaReumaEnEspejo(zona: String, lado: String): Boolean = if (zona == "mano") lado == "izq" else lado == "der"
 
 /** d = dolorosa · i = inflamada. Solo se guardan las marcadas. */
 data class EstadoArticulacion(val d: Boolean = false, val i: Boolean = false) {
@@ -68,18 +105,20 @@ data class EstadoArticulacion(val d: Boolean = false, val i: Boolean = false) {
 private data class BaseArt(val clave: String, val nombre: String, val fem: Boolean, val en28: Boolean, val x: Float, val y: Float)
 
 private val BASE_ARTICULACIONES: List<BaseArt> = buildList {
-    add(BaseArt("hombro", "Hombro", false, true, 112f, 82f))
-    add(BaseArt("codo", "Codo", false, true, 86f, 140f))
-    add(BaseArt("muneca", "Muñeca", true, true, 66f, 196f))
-    (1..5).forEachIndexed { k, n -> add(BaseArt("mcf$n", "MCF $n (nudillo)", true, true, 88f - k * 15f, 228f)) }
-    add(BaseArt("ifp1", "IF del pulgar", true, true, 88f, 254f))
-    (2..5).forEachIndexed { k, n -> add(BaseArt("ifp$n", "IFP $n", true, true, 73f - k * 15f, 254f)) }
-    add(BaseArt("rodilla", "Rodilla", true, true, 136f, 300f))
+    val (mx, my) = MapaArticularGeo.BOLITA.getValue("mano")
+    val (px, py) = MapaArticularGeo.BOLITA.getValue("pie")
+    add(BaseArt("hombro", "Hombro", false, true, 58f, 113f))
+    add(BaseArt("codo", "Codo", false, true, 41f, 196f))
+    add(BaseArt("muneca", "Muñeca", true, true, 25f, 262f))
+    (1..5).forEach { n -> add(BaseArt("mcf$n", "MCF $n (nudillo)", true, true, mx, my)) }
+    add(BaseArt("ifp1", "IF del pulgar", true, true, mx, my))
+    (2..5).forEach { n -> add(BaseArt("ifp$n", "IFP $n", true, true, mx, my)) }
+    add(BaseArt("rodilla", "Rodilla", true, true, 84f, 383f))
     // Mapa completo
-    (2..5).forEachIndexed { k, n -> add(BaseArt("ifd$n", "IFD $n", true, false, 73f - k * 15f, 278f)) }
-    add(BaseArt("cadera", "Cadera", true, false, 136f, 222f))
-    add(BaseArt("tobillo", "Tobillo", false, false, 136f, 362f))
-    (1..5).forEachIndexed { k, n -> add(BaseArt("mtf$n", "MTF $n (pie)", true, false, 152f - k * 11f, 388f)) }
+    (2..5).forEach { n -> add(BaseArt("ifd$n", "IFD $n", true, false, mx, my)) }
+    add(BaseArt("cadera", "Cadera", true, false, 86f, 275f))
+    add(BaseArt("tobillo", "Tobillo", false, false, 82f, 496f))
+    (1..5).forEach { n -> add(BaseArt("mtf$n", "MTF $n (pie)", true, false, px, py)) }
 }
 
 val ARTICULACIONES_REUMA: List<ArticulacionDef> = listOf("der", "izq").flatMap { lado ->
@@ -98,11 +137,35 @@ fun rotarEstadoArticulacion(e: EstadoArticulacion?): EstadoArticulacion? = when 
     else -> null
 }
 
-/** La articulación más cercana al toque (en unidades del dibujo), entre las visibles. */
-fun articulacionEn(x: Float, y: Float, visibles: List<ArticulacionDef>): ArticulacionDef? =
-    visibles.map { a -> a to ((a.x - x) * (a.x - x) + (a.y - y) * (a.y - y)) }
-        .filter { (a, d2) -> d2 <= (if (a.chica) 9f * 9f else 16f * 16f) }
-        .minByOrNull { it.second }?.first
+/** Lo que se tocó sobre el cuerpo: una articulación grande, o la bolita de una mano / un pie. */
+sealed interface ToqueMapaReuma {
+    data class Articulacion(val id: String) : ToqueMapaReuma
+    data class Zona(val zona: String, val lado: String) : ToqueMapaReuma
+}
+
+/** [x], [y] en unidades del dibujo; [visibles] = las articulaciones que se muestran (28 o completo). */
+fun toqueEnMapaReuma(x: Float, y: Float, visibles: List<ArticulacionDef>): ToqueMapaReuma? {
+    fun d2(ax: Float, ay: Float) = (ax - x) * (ax - x) + (ay - y) * (ay - y)
+    val candidatos = mutableListOf<Pair<ToqueMapaReuma, Float>>()
+    visibles.filter { it.zona == null }.forEach { a -> if (d2(a.x, a.y) <= 17f * 17f) candidatos += ToqueMapaReuma.Articulacion(a.id) to d2(a.x, a.y) }
+    visibles.mapNotNull { a -> a.zona?.let { Triple(it, a.lado, a) } }.distinctBy { it.first + it.second }.forEach { (zona, lado, a) ->
+        if (d2(a.x, a.y) <= 21f * 21f) candidatos += ToqueMapaReuma.Zona(zona, lado) to d2(a.x, a.y)
+    }
+    return candidatos.minByOrNull { it.second }?.first
+}
+
+/** La articulación de la mano / el pie ampliado más cercana al toque ([px], [py] en % de la imagen YA en espejo si corresponde). */
+fun toqueEnZonaReuma(zona: String, lado: String, px: Float, py: Float, visibles: List<ArticulacionDef>, proporcion: Float): String? {
+    val puntos = if (zona == "mano") PUNTOS_MANO_REUMA else PUNTOS_PIE_REUMA
+    val espejo = zonaReumaEnEspejo(zona, lado)
+    return visibles.filter { it.zona == zona && it.lado == lado }.mapNotNull { a ->
+        val p = puntos[a.id.substringBeforeLast('_')] ?: return@mapNotNull null
+        val x = if (espejo) 100f - p.first else p.first
+        // La distancia en y se lleva a la misma escala que x (la imagen es más alta que ancha).
+        val dx = x - px; val dy = (p.second - py) / proporcion
+        a.id to (dx * dx + dy * dy)
+    }.filter { it.second <= 9f * 9f }.minByOrNull { it.second }?.first
+}
 
 data class ConteosReuma(val nad28: Int, val nat28: Int, val dolorosas: Int, val inflamadas: Int)
 

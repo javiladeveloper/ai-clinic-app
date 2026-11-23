@@ -20,7 +20,10 @@ class EvaluacionReumatologicaTest {
         assertEquals(ARTICULACIONES_REUMA.size, ARTICULACIONES_REUMA.map { it.id }.toSet().size)
         val d = ARTICULACIONES_REUMA.first { it.id == "rodilla_der" }
         val i = ARTICULACIONES_REUMA.first { it.id == "rodilla_izq" }
-        assertEquals(320f, d.x + i.x)
+        assertEquals(MapaArticularGeo.ANCHO, d.x + i.x)
+        // 20 de las 28 son de las manos: se marcan en el cuadro ampliado.
+        assertEquals(20, ARTICULACIONES_REUMA.count { it.en28 && it.zona == "mano" })
+        assertEquals(10, ARTICULACIONES_REUMA.count { it.zona == "pie" })
     }
 
     @Test fun `tocar rota dolor, inflamacion, ambas, nada`() {
@@ -30,11 +33,25 @@ class EvaluacionReumatologicaTest {
         assertNull(rotarEstadoArticulacion(c))
     }
 
-    @Test fun `el toque encuentra la articulacion mas cercana y nada lejos`() {
+    @Test fun `el toque sobre el cuerpo da la articulacion grande o la bolita de la mano`() {
         val visibles = ARTICULACIONES_REUMA.filter { it.en28 }
-        assertEquals("rodilla_der", articulacionEn(138f, 303f, visibles)?.id)
-        assertEquals("mcf2_der", articulacionEn(73f, 229f, visibles)?.id)
-        assertNull(articulacionEn(160f, 150f, visibles))
+        assertEquals(ToqueMapaReuma.Articulacion("rodilla_der"), toqueEnMapaReuma(86f, 385f, visibles))
+        assertEquals(ToqueMapaReuma.Zona("mano", "der"), toqueEnMapaReuma(22f, 294f, visibles))
+        assertEquals(ToqueMapaReuma.Zona("mano", "izq"), toqueEnMapaReuma(218f, 290f, visibles))
+        assertNull(toqueEnMapaReuma(120f, 200f, visibles))
+        // Los pies solo en el mapa completo.
+        assertNull(toqueEnMapaReuma(74f, 526f, visibles))
+        assertEquals(ToqueMapaReuma.Zona("pie", "der"), toqueEnMapaReuma(74f, 526f, ARTICULACIONES_REUMA))
+    }
+
+    @Test fun `el toque dentro de la mano ampliada encuentra el nudillo, tambien en espejo`() {
+        // Mano derecha: tal cual. MCF 2 está en (41, 42.5).
+        assertEquals("mcf2_der", toqueEnZonaReuma("mano", "der", 41f, 43f, ARTICULACIONES_REUMA, PROPORCION_MANO_REUMA))
+        // Mano izquierda: en espejo → x = 100 − 41 = 59.
+        assertEquals("mcf2_izq", toqueEnZonaReuma("mano", "izq", 59f, 43f, ARTICULACIONES_REUMA, PROPORCION_MANO_REUMA))
+        assertNull(toqueEnZonaReuma("mano", "der", 60f, 85f, ARTICULACIONES_REUMA, PROPORCION_MANO_REUMA))
+        // En el mapa de 28 no hay IFD: la punta del dedo no marca nada.
+        assertNull(toqueEnZonaReuma("mano", "der", 57f, 10f, ARTICULACIONES_REUMA.filter { it.en28 }, PROPORCION_MANO_REUMA))
     }
 
     @Test fun `los indices cuentan solo las 28`() {
