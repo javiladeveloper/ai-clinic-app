@@ -1,0 +1,3 @@
+Cambia la especialidad de una cita desde la app.
+---
+• Agenda — «🏷️ Cambiar especialidad» en «⋯ Más» de una consulta o evaluación por atender. Si se agendó en la especialidad equivocada, la corriges ahí mismo y la atención sale con la historia clínica correcta. No cambia la fecha, la hora, el profesional ni el precio.
