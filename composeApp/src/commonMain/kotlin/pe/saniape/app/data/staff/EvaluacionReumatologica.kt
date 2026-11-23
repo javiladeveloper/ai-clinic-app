@@ -79,7 +79,7 @@ private val BASE_ARTICULACIONES: List<BaseArt> = buildList {
     (2..5).forEachIndexed { k, n -> add(BaseArt("ifd$n", "IFD $n", true, false, 73f - k * 15f, 278f)) }
     add(BaseArt("cadera", "Cadera", true, false, 136f, 222f))
     add(BaseArt("tobillo", "Tobillo", false, false, 136f, 362f))
-    (1..5).forEachIndexed { k, n -> add(BaseArt("mtf$n", "MTF $n (pie)", true, false, 148f - k * 9f, 388f)) }
+    (1..5).forEachIndexed { k, n -> add(BaseArt("mtf$n", "MTF $n (pie)", true, false, 152f - k * 11f, 388f)) }
 }
 
 val ARTICULACIONES_REUMA: List<ArticulacionDef> = listOf("der", "izq").flatMap { lado ->
