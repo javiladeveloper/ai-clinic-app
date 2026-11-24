@@ -118,6 +118,26 @@ object EscalasCierreRepo {
         }.getOrDefault(emptyList())
     }
 
+    /** El fototipo según la escala Fitzpatrick más reciente del paciente («Fototipo IV»), o null. */
+    suspend fun fototipoDelPaciente(pacienteId: String?): String? {
+        if (pacienteId.isNullOrBlank()) return null
+        val tk = Supabase.client.auth.currentSessionOrNull()?.accessToken ?: return null
+        return runCatching {
+            val r = http.get(url()) { header("Authorization", "Bearer $tk"); parameter("paciente", pacienteId) }
+            if (r.status.value !in 200..299) return null
+            val lista = json.parseToJsonElement(r.bodyAsText()).jsonObject["escalas"]?.jsonArray ?: return null
+            for (x in lista) { // del más nuevo al más viejo
+                val e = x.jsonObject["escala"]?.jsonObject ?: continue
+                val nombre = (e["nombre"] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content
+                val corto = (e["corto"] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content
+                if (!esEscalaFototipo(nombre, corto)) continue
+                val categoria = (e["categoria"] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content?.trim()
+                if (!categoria.isNullOrEmpty()) return categoria
+            }
+            null
+        }.getOrNull()
+    }
+
     /** La última medición de cada escala del paciente, por nombre corto. */
     suspend fun ultimasDelPaciente(pacienteId: String?): Map<String, MedicionPrevia> {
         if (pacienteId.isNullOrBlank()) return emptyMap()

@@ -1,0 +1,4 @@
+Estética: agenda el control al cerrar la última sesión y el fototipo sale también de la escala.
+---
+• Agenda — en estética, cuando la atención que cierras termina el tratamiento, la app pregunta «📅 ¿Agendar su control?» y abre la cita a 15 días con el paciente y el profesional puestos.
+• Estética — el fototipo de la cabecera de la ficha ahora también sale de la escala Fitzpatrick aplicada al paciente, no solo del dato de la ficha.

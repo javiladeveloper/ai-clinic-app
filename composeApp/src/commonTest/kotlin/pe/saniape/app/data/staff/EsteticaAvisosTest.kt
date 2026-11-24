@@ -41,6 +41,22 @@ class EsteticaAvisosTest {
         assertTrue(alertasEstetica(emptyList(), mapOf("f" to "III")).isEmpty())
     }
 
+    @Test fun fototipoDeLaEscala() {
+        val campos = listOf("f" to "Fototipo", "e" to "Embarazo")
+        val a = alertasEstetica(campos, mapOf("f" to "II", "e" to "true"), "Fototipo IV")
+        assertEquals(listOf("Fototipo IV", "Embarazo o lactancia"), a.map { it.texto })
+        assertEquals(listOf("Fototipo III"), alertasEstetica(emptyList(), emptyMap(), "Fototipo III").map { it.texto })
+        assertTrue(esEscalaFototipo("Fototipo cutáneo de Fitzpatrick", "Fitzpatrick"))
+        assertFalse(esEscalaFototipo("Escala analógica del dolor (EVA)", "EVA dolor"))
+    }
+
+    @Test fun controlTrasCierre() {
+        assertTrue(ofreceControlTrasCierre("tratamiento_cerrado"))
+        assertTrue(ofreceControlTrasCierre("plan_terminado"))
+        assertFalse(ofreceControlTrasCierre("ya_tiene_siguiente"))
+        assertFalse(ofreceControlTrasCierre(null))
+    }
+
     @Test fun pendienteDeAlta() {
         val completados = listOf(Triple("a", "Completado", "2026-10-01"), Triple("b", "Completado", "2026-11-01"))
         assertEquals("b", tratamientoPendienteDeAlta("En tratamiento", completados))

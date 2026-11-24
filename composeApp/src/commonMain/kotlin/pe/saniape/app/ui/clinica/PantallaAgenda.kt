@@ -1646,6 +1646,35 @@ fun PantallaAgenda(
             onCerrar = { vm.cerrarOfertaSiguiente() },
         )
     }
+    // Estética: el tratamiento terminó con esta atención → «📅 ¿Agendar su control?» (15 días).
+    vm.ofrecerControl?.takeIf { vm.cobroFallido == null && vm.ofrecerSiguiente == null }?.let { cc ->
+        val dias = pe.saniape.app.data.staff.DIAS_CONTROL_TRAS_CIERRE
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { vm.cerrarOfertaControl() },
+            title = { androidx.compose.material3.Text("📅 ¿Agendar su control?", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) },
+            text = {
+                androidx.compose.material3.Text(
+                    "${cc.pacienteNombre ?: "El paciente"} terminó su tratamiento. Puedes dejarle el control en $dias días; la fecha se puede cambiar.")
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    vm.cerrarOfertaControl()
+                    val hoyCtl = pe.saniape.app.data.staff.hoyClinicaIso()
+                    val fechaCtl = pe.saniape.app.data.staff.sumarDiasIso(hoyCtl, dias)
+                    prefillEval = PrefillCita(
+                        tipo = pe.saniape.app.ui.clinica.podologia.tipoEntradaFlujo(ctx.flujo.usaConsulta, ctx.flujo.usaEvaluacion),
+                        pacienteId = cc.pacienteId, pacienteNombre = cc.pacienteNombre,
+                        fecha = fechaCtl, hora = cc.hora.takeIf { it.isNotBlank() } ?: "09:00",
+                        terapeutaId = cc.terapeutaId,
+                        especialidadId = cc.especialidadId ?: cc.especialidadServicioId,
+                    )
+                }) { androidx.compose.material3.Text("Agendar en $dias días") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { vm.cerrarOfertaControl() }) { androidx.compose.material3.Text("Ahora no") }
+            },
+        )
+    }
     // El servidor pidió quién atendió (SIN_PROFESIONAL): selector y reintento, sin cola.
     vm.pedirProfesional?.let { pedido ->
         pe.saniape.app.ui.clinica.agenda.modales.ModalElegirProfesional(

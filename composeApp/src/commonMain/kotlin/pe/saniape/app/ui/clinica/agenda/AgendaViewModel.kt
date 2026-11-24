@@ -1426,10 +1426,20 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
 
     /** Pide la propuesta para la atención recién cerrada (sin bloquear nada: es solo un ofrecimiento). */
     fun ofrecerProximaDe(cita: CitaStaff): kotlinx.coroutines.Job = viewModelScope.launch {
-        pe.saniape.app.data.staff.ProximaCitaRepo.proponer(citaId = cita.id)
-            ?.takeIf { it.puedeAgendar }?.propuesta
-            ?.let { ofrecerSiguiente = OfertaSiguiente(cita, it) }
+        val r = pe.saniape.app.data.staff.ProximaCitaRepo.proponer(citaId = cita.id) ?: return@launch
+        val propuesta = r.propuesta?.takeIf { r.puedeAgendar }
+        if (propuesta != null) { ofrecerSiguiente = OfertaSiguiente(cita, propuesta); return@launch }
+        // Estética: el tratamiento terminó (una toxina se hace de una vez) y el servidor no
+        // propone nada → «📅 ¿Agendar su control?» (gemelo web). Solo con permiso de agendar.
+        if (r.propuesta == null && pe.saniape.app.data.staff.ofreceControlTrasCierre(r.motivo) && ctx.puede("agendar") &&
+            pe.saniape.app.data.staff.citaEsEstetica(ctx.mapaEstetica, cita.especialidadId, cita.especialidadServicioId,
+                cita.terapeutaId?.let { espsPorTerapeuta[it] })
+        ) ofrecerControl = cita
     }
+
+    /** La atención de estética recién cerrada cuyo tratamiento terminó: se ofrece agendar el control. */
+    var ofrecerControl by mutableStateOf<CitaStaff?>(null); private set
+    fun cerrarOfertaControl() { ofrecerControl = null }
 
     /** El toque del chip: agenda la propuesta tal cual (/api/staff/cita/crear). */
     fun agendarProxima(os: OfertaSiguiente, alFallar: (String) -> Unit) {

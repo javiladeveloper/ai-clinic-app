@@ -73,9 +73,18 @@ private val REGLAS_ALERTA = listOf(
  * ACTIVOS de la clínica; [valores]: `pacientes.campos_custom`. Cada regla sale
  * una sola vez, en orden: primero el fototipo, luego lo que contraindica.
  */
-fun alertasEstetica(campos: List<Pair<String, String>>, valores: Map<String, String>): List<AlertaEstetica> {
+fun alertasEstetica(
+    campos: List<Pair<String, String>>, valores: Map<String, String>,
+    /** El fototipo de la escala Fitzpatrick aplicada: si existe, manda sobre el campo. */
+    fototipoEscala: String? = null,
+): List<AlertaEstetica> {
     val out = mutableListOf<AlertaEstetica>()
+    val deEscala = fototipoEscala.orEmpty().trim()
+    if (deEscala.isNotEmpty()) {
+        out += AlertaEstetica("fototipo", "🎨", "Fototipo " + deEscala.replace(Regex("^fototipo\\s*", RegexOption.IGNORE_CASE), ""), TonoAlerta.INFO)
+    }
     for (r in REGLAS_ALERTA) {
+        if (r.clave == "fototipo" && deEscala.isNotEmpty()) continue
         for ((id, nombre) in campos) {
             if (!r.nombre.containsMatchIn(plano(nombre))) continue
             val texto = r.texto(valores[id]) ?: continue
@@ -85,6 +94,21 @@ fun alertasEstetica(campos: List<Pair<String, String>>, valores: Map<String, Str
     }
     return out
 }
+
+/** ¿Esta escala aplicada es la del fototipo? Por su nombre (de fábrica o propia de la clínica). */
+fun esEscalaFototipo(nombre: String?, corto: String?): Boolean =
+    Regex("fitzpatrick|fototipo").containsMatchIn(plano("${nombre.orEmpty()} ${corto.orEmpty()}"))
+
+// ── El control cuando el tratamiento ya terminó ─────────────────────────────
+
+/** Días del control que se propone tras un procedimiento de estética (el retoque). */
+const val DIAS_CONTROL_TRAS_CIERRE = 15
+
+/**
+ * ¿El servidor no propuso la próxima cita PORQUE el tratamiento terminó? Solo
+ * entonces cabe ofrecer el control (gemelo de `ofreceControlTrasCierre`).
+ */
+fun ofreceControlTrasCierre(motivo: String?): Boolean = motivo == "tratamiento_cerrado" || motivo == "plan_terminado"
 
 // ── «Tratamiento terminado · falta dar de alta» ─────────────────────────────
 

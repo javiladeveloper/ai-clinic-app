@@ -1047,12 +1047,17 @@ private fun PantallaFichaPacienteContenido(
 
                 // Estética: fototipo y contraindicaciones a la vista desde cualquier pestaña
                 // (gemelo de AlertasEstetica.tsx). Sale de los campos propios de la clínica.
-                if (esPacienteEstetica && verHc && paciente.camposCustom.isNotEmpty()) {
+                if (esPacienteEstetica && verHc) {
                     var camposAlerta by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
-                    LaunchedEffect(Unit) {
-                        camposAlerta = runCatching { PacientesRepo.camposPaciente() }.getOrDefault(emptyList()).map { it.id to it.nombre }
+                    // El fototipo también sale de la escala Fitzpatrick aplicada (manda sobre el campo).
+                    var fototipoEscala by remember(paciente.id) { mutableStateOf<String?>(null) }
+                    LaunchedEffect(paciente.id) {
+                        if (paciente.camposCustom.isNotEmpty()) {
+                            camposAlerta = runCatching { PacientesRepo.camposPaciente() }.getOrDefault(emptyList()).map { it.id to it.nombre }
+                        }
+                        fototipoEscala = pe.saniape.app.data.staff.EscalasCierreRepo.fototipoDelPaciente(paciente.id)
                     }
-                    val alertas = pe.saniape.app.data.staff.alertasEstetica(camposAlerta, paciente.camposCustom)
+                    val alertas = pe.saniape.app.data.staff.alertasEstetica(camposAlerta, paciente.camposCustom, fototipoEscala)
                     if (alertas.isNotEmpty()) {
                         Spacer(Modifier.height(Sania.dim.sm))
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
