@@ -1045,6 +1045,53 @@ private fun PantallaFichaPacienteContenido(
                     AvisoFichaInactiva(puedeReactivar = verContacto)
                 }
 
+                // Estética: fototipo y contraindicaciones a la vista desde cualquier pestaña
+                // (gemelo de AlertasEstetica.tsx). Sale de los campos propios de la clínica.
+                if (esPacienteEstetica && verHc && paciente.camposCustom.isNotEmpty()) {
+                    var camposAlerta by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+                    LaunchedEffect(Unit) {
+                        camposAlerta = runCatching { PacientesRepo.camposPaciente() }.getOrDefault(emptyList()).map { it.id to it.nombre }
+                    }
+                    val alertas = pe.saniape.app.data.staff.alertasEstetica(camposAlerta, paciente.camposCustom)
+                    if (alertas.isNotEmpty()) {
+                        Spacer(Modifier.height(Sania.dim.sm))
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            alertas.forEach { a ->
+                                val (fg, bg) = when (a.tono) {
+                                    pe.saniape.app.data.staff.TonoAlerta.RIESGO -> c.error to c.errorBg
+                                    pe.saniape.app.data.staff.TonoAlerta.AVISO -> c.pend to c.pendBg
+                                    pe.saniape.app.data.staff.TonoAlerta.INFO -> c.info to c.infoBg
+                                }
+                                Text("${a.icono} ${a.texto}", color = fg, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(bg)
+                                        .padding(horizontal = 10.dp, vertical = 4.dp))
+                            }
+                        }
+                    }
+                }
+
+                // «En tratamiento» sin nada en curso: el tratamiento terminó y falta el alta
+                // (gemelo de lib/tratamiento-sin-alta.ts). No cambia el estado: lo dice y ofrece el alta.
+                pe.saniape.app.data.staff.tratamientoPendienteDeAlta(
+                    paciente.estado, paciente.tratamientos.map { Triple(it.id, it.estado, it.fechaInicio) },
+                )?.let { idAlta ->
+                    Spacer(Modifier.height(Sania.dim.sm))
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.pendBg)
+                            .border(1.dp, c.pend, RoundedCornerShape(Sania.shape.sm.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Tratamiento terminado · falta dar de alta", color = c.texto, fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        if (ctx.puede("sesiones")) {
+                            Text("✓ Dar de alta", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clip(RoundedCornerShape(6.dp))
+                                    .clickable { tab = "atenciones"; altaPedida = idAlta to ((altaPedida?.second ?: 0) + 1) }
+                                    .padding(horizontal = 10.dp, vertical = 10.dp))
+                        }
+                    }
+                }
+
                 // Fisio (M10): faltas SIN aviso ("No asistió"). Solo visibilidad; los datos
                 // ya vienen con las citas de los hitos (sin consulta extra).
                 val faltas = hitos?.faltasSinAviso ?: 0
@@ -1165,6 +1212,7 @@ private fun PantallaFichaPacienteContenido(
                     }
                 }
 
+                val fotosFicha = esPacienteEstetica && verHc && recordarFotosActivas(ctx.can("fotosEvolutivas")) == true
                 // ── Tabs: Atenciones · Exámenes · Pagos(perm) · Resumen ──
                 val tabs = buildList {
                     add("atenciones" to "🩺 Atenciones")
@@ -1185,6 +1233,8 @@ private fun PantallaFichaPacienteContenido(
                     if (esPacienteNutricion) add("plan" to "🥗 Plan alimentario")
                     // SOLO pacientes de estética (`esPacienteEstetica`): el mapa facial de cada sesión.
                     if (esPacienteEstetica) add("aplicaciones" to "💉 Aplicaciones")
+                    // 📷 Fotos (estética): el antes/después de todos sus tratamientos en un solo lugar.
+                    if (fotosFicha) add("fotos" to "📷 Fotos")
                     // SOLO pacientes de podología (`esPacientePodologia`): mapa del pie + riesgo IWGDF.
                     if (esPacientePodologia) add("evaluacion_pie" to "🦶 Evaluación del pie")
                     // SOLO pacientes de reumatología: mapa articular + actividad (CDAI / DAS28).
@@ -1771,7 +1821,45 @@ private fun PantallaFichaPacienteContenido(
                             }.takeIf { ctx.puede("pagos") && ctx.puede("sesiones") && !inactiva },
                             citaInicial = flujoApli,
                             onCitaInicialUsada = { flujoApli = null },
+                            // 📅 Agendar control tras el mapa (gemelo web): Nueva cita a N días.
+                            onAgendarControl = { dias: Int, tratamientoId: String? ->
+                                val hoyCtl = pe.saniape.app.data.staff.hoyClinicaIso()
+                                val fechaCtl = pe.saniape.app.data.staff.sumarDiasIso(hoyCtl, dias)
+                                val t = paciente.tratamientos.firstOrNull { it.id == tratamientoId }
+                                val sigue = t != null && t.estado == "Activo" && t.usaSesiones && t.sesionesCompletadas < t.totalSesiones
+                                crearCita = pe.saniape.app.ui.clinica.PrefillCita(
+                                    tipo = if (sigue) "Sesión" else pe.saniape.app.ui.clinica.podologia.tipoEntradaFlujo(ctx.flujo.usaConsulta, ctx.flujo.usaEvaluacion),
+                                    pacienteId = paciente.id, pacienteNombre = paciente.nombre,
+                                    fecha = fechaCtl,
+                                    hora = pe.saniape.app.data.staff.horaInicialNuevaCita(fechaCtl, hoyCtl, pe.saniape.app.ui.proximaHoraEnPunto()),
+                                    terapeutaId = t?.terapeutaId ?: ctx.miTerapeutaId,
+                                    especialidadId = t?.especialidadId
+                                        ?: especialidadesClinica.firstOrNull { it.nombre == t?.especialidadNombre }?.id
+                                        ?: ctx.mapaEstetica.ids.firstOrNull(),
+                                    tratamientoId = t?.id?.takeIf { sigue },
+                                )
+                            }.takeIf { ctx.puede("agendar") && !inactiva },
                         )
+                    }
+                    // 📷 Fotos (estética): la galería de cada tratamiento, el más reciente primero.
+                    "fotos" -> if (fotosFicha) {
+                        val ids = pe.saniape.app.data.staff.tratamientosParaFotos(
+                            paciente.tratamientos.map { Triple(it.id, it.estado, it.fechaInicio) })
+                        if (ids.isEmpty()) {
+                            Text("Aún no hay tratamientos: las fotos se guardan dentro de cada tratamiento.",
+                                color = c.textoSuave, fontSize = Sania.txt.cuerpo)
+                        }
+                        ids.forEach { id ->
+                            val t = paciente.tratamientos.first { it.id == id }
+                            Column(
+                                Modifier.fillMaxWidth().padding(bottom = Sania.dim.md).clip(RoundedCornerShape(Sania.shape.md.dp))
+                                    .background(c.superficie).border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(14.dp),
+                            ) {
+                                Text(t.procedimiento ?: t.especialidadNombre ?: "Tratamiento", color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text(listOfNotNull(t.estado, t.fechaInicio?.take(10)).joinToString(" · "), color = c.textoSuave, fontSize = 12.sp)
+                                GaleriaFotos(pacienteId = paciente.id, tratamientoId = t.id, sesiones = emptyList())
+                            }
+                        }
                     }
                     // 😁 Ortodoncia: consulta SOLO al abrirse. Mismo permiso que el API.
                     "ortodoncia" -> if (esPacienteOrtodoncia) {

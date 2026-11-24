@@ -137,6 +137,11 @@ fun PantallaPacientes(
                             vm.cambiarFiltroEstado(if (vm.filtroEstado == e) null else e)
                         }
                     }
+                    // Terminaron su tratamiento y nadie les dio de alta (gemelo del filtro web).
+                    val sinAlta = pe.saniape.app.data.staff.FILTRO_SIN_ALTA
+                    ChipFiltro(pe.saniape.app.data.staff.ETIQUETA_SIN_ALTA, vm.filtroEstado == sinAlta) {
+                        vm.cambiarFiltroEstado(if (vm.filtroEstado == sinAlta) null else sinAlta)
+                    }
                 }
                 // Pacientes por sede: con una sede elegida la lista es la de ESA sede
                 // y se dice cuál (como la web). En "Todas las sedes" no aparece.

@@ -1,0 +1,7 @@
+Estética: agenda el control tras la aplicación y ve el fototipo sin buscarlo.
+---
+• Estética — al guardar un mapa de aplicación aparece «📅 Agendar control en 7, 15 o 30 días»: un toque abre la cita con la fecha puesta. El plazo sugerido sale resaltado según el producto.
+• Estética — el fototipo y lo que contraindica (embarazo, retinoides, alergia a anestésicos, sol reciente…) se ven arriba en la ficha, desde cualquier pestaña.
+• Estética — pestaña «📷 Fotos» en la ficha: el antes y después de todos los tratamientos en un solo lugar, también de los que ya terminaron.
+• Estética — si un mapa nuevo va a quedar sin cita ni tratamiento, la app lo avisa antes de guardar.
+• Pacientes — cuando un tratamiento terminó y falta el alta, la ficha lo dice con el botón «✓ Dar de alta». En la lista, el filtro «Terminaron sin alta» los reúne.

@@ -181,6 +181,8 @@ fun AplicacionesTab(
      */
     citaInicial: String? = null,
     onCitaInicialUsada: () -> Unit = {},
+    /** «📅 Agendar control» tras guardar el mapa (gemelo web): abre Nueva cita a [dias] días. */
+    onAgendarControl: ((dias: Int, tratamientoId: String?) -> Unit)? = null,
 ) {
     val c = Sania.colors
     val scope = rememberCoroutineScope()
@@ -278,6 +280,17 @@ fun AplicacionesTab(
                 FilaBotonesMapa {
                     BotonMapa("🖨 Registro de aplicación") { imprimir(g) }
                     onDejarIndicaciones?.let { cb -> BotonMapa("📝 Dejar indicaciones") { cb(servicioParaIndicaciones(g.aplicaciones), g.citaId) } }
+                }
+                onAgendarControl?.let { cb ->
+                    val sugerido = pe.saniape.app.data.staff.diasControlSugerido(g.aplicaciones.map { it.tipoProducto })
+                    Spacer(Modifier.height(8.dp))
+                    Text("📅 Agendar control en", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    FilaBotonesMapa {
+                        pe.saniape.app.data.staff.DIAS_CONTROL_APLICACION.forEach { d ->
+                            BotonMapa("$d días", lleno = d == sugerido) { cb(d, g.tratamientoId) }
+                        }
+                    }
                 }
                 if (puedeEditar && onUsarUnidades != null) BotonUnidades(g, tratDe(g.tratamientoId), onUsarUnidades, onCobrarUnidades)
             }
@@ -739,6 +752,10 @@ private fun EditorMapa(
             tratamientos.firstOrNull { it.id == tratSel }?.let { textoTrat(it) } ?: "Sin tratamiento",
             listOf("" to "Sin tratamiento") + tratamientos.map { it.id to textoTrat(it) },
         ) { tratSel = it }
+        pe.saniape.app.data.staff.avisoMapaSuelto(nuevo, citaSel, tratSel, citasElegibles.isNotEmpty(), tratamientos.isNotEmpty())?.let {
+            Spacer(Modifier.height(8.dp))
+            AvisoMapa("⚠ $it", c.pend, c.pendBg)
+        }
         Spacer(Modifier.height(8.dp))
         EtqForm("Aplicó")
         val vacioTer = if (citaObj != null) "El profesional de la cita" else "Yo"

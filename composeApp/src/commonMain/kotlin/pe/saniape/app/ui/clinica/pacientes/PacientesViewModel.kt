@@ -76,7 +76,17 @@ class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
     }
 
     fun cambiarBusqueda(v: String) { busqueda = v }
-    fun cambiarFiltroEstado(v: String?) { filtroEstado = v }
+    fun cambiarFiltroEstado(v: String?) {
+        filtroEstado = v
+        // «Terminaron sin alta» no es un estado: los ids los da la base (misma función que la web).
+        if (v == pe.saniape.app.data.staff.FILTRO_SIN_ALTA) viewModelScope.launch {
+            idsSinAlta = null
+            idsSinAlta = PacientesRepo.terminaronSinAlta()
+        }
+    }
+
+    /** Los pacientes «En tratamiento» sin nada en curso; null = cargando o sin leer. */
+    var idsSinAlta by mutableStateOf<Set<String>?>(null); private set
 
     /** [trasCambio] = recién se creó/registró un paciente: no sumarse a una carga en camino. */
     fun cargar(trasCambio: Boolean = false) {
@@ -179,6 +189,7 @@ class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
                     // registra de nuevo). Igual que la web.
                     null -> p.estado != "Inactivo" || busqueda.isNotBlank()
                     "todos" -> true
+                    pe.saniape.app.data.staff.FILTRO_SIN_ALTA -> idsSinAlta?.contains(p.id) == true
                     else -> p.estado == filtroEstado
                 }
         }

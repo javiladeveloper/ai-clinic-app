@@ -1723,6 +1723,11 @@ object PacientesRepo {
     }.getOrNull()
 
     /** Definiciones de campos personalizados del paciente (por clínica, RLS aísla). */
+    /** Ids de los pacientes «En tratamiento» sin nada en curso (RPC `pacientes_terminaron_sin_alta`). Si falla, vacío. */
+    suspend fun terminaronSinAlta(): Set<String> = runCatching {
+        Supabase.client.postgrest.rpc("pacientes_terminaron_sin_alta").decodeList<String>().toSet()
+    }.getOrDefault(emptySet())
+
     suspend fun camposPaciente(): List<CampoPaciente> {
         val filas = Supabase.client.postgrest["campos_paciente"]
             .select(Columns.raw("id, nombre, tipo, opciones, ayuda, orden")) {
