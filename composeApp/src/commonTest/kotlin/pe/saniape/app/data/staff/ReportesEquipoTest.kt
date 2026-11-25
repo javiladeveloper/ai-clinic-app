@@ -49,4 +49,25 @@ class ReportesEquipoTest {
         assertEquals(3, r.cierres); assertEquals(1, r.cuadraron); assertEquals(2, r.conDiferencia)
         assertEquals(700.5, r.ingresos); assertEquals(10.0, r.sobrante); assertEquals(5.0, r.faltante); assertEquals(50.0, r.retirado)
     }
+
+    @Test fun serviciosYVendidos() {
+        val s = filasServicios(Json.parseToJsonElement("""[
+          {"servicio_id":null,"tipo":"Evaluación","citas":15,"atendidas":6},
+          {"servicio_id":"a","servicio":"Endodoncia","citas":4},
+          {"servicio_id":"b","servicio":"Resina","citas":5}
+        ]"""))
+        assertEquals(listOf("Resina", "Endodoncia", "Evaluación (sin servicio)"), s.map { it.nombre })
+        assertEquals("No asistió", estadoVisible("Confirmada", false, "2026-11-20", "2026-11-25"))
+        assertEquals("Por venir", estadoVisible("Confirmada", false, "2026-11-26", "2026-11-25"))
+        val v = tratamientosVendidos(Json.parseToJsonElement("""[
+          {"id":"1","servicio_id":"s1","servicio":"Blanqueamiento","modalidad":"Consulta","valor":"800","pagado":"400"},
+          {"id":"2","servicio_id":"s1","servicio":"Blanqueamiento","modalidad":"Consulta","valor":800,"pagado":800},
+          {"id":"3","servicio_id":"s2","servicio":"Fisioterapia","modalidad":"Paquete","total_sesiones":10,"valor":500,"pagado":600}
+        ]"""))
+        assertEquals(listOf(400.0, 0.0, 0.0), v.map { it.saldo })
+        assertEquals("Paquete · 10 sesiones", textoModalidad(v[2]))
+        val r = resumenVendidos(v)
+        assertEquals(listOf("Blanqueamiento" to 2, "Fisioterapia" to 1), r.map { it.servicio to it.cantidad })
+        assertEquals(1600.0, r[0].valor)
+    }
 }

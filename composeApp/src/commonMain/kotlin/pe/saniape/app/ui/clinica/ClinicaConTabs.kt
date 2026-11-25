@@ -520,6 +520,9 @@ fun ClinicaConTabs(
                         pe.saniape.app.ui.clinica.reportes.VistaReportes.Nuevos -> PantallaPacientesNuevos(
                             ctx = contexto, onSalir = { vistaReportes = null }, onVista = irVista,
                         )
+                        pe.saniape.app.ui.clinica.reportes.VistaReportes.Servicios -> pe.saniape.app.ui.clinica.reportes.PantallaServiciosTratamientos(
+                            ctx = contexto, onSalir = { vistaReportes = null }, onVista = irVista,
+                        )
                         pe.saniape.app.ui.clinica.reportes.VistaReportes.Agendo -> pe.saniape.app.ui.clinica.reportes.PantallaQuienAgendo(
                             ctx = contexto, onSalir = { vistaReportes = null }, onVista = irVista,
                         )

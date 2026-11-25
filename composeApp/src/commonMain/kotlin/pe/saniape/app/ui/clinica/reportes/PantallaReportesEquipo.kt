@@ -1,6 +1,9 @@
 package pe.saniape.app.ui.clinica.reportes
 
 import androidx.compose.foundation.background
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -277,5 +280,138 @@ private fun FilaCierreTarjeta(f: FilaCierre, cerro: String?) {
         }
         cerro?.takeIf { it.isNotBlank() }?.let { Text("Cerró: $it", color = c.textoSuave, fontSize = 12.sp) }
         if (f.nota.isNotBlank()) Text("📝 ${f.nota}", color = c.textoSuave, fontSize = 12.sp)
+    }
+}
+
+
+// ── 🧾 Servicios y tratamientos ─────────────────────────────────────────────
+
+@Composable
+fun PantallaServiciosTratamientos(ctx: ContextoStaff, onSalir: () -> Unit, onVista: (VistaReportes) -> Unit) {
+    val c = Sania.colors
+    val hoy = remember { hoyClinicaIso() }
+    val conDinero = ctx.puede("finanzas") || ctx.puede("pagos")
+    var periodo by remember { mutableStateOf(rangoDelMes(hoy)) }
+    var porAgendada by remember { mutableStateOf(false) }
+    var soloNuevos by remember { mutableStateOf(false) }
+    var servicios by remember { mutableStateOf<List<pe.saniape.app.data.staff.FilaServicio>?>(null) }
+    var vendidos by remember { mutableStateOf<List<pe.saniape.app.data.staff.TratamientoVendido>?>(null) }
+    var error by remember { mutableStateOf(false) }
+    var abierto by remember { mutableStateOf<String?>(null) }
+    var detalle by remember { mutableStateOf<List<pe.saniape.app.data.staff.CitaServicio>?>(null) }
+    var verTodos by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    LaunchedEffect(periodo, porAgendada, soloNuevos) {
+        servicios = null; vendidos = null; abierto = null; detalle = null
+        val s = pe.saniape.app.data.staff.ServiciosReporteRepo.citasPorServicio(periodo, porAgendada, soloNuevos)
+        val v = pe.saniape.app.data.staff.ServiciosReporteRepo.vendidos(periodo)
+        error = s == null || v == null
+        servicios = s.orEmpty(); vendidos = v.orEmpty()
+    }
+    fun clave(f: pe.saniape.app.data.staff.FilaServicio) = f.servicioId ?: "tipo:${f.tipo}"
+    MarcoReporte(ctx, "🧾 Servicios y tratamientos", VistaReportes.Servicios, onSalir, onVista, periodo, { periodo = it }) {
+        item(key = "filtros") {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ChipPeriodo("Por fecha de la cita", !porAgendada) { porAgendada = false }
+                ChipPeriodo("Por día que se agendó", porAgendada) { porAgendada = true }
+                ChipPeriodo(if (soloNuevos) "✓ Solo ${ctx.terminologiaPaciente.pacientes} nuevos" else "Solo ${ctx.terminologiaPaciente.pacientes} nuevos", soloNuevos) { soloNuevos = !soloNuevos }
+            }
+        }
+        if (error) item(key = "error") { Mensaje("No se pudo leer el reporte. Revisa tu conexión.", error = true) }
+        item(key = "t-citas") { Text("📅 CITAS POR SERVICIO", color = c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp)) }
+        val ss = servicios
+        when {
+            ss == null -> item(key = "c-cargando") { Mensaje("Cargando…") }
+            ss.isEmpty() -> item(key = "c-vacio") { Mensaje("No hay citas en este periodo.") }
+            else -> {
+                items(ss, key = { "s-" + clave(it) }) { f ->
+                    val abiertoAqui = abierto == clave(f)
+                    Column(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
+                            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp))
+                            .clickable {
+                                if (abiertoAqui) { abierto = null; detalle = null }
+                                else {
+                                    abierto = clave(f); detalle = null
+                                    scope.launch { detalle = pe.saniape.app.data.staff.ServiciosReporteRepo.detalle(periodo, porAgendada, soloNuevos, f) ?: emptyList() }
+                                }
+                            }.padding(12.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text((if (abiertoAqui) "▾ " else "▸ ") + f.nombre, color = if (f.servicioId == null) c.textoSuave else c.texto,
+                                fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Text("${f.citas}", color = c.navy, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
+                            Dato("Atendidas", "${f.atendidas}", c.ok)
+                            Dato("No asistieron", "${f.noAsistieron}", c.error)
+                            Dato("Canceladas", "${f.canceladas}", c.texto)
+                            Dato("Por venir", "${f.porVenir}", c.texto)
+                        }
+                        if (abiertoAqui) {
+                            val d = detalle
+                            Spacer(Modifier.height(6.dp))
+                            if (d == null) Text("Cargando citas…", color = c.textoSuave, fontSize = 12.sp)
+                            else d.forEach { ci ->
+                                val est = pe.saniape.app.data.staff.estadoVisible(ci.estado, ci.noAsistio, ci.fecha, hoy)
+                                Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(ci.paciente, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                        Text("${fechaCorta(ci.fecha)} · ${ci.hora} · ${ci.profesional}", color = c.textoSuave, fontSize = 11.sp)
+                                    }
+                                    Text(est, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = when (est) {
+                                        "Atendida" -> c.ok; "No asistió" -> c.error; "Por venir" -> c.navy; else -> c.textoSuave
+                                    })
+                                }
+                            }
+                        }
+                    }
+                }
+                item(key = "c-nota") {
+                    Text("Toca un servicio para ver sus citas. El servicio es el de la cita o, si no tiene, el de su tratamiento.", color = c.textoSuave, fontSize = 11.sp)
+                }
+            }
+        }
+        item(key = "t-vendidos") { Text("🛒 TRATAMIENTOS VENDIDOS (creados en el periodo)", color = c.textoSuave, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp)) }
+        val vs = vendidos
+        when {
+            vs == null -> item(key = "v-cargando") { Mensaje("Cargando…") }
+            vs.isEmpty() -> item(key = "v-vacio") { Mensaje("No se vendieron tratamientos en este periodo.") }
+            else -> {
+                item(key = "v-resumen") {
+                    Tarjeta {
+                        pe.saniape.app.data.staff.resumenVendidos(vs).forEach { r ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(r.servicio, color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                Text("${r.cantidad}", color = c.navy, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                if (conDinero) Text("  ${textoSoles(r.valor)}", color = c.texto, fontSize = 12.sp)
+                            }
+                        }
+                        if (conDinero) {
+                            Spacer(Modifier.height(6.dp))
+                            Text("Total ${vs.size} · ${textoSoles(vs.sumOf { it.valor })} · pagado ${textoSoles(vs.sumOf { it.pagado })} · por cobrar ${textoSoles(vs.sumOf { it.saldo })}",
+                                color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                val lista = if (verTodos) vs else vs.take(30)
+                items(lista, key = { "v-" + it.id }) { t ->
+                    Tarjeta {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(t.paciente, color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Text(fechaCorta(t.fecha), color = c.textoSuave, fontSize = 12.sp)
+                        }
+                        Text(t.servicio, color = c.texto, fontSize = 13.sp)
+                        Text("${pe.saniape.app.data.staff.textoModalidad(t)} · ${t.profesional} · ${t.estado}", color = c.textoSuave, fontSize = 12.sp)
+                        if (conDinero) Text(textoSoles(t.valor) + if (t.saldo > 0) " · debe ${textoSoles(t.saldo)}" else " · pagado",
+                            color = if (t.saldo > 0) c.pend else c.ok, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 2.dp))
+                    }
+                }
+                if (vs.size > 30 && !verTodos) item(key = "v-mas") {
+                    Text("Ver los ${vs.size}", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable { verTodos = true }.padding(vertical = 8.dp))
+                }
+            }
+        }
     }
 }

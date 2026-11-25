@@ -182,3 +182,106 @@ object ReportesEquipoRepo {
         cierres to nombres
     } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
 }
+
+
+// ── 🧾 Servicios y tratamientos (25/11/2026) ─────────────────────────────────
+// Gemelo de lib/servicios-reporte.ts (web). Sumas en la base: citas_por_servicio,
+// citas_por_servicio_detalle y tratamientos_vendidos (migración 20261227100000).
+
+data class FilaServicio(
+    val servicioId: String?, val nombre: String, val tipo: String?,
+    val citas: Int, val atendidas: Int, val noAsistieron: Int, val canceladas: Int, val porVenir: Int, val pacientes: Int,
+)
+
+fun filasServicios(filas: JsonElement?): List<FilaServicio> =
+    (filas as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }.map { f ->
+        val id = f.texto("servicio_id")?.takeIf { it.isNotBlank() }
+        val tipo = if (id == null) f.texto("tipo")?.trim()?.ifEmpty { null } ?: "Sin tipo" else null
+        FilaServicio(
+            servicioId = id,
+            nombre = if (id != null) f.texto("servicio")?.trim()?.ifEmpty { null } ?: "Servicio eliminado" else "$tipo (sin servicio)",
+            tipo = tipo,
+            citas = f.entero("citas"), atendidas = f.entero("atendidas"), noAsistieron = f.entero("no_asistieron"),
+            canceladas = f.entero("canceladas"), porVenir = f.entero("por_venir"), pacientes = f.entero("pacientes"),
+        )
+    }.sortedWith(compareBy<FilaServicio> { it.servicioId == null }.thenByDescending { it.citas }.thenBy { it.nombre })
+
+data class CitaServicio(val id: String, val fecha: String, val hora: String, val estado: String, val noAsistio: Boolean, val pacienteId: String?, val paciente: String, val profesional: String)
+
+fun citasDeServicio(filas: JsonElement?): List<CitaServicio> =
+    (filas as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }.map { f ->
+        CitaServicio(
+            id = f.texto("id").orEmpty(), fecha = f.texto("fecha").orEmpty().take(10), hora = f.texto("hora").orEmpty().take(5),
+            estado = f.texto("estado").orEmpty(), noAsistio = f.texto("no_asistio") == "true", pacienteId = f.texto("paciente_id"),
+            paciente = f.texto("paciente")?.trim()?.ifEmpty { null } ?: "Paciente",
+            profesional = f.texto("profesional")?.trim()?.ifEmpty { null } ?: "Sin profesional",
+        )
+    }
+
+/** Atendida / Cancelada / No asistió (una pasada sin atender) / Por venir. */
+fun estadoVisible(estado: String, noAsistio: Boolean, fecha: String, hoy: String): String = when {
+    estado == "Completada" -> "Atendida"
+    estado == "Cancelada" -> "Cancelada"
+    noAsistio || fecha < hoy -> "No asistió"
+    else -> "Por venir"
+}
+
+data class TratamientoVendido(
+    val id: String, val fecha: String, val pacienteId: String?, val paciente: String, val servicioId: String?, val servicio: String,
+    val profesional: String, val modalidad: String, val estado: String, val totalSesiones: Int?, val cantidadUnidades: Int?,
+    val valor: Double, val pagado: Double, val saldo: Double,
+)
+
+fun tratamientosVendidos(filas: JsonElement?): List<TratamientoVendido> =
+    (filas as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }.map { f ->
+        val valor = f.decimal("valor") ?: 0.0
+        val pagado = f.decimal("pagado") ?: 0.0
+        TratamientoVendido(
+            id = f.texto("id").orEmpty(), fecha = f.texto("fecha").orEmpty().take(10), pacienteId = f.texto("paciente_id"),
+            paciente = f.texto("paciente")?.trim()?.ifEmpty { null } ?: "Paciente",
+            servicioId = f.texto("servicio_id"), servicio = f.texto("servicio")?.trim()?.ifEmpty { null } ?: "Sin servicio",
+            profesional = f.texto("profesional")?.trim()?.ifEmpty { null } ?: "Sin profesional",
+            modalidad = f.texto("modalidad").orEmpty(), estado = f.texto("estado").orEmpty(),
+            totalSesiones = f.texto("total_sesiones")?.toDoubleOrNull()?.toInt(),
+            cantidadUnidades = f.texto("cantidad_unidades")?.toDoubleOrNull()?.toInt(),
+            valor = valor, pagado = pagado, saldo = r2(maxOf(0.0, valor - pagado)),
+        )
+    }
+
+fun textoModalidad(t: TratamientoVendido): String = when (t.modalidad) {
+    "Paquete" -> t.totalSesiones?.let { "Paquete · $it sesiones" } ?: "Paquete"
+    "Unidades" -> t.cantidadUnidades?.let { "Unidades · $it" } ?: "Unidades"
+    "Sesión suelta" -> "Sesiones sueltas"
+    "Consulta" -> "Pago único"
+    else -> t.modalidad.ifBlank { "—" }
+}
+
+data class ResumenVendido(val servicio: String, val cantidad: Int, val valor: Double, val pagado: Double, val saldo: Double)
+
+/** Totales por servicio de lo vendido (más vendido primero). */
+fun resumenVendidos(lista: List<TratamientoVendido>): List<ResumenVendido> =
+    lista.groupBy { it.servicioId ?: "—${it.servicio}" }.values.map { g ->
+        ResumenVendido(g.first().servicio, g.size, r2(g.sumOf { it.valor }), r2(g.sumOf { it.pagado }), r2(g.sumOf { it.saldo }))
+    }.sortedWith(compareByDescending<ResumenVendido> { it.cantidad }.thenByDescending { it.valor }.thenBy { it.servicio })
+
+object ServiciosReporteRepo {
+    suspend fun citasPorServicio(p: Periodo, porAgendada: Boolean, soloNuevos: Boolean): List<FilaServicio>? = try {
+        filasServicios(Supabase.client.postgrest.rpc("citas_por_servicio", buildJsonObject {
+            put("p_desde", p.desde); put("p_hasta", p.hasta); put("p_por", if (porAgendada) "agendada" else "cita"); put("p_solo_nuevos", soloNuevos)
+        }).decodeAs<JsonElement>())
+    } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+
+    suspend fun detalle(p: Periodo, porAgendada: Boolean, soloNuevos: Boolean, f: FilaServicio): List<CitaServicio>? = try {
+        citasDeServicio(Supabase.client.postgrest.rpc("citas_por_servicio_detalle", buildJsonObject {
+            put("p_desde", p.desde); put("p_hasta", p.hasta); put("p_por", if (porAgendada) "agendada" else "cita"); put("p_solo_nuevos", soloNuevos)
+            f.servicioId?.let { put("p_servicio", it) }
+            f.tipo?.let { put("p_tipo", it) }
+        }).decodeAs<JsonElement>())
+    } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+
+    suspend fun vendidos(p: Periodo): List<TratamientoVendido>? = try {
+        tratamientosVendidos(Supabase.client.postgrest.rpc("tratamientos_vendidos", buildJsonObject {
+            put("p_desde", p.desde); put("p_hasta", p.hasta)
+        }).decodeAs<JsonElement>())
+    } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+}
