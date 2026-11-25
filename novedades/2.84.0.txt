@@ -1,0 +1,10 @@
+Audiología, productos recomendados, teleoperadores y más, como en la web.
+---
+• Audiología — nueva pestaña 👂 Evaluación auditiva: anamnesis, videotoscopia, audiograma táctil con la clasificación de la OMS, conclusión sugerida e informe para imprimir. También dentro de la consulta.
+• Compras — recomienda productos (audífonos, cremas…) y envía la proforma por WhatsApp o imprímela; marca si compró o no.
+• Agenda — cada cita muestra de dónde vino: 🤖 Sani, 🌐 Web o 📞 Teleoperador. Y puedes agendar con solo el teléfono del paciente.
+• Estética — fototipo y contraindicaciones a la vista en el detalle de la cita, el resumen y la atención.
+• Odontología — el tratamiento directo muestra las piezas pendientes del odontograma y lo abre ahí mismo.
+• Reportes — nuevas pestañas «Quién agendó» y «Cierres de caja».
+• Servicios — el formulario muestra lo esencial y pliega el resto en secciones.
+• Repetir un servicio ya pagado ahora ofrece ampliar el tratamiento con su precio (antes la cita salía en S/ 0).
