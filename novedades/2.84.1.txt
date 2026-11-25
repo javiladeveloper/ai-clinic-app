@@ -1,0 +1,5 @@
+Reportes: de qué servicios fueron las citas y qué tratamientos se vendieron.
+---
+• Reportes — nueva pestaña «🧾 Servicios y tratamientos»: cuántas citas hubo de cada servicio (atendidas, no asistieron, canceladas, por venir) y, al tocar uno, sus citas una por una.
+• Puedes contar por la fecha de la cita o por el día en que se agendó, y ver solo a los pacientes nuevos.
+• Tratamientos vendidos en el periodo: por servicio y uno por uno, con su valor, lo pagado y lo que falta cobrar.
