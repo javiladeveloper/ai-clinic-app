@@ -54,6 +54,8 @@ data class ResumenClinico(
      * el contexto del caso (psicología). Solo con «Historia clínica»; null = no hay.
      */
     val laUltimaVez: LaUltimaVezApp? = null,
+    /** ⚠ Alertas de piel (fototipo, contraindicaciones): las arma el servidor; solo con lo clínico. */
+    val alertas: List<AlertaEstetica> = emptyList(),
 )
 
 /**
@@ -140,6 +142,7 @@ object ResumenClinicoRepo {
                 )
             },
             laUltimaVez = parsearLaUltimaVez(o["laUltimaVez"]),
+            alertas = AlertasEsteticaRepo.parsear(o["alertas"]),
         )
         cache[clave] = ahora to resumen
         return resumen

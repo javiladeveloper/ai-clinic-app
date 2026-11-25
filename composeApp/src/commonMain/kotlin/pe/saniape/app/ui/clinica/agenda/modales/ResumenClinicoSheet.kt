@@ -119,6 +119,12 @@ fun ResumenClinicoSheet(
 private fun Contenido(r: ResumenClinico) {
     val c = Sania.colors
 
+    // ⚠ ANTES DEL PROCEDIMIENTO (24/11/2026): fototipo y lo que contraindica, arriba.
+    if (r.alertas.isNotEmpty()) {
+        Spacer(Modifier.height(Sania.dim.sm))
+        pe.saniape.app.ui.clinica.pacientes.FranjaAlertasEstetica(r.alertas)
+    }
+
     // 🗒 LA ÚLTIMA VEZ de la atención (médicos: diagnóstico, receta, control;
     // psicología: el contexto del caso). Solo lectura. Lo decide el servidor
     // (lib/ultima-atencion.ts); sin «Historia clínica» no viene.

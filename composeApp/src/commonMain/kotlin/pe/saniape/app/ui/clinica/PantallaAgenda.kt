@@ -149,6 +149,8 @@ fun PantallaAgenda(
     // Servicios de evaluación psicológica (consulta aparte; vacío = la agenda no cambia).
     var procsEvalPsico by remember { mutableStateOf<Set<String>>(emptySet()) }
     LaunchedEffect(Unit) { procsEvalPsico = pe.saniape.app.data.staff.EvaluacionPsicoRepo.procedimientosEvaluacion() }
+    // 📞 Los teleoperadores de la clínica: para el chip «Teleoperador» de sus citas.
+    LaunchedEffect(Unit) { pe.saniape.app.data.staff.TeleoperadoresRepo.cargar() }
     // Crear cita y Atender tapan la agenda entera: sin barra de tabs encima. Al
     // salir de la agenda por otro camino (onDispose) la barra vuelve sí o sí.
     val pantallaCompleta = creandoCita || prefillEval != null || atendiendo != null || evalPsico != null

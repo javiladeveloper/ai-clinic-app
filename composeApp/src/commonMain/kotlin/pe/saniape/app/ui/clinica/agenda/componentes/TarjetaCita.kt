@@ -398,7 +398,14 @@ fun TarjetaCita(
                 recetaVinculada?.takeIf { verClinico }?.let { add(Triple(it, c.purple, c.purpleBg)) }
                 // Cita por videollamada (sin enlace todavía: el detalle dice qué falta).
                 if (cita.esVirtual) add(Triple(if (cita.enlaceVirtual == null && !cerrada) "🎥 Virtual · sin enlace" else "🎥 Virtual", c.purple, c.purpleBg))
-                if (cita.origen == "online") add(Triple("🌐 Web", c.purple, c.purpleBg))
+                // 🏷️ De dónde vino: 🤖 Sani, 🌐 Web o 📞 Teleoperador (24/11/2026, como la web).
+                pe.saniape.app.data.staff.origenDeCita(cita.origen, cita.agendadaPor, pe.saniape.app.data.staff.TeleoperadoresRepo.mapa)?.let { o ->
+                    when (o.origen) {
+                        pe.saniape.app.data.staff.OrigenCita.SANI -> add(Triple(o.texto, c.teal, c.tealBg))
+                        pe.saniape.app.data.staff.OrigenCita.TELEOPERADOR -> add(Triple(o.texto, c.info, c.infoBg))
+                        pe.saniape.app.data.staff.OrigenCita.WEB -> add(Triple(o.texto, c.purple, c.purpleBg))
+                    }
+                }
                 if (cita.terapeutaId == null && cita.origen == "online") add(Triple("⚠ Asignar", c.pend, c.pendBg))
                 // Solapamiento: N citas en la misma hora del mismo profesional.
                 if (!cerrada && solape != null) {

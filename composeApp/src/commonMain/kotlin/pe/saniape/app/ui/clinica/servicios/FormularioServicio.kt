@@ -172,6 +172,19 @@ fun FormularioServicio(
         )
     }
 
+    val resumenPaquetes = listOfNotNull(
+        f.tarifarios.size.takeIf { it > 0 }?.let { if (it == 1) "1 paquete" else "$it paquetes" },
+        "se programan solas".takeIf { f.serieAuto },
+    ).joinToString(" · ").ifEmpty { "sin paquetes (opcional)" }
+    val resumenDetalles = listOf(
+        if (f.modalidad == MODALIDAD_VIRTUAL) "por videollamada" else "en el local",
+        if (f.descripcion.isNotBlank()) "con descripción" else "sin descripción",
+    ).joinToString(" · ")
+    val resumenDespues = listOfNotNull(
+        f.pasos.size.takeIf { it > 0 }?.let { if (it == 1) "1 paso" else "$it pasos" },
+        f.controlesDias.size.takeIf { it > 0 }?.let { if (it == 1) "1 control" else "$it controles" },
+    ).joinToString(" · ").ifEmpty { "pasos y controles (opcional)" }
+
     DialogoForm(
         titulo = if (inicial == null) "Nuevo servicio" else "Editar servicio",
         subtitulo = null,
@@ -196,14 +209,6 @@ fun FormularioServicio(
         OutlinedTextField(
             value = f.nombre, onValueChange = { f = f.copy(nombre = it) },
             placeholder = { Text("Ej. Consulta general, Limpieza dental…", color = Sania.colors.textoSuave) }, singleLine = true,
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-            colors = coloresCampoForm(), modifier = Modifier.fillMaxWidth(),
-        )
-        Espacio()
-        EtqForm("Descripción")
-        OutlinedTextField(
-            value = f.descripcion, onValueChange = { f = f.copy(descripcion = it) },
-            placeholder = { Text("Breve descripción del servicio…", color = Sania.colors.textoSuave) }, minLines = 2,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             colors = coloresCampoForm(), modifier = Modifier.fillMaxWidth(),
         )
@@ -253,63 +258,6 @@ fun FormularioServicio(
                 else -> "Cobro único por el servicio (sin sesiones ni unidades)."
             },
         )
-
-        // ¿Cómo se atiende? En el local / por videollamada (citas virtuales).
-        Espacio()
-        EtqForm("¿Cómo se atiende?")
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf(MODALIDAD_PRESENCIAL to "📍 En el local", MODALIDAD_VIRTUAL to "🎥 Por videollamada").forEach { (v, t) ->
-                val sel = f.modalidad == v
-                Box(
-                    Modifier.weight(1f).heightIn(min = 44.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
-                        .background(if (sel) c.navy else c.superficie)
-                        .border(1.dp, if (sel) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
-                        .clickable { f = f.copy(modalidad = v) }
-                        .padding(vertical = 10.dp),
-                    contentAlignment = Alignment.Center,
-                ) { Text(t, color = if (sel) c.sobreNavy else c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
-            }
-        }
-        if (f.modalidad == MODALIDAD_VIRTUAL) {
-            Spacer(Modifier.height(8.dp))
-            Caja {
-                val meetSel = f.enlaceModo == ENLACE_MODO_MEET
-                // Básico: el Meet automático no se elige (salvo que ya lo tuviera guardado).
-                val meetElegible = meetPlan || meetSel
-                Row(verticalAlignment = Alignment.Top,
-                    modifier = Modifier.clickable(enabled = meetElegible) { f = f.copy(enlaceModo = ENLACE_MODO_MEET) }) {
-                    RadioButton(selected = meetSel, enabled = meetElegible, onClick = { f = f.copy(enlaceModo = ENLACE_MODO_MEET) },
-                        colors = RadioButtonDefaults.colors(selectedColor = c.navy))
-                    Column(Modifier.padding(top = 12.dp)) {
-                        Text("Crear Google Meet automáticamente", color = if (meetElegible) c.texto else c.textoSuave,
-                            fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Text(
-                            if (meetPlan) "Cada cita tendrá su Meet en el Google Calendar conectado (Ajustes → Calendario)."
-                            else "🔒 Es de Premium: en tu plan pegas el enlace en cada cita.",
-                            color = c.textoSuave, fontSize = 12.sp,
-                        )
-                    }
-                }
-                Row(verticalAlignment = Alignment.Top,
-                    modifier = Modifier.clickable { f = f.copy(enlaceModo = ENLACE_MODO_FIJO) }) {
-                    RadioButton(selected = f.enlaceModo == ENLACE_MODO_FIJO, onClick = { f = f.copy(enlaceModo = ENLACE_MODO_FIJO) },
-                        colors = RadioButtonDefaults.colors(selectedColor = c.navy))
-                    Column(Modifier.padding(top = 12.dp)) {
-                        Text("Enlace fijo", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Text("Tu sala de Zoom o Meet de siempre.", color = c.textoSuave, fontSize = 12.sp)
-                    }
-                }
-                if (f.enlaceModo == ENLACE_MODO_FIJO) {
-                    OutlinedTextField(
-                        value = f.enlaceFijo, onValueChange = { f = f.copy(enlaceFijo = it) },
-                        placeholder = { Text("https://zoom.us/j/…", color = Sania.colors.textoSuave) }, singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                        colors = coloresCampoForm(), modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    )
-                }
-                Ayuda("Las citas de este servicio nacen por videollamada; al agendar se puede cambiar.")
-            }
-        }
 
         // Evaluación psicológica (solo clínicas con psicología).
         if (mostrarTipoClinico) {
@@ -379,54 +327,6 @@ fun FormularioServicio(
         )
         CampoNumero(f.precio, "100") { f = f.copy(precio = it) }
 
-        // Paquetes promocionales — solo por sesiones (y no en la evaluación psicológica).
-        if (conSesiones && !evalActiva) {
-            Espacio()
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    EtqForm("Paquetes promocionales")
-                    Text("Opciones de paquetes con descuento para este servicio.", color = c.textoSuave, fontSize = 11.sp)
-                }
-                BotonContorno("+ Añadir paquete") { f = f.copy(tarifarios = f.tarifarios + ("" to "")) }
-            }
-            Spacer(Modifier.height(6.dp))
-            if (f.tarifarios.isEmpty()) {
-                Caja { Text("No hay paquetes configurados para este servicio.", color = c.textoSuave, fontSize = 12.sp) }
-            }
-            f.tarifarios.forEachIndexed { i, (n, p) ->
-                Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Nº SESIONES", color = c.textoSuave, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                        CampoNumero(n, "Ej. 5", decimal = false) { v -> f = f.copy(tarifarios = f.tarifarios.mapIndexed { j, t -> if (j == i) v.filter(Char::isDigit).take(3) to t.second else t }) }
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("PRECIO TOTAL (${simboloActivo()})", color = c.textoSuave, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                        CampoNumero(p, "Ej. 400") { v -> f = f.copy(tarifarios = f.tarifarios.mapIndexed { j, t -> if (j == i) t.first to v else t }) }
-                    }
-                    Spacer(Modifier.width(6.dp))
-                    Quitar { f = f.copy(tarifarios = f.tarifarios.filterIndexed { j, _ -> j != i }) }
-                }
-            }
-        }
-
-        // Odontología: precio según cuántas caras tiene la pieza.
-        if (esDental && modo != "sesiones") {
-            Espacio()
-            Caja {
-                EtqForm("🦷 Precio según caras (opcional)")
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("1" to "1 cara", "2" to "2 caras", "3" to "3 o más").forEach { (k, etq) ->
-                        Column(Modifier.weight(1f)) {
-                            Text(etq, color = c.textoSuave, fontSize = 11.sp)
-                            CampoNumero(f.precioCaras[k].orEmpty(), simboloActivo()) { v -> f = f.copy(precioCaras = f.precioCaras + (k to v)) }
-                        }
-                    }
-                }
-                Ayuda("El presupuesto del odontograma cobra cada pieza según las caras marcadas. Una pieza sin caras (entera) se cobra como «3 o más». Si lo dejas vacío, se usa el precio de arriba.")
-            }
-        }
-
         // Parámetros de la unidad.
         if (porUnidades) {
             Espacio()
@@ -443,134 +343,258 @@ fun FormularioServicio(
             }
         }
 
-        // Serie AUTOPROGRAMADA: al agendar la 1ª sesión se agendan las demás.
-        // Premium/Plus/prueba (11/11/2026, como la web: feature 'protocolos'). En
-        // Básico el candado; lo ya configurado se guarda tal cual.
-        if (conSesiones && !ctx.can("protocolos")) {
-            Espacio()
-            CandadoPlan("Programar todas las sesiones automáticamente", "Al agendar la primera sesión, el resto del plan se agenda solo. Disponible en Premium y Plus.")
-        }
-        if (conSesiones && ctx.can("protocolos")) {
-            Espacio()
-            Caja {
-                Row(verticalAlignment = Alignment.Top, modifier = Modifier.clickable { f = f.copy(serieAuto = !f.serieAuto) }) {
-                    Checkbox(checked = f.serieAuto, onCheckedChange = { f = f.copy(serieAuto = it) }, colors = CheckboxDefaults.colors(checkedColor = c.navy))
-                    Column(Modifier.padding(top = 12.dp)) {
-                        Text("📅 Programar todas las sesiones automáticamente", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Text("Al agendar la primera, el resto del plan se agenda solo.", color = c.textoSuave, fontSize = 12.sp)
+        // ── Lo que no hace falta para crear el servicio, plegado con su resumen (24/11/2026,
+        // como la web: «se ve muy desordenado todas las opciones y no se entiende»). ──
+        if (conSesiones) {
+            SeccionPlegable("📦 Paquetes y sesiones", resumenPaquetes) {
+                // Paquetes promocionales — solo por sesiones (y no en la evaluación psicológica).
+                if (!evalActiva) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            EtqForm("Paquetes promocionales")
+                            Text("Opciones de paquetes con descuento para este servicio.", color = c.textoSuave, fontSize = 11.sp)
+                        }
+                        BotonContorno("+ Añadir paquete") { f = f.copy(tarifarios = f.tarifarios + ("" to "")) }
                     }
-                }
-                if (f.serieAuto) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp)) {
-                        Text("una sesión cada", color = c.texto, fontSize = 13.sp)
-                        Spacer(Modifier.width(6.dp))
-                        Box(Modifier.width(76.dp)) { CampoNumero(f.serieIntervalo, "15", decimal = false) { f = f.copy(serieIntervalo = it.filter(Char::isDigit).take(3)) } }
-                        Spacer(Modifier.width(6.dp))
-                        Text("días", color = c.texto, fontSize = 13.sp)
+                    Spacer(Modifier.height(6.dp))
+                    if (f.tarifarios.isEmpty()) {
+                        Caja { Text("No hay paquetes configurados para este servicio.", color = c.textoSuave, fontSize = 12.sp) }
                     }
-                    Ayuda("Cada fecha cae en día que la clínica atiende (si toca domingo, se corre y las siguientes también). Reagendar una sesión corre las que faltan con el mismo desplazamiento.")
-                }
-            }
-        }
-
-        // Pasos ENCADENADOS: primero lo que sigue a la atención, después los controles.
-        Espacio()
-        Caja {
-            Text("⛓️ Después de este servicio (opcional)", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            if (pasosFallo) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                    Text(
-                        "No se pudieron leer los pasos; hasta leerlos no se puede guardar.",
-                        color = c.error, fontSize = 12.sp, modifier = Modifier.weight(1f),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    BotonContorno("Reintentar") { intentoPasos++ }
-                }
-            } else if (!pasosCargados) Text("Cargando pasos…", color = c.textoSuave, fontSize = 12.sp)
-            f.pasos.forEachIndexed { i, p ->
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f)) { CajaSelectorForm(nombreDe(p.pasoId) ?: "— Elegir servicio —") { eligiendoServicio = i } }
-                    Spacer(Modifier.width(6.dp))
-                    Quitar { f = f.copy(pasos = f.pasos.filterIndexed { j, _ -> j != i }) }
-                }
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("a los", color = c.texto, fontSize = 12.sp)
-                    Spacer(Modifier.width(4.dp))
-                    Box(Modifier.width(70.dp)) { CampoNumero(p.dias, "7", decimal = false) { v -> f = f.copy(pasos = f.pasos.mapIndexed { j, x -> if (j == i) x.copy(dias = v.filter(Char::isDigit).take(3)) else x }) } }
-                    Spacer(Modifier.width(4.dp))
-                    Text("días hábiles · ${simboloActivo()}", color = c.texto, fontSize = 12.sp)
-                    Spacer(Modifier.width(4.dp))
-                    // El precio EN CADENA es independiente del precio suelto del servicio.
-                    Box(Modifier.weight(1f)) { CampoNumero(p.precio, "0 (incluido)") { v -> f = f.copy(pasos = f.pasos.mapIndexed { j, x -> if (j == i) x.copy(precio = v.take(8)) else x }) } }
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            Box(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
-                    .border(1.dp, c.lav, RoundedCornerShape(Sania.shape.sm.dp))
-                    .clickable(enabled = pasosCargados) { f = f.copy(pasos = f.pasos + PasoServicioForm()) }
-                    .padding(vertical = 8.dp),
-                contentAlignment = Alignment.Center,
-            ) { Text("+ Agregar paso", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-            Ayuda(
-                if (f.pasos.isNotEmpty()) "Al completar la atención que dispara (única atención, o la última sesión del plan), las citas de estos pasos se agendan solas en día que la clínica atiende."
-                else "Ejemplo: trasplante capilar → lavado de costras a los 7 días hábiles + PRP a los 15.",
-            )
-        }
-
-        // Protocolo de controles después de la intervención.
-        Espacio()
-        Caja {
-            Text("🔁 Controles después (opcional)", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(6.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                PROTOCOLOS_CONTROLES.forEach { (nombre, dias) ->
-                    val puesto = dias == f.controlesDias.sorted()
-                    ChipOpcion(nombre, puesto) { f = f.copy(controlesDias = if (puesto) emptyList() else dias) }
-                }
-            }
-            if (f.controlesDias.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Vuelve a:", color = c.textoSuave, fontSize = 12.sp)
-                    f.controlesDias.sorted().forEach { d ->
-                        Row(
-                            Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.chipBg)
-                                .clickable { f = f.copy(controlesDias = f.controlesDias - d) }
-                                .padding(horizontal = 9.dp, vertical = 3.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(etiquetaControl(d), color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.width(4.dp))
-                            Text("✕", color = c.textoSuave, fontSize = 11.sp)
+                    f.tarifarios.forEachIndexed { i, (n, p) ->
+                        Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Nº SESIONES", color = c.textoSuave, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                CampoNumero(n, "Ej. 5", decimal = false) { v -> f = f.copy(tarifarios = f.tarifarios.mapIndexed { j, t -> if (j == i) v.filter(Char::isDigit).take(3) to t.second else t }) }
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("PRECIO TOTAL (${simboloActivo()})", color = c.textoSuave, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                CampoNumero(p, "Ej. 400") { v -> f = f.copy(tarifarios = f.tarifarios.mapIndexed { j, t -> if (j == i) t.first to v else t }) }
+                            }
+                            Spacer(Modifier.width(6.dp))
+                            Quitar { f = f.copy(tarifarios = f.tarifarios.filterIndexed { j, _ -> j != i }) }
                         }
                     }
                 }
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.width(64.dp)) { CampoNumero(ctrlNum, "N°", decimal = false) { ctrlNum = it.filter(Char::isDigit).take(2) } }
-                Spacer(Modifier.width(6.dp))
-                listOf(1 to "días", 7 to "sem.", 30 to "meses", 365 to "años").forEach { (u, t) ->
-                    ChipOpcion(t, ctrlUnidad == u) { ctrlUnidad = u }
-                    Spacer(Modifier.width(4.dp))
+
+                // Serie AUTOPROGRAMADA: al agendar la 1ª sesión se agendan las demás.
+                // Premium/Plus/prueba (11/11/2026, como la web: feature 'protocolos'). En
+                // Básico el candado; lo ya configurado se guarda tal cual.
+                if (conSesiones && !ctx.can("protocolos")) {
+                    Espacio()
+                    CandadoPlan("Programar todas las sesiones automáticamente", "Al agendar la primera sesión, el resto del plan se agenda solo. Disponible en Premium y Plus.")
                 }
-            }
-            Spacer(Modifier.height(6.dp))
-            BotonContorno("+ Agregar control", habilitado = (ctrlNum.toIntOrNull() ?: 0) > 0) {
-                val n = ctrlNum.toIntOrNull() ?: 0
-                if (n > 0) {
-                    val dias = n * ctrlUnidad
-                    if (dias !in f.controlesDias) f = f.copy(controlesDias = (f.controlesDias + dias).sorted())
-                    ctrlNum = ""
+                if (conSesiones && ctx.can("protocolos")) {
+                    Espacio()
+                    Caja {
+                        Row(verticalAlignment = Alignment.Top, modifier = Modifier.clickable { f = f.copy(serieAuto = !f.serieAuto) }) {
+                            Checkbox(checked = f.serieAuto, onCheckedChange = { f = f.copy(serieAuto = it) }, colors = CheckboxDefaults.colors(checkedColor = c.navy))
+                            Column(Modifier.padding(top = 12.dp)) {
+                                Text("📅 Programar todas las sesiones automáticamente", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("Al agendar la primera, el resto del plan se agenda solo.", color = c.textoSuave, fontSize = 12.sp)
+                            }
+                        }
+                        if (f.serieAuto) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp)) {
+                                Text("una sesión cada", color = c.texto, fontSize = 13.sp)
+                                Spacer(Modifier.width(6.dp))
+                                Box(Modifier.width(76.dp)) { CampoNumero(f.serieIntervalo, "15", decimal = false) { f = f.copy(serieIntervalo = it.filter(Char::isDigit).take(3)) } }
+                                Spacer(Modifier.width(6.dp))
+                                Text("días", color = c.texto, fontSize = 13.sp)
+                            }
+                            Ayuda("Cada fecha cae en día que la clínica atiende (si toca domingo, se corre y las siguientes también). Reagendar una sesión corre las que faltan con el mismo desplazamiento.")
+                        }
+                    }
                 }
+
             }
-            Ayuda(
-                if (f.controlesDias.isNotEmpty()) "Al dar de alta se propone cada fecha sola, contada desde la intervención. Las fechas caen en días que la clínica atiende."
-                else "Sin protocolo: los controles se cargan a mano en cada tratamiento.",
-            )
+        }
+        if (esDental && modo != "sesiones") {
+            SeccionPlegable("💲 Otros precios", if (f.precioCaras.values.any { it.isNotBlank() }) "precio según caras" else "por caras (opcional)") {
+                // Odontología: precio según cuántas caras tiene la pieza.
+                run {
+                    Caja {
+                        EtqForm("🦷 Precio según caras (opcional)")
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("1" to "1 cara", "2" to "2 caras", "3" to "3 o más").forEach { (k, etq) ->
+                                Column(Modifier.weight(1f)) {
+                                    Text(etq, color = c.textoSuave, fontSize = 11.sp)
+                                    CampoNumero(f.precioCaras[k].orEmpty(), simboloActivo()) { v -> f = f.copy(precioCaras = f.precioCaras + (k to v)) }
+                                }
+                            }
+                        }
+                        Ayuda("El presupuesto del odontograma cobra cada pieza según las caras marcadas. Una pieza sin caras (entera) se cobra como «3 o más». Si lo dejas vacío, se usa el precio de arriba.")
+                    }
+                }
+
+            }
+        }
+        SeccionPlegable("📝 Detalles del servicio", resumenDetalles) {
+                EtqForm("Descripción")
+                OutlinedTextField(
+                    value = f.descripcion, onValueChange = { f = f.copy(descripcion = it) },
+                    placeholder = { Text("Breve descripción del servicio…", color = Sania.colors.textoSuave) }, minLines = 2,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                    colors = coloresCampoForm(), modifier = Modifier.fillMaxWidth(),
+                )
+
+            Espacio()
+                // ¿Cómo se atiende? En el local / por videollamada (citas virtuales).
+                EtqForm("¿Cómo se atiende?")
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(MODALIDAD_PRESENCIAL to "📍 En el local", MODALIDAD_VIRTUAL to "🎥 Por videollamada").forEach { (v, t) ->
+                        val sel = f.modalidad == v
+                        Box(
+                            Modifier.weight(1f).heightIn(min = 44.dp).clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                .background(if (sel) c.navy else c.superficie)
+                                .border(1.dp, if (sel) c.navy else c.borde, RoundedCornerShape(Sania.shape.sm.dp))
+                                .clickable { f = f.copy(modalidad = v) }
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center,
+                        ) { Text(t, color = if (sel) c.sobreNavy else c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
+                    }
+                }
+                if (f.modalidad == MODALIDAD_VIRTUAL) {
+                    Spacer(Modifier.height(8.dp))
+                    Caja {
+                        val meetSel = f.enlaceModo == ENLACE_MODO_MEET
+                        // Básico: el Meet automático no se elige (salvo que ya lo tuviera guardado).
+                        val meetElegible = meetPlan || meetSel
+                        Row(verticalAlignment = Alignment.Top,
+                            modifier = Modifier.clickable(enabled = meetElegible) { f = f.copy(enlaceModo = ENLACE_MODO_MEET) }) {
+                            RadioButton(selected = meetSel, enabled = meetElegible, onClick = { f = f.copy(enlaceModo = ENLACE_MODO_MEET) },
+                                colors = RadioButtonDefaults.colors(selectedColor = c.navy))
+                            Column(Modifier.padding(top = 12.dp)) {
+                                Text("Crear Google Meet automáticamente", color = if (meetElegible) c.texto else c.textoSuave,
+                                    fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    if (meetPlan) "Cada cita tendrá su Meet en el Google Calendar conectado (Ajustes → Calendario)."
+                                    else "🔒 Es de Premium: en tu plan pegas el enlace en cada cita.",
+                                    color = c.textoSuave, fontSize = 12.sp,
+                                )
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.Top,
+                            modifier = Modifier.clickable { f = f.copy(enlaceModo = ENLACE_MODO_FIJO) }) {
+                            RadioButton(selected = f.enlaceModo == ENLACE_MODO_FIJO, onClick = { f = f.copy(enlaceModo = ENLACE_MODO_FIJO) },
+                                colors = RadioButtonDefaults.colors(selectedColor = c.navy))
+                            Column(Modifier.padding(top = 12.dp)) {
+                                Text("Enlace fijo", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("Tu sala de Zoom o Meet de siempre.", color = c.textoSuave, fontSize = 12.sp)
+                            }
+                        }
+                        if (f.enlaceModo == ENLACE_MODO_FIJO) {
+                            OutlinedTextField(
+                                value = f.enlaceFijo, onValueChange = { f = f.copy(enlaceFijo = it) },
+                                placeholder = { Text("https://zoom.us/j/…", color = Sania.colors.textoSuave) }, singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                                colors = coloresCampoForm(), modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                            )
+                        }
+                        Ayuda("Las citas de este servicio nacen por videollamada; al agendar se puede cambiar.")
+                    }
+                }
+
+        }
+        SeccionPlegable("🔁 Después del servicio", resumenDespues, forzarAbierta = pasosFallo) {
+                // Pasos ENCADENADOS: primero lo que sigue a la atención, después los controles.
+                Caja {
+                    Text("⛓️ Después de este servicio (opcional)", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    if (pasosFallo) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                            Text(
+                                "No se pudieron leer los pasos; hasta leerlos no se puede guardar.",
+                                color = c.error, fontSize = 12.sp, modifier = Modifier.weight(1f),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            BotonContorno("Reintentar") { intentoPasos++ }
+                        }
+                    } else if (!pasosCargados) Text("Cargando pasos…", color = c.textoSuave, fontSize = 12.sp)
+                    f.pasos.forEachIndexed { i, p ->
+                        Spacer(Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.weight(1f)) { CajaSelectorForm(nombreDe(p.pasoId) ?: "— Elegir servicio —") { eligiendoServicio = i } }
+                            Spacer(Modifier.width(6.dp))
+                            Quitar { f = f.copy(pasos = f.pasos.filterIndexed { j, _ -> j != i }) }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("a los", color = c.texto, fontSize = 12.sp)
+                            Spacer(Modifier.width(4.dp))
+                            Box(Modifier.width(70.dp)) { CampoNumero(p.dias, "7", decimal = false) { v -> f = f.copy(pasos = f.pasos.mapIndexed { j, x -> if (j == i) x.copy(dias = v.filter(Char::isDigit).take(3)) else x }) } }
+                            Spacer(Modifier.width(4.dp))
+                            Text("días hábiles · ${simboloActivo()}", color = c.texto, fontSize = 12.sp)
+                            Spacer(Modifier.width(4.dp))
+                            // El precio EN CADENA es independiente del precio suelto del servicio.
+                            Box(Modifier.weight(1f)) { CampoNumero(p.precio, "0 (incluido)") { v -> f = f.copy(pasos = f.pasos.mapIndexed { j, x -> if (j == i) x.copy(precio = v.take(8)) else x }) } }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Box(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                            .border(1.dp, c.lav, RoundedCornerShape(Sania.shape.sm.dp))
+                            .clickable(enabled = pasosCargados) { f = f.copy(pasos = f.pasos + PasoServicioForm()) }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { Text("+ Agregar paso", color = c.navy, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                    Ayuda(
+                        if (f.pasos.isNotEmpty()) "Al completar la atención que dispara (única atención, o la última sesión del plan), las citas de estos pasos se agendan solas en día que la clínica atiende."
+                        else "Ejemplo: trasplante capilar → lavado de costras a los 7 días hábiles + PRP a los 15.",
+                    )
+                }
+
+                // Protocolo de controles después de la intervención.
+                Espacio()
+                Caja {
+                    Text("🔁 Controles después (opcional)", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        PROTOCOLOS_CONTROLES.forEach { (nombre, dias) ->
+                            val puesto = dias == f.controlesDias.sorted()
+                            ChipOpcion(nombre, puesto) { f = f.copy(controlesDias = if (puesto) emptyList() else dias) }
+                        }
+                    }
+                    if (f.controlesDias.isNotEmpty()) {
+                        Spacer(Modifier.height(6.dp))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Vuelve a:", color = c.textoSuave, fontSize = 12.sp)
+                            f.controlesDias.sorted().forEach { d ->
+                                Row(
+                                    Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(c.chipBg)
+                                        .clickable { f = f.copy(controlesDias = f.controlesDias - d) }
+                                        .padding(horizontal = 9.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(etiquetaControl(d), color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("✕", color = c.textoSuave, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.width(64.dp)) { CampoNumero(ctrlNum, "N°", decimal = false) { ctrlNum = it.filter(Char::isDigit).take(2) } }
+                        Spacer(Modifier.width(6.dp))
+                        listOf(1 to "días", 7 to "sem.", 30 to "meses", 365 to "años").forEach { (u, t) ->
+                            ChipOpcion(t, ctrlUnidad == u) { ctrlUnidad = u }
+                            Spacer(Modifier.width(4.dp))
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    BotonContorno("+ Agregar control", habilitado = (ctrlNum.toIntOrNull() ?: 0) > 0) {
+                        val n = ctrlNum.toIntOrNull() ?: 0
+                        if (n > 0) {
+                            val dias = n * ctrlUnidad
+                            if (dias !in f.controlesDias) f = f.copy(controlesDias = (f.controlesDias + dias).sorted())
+                            ctrlNum = ""
+                        }
+                    }
+                    Ayuda(
+                        if (f.controlesDias.isNotEmpty()) "Al dar de alta se propone cada fecha sola, contada desde la intervención. Las fechas caen en días que la clínica atiende."
+                        else "Sin protocolo: los controles se cargan a mano en cada tratamiento.",
+                    )
+                }
         }
         Spacer(Modifier.height(8.dp))
     }
@@ -578,6 +602,31 @@ fun FormularioServicio(
 
 @Composable
 private fun Espacio() = Spacer(Modifier.height(Sania.dim.lg))
+
+/** Sección plegada con su resumen a la derecha (gemelo de components/ui/SeccionPlegable.tsx). */
+@Composable
+private fun SeccionPlegable(titulo: String, resumen: String, forzarAbierta: Boolean = false, contenido: @Composable ColumnScope.() -> Unit) {
+    val c = Sania.colors
+    var abierta by remember { mutableStateOf(false) }
+    val ver = abierta || forzarAbierta
+    Spacer(Modifier.height(Sania.dim.md))
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+            .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.sm.dp)),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().clickable { abierta = !ver }.padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(titulo, color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text(resumen, color = c.textoSuave, fontSize = 12.sp, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(start = 8.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+            Text(if (ver) "  ▲" else "  ▼", color = c.textoSuave, fontSize = 12.sp)
+        }
+        if (ver) Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp), content = contenido)
+    }
+}
 
 @Composable
 private fun Ayuda(texto: String) {

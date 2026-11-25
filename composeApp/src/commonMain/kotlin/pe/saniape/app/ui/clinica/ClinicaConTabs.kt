@@ -520,6 +520,12 @@ fun ClinicaConTabs(
                         pe.saniape.app.ui.clinica.reportes.VistaReportes.Nuevos -> PantallaPacientesNuevos(
                             ctx = contexto, onSalir = { vistaReportes = null }, onVista = irVista,
                         )
+                        pe.saniape.app.ui.clinica.reportes.VistaReportes.Agendo -> pe.saniape.app.ui.clinica.reportes.PantallaQuienAgendo(
+                            ctx = contexto, onSalir = { vistaReportes = null }, onVista = irVista,
+                        )
+                        pe.saniape.app.ui.clinica.reportes.VistaReportes.Cierres -> pe.saniape.app.ui.clinica.reportes.PantallaCierresCaja(
+                            ctx = contexto, onSalir = { vistaReportes = null }, onVista = irVista,
+                        )
                     }
                 }
             }
@@ -686,6 +692,12 @@ fun ClinicaConTabs(
     // 🧾 Boleta / factura SUNAT tras un cobro (add-on de facturación): la oferta y
     // la hoja de emisión, para todas las pantallas. Sin el add-on no pinta nada.
     pe.saniape.app.ui.clinica.comprobante.HostFacturacionSunat(contexto)
+    // 📧 Quien creó la clínica confirma su correo (24 h de gracia; vencido, tapa el panel).
+    GuardiaCorreo(onCerrarSesion = {
+        StaffContextoRepo.limpiar()
+        pe.saniape.app.data.Preferencias.setModoActivo(null)
+        onCerrarSesion()
+    })
     // Al navegar (otra pestaña, un módulo de "Más", la ficha del buscador) la oferta
     // de la pantalla anterior ya no corresponde: se descarta (sigue en el menú).
     val claveNavegacion = Triple(tab, hayOverlay, fichaBuscada?.id)

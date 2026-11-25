@@ -680,8 +680,8 @@ private fun MensajeReportes(emoji: String, texto: String, textoAccion: String? =
     }
 }
 
-/** Las tres pestañas de la página Reportes de la web. */
-enum class VistaReportes { MesAMes, Rendimiento, Nuevos }
+/** Las pestañas de la página Reportes de la web (Gerencia queda en la web). */
+enum class VistaReportes { MesAMes, Rendimiento, Nuevos, Agendo, Cierres }
 
 /** Fila de pestañas compartida por las tres vistas (igual que la web): la activa va marcada. */
 @Composable
@@ -693,5 +693,7 @@ fun FilaVistasReportes(ctx: ContextoStaff, actual: VistaReportes, onVista: (Vist
         ChipFiltro("📈 Mes a mes", activo = actual == VistaReportes.MesAMes) { onVista(VistaReportes.MesAMes) }
         ChipFiltro("🎯 Rendimiento", activo = actual == VistaReportes.Rendimiento) { onVista(VistaReportes.Rendimiento) }
         ChipFiltro("🌱 ${ctx.terminologiaPaciente.Pacientes} nuevos", activo = actual == VistaReportes.Nuevos) { onVista(VistaReportes.Nuevos) }
+        ChipFiltro("📞 Quién agendó", activo = actual == VistaReportes.Agendo) { onVista(VistaReportes.Agendo) }
+        if (ctx.puede("finanzas")) ChipFiltro("🧮 Cierres de caja", activo = actual == VistaReportes.Cierres) { onVista(VistaReportes.Cierres) }
     }
 }

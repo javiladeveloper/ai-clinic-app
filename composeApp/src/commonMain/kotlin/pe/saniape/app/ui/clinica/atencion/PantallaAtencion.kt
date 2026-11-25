@@ -256,6 +256,18 @@ private fun ColumnScope.ContenidoAtencion(
             Spacer(Modifier.height(Sania.dim.sm))
             Aviso(textoSoloLectura(d), c.textoSuave, c.chipBg)
         }
+        // ⚠ Fototipo y contraindicaciones del paciente, a la vista mientras se atiende (24/11/2026).
+        run {
+            val pid = d.cita.paciente_id ?: d.cita.paciente?.id
+            var alertasPiel by androidx.compose.runtime.remember(pid) {
+                androidx.compose.runtime.mutableStateOf<List<pe.saniape.app.data.staff.AlertaEstetica>>(emptyList())
+            }
+            androidx.compose.runtime.LaunchedEffect(pid) { alertasPiel = pe.saniape.app.data.staff.AlertasEsteticaRepo.dePaciente(pid) }
+            if (alertasPiel.isNotEmpty()) {
+                Spacer(Modifier.height(Sania.dim.sm))
+                pe.saniape.app.ui.clinica.pacientes.FranjaAlertasEstetica(alertasPiel)
+            }
+        }
         FranjaPaciente(d)
         // 🗒 La última vez: abierta de entrada (se lee sin pedir toques), plegable.
         if (ultima?.tieneDatos == true) {

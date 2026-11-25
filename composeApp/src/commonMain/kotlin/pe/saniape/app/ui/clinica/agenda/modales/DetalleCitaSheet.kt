@@ -103,6 +103,12 @@ fun DetalleCitaSheet(
     var guardando by remember(cita.id) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    // ⚠ Alertas de piel del paciente (24/11/2026, como la web): solo con lo clínico.
+    var alertasPiel by remember(cita.id) { mutableStateOf<List<pe.saniape.app.data.staff.AlertaEstetica>>(emptyList()) }
+    LaunchedEffect(cita.pacienteId, verClinico) {
+        alertasPiel = if (verClinico) pe.saniape.app.data.staff.AlertasEsteticaRepo.dePaciente(cita.pacienteId) else emptyList()
+    }
+
     LaunchedEffect(cita.id, verClinico) {
         cargando = true
         val r = AgendaRepo.detalleCita(cita.id, verClinico)
@@ -132,6 +138,9 @@ fun DetalleCitaSheet(
         },
         text = {
             Column(Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
+                if (alertasPiel.isNotEmpty()) {
+                    pe.saniape.app.ui.clinica.pacientes.FranjaAlertasEstetica(alertasPiel, Modifier.padding(bottom = 8.dp))
+                }
                 Dato("Cuándo", buildString {
                     append(fechaLegibleCorta(cita.fecha)).append(" · ").append(hora12(cita.hora))
                     cita.duracion?.takeIf { it > 0 }?.let { append(" · $it min") }
@@ -139,6 +148,9 @@ fun DetalleCitaSheet(
                 Dato("Con", cita.terapeutaNombre ?: "Sin profesional asignado",
                     suave = cita.terapeutaNombre == null)
                 cita.procedimiento?.takeIf { it.isNotBlank() }?.let { Dato("Servicio", it) }
+                // 🏷️ De dónde vino la cita (24/11/2026): Sani, la web o un teleoperador.
+                pe.saniape.app.data.staff.origenDeCita(cita.origen, cita.agendadaPor, pe.saniape.app.data.staff.TeleoperadoresRepo.mapa)
+                    ?.let { Dato("Origen", it.texto + " · " + it.detalle) }
                 if (puedeVerCosto && (cita.costo ?: 0.0) > 0) {
                     Dato("Costo", textoSoles(cita.costo ?: 0.0, monedaDeFila(cita.sedeId)))
                 }

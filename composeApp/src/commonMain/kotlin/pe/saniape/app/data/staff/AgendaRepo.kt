@@ -40,6 +40,8 @@ data class CitaStaff(
     val duracion: Int?,
     val origen: String?,
     val confirmadaPorPaciente: Boolean,
+    /** Quién la creó (perfiles.id): con él se sabe si la agendó un teleoperador (24/11/2026). */
+    val agendadaPor: String? = null,
     val numeroSesion: Int?,
     val terapeutaId: String?,
     val terapeutaNombre: String?,
@@ -241,7 +243,7 @@ object AgendaRepo {
 
     /** Columnas comunes de una cita (con joins). Una sola fuente. */
     const val SELECT_CITA =
-        "id, fecha, hora, estado, tipo, costo, pagada_at, abonado, duracion, origen, confirmada_por_paciente, notas, " +
+        "id, fecha, hora, estado, tipo, costo, pagada_at, abonado, duracion, origen, agendada_por, confirmada_por_paciente, notas, " +
             "terapeuta_id, paciente_id, tratamiento_id, especialidad_id, procedimiento_id, sede_id, sesion_id, confirmacion_token, created_at, " +
             "paciente:pacientes(nombre, telefono, edad, fecha_nacimiento, requiere_apoderado, estado), terapeuta:terapeutas(nombre), " +
             "tratamiento:tratamientos!citas_tratamiento_id_fkey(nota_recepcion, estado, modalidad, total_sesiones, sesiones_completadas, " +
@@ -301,6 +303,7 @@ object AgendaRepo {
                 duracion = s("duracion")?.toIntOrNull(),
                 origen = s("origen"),
                 confirmadaPorPaciente = s("confirmada_por_paciente") == "true",
+                agendadaPor = s("agendada_por"),
                 numeroSesion = (obj("sesion")?.get("numero") as? JsonPrimitive)?.content?.toIntOrNull(),
                 terapeutaId = s("terapeuta_id"),
                 terapeutaNombre = (obj("terapeuta")?.get("nombre") as? JsonPrimitive)?.content?.takeIf { it != "null" },
