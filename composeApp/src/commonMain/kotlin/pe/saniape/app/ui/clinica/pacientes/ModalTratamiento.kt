@@ -109,6 +109,8 @@ data class TratamientoNuevo(
     val servicios: List<pe.saniape.app.data.staff.LineaServicio> = emptyList(),
     /** Plan desde una evaluación AÚN sin completar: avisar al profesional (20/11/2026). */
     val avisarEvaluacionPendiente: Boolean = false,
+    /** 🦷 Odontología, tratamiento directo: las piezas del odontograma que cubre (las ata el servidor). */
+    val hallazgoIds: List<String> = emptyList(),
 ) {
     /** Cuánto dura la cita con todos sus servicios (null = sin servicios agregados). */
     val duracionServicios: Int? get() = servicios.takeIf { it.size > 1 }?.sumOf { it.duracion ?: 30 }
@@ -237,6 +239,8 @@ fun ModalCrearTratamiento(
     var precioAcordado by remember { mutableStateOf("") }
     var cantidadUnidades by remember { mutableStateOf("") }   // modo unidades
     var precioUnitario by remember { mutableStateOf("") }     // modo unidades
+    // 🦷 Tratamiento dental directo (24/11/2026): las piezas del odontograma que cubre.
+    var piezasIds by remember { mutableStateOf<List<String>>(emptyList()) }
     var diagnostico by remember { mutableStateOf(diagnosticoPrevio ?: "") }
     // Plantillas ("combos" de la clínica): elegir una autocompleta servicio + comercial + clínico.
     // Se aplica AL INSTANTE (también si su servicio ya estaba elegido) sobre los
@@ -456,7 +460,11 @@ fun ModalCrearTratamiento(
             // Servicio único: el acordado NO se prellena (igual que la web): el precio base se
             // muestra aparte y como ayuda en el campo; vacío = se cobra el base. Cambiar de
             // servicio conserva la cantidad de unidades y la elección Paquete/Suelta.
-            var f = camposServicio(p, modalidad).copy(cantidadUnidades = cantidadUnidades)
+            var f = camposServicio(p, modalidad).copy(
+                // Zonas, piezas, uñas…: se saben al agendar y nacen en 1 (24/11/2026; antes vacía
+                // = «por definir», S/ 0 en la cita). Lo ya escrito se conserva.
+                cantidadUnidades = cantidadUnidades.ifBlank { pe.saniape.app.data.staff.cantidadInicialUnidades(p.unidadLabel) },
+            )
             // "Nuevo paquete": SUS valores mandan sobre el prefill del servicio.
             renovPend?.let { r ->
                 r.modalidad?.takeIf { it == "Paquete" || it == "Sesión suelta" }?.let { f = f.copy(modalidad = it) }
@@ -599,6 +607,10 @@ fun ModalCrearTratamiento(
             filas = otrosServicios, procs = procedimientos, camps = campanias,
         )
     }
+    // 🦷 Contexto dental desde la ESPECIALIDAD (de la cita o elegida), aunque aún no haya servicio.
+    val mapaDentalCtx = pe.saniape.app.data.staff.StaffContextoRepo.actual?.mapaDental ?: pe.saniape.app.data.staff.MapaDental()
+    val espCtxId = proc?.especialidadId ?: especialidad?.id
+    val dentalCtx = mapaDentalCtx.solo || (espCtxId != null && espCtxId in mapaDentalCtx.ids)
     val puedeCrear = proc != null && !faltaPrecioPaquete && !faltaPrecioMoneda && (!esUnidades ||
         pe.saniape.app.data.staff.puedeCrearPorUnidades(precioUnitario))
 
@@ -696,6 +708,7 @@ fun ModalCrearTratamiento(
                                     especialidadDiagnostico = p.especialidadId,
                                     indicacionesAntes = medicacionPlantilla,
                                     fechaInicio = if (esUnidades) null else fechaInicio,
+                                    hallazgoIds = if (dentalCtx) piezasIds else emptyList(),
                                 )
     }
 
@@ -809,10 +822,11 @@ fun ModalCrearTratamiento(
 
                     // ¿Nació de una evaluación? (primero — autocompleta especialidad y médico)
                     if (evaluaciones.isNotEmpty()) {
-                        Etq("¿Nació de una evaluación? (opcional)")
+                        val pasoPrevio = pe.saniape.app.data.staff.nombrePasoPrevio(dentalCtx, null)
+                        Etq("¿Nació de ${if (pasoPrevio.first().lowercaseChar() in "aeiouáéíóú") "una" else "un"} ${pasoPrevio.lowercase()}? (opcional)")
                         SelectorLista(evaluaciones, evaluacion,
-                            { "Evaluación ${it.fecha}" + (it.terapeutaNombre?.let { n -> " · $n" } ?: "") },
-                            "Sin evaluación previa") { ev ->
+                            { "$pasoPrevio ${it.fecha}" + (it.terapeutaNombre?.let { n -> " · $n" } ?: "") },
+                            "Sin ${pasoPrevio.lowercase()} previo (viene directo)") { ev ->
                             evaluacion = ev
                             ev.especialidadId?.let { espId -> especialidad = especialidades.find { it.id == espId } ?: especialidad }
                             ev.terapeutaId?.let { tId -> terapeuta = terapeutas.find { it.id == tId } ?: terapeuta }
@@ -825,7 +839,9 @@ fun ModalCrearTratamiento(
                     // Typeahead + chips como la web (TratamientoForm): las patologías de la
                     // especialidad del servicio (las personalizadas mandan) y lo aprendido
                     // en esa especialidad + su rubro. Sin servicio elegido, sin chips.
-                    val espDx = proc?.especialidadId?.let { id -> especialidades.find { it.id == id } }
+                    // Siempre los de la especialidad en pantalla: la del servicio o, sin servicio,
+                    // la de la cita / la elegida (regla del 24/11/2026).
+                    val espDx = proc?.especialidadId?.let { id -> especialidades.find { it.id == id } } ?: especialidad
                     val chipsDx = remember(espDx) {
                         espDx?.let {
                             pe.saniape.app.ui.clinica.chipsDeEspecialidad(
@@ -837,8 +853,8 @@ fun ModalCrearTratamiento(
                     pe.saniape.app.ui.clinica.agenda.componentes.DiagnosticoInput(
                         value = diagnostico, onChange = { diagnostico = it }, opciones = chipsDx,
                         placeholder = "Diagnóstico que motiva este tratamiento",
-                        especialidadId = proc?.especialidadId,
-                        activo = proc != null,
+                        especialidadId = proc?.especialidadId ?: especialidad?.id,
+                        activo = proc != null || especialidad != null,
                     )
                     if (!diagnosticoPrevio.isNullOrBlank() || evaluacion != null) {
                         Text("🔍 Tomado de la evaluación — puedes ajustarlo", color = c.textoSuave, fontSize = 10.sp,
@@ -967,13 +983,29 @@ fun ModalCrearTratamiento(
                     }
                 }
 
+                // 🦷 Odontología: las piezas del odontograma y el odontograma ahí mismo (24/11/2026).
+                if (dentalCtx) {
+                    Spacer(Modifier.height(12.dp))
+                    pe.saniape.app.ui.clinica.odontologia.PiezasDeTratamiento(
+                        pacienteId = pacienteId, pacienteNombre = null,
+                        procedimientoId = proc?.id, precioLista = precioBaseONull, moneda = moneda,
+                        elegidas = piezasIds, onCambio = { piezasIds = it },
+                        onUsarPrecio = if (esUnidades) null else { total -> precioAcordado = formatoNum(total) },
+                        onServicioSugerido = { id -> procedimientos.find { it.id == id }?.let { proc = it } },
+                        mapaDental = mapaDentalCtx,
+                    )
+                }
+
                 // Bloque 2 · adaptado al tipo de servicio ─────────────────
                 if (esUnidades) {
                     Spacer(Modifier.height(12.dp))
                     val etiquetaU = proc?.unidadLabel ?: "unidades"
                     Tarjeta(titulo = "Cobro por $etiquetaU", icono = "🔢") {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Column(Modifier.weight(1f)) { Etq("Cantidad de $etiquetaU — opcional"); CampoNum(cantidadUnidades) { cantidadUnidades = it } }
+                            Column(Modifier.weight(1f)) {
+                                Etq("Cantidad de $etiquetaU" + if (pe.saniape.app.data.staff.unidadSeCuentaAntes(proc?.unidadLabel)) "" else " — opcional")
+                                CampoNum(cantidadUnidades) { cantidadUnidades = it }
+                            }
                             Column(Modifier.weight(1f)) { Etq("Precio por unidad (${simboloMoneda(moneda)})"); CampoNum(precioUnitario) { precioUnitario = it } }
                         }
                         // Total en vivo (cantidad × precio unitario) — es el acordado por defecto.
@@ -981,9 +1013,9 @@ fun ModalCrearTratamiento(
                             (precioUnitario.toDoubleOrNull() ?: 0.0)
                         // Sin cantidad no hay total: se dice qué pasa con el cobro (es dinero).
                         if (pe.saniape.app.data.staff.cantidadUnidadesAGuardar(cantidadUnidades) == null && precioAcordado.toDoubleOrNull() == null) {
-                            Text("¿Aún no sabes cuántas? Déjala vacía y complétala después (mapa de aplicación o editar el tratamiento). " +
-                                "Hasta entonces no hay monto que cobrar.",
-                                color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                            Text("⚠ Sin la cantidad el tratamiento queda con el precio por definir: en la cita se verá S/ 0 " +
+                                "hasta que la completes (mapa de aplicación o editar el tratamiento).",
+                                color = c.pend, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
                         }
                         if (total > 0) {
                             Spacer(Modifier.height(8.dp))
@@ -1305,6 +1337,7 @@ private fun cuerpoDe(pacienteId: String, nuevo: TratamientoNuevo) = PacientesRep
     campaniaId = nuevo.campaniaId, motivoPrecio = nuevo.motivoPrecio,
     fechaInicio = nuevo.fechaInicio,
     primeraFecha = nuevo.primeraFecha, primeraHora = nuevo.primeraHora,
+    hallazgoIds = nuevo.hallazgoIds,
     servicios = nuevo.servicios,
     avisarEvaluacionPendiente = nuevo.avisarEvaluacionPendiente,
 )

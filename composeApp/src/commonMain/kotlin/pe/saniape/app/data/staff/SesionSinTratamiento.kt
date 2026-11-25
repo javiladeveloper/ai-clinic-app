@@ -142,6 +142,14 @@ fun nombreCitaDelTratamiento(modalidad: String?): String = when (modalidad) {
  * alta»—, y la otra atención va sin volver a cobrar. Un paquete completado no:
  * ese se amplía. `tratamientoAgendableEnSesion` de la web.
  */
+/**
+ * ¿Es un PAGO ÚNICO que ya se realizó? Agendarle otra Sesión la deja SIN COSTO: sirve para
+ * un control, pero es una trampa cuando el servicio se REPITE y se cobra (24/11/2026: una
+ * segunda infiltración quedó en S/ 0, «Ya pagó» por el pago anterior). Gemelo de
+ * `esPagoUnicoRealizado` (lib/cita-sin-tratamiento.ts).
+ */
+fun esPagoUnicoRealizado(estado: String?, modalidad: String?): Boolean = estado == "Completado" && modalidad == "Consulta"
+
 fun tratamientoAgendableEnSesion(estado: String?, modalidad: String?): Boolean =
     estado == "Activo" || (estado == "Completado" && modalidad == "Consulta")
 

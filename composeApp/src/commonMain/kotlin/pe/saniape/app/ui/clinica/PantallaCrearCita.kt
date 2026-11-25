@@ -332,6 +332,10 @@ fun PantallaCrearCita(
     var ampliarSesiones by remember(paciente?.id) { mutableStateOf("1") }
     var ampliarMonto by remember(paciente?.id) { mutableStateOf("") }
     var ampliando by remember { mutableStateOf(false) }
+    // 🔁 Repetir un PAGO ÚNICO ya realizado (24/11/2026): el monto, y el tratamiento ampliado
+    // aquí con él (la cita lleva ese precio en vez de S/ 0). Gemelo de CitaForm (web).
+    var montoRepetir by remember(paciente?.id) { mutableStateOf("") }
+    var repetido by remember(paciente?.id) { mutableStateOf<Pair<String, Double>?>(null) }
     val tratAmpliar = ampliables.firstOrNull { it.id == ampliarId } ?: ampliables.firstOrNull()
     // La lista solo vale si la cita cobra en la moneda del catálogo (la de la clínica).
     val listaAmpliar = tratAmpliar?.let {
@@ -735,6 +739,42 @@ fun PantallaCrearCita(
         }
     }
 
+    /** Repetir el servicio en el MISMO tratamiento: se amplía con su precio (otra atención). */
+    fun ampliarPagoUnico() {
+        val t = tratamiento ?: return
+        val pac = paciente ?: return
+        if (ampliando || !pe.saniape.app.data.staff.esPagoUnicoRealizado(t.estado, t.modalidad)) return
+        val lista = t.precioAcordado?.takeIf { it > 0 }
+        val pedido = pe.saniape.app.data.staff.pedidoAmpliacion("1", montoRepetir, lista, moneda)
+        if (pedido is pe.saniape.app.data.staff.PedidoAmpliacion.Error) { mensaje = pedido.error; return }
+        val ok = pedido as pe.saniape.app.data.staff.PedidoAmpliacion.Ok
+        ampliando = true
+        mensaje = null
+        scope.launch {
+            try {
+                val r = pe.saniape.app.data.staff.PacientesRepo.ampliarTratamientoDetalle(t.id, 1, ok.monto, "Repetición del servicio (desde Nueva cita)")
+                if (paciente?.id != pac.id) return@launch
+                when {
+                    r.rechazo != null -> mensaje = "No se pudo ampliar el tratamiento: ${r.rechazo!!.error}"
+                    !r.registrada -> mensaje = "No se pudo ampliar el tratamiento. Intenta de nuevo."
+                    r.encolada -> mensaje = "El tratamiento se ampliará al recuperar la señal; agenda la cita después."
+                    else -> {
+                        val nuevo = t.copy(estado = "Activo", precioAcordado = (t.precioAcordado ?: 0.0) + ok.monto)
+                        tratamientos = tratamientos.map { if (it.id == t.id) nuevo else it }
+                        tratamiento = nuevo
+                        repetido = t.id to ok.monto
+                        montoRepetir = ""
+                        pe.saniape.app.ui.Toaster.exito(
+                            "Tratamiento ampliado: otra atención por ${pe.saniape.app.ui.clinica.agenda.modales.textoSoles(ok.monto, moneda)}. Esta cita queda con ese precio.",
+                        )
+                    }
+                }
+            } finally {
+                ampliando = false
+            }
+        }
+    }
+
     /**
      * Guarda la cita. Devuelve null si quedó guardada, o el error (que también
      * queda a la vista arriba del formulario). La misma acción desde el botón del
@@ -815,6 +855,8 @@ fun PantallaCrearCita(
                 costo = if (ov != null) ov.costo ?: 0.0
                     else creadoAqui?.takeIf { tipo == "Sesión" && it.first == tratamiento?.id }
                         ?.let { it.second ?: 0.0 }
+                        // Pago único repetido y ampliado aquí: la cita lleva el precio de la repetición.
+                        ?: repetido?.takeIf { tipo == "Sesión" && it.first == tratamiento?.id }?.second
                         ?: tratamiento?.takeIf { tipo == "Sesión" }?.let { t ->
                             pe.saniape.app.data.staff.costoCitaDeSesion(t.modalidad, t.precioPorSesion, t.precioAcordado, t.totalSesiones)
                         }
@@ -1407,6 +1449,42 @@ fun PantallaCrearCita(
                         onElegir = { tr -> tratamiento = tr },
                         placeholder = "Elegir tratamiento",
                     )
+                    // 🔁 Pago único ya realizado (24/11/2026): la cita nace SIN COSTO. Si el servicio
+                    // se repite y se vuelve a cobrar, se amplía el tratamiento con su precio.
+                    tratamiento?.takeIf { pe.saniape.app.data.staff.esPagoUnicoRealizado(it.estado, it.modalidad) }?.let { t ->
+                        Spacer(Modifier.height(8.dp))
+                        Column(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp)).background(c.pendBg)
+                                .border(1.dp, c.pend, RoundedCornerShape(Sania.shape.sm.dp)).padding(10.dp),
+                        ) {
+                            Text("⚠ Este servicio ya se atendió y se pagó. Si es un control o la continuación, la cita va sin costo.",
+                                color = c.texto, fontSize = 12.sp)
+                            if (ctx.puede("sesiones")) {
+                                Spacer(Modifier.height(6.dp))
+                                Text("¿Se repite el servicio y se cobra otra vez?", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(4.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = montoRepetir, onValueChange = { montoRepetir = it }, singleLine = true, enabled = !ampliando,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        placeholder = {
+                                            Text(t.precioAcordado?.takeIf { it > 0 }?.let { pe.saniape.app.ui.clinica.agenda.modales.textoSoles(it, moneda) + " (lista)" } ?: "Precio",
+                                                color = c.textoSuave, fontSize = 12.sp)
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Box(
+                                        Modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(Sania.shape.md.dp))
+                                            .background(if (ampliando) c.navy.copy(alpha = 0.5f) else c.navy)
+                                            .clickable(enabled = !ampliando) { ampliarPagoUnico() }.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) { Text(if (ampliando) "Ampliando…" else "➕ Ampliar", color = c.sobreNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                                }
+                                Text("Queda como otra atención del mismo tratamiento, con su precio y su cobro.",
+                                    color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                            }
+                        }
+                    }
                 }
 
                 Spacer(Modifier.height(Sania.dim.md))

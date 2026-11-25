@@ -124,15 +124,18 @@ internal fun SelectorPacienteBuscable(
 
     fun elegir(r: RefNombre) { onElegir(r); cerrar() }
 
-    /** Alta SOLO con el nombre (sin DNI). Anti doble toque: [creando] + clave de idempotencia. */
-    fun registrarNombre(nombre: String) {
+    /**
+     * Alta sin DNI: con el nombre (y su teléfono si se escribió junto), o SOLO con el
+     * teléfono (nombre vacío). Anti doble toque: [creando] + clave de idempotencia.
+     */
+    fun registrarNombre(nombre: String, telefono: String? = null) {
         if (creando) return
         creando = true
         errorAlta = null
-        val it0 = claveDeIntento(intento, nombre) { nuevaIdemKey() }
+        val it0 = claveDeIntento(intento, nombre.ifBlank { telefono.orEmpty() }) { nuevaIdemKey() }
         intento = it0
         scope.launch {
-            val (r, status) = BuscarPacienteRepo.registrarSinDni(nombre, it0.clave)
+            val (r, status) = BuscarPacienteRepo.registrarSinDni(nombre, it0.clave, telefono)
             creando = false
             if (!r.ok || r.id == null) {
                 // Un "no" del servidor (4xx) no se reintenta con esa clave; un corte o 5xx sí.
@@ -143,7 +146,8 @@ internal fun SelectorPacienteBuscable(
             // Alta confirmada: la próxima (aunque sea un homónimo) lleva clave nueva.
             intento = null
             Toaster.exito("${tpl.Paciente} registrado")
-            onRegistrado(RefNombre(r.id, nombre, null, sedeId = r.sedeId), AltaEnCita.SIN_DNI)
+            onRegistrado(RefNombre(r.id, nombre.ifBlank { pe.saniape.app.data.staff.nombreProvisional(telefono.orEmpty()) }, null,
+                sedeId = r.sedeId, telefono = telefono), AltaEnCita.SIN_DNI)
             cerrar()
         }
     }
@@ -180,7 +184,7 @@ internal fun SelectorPacienteBuscable(
                     // Al cambiar el texto, el aviso de parecidos y el error ya no corresponden.
                     porNombre = null; errorAlta = null
                 },
-                placeholder = { Text("Nombre o DNI…", color = c.textoSuave) },
+                placeholder = { Text("Nombre, DNI o teléfono…", color = c.textoSuave) },
                 // Revisando parecidos o registrando: el texto no cambia bajo esa decisión.
                 enabled = !revisando && !creando,
                 singleLine = true, modifier = Modifier.fillMaxWidth(),
@@ -188,8 +192,12 @@ internal fun SelectorPacienteBuscable(
             )
             Spacer(Modifier.height(6.dp))
 
-            val entrada = remember(query) { clasificarEntrada(query) }
-            val porDocumento = entrada is EntradaBusqueda.Documento
+            // 📞 El teléfono en lo escrito (24/11/2026): «987654321» o «Ana Quispe 987654321».
+            // `textoSinTel` es lo demás (el nombre o el documento); `soloTel`, si solo hay número.
+            val telEscrito = remember(query) { pe.saniape.app.data.staff.separarTelefono(query) }
+            val soloTel = telEscrito.telefono?.takeIf { telEscrito.texto.isBlank() }
+            val entrada = remember(query) { clasificarEntrada(telEscrito.texto) }
+            val porDocumento = soloTel == null && entrada is EntradaBusqueda.Documento
             // Resultados del servidor para la búsqueda actual (null = aún no / sin señal).
             var remotos by remember { mutableStateOf<Pair<String, List<RefNombre>>?>(null) }
             var buscandoRemoto by remember { mutableStateOf(false) }
@@ -204,10 +212,12 @@ internal fun SelectorPacienteBuscable(
                 if (q.length < 2) { remotos = null; buscandoRemoto = false; return@LaunchedEffect }
                 kotlinx.coroutines.delay(300)   // pausa: no una consulta por tecla
                 buscandoRemoto = true
-                val e = clasificarEntrada(q)
+                val tq = pe.saniape.app.data.staff.separarTelefono(q)
+                val e = clasificarEntrada(tq.texto)
                 var lista: List<RefNombre>? = null
-                if (e is EntradaBusqueda.Nombre && EndpointBuscar.disponible) {
-                    when (val r = BuscarPacienteRepo.buscar(q, limite = 12)) {
+                // Solo un teléfono: el servidor busca por teléfono (tolera espacios y +51).
+                if ((e is EntradaBusqueda.Nombre || (tq.telefono != null && tq.texto.isBlank())) && EndpointBuscar.disponible) {
+                    when (val r = BuscarPacienteRepo.buscar(tq.texto.ifBlank { q }, limite = 12)) {
                         is RespuestaBusqueda.Ok -> {
                             info = info + r.resultados.associateBy { it.id }
                             lista = r.resultados.map { RefNombre(it.id, it.nombre, null, sedeId = it.sedeId) }
@@ -228,7 +238,10 @@ internal fun SelectorPacienteBuscable(
                 val q = query.trim()
                 val delServidor = remotos?.takeIf { it.first == q }?.second.orEmpty()
                 val todos = (items + delServidor).distinctBy { it.id }
-                when (val e = clasificarEntrada(q)) {
+                val tq = pe.saniape.app.data.staff.separarTelefono(q)
+                // Solo un teléfono: lo que devolvió el servidor (busca por teléfono).
+                if (tq.telefono != null && tq.texto.isBlank()) delServidor.take(40)
+                else when (val e = clasificarEntrada(tq.texto)) {
                     EntradaBusqueda.Vacio -> items.take(30)
                     // Documento: el flujo de siempre (misma regla que la lista de pacientes).
                     is EntradaBusqueda.Documento -> todos
@@ -244,7 +257,9 @@ internal fun SelectorPacienteBuscable(
             }
             // Registrar SIN DNI: lo escrito es un nombre válido (nombre y apellido).
             // Se ofrece SIEMPRE al final, también con coincidencias ("si no coincide o no sabemos").
-            val nombreAlta = if (altaRapida && !altaSoloConDocumento && entrada is EntradaBusqueda.Nombre) nombreParaAlta(query) else null
+            val nombreAlta = if (altaRapida && !altaSoloConDocumento && entrada is EntradaBusqueda.Nombre) nombreParaAlta(telEscrito.texto) else null
+            // Registrar SOLO con el teléfono: donde se permite el alta sin documento.
+            val soloTelAlta = if (altaRapida && !altaSoloConDocumento && !buscandoRemoto) soloTel else null
             val faltaApellido = altaRapida && !altaSoloConDocumento && entrada is EntradaBusqueda.Nombre && nombreAlta == null &&
                 filtrados.isEmpty() && query.none { it in '0'..'9' } && entrada.palabras.joinToString("").length >= 3
 
@@ -272,7 +287,7 @@ internal fun SelectorPacienteBuscable(
                     val lista = (delServidor + locales.filter { it.ref.id !in vistos }).take(6)
                     revisando = false
                     if (!revisionParecidosVigente(consultaAlIniciar, query, abierto, elegidoAlIniciar, elegidoActual?.id)) return@launch
-                    if (lista.isNotEmpty()) porNombre = nombre to lista else registrarNombre(nombre)
+                    if (lista.isNotEmpty()) porNombre = nombre to lista else registrarNombre(nombre, telEscrito.telefono)
                 }
             }
 
@@ -286,7 +301,7 @@ internal fun SelectorPacienteBuscable(
                         nombre = pn.first, filas = pn.second, verDatos = verDatosPersonales,
                         creando = creando, reactivandoId = reactivandoId, error = errorAlta,
                         onElegir = { f -> if (f.baja) reactivarYElegir(f) else elegir(f.ref) },
-                        onRegistrar = { registrarNombre(pn.first) },
+                        onRegistrar = { registrarNombre(pn.first, telEscrito.telefono) },
                         onVolver = { porNombre = null; errorAlta = null },
                     )
                     docNuevo != null -> PanelAltaRapida(
@@ -324,12 +339,35 @@ internal fun SelectorPacienteBuscable(
                                     Text(if (revisando) "Revisando fichas parecidas…" else "Registrando…",
                                         color = c.textoSuave, fontSize = 13.sp)
                                 } else {
-                                    Text("＋ Registrar «$nombreAlta» sin DNI", color = c.ok, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    Text("＋ Registrar «$nombreAlta» sin DNI" +
+                                        (telEscrito.telefono?.let { " · 📞 ${pe.saniape.app.data.staff.telefonoLegible(it)}" } ?: ""),
+                                        color = c.ok, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                     Text(
                                         (if (filtrados.isNotEmpty()) "¿No es ninguno, o no sabes su DNI? " else "") +
                                             "Queda registrado solo con el nombre; el DNI y lo demás se completan después.",
                                         color = c.textoSuave, fontSize = 11.sp,
                                     )
+                                }
+                            }
+                            errorAlta?.let {
+                                Text(it, color = c.error, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                            }
+                        }
+                        // 📞 Solo el teléfono: la ficha nace «Sin nombre · 987 654 321» y se completa al llegar.
+                        if (soloTelAlta != null) {
+                            Column(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.sm.dp))
+                                    .clickable(enabled = !creando && !revisando, role = Role.Button) { registrarNombre("", soloTelAlta) }
+                                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                            ) {
+                                if (creando) Text("Registrando…", color = c.textoSuave, fontSize = 13.sp)
+                                else {
+                                    Text("＋ Agendar solo con el teléfono ${pe.saniape.app.data.staff.telefonoLegible(soloTelAlta)}",
+                                        color = c.ok, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    Text((if (filtrados.isNotEmpty()) "¿No es ninguno? " else "") +
+                                        "Queda sin nombre ni DNI; se completan cuando llegue. Si sabes su nombre, escríbelo junto al número.",
+                                        color = c.textoSuave, fontSize = 11.sp)
                                 }
                             }
                             errorAlta?.let {

@@ -76,12 +76,18 @@ object BuscarPacienteRepo {
      * Alta SOLO con el nombre. [clave] = la del intento ([claveDeIntento]): la
      * misma solo al reintentar esa alta no confirmada. `status` 0 = sin respuesta.
      */
-    suspend fun registrarSinDni(nombre: String, clave: String): Pair<ResultadoAltaRapida, Int> = try {
+    /**
+     * Alta sin DNI: con el nombre, con el nombre y su teléfono, o SOLO con el teléfono
+     * (nombre vacío: el servidor pone «Sin nombre · 987 654 321» y, si ya hay UNA ficha
+     * con ese número, devuelve esa). 24/11/2026, teleoperadores.
+     */
+    suspend fun registrarSinDni(nombre: String, clave: String, telefono: String? = null): Pair<ResultadoAltaRapida, Int> = try {
         val tk = token() ?: return ResultadoAltaRapida(null, error = "Sesión vencida. Vuelve a entrar.") to 401
         // Pacientes por sede: nace en la sede activa (igual que el alta por DNI).
         val sede = SedeActiva.estado.value.let { sedeParaPacienteNuevo(it.pacientesPorSede, it.filtro?.sedeId) }
         val cuerpo = buildJsonObject {
-            put("nombre", nombre.trim())
+            if (nombre.isNotBlank()) put("nombre", nombre.trim())
+            if (!telefono.isNullOrBlank()) put("telefono", telefono)
             put("fecha_ingreso", hoyClinicaIso())
             if (sede != null) put("sede_id", sede)
             put("idempotency_key", clave)
