@@ -461,6 +461,11 @@ private fun PantallaFichaPacienteContenido(
         ctx.mapaReumatologia, atenciones = atencionesConCitas, tieneEvaluaciones = tieneEvalReuma,
         especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
     )
+    // 👂 Audiología (evaluación auditiva, 24/11/2026): misma cadena, por el nombre de la especialidad.
+    val esPacienteAudiologia = pe.saniape.app.data.staff.pacienteEsReumatologia(
+        ctx.mapaAudiologia, atenciones = atencionesConCitas,
+        especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
+    )
     // 🤰 Gineco-obstetricia (carné perinatal): misma cadena, solo por el rubro guardado.
     val esPacienteGineco = embarazoAlAbrir || pe.saniape.app.data.staff.pacienteEsGineco(
         ctx.mapaGineco, atenciones = atencionesConCitas, tieneEmbarazos = tieneEmbarazos,
@@ -1244,6 +1249,8 @@ private fun PantallaFichaPacienteContenido(
                     if (esPacientePodologia) add("evaluacion_pie" to "🦶 Evaluación del pie")
                     // SOLO pacientes de reumatología: mapa articular + actividad (CDAI / DAS28).
                     if (esPacienteReuma) add("evaluacion_articular" to "🦴 Evaluación articular")
+                    // SOLO pacientes de audiología: el recorrido de la evaluación auditiva y su audiograma.
+                    if (esPacienteAudiologia) add("evaluacion_auditiva" to "👂 Evaluación auditiva")
                     // SOLO pacientes de pediatría (`esPacientePediatria`): curvas OMS + 💉 carné de vacunas.
                     if (esPacientePediatria) add("crecimiento" to "👶 Crecimiento")
                     // SOLO pacientes de gineco-obstetricia (`esPacienteGineco`): el carné perinatal.
@@ -1263,6 +1270,9 @@ private fun PantallaFichaPacienteContenido(
                     // 🧾 Presupuestos: TODAS las especialidades (ver: sesiones, pagos o
                     // pacientes, como el API). Sin plan Premium se ve con 🔒.
                     if (pe.saniape.app.data.staff.puedeVerPresupuestos { ctx.puede(it) }) add("presupuestos" to "🧾 Presupuestos")
+                    // 🛍️ Compras: los productos recomendados y su proforma (24/11/2026, como la web:
+                    // pagos o sesiones, y el plan con productos).
+                    if ((ctx.puede("pagos") || ctx.puede("sesiones")) && ctx.can("productos")) add("compras" to "🛍️ Compras")
                     // (💰 Pagos ya no es pestaña: solo resumía y decía «el detalle… en Atenciones».
                     //  El resumen se abre tocando la tarjeta SALDO; el cobro sigue en Atenciones.)
                     add("resumen" to "📋 Resumen")
@@ -1418,6 +1428,9 @@ private fun PantallaFichaPacienteContenido(
                             onAbrirSubida = { categoria, solId, tratId, tipo, camara -> subirDoc = SubidaDoc(categoria, solId, tratId, tipo, camara) },
                             recargaToken = recargarToken,
                         )
+                    }
+                    "compras" -> if ((ctx.puede("pagos") || ctx.puede("sesiones")) && ctx.can("productos")) {
+                        ContenidoCompras(pacienteId = paciente.id)
                     }
                     "resumen" -> ContenidoResumen(
                         ctx = ctx, paciente = paciente, acciones = acciones,
@@ -1649,6 +1662,13 @@ private fun PantallaFichaPacienteContenido(
                         )
                     }
                     // 🦴 Evaluación articular (reumatología): consulta SOLO al abrirse.
+                    "evaluacion_auditiva" -> if (esPacienteAudiologia) {
+                        val inactiva = pe.saniape.app.data.staff.fichaInactiva(paciente.estado)
+                        pe.saniape.app.ui.clinica.audiologia.ContenidoEvaluacionAuditiva(
+                            pacienteId = paciente.id, pacienteNombre = paciente.nombre,
+                            puedeEditar = (ctx.puede("pacientes") || ctx.puede("sesiones")) && !inactiva,
+                        )
+                    } else Unit
                     "evaluacion_articular" -> if (esPacienteReuma) {
                         val inactiva = pe.saniape.app.data.staff.fichaInactiva(paciente.estado)
                         pe.saniape.app.ui.clinica.reumatologia.EvaluacionReumaTab(
@@ -2629,7 +2649,7 @@ private fun PantallaFichaPacienteContenido(
  * recepción necesita para agendar y cobrar. Resumen se queda con los datos del
  * paciente (lo clínico de adentro se oculta).
  */
-private val PESTANAS_SIN_HISTORIA = setOf("atenciones", "presupuestos", "resumen")
+private val PESTANAS_SIN_HISTORIA = setOf("atenciones", "presupuestos", "compras", "resumen")
 
 /** «📅 Agendar próxima» pendiente de confirmar: el tratamiento y la propuesta del servidor. */
 private data class OfertaProximaFicha(

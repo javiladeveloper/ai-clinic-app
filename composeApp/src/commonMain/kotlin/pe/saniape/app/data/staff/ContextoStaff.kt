@@ -187,6 +187,8 @@ data class ContextoStaff(
     val mapaPodologia: MapaPodologia = MapaPodologia(),
     /** Qué especialidades son de reumatología (pestaña 🦴 Evaluación articular). Backend sin el campo = vacío. */
     val mapaReumatologia: MapaReumatologia = MapaReumatologia(),
+    /** 👂 Qué especialidades son de audiología (por el nombre, como la web). Backend sin el campo = vacío. */
+    val mapaAudiologia: MapaReumatologia = MapaReumatologia(),
     /**
      * Qué especialidades son de estética (pestaña 💉 Aplicaciones, por paciente
      * con `pacienteEsEstetica`; solo el rubro guardado: capilar no cuenta). Un

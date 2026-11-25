@@ -188,6 +188,15 @@ internal fun PasoExamen(vm: AtencionViewModel, d: DatosConsultaApp, soloLectura:
             ExamenOftalmologico(valor = examenOft, onChange = { vm.examenOftalmo(it) }, soloLectura = soloLectura)
             BotonRecetaLentes(vm, d, examenOft, acciones)
         }
+        // 👂 Audiología (24/11/2026, como la web): la evaluación auditiva por pasos, ligada a esta cita.
+        val mapaAudio = pe.saniape.app.data.staff.StaffContextoRepo.actual?.mapaAudiologia
+        val pacId = d.cita.paciente_id ?: d.cita.paciente?.id
+        if (!soloLectura && mapaAudio != null && pacId != null &&
+            pe.saniape.app.data.staff.citaEsReumatologia(mapaAudio, d.cita.especialidad_id)) {
+            pe.saniape.app.ui.clinica.audiologia.EvaluacionAuditivaDeCita(
+                pacienteId = pacId, pacienteNombre = d.cita.paciente?.nombre.orEmpty(), citaId = d.cita.id, fechaCita = d.cita.fecha,
+            )
+        }
         if (psiq) {
             CampoTextoClinico(
                 label = "Examen mental",

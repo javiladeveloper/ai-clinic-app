@@ -220,6 +220,11 @@ object StaffContextoRepo {
                     .mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } },
                 solo = o.boolOrNull("soloReumatologia") ?: false,
             ),
+            mapaAudiologia = MapaReumatologia(
+                ids = (o["especialidadesAudiologia"] as? kotlinx.serialization.json.JsonArray).orEmpty()
+                    .mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } },
+                solo = o.boolOrNull("soloAudiologia") ?: false,
+            ),
             mapaEstetica = MapaEstetica(
                 ids = (o["especialidadesEstetica"] as? kotlinx.serialization.json.JsonArray).orEmpty()
                     .mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } },
