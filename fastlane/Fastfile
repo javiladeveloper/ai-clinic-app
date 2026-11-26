@@ -181,7 +181,7 @@ platform :ios do
     # minutos— para recién ahí enviar a revisión. Ese rato el runner de macOS
     # factura a 10x sin hacer nada: es la mitad del costo de un release de iOS.
     #
-    # Con `wait_for_build_processing: false` el job sube y termina. Apple procesa
+    # Sin `submit_for_review`, el job sube y termina. Apple procesa
     # y revisa por su cuenta igual que si estuviéramos mirando: son sus servidores,
     # no los nuestros. `automatic_release: true` publica sola al aprobar.
     #
@@ -189,8 +189,10 @@ platform :ios do
     # terminó de procesar, así que el envío a revisión queda para App Store
     # Connect (un botón, una vez). Se cambia esperar 20 minutos de runner por un
     # clic — y esos 20 minutos son ~US$1.60 por release.
+    # `wait_for_build_processing` NO es opción de upload_to_app_store (es de pilot): con ella
+    # el lane moría antes de subir (25/11/2026, 2.85.0). Sin `submit_for_review`, deliver no
+    # espera el procesado: sube y termina.
     upload_to_app_store(
-      wait_for_build_processing: false,
       submit_for_review: false,  # se envía desde App Store Connect (ver nota de arriba)
       automatic_release: true,   # al aprobar, publica solo
       skip_metadata: true,       # la ficha se gestiona en App Store Connect, no desde CI
