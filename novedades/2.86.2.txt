@@ -1,0 +1,3 @@
+Agenda una consulta aunque el profesional ya tenga otra a esa hora.
+---
+• 📅 Si el profesional ya tiene una consulta a la hora que elegiste, la app te dice con quién y hasta qué hora, y te deja «Agendar igual a esta hora» si así lo decides.

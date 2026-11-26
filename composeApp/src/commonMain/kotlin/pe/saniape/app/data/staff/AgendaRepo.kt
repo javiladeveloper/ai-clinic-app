@@ -1043,6 +1043,9 @@ object AgendaRepo {
         virtual: VirtualParaCrear? = null,
         // Salón (atención directa): el servicio elegido («Manicura semipermanente»).
         procedimientoId: String? = null,
+        // «Agendar igual»: el profesional ya tiene otra consulta a esa hora y quien agenda
+        // lo decidió (26/11/2026, Centro OMER). Solo viaja si es true.
+        permitirSolape: Boolean = false,
     ): pe.saniape.app.data.offline.ResultadoEscritura {
         if (token() == null) return pe.saniape.app.data.offline.ResultadoEscritura(
             registrada = false, rechazo = pe.saniape.app.data.offline.RechazoServidor("Tu sesión expiró. Vuelve a entrar."),
@@ -1050,7 +1053,7 @@ object AgendaRepo {
         return enviarOEncolarDetalle("cita:crear", "/api/staff/cita/crear", cuerpoCrearCita(
             pacienteId, tipo, fecha, hora, terapeutaId, tratamientoId, costo, duracion, notas,
             especialidadId, diagnostico, campaniaId, sedeId, citaOrigenId, virtual, procedimientoId,
-        ))
+        ).let { c -> if (permitirSolape) JsonObject(c + ("permitirSolape" to JsonPrimitive(true))) else c })
     }
 
     private fun cuerpoCrearCita(

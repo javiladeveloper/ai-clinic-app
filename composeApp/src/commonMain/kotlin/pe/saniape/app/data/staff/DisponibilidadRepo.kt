@@ -84,6 +84,14 @@ fun evaluarDisponibilidad(
     return Disponibilidad(true, aviso, aviso != null)
 }
 
+/**
+ * ¿El rechazo de /api/staff/cita/crear es un choque con otra consulta del mismo profesional
+ * que el personal puede forzar? El servidor lo marca con `forzable: true` y su `error` ya
+ * dice con quién y hasta qué hora (26/11/2026, Centro OMER). Reenviar con `permitirSolape`.
+ */
+fun rechazoEsSolapeForzable(datos: JsonObject?): Boolean =
+    (datos?.get("forzable") as? JsonPrimitive)?.content == "true"
+
 /** ¿Tiene horario otros días y ninguno este? Sin horario cargado en absoluto NO es «día libre». */
 fun diaSinHorario(diasConHorario: Collection<String>, dia: String): Boolean =
     diasConHorario.isNotEmpty() && dia !in diasConHorario

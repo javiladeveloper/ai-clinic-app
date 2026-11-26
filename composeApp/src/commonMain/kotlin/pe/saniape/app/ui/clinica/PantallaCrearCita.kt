@@ -235,6 +235,9 @@ fun PantallaCrearCita(
     var mostrarHorarios by remember { mutableStateOf(false) }    // modal "ver horarios" de todos
     var guardando by remember { mutableStateOf(false) }
     var mensaje by remember { mutableStateOf<String?>(null) }
+    // El servidor rechazó la cita porque el profesional ya tiene otra consulta a esa hora
+    // y dijo que se puede forzar: se ofrece «Agendar igual» (26/11/2026, Centro OMER).
+    var solapeForzable by remember { mutableStateOf(false) }
     // Recién registrado desde el buscador: "Completar datos de…" (paciente, ¿sin DNI?).
     var completarDatos by remember { mutableStateOf<Pair<RefNombre, Boolean>?>(null) }
     // Registrado POR DOCUMENTO aquí: el diálogo ya no se abre solo (nombre, DNI y
@@ -786,10 +789,11 @@ fun PantallaCrearCita(
      * tocar «Guardar cita»; viaja aparte porque la pantalla todavía no lo tiene
      * elegido. Su horario ya se verificó con datos frescos antes de crearlo.
      */
-    suspend fun guardarCita(ov: TratCreadoEnCita? = null, textoExito: String = "Cita agendada"): String? {
+    suspend fun guardarCita(ov: TratCreadoEnCita? = null, textoExito: String = "Cita agendada", permitirSolape: Boolean = false): String? {
         fun fallar(m: String): String { mensaje = m; return m }
         if (guardando) return "La cita ya se está guardando."
         mensaje = null
+        solapeForzable = false
         val p = paciente ?: return fallar("Elige un ${ctx.terminologiaPaciente.paciente}")
         if (ov != null && tipo != "Sesión") return fallar("La cita ya no es una sesión: revisa el tipo de cita.")
         if (ov == null) {
@@ -871,8 +875,12 @@ fun PantallaCrearCita(
                 citaOrigenId = if (tipo == "Evaluación") origenId else null,
                 virtual = virtualCrear,
                 procedimientoId = if (salonDirecto) servicioSalon?.id else null,
+                permitirSolape = permitirSolape,
             )
             if (!r.registrada) {
+                // Choque con otra consulta del mismo profesional: el servidor dice con quién
+                // y que el personal puede agendar igual.
+                solapeForzable = pe.saniape.app.data.staff.rechazoEsSolapeForzable(r.rechazo?.datos)
                 // El motivo real del servidor (cupo lleno, paciente de baja,
                 // sin permiso...); el genérico solo si ni se pudo intentar.
                 return fallar(r.rechazo?.error ?: "No se pudo agendar. Intenta de nuevo.")
@@ -942,6 +950,8 @@ fun PantallaCrearCita(
     )
     // Lo que dijo la verificación fresca deja de valer al cambiar la cita.
     LaunchedEffect(fecha, hora, terapeuta?.id, duracion, esRegularizacion) { errorUnPaso = null }
+    // «Agendar igual» vale para la fecha, hora y profesional del rechazo: al cambiarlos, se retira.
+    LaunchedEffect(fecha, hora, terapeuta?.id, duracion, tipo) { solapeForzable = false }
     // La cita la atiende el profesional que se elige en el tratamiento (un solo campo,
     // como la web, OMER 01/11). otroEnCita = en esta cita atiende otro (la excepción).
     var otroEnCita by remember { mutableStateOf(false) }
@@ -1263,6 +1273,16 @@ fun PantallaCrearCita(
                 mensaje?.let {
                     Text("⚠ $it", color = c.error, fontSize = Sania.txt.pequeno,
                         modifier = Modifier.fillMaxWidth().padding(bottom = Sania.dim.md))
+                }
+                // El profesional ya tiene otra consulta a esa hora: quien agenda decide.
+                if (solapeForzable && mensaje != null) {
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = { if (!guardando) scope.launch { guardarCita(permitirSolape = true) } },
+                        enabled = !guardando,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = Sania.dim.md),
+                    ) { Text("Agendar igual a esta hora") }
+                    Text("Quedarán dos consultas al mismo tiempo con este profesional.", color = c.textoSuave,
+                        fontSize = Sania.txt.pequeno, modifier = Modifier.fillMaxWidth().padding(bottom = Sania.dim.md))
                 }
 
                 // Aviso de disponibilidad (bloqueante en rojo / advertencia en ámbar).
