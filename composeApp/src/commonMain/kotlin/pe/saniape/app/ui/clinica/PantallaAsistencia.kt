@@ -58,15 +58,30 @@ fun PantallaAsistencia(ctx: ContextoStaff) {
     }
     LaunchedEffect(ctx.clinicaId) { cargando = true; cargar() }
 
-    fun marcar() {
+    // Lo que pasó al escanear el QR: se muestra grande, arriba.
+    var resultadoQr by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+
+    fun marcar(qr: String? = null) {
         if (marcando) return
         marcando = true
         scope.launch {
-            val r = AsistenciaRepo.marcar()
+            val r = AsistenciaRepo.marcar(qr)
+            if (qr != null) resultadoQr = r.ok to r.mensaje
             if (r.ok) pe.saniape.app.ui.Toaster.exito(r.mensaje) else pe.saniape.app.ui.Toaster.error(r.mensaje)
             cargar()
             marcando = false
         }
+    }
+
+    // 🕘 Escanear el QR de la recepción ES marcar: con los datos cargados y la persona en la
+    // lista, se marca sola y la llave se consume (volver a la pantalla no repite la marca).
+    val qrPendiente = pe.saniape.app.ui.QrAsistenciaPendiente.actual
+    LaunchedEffect(qrPendiente, datos?.enLista, datos?.activa) {
+        val d = datos ?: return@LaunchedEffect
+        if (qrPendiente == null) return@LaunchedEffect
+        val llave = pe.saniape.app.ui.QrAsistenciaPendiente.consumir() ?: return@LaunchedEffect
+        if (d.activa && d.enLista) marcar(llave)
+        else resultadoQr = false to "Escaneaste el QR, pero no estás en la lista de personal: no se marcó nada."
     }
 
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
@@ -83,11 +98,23 @@ fun PantallaAsistencia(ctx: ContextoStaff) {
                 cargando && d == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = c.navy) }
                 d == null -> Aviso("No se pudo cargar tu asistencia. Revisa tu conexión.", "Reintentar") { scope.launch { cargando = true; cargar() } }
                 !d.activa -> Aviso("El control de asistencia no está activo en tu clínica.")
-                !d.enLista -> Aviso("Todavía no estás en la lista de personal que marca asistencia. Pídeselo al administrador.")
+                !d.enLista -> Aviso(resultadoQr?.second ?: "Todavía no estás en la lista de personal que marca asistencia. Pídeselo al administrador.")
                 else -> LazyColumn(
                     Modifier.fillMaxSize().padding(horizontal = Sania.dim.xl),
                     verticalArrangement = Arrangement.spacedBy(Sania.dim.sm),
                 ) {
+                    resultadoQr?.let { (ok, texto) ->
+                        item {
+                            Spacer(Modifier.height(Sania.dim.lg))
+                            Column(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(if (ok) c.okBg else c.errorBg).padding(Sania.dim.lg),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text(if (ok) "✅" else "⚠️", fontSize = 36.sp)
+                                Text(texto, color = if (ok) c.ok else c.error, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            }
+                        }
+                    }
                     item {
                         Spacer(Modifier.height(Sania.dim.lg))
                         // Hoy + el botón de marcar.

@@ -42,6 +42,18 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- El QR de asistencia de la recepción (https://www.saniape.com/asistencia?qr=…): al
+                 escanearlo con la cámara, Android abre la app directo (enlace verificado con
+                 /.well-known/assetlinks.json). Sin la app instalada, abre la web. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="www.saniape.com" />
+                <data android:host="saniape.com" />
+                <data android:pathPrefix="/asistencia" />
+            </intent-filter>
         </activity>
 
         <!-- Visor de documentos HTML (servidos con Bearer). Label neutro: Google lee

@@ -40,6 +40,8 @@ class MainActivity : ComponentActivity() {
             intent?.getStringExtra(SaniaFcmService.EXTRA_CITA_FECHA),
         )
         abrirConversacionSiToca(intent)
+        // 🕘 La app pudo abrirse al escanear el QR de asistencia de la recepción.
+        pe.saniape.app.ui.QrAsistenciaPendiente.pedir(intent?.dataString)
         enableEdgeToEdge()
         // En onCreate y no después: el launcher interno del flujo de Play se
         // registra al construir, y eso tiene que pasar antes de RESUMED.
@@ -66,6 +68,7 @@ class MainActivity : ComponentActivity() {
             intent.getStringExtra(SaniaFcmService.EXTRA_CITA_FECHA),
         )
         abrirConversacionSiToca(intent)
+        pe.saniape.app.ui.QrAsistenciaPendiente.pedir(intent.dataString)
     }
 
     /**

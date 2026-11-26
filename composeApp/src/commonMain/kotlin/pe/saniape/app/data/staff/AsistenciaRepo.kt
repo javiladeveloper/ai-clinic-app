@@ -83,6 +83,12 @@ fun parsearMiAsistencia(o: JsonObject): MiAsistencia {
     )
 }
 
+/** El cuerpo de marcar: con la llave del QR escaneado va como origen «qr». Puro. */
+fun cuerpoMarcar(qr: String?): JsonObject = buildJsonObject {
+    put("accion", "marcar")
+    if (qr.isNullOrBlank()) put("origen", "app") else { put("origen", "qr"); put("qr", qr) }
+}
+
 /** «✓ Entrada registrada a las 08:02» a partir de la respuesta de marcar. Puro. */
 fun mensajeDeMarca(o: JsonObject?): String {
     val tipo = if (o?.txt("tipo") == "salida") "Salida" else "Entrada"
@@ -121,12 +127,13 @@ object AsistenciaRepo {
     }
 
     /** Marca la entrada o la salida que toque (lo decide el servidor). */
-    suspend fun marcar(): ResultadoMarca {
+    suspend fun marcar(qr: String? = null): ResultadoMarca {
         val tk = token() ?: return ResultadoMarca(false, "Tu sesión expiró. Vuelve a entrar.")
         return try {
             val (ok, obj) = leer(http.post("${Supabase.SITE_URL}/api/staff/asistencia") {
                 header("Authorization", "Bearer $tk"); contentType(ContentType.Application.Json)
-                setBody(buildJsonObject { put("accion", "marcar"); put("origen", "app") }.toString())
+                // Con la llave del QR de la recepción, la marca queda como «QR» (el servidor la valida).
+                setBody(cuerpoMarcar(qr).toString())
             })
             if (ok) ResultadoMarca(true, mensajeDeMarca(obj))
             else ResultadoMarca(false, obj?.txt("error")?.takeIf { it.isNotBlank() } ?: "No se pudo marcar.")

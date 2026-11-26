@@ -292,6 +292,15 @@ fun ClinicaConTabs(
         verCampanias = false; verActividad = false; verMiPlan = false; verMiCalendario = false
         verAjustes = false
     }
+    // 🕘 Se escaneó el QR de asistencia: abre Asistencia (ahí se marca). Sin el agregado, se descarta.
+    LaunchedEffect(pe.saniape.app.ui.QrAsistenciaPendiente.actual, contexto.asistenciaActiva) {
+        if (pe.saniape.app.ui.QrAsistenciaPendiente.actual == null) return@LaunchedEffect
+        if (contexto.asistenciaActiva) { cerrarOverlays(); verAsistencia = true }
+        else {
+            pe.saniape.app.ui.QrAsistenciaPendiente.consumir()
+            pe.saniape.app.ui.Toaster.error("El control de asistencia no está activo en tu clínica.")
+        }
+    }
     // "Llévame" / "Retomar" de los tutoriales y los botones de Primeros pasos.
     fun irA(pantalla: String) {
         when (pantalla) {
