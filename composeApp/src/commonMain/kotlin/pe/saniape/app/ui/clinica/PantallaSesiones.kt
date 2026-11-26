@@ -473,6 +473,8 @@ fun PantallaSesiones(
                         }
                         // 🩺 Signos vitales de la sesión: el triaje de su cita.
                         pe.saniape.app.ui.clinica.fisio.vitalesTrasCompletar(true, vitalesCierre?.takeIf { verHc })
+                        // 🧰 Lo usado del inventario (el servidor elige el consultorio).
+                        pe.saniape.app.ui.clinica.fisio.consumoTrasCompletar(true, null, sg.id)
                         val tratId = sg.tratamientoId
                         if (tratId != null) {
                             pe.saniape.app.ui.clinica.pacientes.fotosTrasCompletar(

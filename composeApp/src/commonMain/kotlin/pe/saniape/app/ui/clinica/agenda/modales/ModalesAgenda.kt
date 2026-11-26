@@ -253,6 +253,8 @@ fun ModalCompletar(
                 if (verClinico && vitales != null) {
                     pe.saniape.app.ui.clinica.fisio.BloqueSignosVitalesCierre(vitales)
                 }
+                // 🧰 Inventario clínico: lo usado en la sesión (solo con el agregado activo).
+                pe.saniape.app.ui.clinica.fisio.BloqueConsumoCierre(clave = null)
                 if (!verClinico) {
                     // Nada clínico que escribir: solo quién atendió y el cobro (abajo).
                 } else if (esEvaluacion) {

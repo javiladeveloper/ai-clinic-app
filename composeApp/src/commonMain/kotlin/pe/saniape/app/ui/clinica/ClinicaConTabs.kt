@@ -105,6 +105,8 @@ fun ClinicaConTabs(
     var verCaja by remember { mutableStateOf(false) }
     // 🕘 Asistencia (control de asistencia, 26/11/2026): solo con el agregado activo.
     var verAsistencia by remember { mutableStateOf(false) }
+    // 🧰 Inventario clínico (agregado): enciende «¿Se usó algo?» en los cierres de sesión.
+    androidx.compose.runtime.SideEffect { pe.saniape.app.ui.clinica.fisio.ConsumoCierre.activo = ctx?.inventarioActivo == true }
     // 🤖 Bandeja de Sani: la entrada solo aparece si la clínica tiene Sani (leadai_activo).
     var verSani by remember { mutableStateOf(false) }
     var saniActivo by remember { mutableStateOf(false) }

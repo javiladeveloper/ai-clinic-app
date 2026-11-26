@@ -1415,12 +1415,14 @@ fun PantallaAgenda(
                 val pacId = cita.pacienteId
                 val vit = vitalesCierre?.takeIf { verHc && it.valores != null }
                 val conEscalas = verHc && marcadas.isNotEmpty() && pacId != null
-                if (!conEscalas && vit == null) return fotos
+                if (!conEscalas && vit == null && !pe.saniape.app.ui.clinica.fisio.ConsumoCierre.activo) return fotos
                 val espId = vm.especialidadDeCita(cita)
                 return { ok, encolada ->
                     fotos?.invoke(ok, encolada)
                     if (conEscalas) pe.saniape.app.ui.clinica.escalas.escalasTrasCompletar(ok, encolada, pacId!!, cita.id, espId, marcadas)
                     pe.saniape.app.ui.clinica.fisio.vitalesTrasCompletar(ok, vit)
+                    // 🧰 Lo usado del inventario (el servidor elige el consultorio de quien atendió).
+                    pe.saniape.app.ui.clinica.fisio.consumoTrasCompletar(ok, cita.id, null)
                 }
             }
             // 🏠 "¿Le dejas ejercicios de apoyo?" (como la web y la ficha): solo en una sesión

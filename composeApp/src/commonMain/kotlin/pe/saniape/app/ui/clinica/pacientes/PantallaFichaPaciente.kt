@@ -2567,6 +2567,8 @@ private fun PantallaFichaPacienteContenido(
                         req.trat.especialidadId, escalasMarcadas)
                     // 🩺 Signos vitales de la sesión: el triaje de su cita.
                     pe.saniape.app.ui.clinica.fisio.vitalesTrasCompletar(ok, vitalesCierre?.takeIf { verHc })
+                    // 🧰 Lo usado del inventario: el servidor lo descuenta del consultorio de quien atendió.
+                    pe.saniape.app.ui.clinica.fisio.consumoTrasCompletar(ok, null, ses.id)
                     // Cobro en el mismo paso (si lo activó): vinculado a la sesión. No hay un
                     // endpoint que haga las dos cosas juntas, así que si el cobro falla se
                     // dice claro y se ofrece reintentar SOLO el cobro (no volver a completar).
@@ -2959,6 +2961,8 @@ internal fun ModalCompletarSesion(
         if (verClinico && vitales != null) {
             pe.saniape.app.ui.clinica.fisio.BloqueSignosVitalesCierre(vitales)
         }
+        // 🧰 Inventario clínico: lo usado en la sesión (solo con el agregado activo).
+        pe.saniape.app.ui.clinica.fisio.BloqueConsumoCierre(clave = null)
 
         if (esPsico) {
             pe.saniape.app.ui.clinica.psico.EvolucionSesionCampos(mejorias) { mejorias = it }
