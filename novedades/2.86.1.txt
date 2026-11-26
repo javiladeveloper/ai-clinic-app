@@ -1,0 +1,4 @@
+El QR de asistencia ahora abre la app y marca solo.
+---
+• 🕘 Escanea el QR de la recepción con la cámara de tu teléfono: se abre la app en Asistencia y tu entrada o salida queda marcada, sin tocar nada más.
+• Si todavía no estás en la lista de personal, la app te lo dice y no marca.
