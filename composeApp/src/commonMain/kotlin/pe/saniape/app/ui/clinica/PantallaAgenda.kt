@@ -1765,11 +1765,14 @@ fun PantallaAgenda(
         )
     }
     cobrar?.let { cita ->
+        // Vuelto con otro medio: el modal lo deja aquí justo antes de confirmar.
+        val vueltoCobro = remember(cita.id) { mutableStateOf<pe.saniape.app.data.staff.VueltoCobro?>(null) }
         ModalCobrarCita(
             cita = cita,
             onCancelar = { cobrar = null },
+            onVuelto = { vueltoCobro.value = it },
             onConfirmar = { metodo, modo, fecha, pagos, acordado, adelanto ->
-                vm.cobrar(cita, metodo, modo, fecha, pagos, costoAcordado = acordado, adelanto = adelanto) { ok -> if (ok) cobrar = null }
+                vm.cobrar(cita, metodo, modo, fecha, pagos, costoAcordado = acordado, adelanto = adelanto, vuelto = vueltoCobro.value) { ok -> if (ok) cobrar = null }
             },
             guardando = vm.accionando,
             nombreTipo = vm.flujoDe(cita).nombreTipo(cita.tipo),

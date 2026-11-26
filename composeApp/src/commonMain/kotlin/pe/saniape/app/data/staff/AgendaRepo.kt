@@ -463,8 +463,9 @@ object AgendaRepo {
         /** Solo un adelanto (ver [cuerpoCobrarCita]). */
         adelanto: Double? = null,
         primerAdelanto: Boolean = false,
+        vuelto: VueltoCobro? = null,
     ): ResultadoCobro {
-        val cuerpo = cuerpoCobrarCita(citaId, metodo, modo, fecha, pagos, costoAcordado, adelanto, primerAdelanto)
+        val cuerpo = cuerpoCobrarCita(citaId, metodo, modo, fecha, pagos, costoAcordado, adelanto, primerAdelanto, vuelto)
         val firma = cuerpo.toString()
         val clave = mutexClavesCobro.withLock { clavesCobroInciertas[firma] }
             ?: pe.saniape.app.data.offline.nuevaIdemKey()
@@ -473,7 +474,7 @@ object AgendaRepo {
             if (rechazoIncierto(r.rechazo)) clavesCobroInciertas[firma] = clave
             else clavesCobroInciertas.remove(firma)
         }
-        return ResultadoCobro(r, yaEstaba = yaEstabaDe(r.cuerpo))
+        return ResultadoCobro(r, yaEstaba = yaEstabaDe(r.cuerpo), avisoVuelto = avisoVueltoDe(r.cuerpo))
     }
 
     /** Claves de cobros con respuesta incierta, por cuerpo exacto (ver [cobrarCita]). */

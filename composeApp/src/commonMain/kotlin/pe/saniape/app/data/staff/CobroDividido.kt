@@ -179,6 +179,8 @@ fun cuerpoCobrarCita(
     adelanto: Double? = null,
     /** Es el PRIMER adelanto: un reintento (cola offline) que llega con uno ya puesto no duplica. */
     primerAdelanto: Boolean = false,
+    /** Vuelto con otro medio (ver Vuelto.kt): solo con un medio y si entra dinero. */
+    vuelto: VueltoCobro? = null,
 ): JsonObject = buildJsonObject {
     put("citaId", citaId)
     val dividido = !pagos.isNullOrEmpty() && modo != "gratis"
@@ -197,6 +199,9 @@ fun cuerpoCobrarCita(
     put("modo", modo)
     if (!fecha.isNullOrBlank()) { put("fecha", fecha); put("fechaElegida", true) }
     if (costoAcordado != null) put("costoAcordado", costoAcordado)
+    if (vuelto != null && !dividido && modo != "gratis") {
+        put("vuelto", buildJsonObject { put("recibido", vuelto.recibido); put("metodo", vuelto.metodo) })
+    }
 }
 
 /**
@@ -250,7 +255,11 @@ fun mensajeRechazoCobro(r: RechazoServidor, dividido: Boolean): String = when {
 }
 
 /** Resultado del cobro: la escritura y si la cita YA estaba cobrada (no se registró de nuevo). */
-data class ResultadoCobro(val escritura: ResultadoEscritura, val yaEstaba: Boolean = false) {
+data class ResultadoCobro(
+    val escritura: ResultadoEscritura, val yaEstaba: Boolean = false,
+    /** El cobro entró pero el vuelto con otro medio no (lo dice el servidor). */
+    val avisoVuelto: String? = null,
+) {
     val registrada: Boolean get() = escritura.registrada
     val encolada: Boolean get() = escritura.encolada
     val rechazo: RechazoServidor? get() = escritura.rechazo

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -90,6 +91,11 @@ fun ModalCobrarCita(
     guardando: Boolean,
     /** Cómo llama el flujo de la clínica al tipo de la cita ("Diagnóstico"…). */
     nombreTipo: String = cita.tipo ?: "Cita",
+    /**
+     * Vuelto con otro medio (26/11/2026): si se pasa, el modal ofrece «¿Con cuánto paga?»
+     * y avisa aquí, justo ANTES de [onConfirmar], qué vuelto mandar (null = ninguno).
+     */
+    onVuelto: ((pe.saniape.app.data.staff.VueltoCobro?) -> Unit)? = null,
 ) {
     // Multipaís: la moneda de la sede de la cita.
     val moneda = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)
@@ -141,6 +147,13 @@ fun ModalCobrarCita(
     val adelantoInvalido = pideAdelanto && adelanto == null
     val reparto = if (conDivision) repartoValido(filas, falta) else null
     val monto = textoSoles(adelanto ?: falta, moneda)
+    // Vuelto: lo entregado menos lo que se cobra ahora; por defecto, con el mismo medio.
+    val montoNum = adelanto ?: falta
+    var recibidoTxt by remember(cita.id) { mutableStateOf("") }
+    var metodoVuelto by remember(cita.id) { mutableStateOf("") }
+    val medioVuelto = metodoVuelto.ifBlank { metodo }
+    val vueltoMonto = pe.saniape.app.data.staff.calcularVuelto(montoNum, recibidoTxt.trim().replace(',', '.').toDoubleOrNull() ?: 0.0)
+    val vueltoCobro = pe.saniape.app.data.staff.vueltoParaEnviar(montoNum, metodo, recibidoTxt, medioVuelto)
     val tipoMin = nombreTipo.lowercase()
 
     if (mostrarFecha) {
@@ -181,6 +194,7 @@ fun ModalCobrarCita(
         onCancelar = { if (!guardando) onCancelar() },
         onAccion = {
             val acordado = if (modo != "gratis") precioCobro.costoAcordado else null
+            onVuelto?.invoke(if (!conDivision && modo != "gratis" && fecha == pe.saniape.app.ui.clinica.agenda.hoyIso()) vueltoCobro else null)
             if (conDivision) reparto?.let { onConfirmar(metodo, modo, fecha, it, acordado, null) }
             else onConfirmar(metodo, modo, fecha, null, acordado, adelanto)
         },
@@ -290,6 +304,46 @@ fun ModalCobrarCita(
                 // Tutoriales: "cobro.medios" se cumple al escribir algún monto.
                 Column(Modifier.tourAncla("cobro.medios", valor = filas.joinToString("") { it.monto.trim() })) {
                     PagoDividido(total = total, metodos = metodos, filas = filas, onCambiar = { filas = it }, deshabilitado = guardando, moneda = moneda)
+                }
+            }
+
+            // «¿Con cuánto paga?» → vuelto y con qué medio (26/11/2026, gemelo de CampoVuelto de la
+            // web). Solo cobro de HOY con un medio: el servidor ata el vuelto al ingreso de la caja.
+            if (onVuelto != null && !conDivision && modo != "gratis" && fecha == pe.saniape.app.ui.clinica.agenda.hoyIso()) {
+                Spacer(Modifier.height(10.dp))
+                androidx.compose.material3.OutlinedTextField(
+                    colors = pe.saniape.app.ui.clinica.pacientes.coloresCampoForm(),
+                    value = recibidoTxt,
+                    onValueChange = { t -> recibidoTxt = t.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                    placeholder = { Text("¿Con cuánto paga? (opcional)", color = c.textoSuave) },
+                    singleLine = true,
+                    enabled = !guardando,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (vueltoMonto > 0) {
+                    Text("Vuelto ${textoSoles(vueltoMonto, moneda)} por:", color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        (listOf(metodo) + metodos).distinct().forEach { m ->
+                            val activo = m == medioVuelto
+                            Text(
+                                m, color = if (activo) c.sobreNavy else c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp))
+                                    .background(if (activo) c.navy else c.superficie)
+                                    .border(1.dp, if (activo) c.navy else c.borde, RoundedCornerShape(Sania.shape.pill.dp))
+                                    .clickable(enabled = !guardando) { metodoVuelto = m }
+                                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                            )
+                        }
+                    }
+                    Text(
+                        if (vueltoCobro != null) "La caja lo cuenta sola: el ingreso sigue siendo ${textoSoles(montoNum, moneda)}."
+                        else "Vuelto con el mismo medio: no cambia la caja.",
+                        color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
             }
 

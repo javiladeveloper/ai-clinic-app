@@ -1934,13 +1934,17 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
         costoAcordado: Double? = null,
         /** Solo un adelanto (20/11/2026): la cita queda debiendo el resto. */
         adelanto: Double? = null,
+        /** Vuelto con otro medio (26/11/2026): el servidor lo ata al cobro. */
+        vuelto: pe.saniape.app.data.staff.VueltoCobro? = null,
         onFin: (Boolean) -> Unit = {},
     ) {
         if (accionando) return
         viewModelScope.launch {
             accionando = true
             val r = AgendaRepo.cobrarCita(cita.id, metodo, modo, fecha, pagos, costoAcordado = costoAcordado,
-                adelanto = adelanto, primerAdelanto = adelanto != null && cita.abonado <= 0)
+                adelanto = adelanto, primerAdelanto = adelanto != null && cita.abonado <= 0, vuelto = vuelto)
+            // El cobro entró pero el vuelto no: nunca en silencio (se anota desde la caja en la web).
+            r.avisoVuelto?.let { pe.saniape.app.ui.Toaster.error(it) }
             val monedaCita = pe.saniape.app.data.staff.monedaDeFila(cita.sedeId)
             // Con adelanto previo se cobra LO QUE FALTA (el servidor lo calcula igual).
             val cobrado = pe.saniape.app.data.staff.faltaDeCita(costoAcordado ?: cita.costo ?: 0.0, cita.abonado)
