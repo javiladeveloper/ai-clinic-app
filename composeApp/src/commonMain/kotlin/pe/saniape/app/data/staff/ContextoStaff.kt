@@ -187,6 +187,8 @@ data class ContextoStaff(
     val mapaPodologia: MapaPodologia = MapaPodologia(),
     /** Qué especialidades son de reumatología (pestaña 🦴 Evaluación articular). Backend sin el campo = vacío. */
     val mapaReumatologia: MapaReumatologia = MapaReumatologia(),
+    /** 💉 Qué especialidades registran infiltraciones (y cuáles las apagaron). Backend sin el campo = vacío. */
+    val mapaInfiltraciones: MapaInfiltraciones = MapaInfiltraciones(),
     /** 👂 Qué especialidades son de audiología (por el nombre, como la web). Backend sin el campo = vacío. */
     val mapaAudiologia: MapaReumatologia = MapaReumatologia(),
     /**
@@ -308,6 +310,7 @@ data class ContextoStaff(
         "citasVirtualesMeet" -> planEstado.features.citasVirtualesMeet
         "presupuestos" -> planEstado.features.presupuestos
         "escalas" -> planEstado.features.escalas
+        "evaluacionArticular" -> planEstado.features.evaluacionArticular
         "notificacionesFlujo" -> planEstado.features.notificacionesFlujo
         else -> false
     }
@@ -437,6 +440,8 @@ data class PlanFeatures(
      * PLAN_REQUERIDO. Backend sin el campo → false.
      */
     val escalas: Boolean = false,
+    /** 🦴 Evaluación articular y 💉 infiltraciones (Premium, Plus y prueba; lib/plan.ts `evaluacionArticular`). Backend sin el campo → false. */
+    val evaluacionArticular: Boolean = false,
     /**
      * 🔔 Aviso al celular del profesional cuando llega su paciente (Plus y prueba;
      * lib/plan.ts `notificacionesFlujo`). En la agenda decide que «🔔 Llegó» sin

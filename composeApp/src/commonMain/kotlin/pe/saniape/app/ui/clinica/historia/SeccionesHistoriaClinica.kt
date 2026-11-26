@@ -40,6 +40,9 @@ import pe.saniape.app.data.staff.CUADRANTES_DECIDUO
 import pe.saniape.app.data.staff.ConsentimientoHc
 import pe.saniape.app.data.staff.ConsultaHc
 import pe.saniape.app.data.staff.DatosAntropometriaHc
+import pe.saniape.app.data.staff.DatosInfiltracionesHc
+import pe.saniape.app.data.staff.DatosReumaEvaluacionHc
+import pe.saniape.app.data.staff.EstadoArticulacion
 import pe.saniape.app.data.staff.DatosAtencionesHc
 import pe.saniape.app.data.staff.DatosConsentimientosHc
 import pe.saniape.app.data.staff.DatosConsultasHc
@@ -145,6 +148,8 @@ internal fun SeccionHistoria(s: SeccionHc, doc: HistoriaClinicaDoc, acc: Accione
             is DatosAntropometriaHc -> AntropometriaVista(d, doc.graficos)
             is DatosFotosHc -> FotosVista(d, doc.graficos)
             is DatosControlesPrenatalesHc -> ControlesPrenatalesVista(d)
+            is DatosReumaEvaluacionHc -> ReumaEvaluacionVista(d, doc.graficos)
+            is DatosInfiltracionesHc -> InfiltracionesVista(d, doc.graficos)
             DatosNoLegiblesHc -> Aviso("No se pudo mostrar esta sección aquí — ver el PDF (🖨 Imprimir / compartir PDF).",
                 Sania.colors.pend, Sania.colors.pendBg)
             else -> {}
@@ -679,6 +684,56 @@ private fun ControlesPrenatalesVista(d: DatosControlesPrenatalesHc) {
             f.indicaciones?.takeIf { it.isNotBlank() }?.let { Text(it, color = c.texto, fontSize = 12.sp) }
             val pie = listOfNotNull(f.profesional, f.proximoControl?.let { "Próximo control: ${fechaHc(it)}" })
             if (pie.isNotEmpty()) TextoSuave(pie.joinToString(" · "))
+        }
+    }
+}
+
+// ── Reumatología: 🦴 evaluación articular y 💉 infiltraciones (25/11/2026) ──────
+
+@Composable
+private fun ReumaEvaluacionVista(d: DatosReumaEvaluacionHc, graficos: Boolean) {
+    val c = Sania.colors
+    Text(fechaHc(d.fecha) + (d.profesional?.let { " · $it" } ?: "") + if (d.total > 1) " · la última de ${d.total}" else "",
+        color = c.texto, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+    d.actividad?.let {
+        val col = when (it.nivel) { "remision" -> c.ok; "baja" -> c.teal; "moderada" -> c.pend; else -> c.error }
+        Text(it.texto, color = col, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 2.dp))
+    }
+    TextoSuave("${d.dolorosas28} dolorosas · ${d.inflamadas28} inflamadas (de 28)")
+    if (graficos && d.mapa.isNotEmpty()) {
+        Spacer(Modifier.height(6.dp))
+        pe.saniape.app.ui.clinica.reumatologia.MapaArticular(d.mapa.mapValues { (_, e) -> EstadoArticulacion(e.d, e.i) }, completo = true)
+    }
+    if (d.dolorosas.isNotEmpty()) FilaPar(ParHc("Dolorosas", d.dolorosas.joinToString(", ")))
+    if (d.inflamadas.isNotEmpty()) FilaPar(ParHc("Inflamadas", d.inflamadas.joinToString(", ")))
+    if (d.cambios.isNotEmpty()) {
+        TextoSuave("Desde la anterior" + (d.fechaAnterior?.let { " (${fechaHc(it)})" } ?: ""))
+        d.cambios.forEach { Text(it, color = if (it.startsWith("▼")) c.ok else c.error, fontSize = 12.sp) }
+    }
+    d.datos.forEach { FilaPar(it) }
+    if (d.puntosDolorosos.isNotEmpty()) FilaPar(ParHc("Puntos dolorosos", d.puntosDolorosos.joinToString(", ")))
+    d.observaciones?.takeIf { it.isNotBlank() }?.let { Text(it, color = c.texto, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp)) }
+}
+
+@Composable
+private fun InfiltracionesVista(d: DatosInfiltracionesHc, graficos: Boolean) {
+    val c = Sania.colors
+    TextoSuave(if (d.total == 1) "1 infiltración registrada" else "${d.total} infiltraciones registradas" +
+        if (d.total > d.filas.size) " · las últimas ${d.filas.size}" else "")
+    if (graficos && d.mapa.isNotEmpty()) {
+        Spacer(Modifier.height(6.dp))
+        val rojo = androidx.compose.ui.graphics.Color(0xFFE11D48)
+        pe.saniape.app.ui.clinica.reumatologia.MapaArticular(emptyMap(), completo = true, colorPor = { id -> if ((d.mapa[id] ?: 0) > 0) rojo else null })
+    }
+    d.filas.forEachIndexed { i, f ->
+        if (i > 0) Separador()
+        Column(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+            Text("${fechaHc(f.fecha)} · ${f.articulacion}", color = c.texto, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text(listOfNotNull(f.sustancia, f.dosis, if (f.eco) "con guía ecográfica" else null, f.eva?.let { "EVA $it" }).joinToString(" · "),
+                color = c.texto, fontSize = 12.sp)
+            val pie = listOfNotNull(f.lote?.let { "Lote $it" }, f.caducidad?.let { "vence ${fechaHc(it)}" }, f.profesional)
+            if (pie.isNotEmpty()) TextoSuave(pie.joinToString(" · "))
+            f.observaciones?.takeIf { it.isNotBlank() }?.let { TextoSuave(it) }
         }
     }
 }

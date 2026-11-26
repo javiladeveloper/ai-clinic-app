@@ -23,7 +23,21 @@ class EvaluacionReumatologicaTest {
         assertEquals(MapaArticularGeo.ANCHO, d.x + i.x)
         // 20 de las 28 son de las manos: se marcan en el cuadro ampliado.
         assertEquals(20, ARTICULACIONES_REUMA.count { it.en28 && it.zona == "mano" })
-        assertEquals(10, ARTICULACIONES_REUMA.count { it.zona == "pie" })
+        // 5 MTF + mediopié por pie.
+        assertEquals(12, ARTICULACIONES_REUMA.count { it.zona == "pie" })
+    }
+
+    // FISIOSALUD (25/11/2026): «1 punto en la base del pulgar (trapecio-metacarpiana)» y
+    // «también infiltran el tobillo / mediopié». Mismos ids que la web.
+    @Test fun `base del pulgar y mediopie, fuera del conteo de 28`() {
+        assertEquals("Trapecio-metacarpiana (base del pulgar) derecha", articulacionReumaDe("tmc_der")?.nombre)
+        assertEquals("Mediopié izquierdo", articulacionReumaDe("mediopie_izq")?.nombre)
+        assertEquals("mano", zonaAmpliadaDe("tmc_izq"))
+        assertEquals("pie", zonaAmpliadaDe("mediopie_der"))
+        assertEquals(false, articulacionReumaDe("tmc_der")?.en28)
+        // Se tocan dentro del cuadro ampliado: TMC en (34, 70) de la mano; mediopié en (50, 84) del pie.
+        assertEquals("tmc_der", toqueEnZonaReuma("mano", "der", 34f, 70f, ARTICULACIONES_REUMA, PROPORCION_MANO_REUMA))
+        assertEquals("mediopie_izq", toqueEnZonaReuma("pie", "izq", 50f, 84f, ARTICULACIONES_REUMA, PROPORCION_PIE_REUMA))
     }
 
     @Test fun `tocar rota dolor, inflamacion, ambas, nada`() {

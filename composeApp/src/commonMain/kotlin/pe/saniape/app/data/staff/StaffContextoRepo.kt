@@ -78,6 +78,7 @@ object StaffContextoRepo {
         citasVirtualesMeet = o?.boolOrNull("citasVirtualesMeet") ?: false,
         presupuestos = o?.boolOrNull("presupuestos") ?: false,
         escalas = o?.boolOrNull("escalas") ?: false,
+        evaluacionArticular = o?.boolOrNull("evaluacionArticular") ?: false,
         notificacionesFlujo = o?.boolOrNull("notificacionesFlujo") ?: false,
     )
 
@@ -219,6 +220,13 @@ object StaffContextoRepo {
                 ids = (o["especialidadesReumatologia"] as? kotlinx.serialization.json.JsonArray).orEmpty()
                     .mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } },
                 solo = o.boolOrNull("soloReumatologia") ?: false,
+            ),
+            mapaInfiltraciones = MapaInfiltraciones(
+                ids = (o["especialidadesInfiltraciones"] as? kotlinx.serialization.json.JsonArray).orEmpty()
+                    .mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } },
+                solo = o.boolOrNull("soloInfiltraciones") ?: false,
+                apagadas = (o["especialidadesInfiltracionesApagadas"] as? kotlinx.serialization.json.JsonArray).orEmpty()
+                    .mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } },
             ),
             mapaAudiologia = MapaReumatologia(
                 ids = (o["especialidadesAudiologia"] as? kotlinx.serialization.json.JsonArray).orEmpty()

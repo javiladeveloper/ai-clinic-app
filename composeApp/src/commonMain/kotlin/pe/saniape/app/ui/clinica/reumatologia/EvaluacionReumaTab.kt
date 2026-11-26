@@ -155,8 +155,16 @@ fun MapaArticular(
     valor: Map<String, EstadoArticulacion>,
     completo: Boolean,
     onCambiar: ((Map<String, EstadoArticulacion>) -> Unit)? = null,
+    /** Modo ELEGIR (💉 infiltraciones): tocar avisa el id en vez de rotar dolor/inflamación. */
+    onTocar: ((String) -> Unit)? = null,
+    /** En modo elegir, el color de cada punto (null = blanco). */
+    colorPor: ((String) -> Color?)? = null,
+    /** Texto bajo la mano/pie ampliado en modo elegir. */
+    ayuda: String? = null,
 ) {
-    val visibles = remember(completo, valor) { ARTICULACIONES_REUMA.filter { completo || it.en28 || valor.containsKey(it.id) } }
+    val visibles = remember(completo, valor, colorPor) { ARTICULACIONES_REUMA.filter { completo || it.en28 || valor.containsKey(it.id) || colorPor?.invoke(it.id) != null } }
+    val colorDe: (String) -> Color? = { id -> if (colorPor != null) colorPor(id) else colorEstado(valor[id]) }
+    val tocarAhora by rememberUpdatedState(onTocar)
     var abierta by remember { mutableStateOf<Pair<String, String>?>(null) }
     val alCambiar by rememberUpdatedState(onCambiar)
     val actual by rememberUpdatedState(valor)
@@ -172,7 +180,7 @@ fun MapaArticular(
                     detectTapGestures { p ->
                         val s = size.width / MapaArticularGeo.ANCHO
                         when (val t = toqueEnMapaReuma(p.x / s, p.y / s, visiblesAhora)) {
-                            is ToqueMapaReuma.Articulacion -> alCambiar?.let { cb ->
+                            is ToqueMapaReuma.Articulacion -> tocarAhora?.invoke(t.id) ?: alCambiar?.let { cb ->
                                 val sig = rotarEstadoArticulacion(actual[t.id])
                                 cb(if (sig == null) actual - t.id else actual + (t.id to sig))
                             }
@@ -187,16 +195,17 @@ fun MapaArticular(
             Canvas(Modifier.fillMaxSize()) {
                 val s = size.width / MapaArticularGeo.ANCHO
                 visibles.filter { it.zona == null }.forEach { a ->
-                    val color = colorEstado(valor[a.id])
+                    val color = colorDe(a.id)
                     drawCircle(color ?: Color.White, 8.5f * s, Offset(a.x * s, a.y * s))
                     drawCircle(if (color != null) Color.White else BORDE_PUNTO, 8.5f * s, Offset(a.x * s, a.y * s), style = Stroke(2f * s))
                 }
             }
             zonas.forEach { (zona, lado, ref) ->
                 val suyas = visibles.filter { it.zona == zona && it.lado == lado }
-                val marcadas = suyas.filter { valor[it.id] != null }
+                val marcadas = if (colorPor != null) suyas.filter { colorPor(it.id) != null } else suyas.filter { valor[it.id] != null }
                 val hayD = marcadas.any { valor[it.id]?.d == true }; val hayI = marcadas.any { valor[it.id]?.i == true }
-                val peor = if (hayD && hayI) COLOR_AMBAS else if (hayI) COLOR_INFLAMADA else if (hayD) COLOR_DOLOR else null
+                val peor = if (colorPor != null) marcadas.firstNotNullOfOrNull { colorPor(it.id) }
+                    else if (hayD && hayI) COLOR_AMBAS else if (hayI) COLOR_INFLAMADA else if (hayD) COLOR_DOLOR else null
                 val radio = 12f * escala
                 Box(
                     Modifier.offset(x = (ref.x * escala - radio).dp, y = (ref.y * escala - radio).dp).size((radio * 2).dp)
@@ -211,7 +220,7 @@ fun MapaArticular(
         }
     }
     abierta?.let { (zona, lado) ->
-        DialogoZonaReuma(zona, lado, valor, visibles, onCambiar, onCerrar = { abierta = null })
+        DialogoZonaReuma(zona, lado, valor, visibles, onCambiar, onTocar, colorDe, ayuda, onCerrar = { abierta = null })
     }
 }
 
@@ -222,8 +231,12 @@ private fun DialogoZonaReuma(
     valor: Map<String, EstadoArticulacion>,
     visibles: List<ArticulacionDef>,
     onCambiar: ((Map<String, EstadoArticulacion>) -> Unit)?,
+    onTocar: ((String) -> Unit)?,
+    colorDe: (String) -> Color?,
+    ayuda: String?,
     onCerrar: () -> Unit,
 ) {
+    val tocarAhora by rememberUpdatedState(onTocar)
     val c = Sania.colors
     val proporcion = if (zona == "mano") PROPORCION_MANO_REUMA else PROPORCION_PIE_REUMA
     val puntos = if (zona == "mano") PUNTOS_MANO_REUMA else PUNTOS_PIE_REUMA
@@ -232,7 +245,7 @@ private fun DialogoZonaReuma(
     val alCambiar by rememberUpdatedState(onCambiar)
     val actual by rememberUpdatedState(valor)
     val visiblesAhora by rememberUpdatedState(visibles)
-    val marcadas = suyas.count { valor[it.id] != null }
+    val marcadas = suyas.count { colorDe(it.id) != null }
     Dialog(onDismissRequest = onCerrar) {
         Column(Modifier.clip(RoundedCornerShape(16.dp)).background(c.superficie).padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -244,9 +257,11 @@ private fun DialogoZonaReuma(
             Box(
                 Modifier.padding(top = 6.dp).widthIn(max = 260.dp).fillMaxWidth().aspectRatio(proporcion)
                     .semantics { contentDescription = "Articulaciones: ${nombreZonaReuma(zona, lado)}" }
-                    .then(if (onCambiar != null) Modifier.pointerInput(zona, lado) {
+                    .then(if (onCambiar != null || onTocar != null) Modifier.pointerInput(zona, lado) {
                         detectTapGestures { p ->
                             toqueEnZonaReuma(zona, lado, p.x * 100f / size.width, p.y * 100f / size.height, visiblesAhora, proporcion)?.let { id ->
+                                val elegir = tocarAhora
+                                if (elegir != null) { elegir(id); return@let }
                                 val sig = rotarEstadoArticulacion(actual[id])
                                 alCambiar?.invoke(if (sig == null) actual - id else actual + (id to sig))
                             }
@@ -261,13 +276,15 @@ private fun DialogoZonaReuma(
                         val p = puntos[a.id.substringBeforeLast('_')] ?: return@forEach
                         val x = (if (espejo) 100f - p.first else p.first) * size.width / 100f
                         val y = p.second * size.height / 100f
-                        val color = colorEstado(valor[a.id])
+                        val color = colorDe(a.id)
                         drawCircle(color ?: Color.White, r, Offset(x, y))
                         drawCircle(if (color != null) Color.White else BORDE_PUNTO, r, Offset(x, y), style = Stroke(r * 0.28f))
                     }
                 }
             }
-            if (onCambiar != null) {
+            if (onTocar != null) {
+                Text(ayuda ?: "Toca la articulación.", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+            } else if (onCambiar != null) {
                 Text("Toca cada articulación: un toque dolor, dos inflamación, tres ambas.", color = c.textoSuave, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
             }
             Text("Listo", color = c.sobreNavy, fontSize = 14.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
@@ -564,7 +581,7 @@ private fun EditorEvaluacionReuma(
             ChipMapa("Mapa completo", completo) { completo = true }
         }
         Spacer(Modifier.height(6.dp))
-        MapaArticular(articulaciones, completo) { articulaciones = it }
+        MapaArticular(articulaciones, completo, onCambiar = { articulaciones = it })
         LeyendaArticular()
         Spacer(Modifier.height(6.dp))
         FilaBotonesMapa {

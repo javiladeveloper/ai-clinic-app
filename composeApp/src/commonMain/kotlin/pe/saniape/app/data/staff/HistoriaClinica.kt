@@ -431,6 +431,55 @@ data class ControlPrenatalHc(
     val profesional: String? = null,
 )
 
+/** 🦴 Evaluación articular (la última, con lo que cambió desde la anterior). Gemelo de `DatosReumaEvaluacion` (web). */
+@Serializable
+data class ActividadReumaHc(val texto: String = "", val nivel: String = "")
+
+@Serializable
+data class EstadoArticulacionHc(val d: Boolean = false, val i: Boolean = false)
+
+@Serializable
+data class DatosReumaEvaluacionHc(
+    val fecha: String = "",
+    val profesional: String? = null,
+    val actividad: ActividadReumaHc? = null,
+    val dolorosas28: Int = 0,
+    val inflamadas28: Int = 0,
+    /** id → dolorosa / inflamada, para dibujar el cuerpo (una web vieja no lo manda). */
+    val mapa: Map<String, EstadoArticulacionHc> = emptyMap(),
+    val dolorosas: List<String> = emptyList(),
+    val inflamadas: List<String> = emptyList(),
+    val cambios: List<String> = emptyList(),
+    val fechaAnterior: String? = null,
+    val datos: List<ParHc> = emptyList(),
+    val puntosDolorosos: List<String> = emptyList(),
+    val observaciones: String? = null,
+    val total: Int = 0,
+) : DatosHc
+
+/** 💉 Infiltraciones articulares. Gemelo de `DatosInfiltracionesHC` (web). */
+@Serializable
+data class FilaInfiltracionHc(
+    val fecha: String = "",
+    val articulacion: String = "",
+    val sustancia: String = "",
+    val dosis: String? = null,
+    val eco: Boolean = false,
+    val eva: Int? = null,
+    val lote: String? = null,
+    val caducidad: String? = null,
+    val profesional: String? = null,
+    val observaciones: String? = null,
+)
+
+@Serializable
+data class DatosInfiltracionesHc(
+    val filas: List<FilaInfiltracionHc> = emptyList(),
+    /** id de articulación → cuántas veces se infiltró (para el dibujo). */
+    val mapa: Map<String, Int> = emptyMap(),
+    val total: Int = 0,
+) : DatosHc
+
 @Serializable
 data class DatosControlesPrenatalesHc(
     /** FUR, FPP, edad gestacional hoy, N° de controles. */
@@ -649,6 +698,8 @@ internal fun parsearSeccionHc(el: JsonElement): SeccionHc? {
             "antropometria" -> leer(DatosAntropometriaHc.serializer())
             "fotos" -> leer(DatosFotosHc.serializer())
             "controles_prenatales" -> leer(DatosControlesPrenatalesHc.serializer())
+            "reuma_evaluacion" -> leer(DatosReumaEvaluacionHc.serializer())
+            "infiltraciones" -> leer(DatosInfiltracionesHc.serializer())
             else -> null
         }
     }.getOrNull() ?: (if (obligatoria) DatosNoLegiblesHc else return null)

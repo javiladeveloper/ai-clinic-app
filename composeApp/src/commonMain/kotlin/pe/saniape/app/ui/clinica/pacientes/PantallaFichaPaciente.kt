@@ -427,9 +427,13 @@ private fun PantallaFichaPacienteContenido(
     var datosCapilar by remember(paciente.id) { mutableStateOf(false to emptyList<String>()) }
     var tieneEvalPodo by remember(paciente.id) { mutableStateOf(false) }
     var tieneEvalReuma by remember(paciente.id) { mutableStateOf(false) }
+    // 💉 Infiltraciones: en clínica mixta o con la opción apagada en alguna especialidad se pregunta si ya tiene registros.
+    val conteoInfilt = ctx.can("evaluacionArticular") && pe.saniape.app.data.staff.infiltracionesNecesitaConteo(ctx.mapaInfiltraciones)
+    var tieneInfilt by remember(paciente.id) { mutableStateOf(false) }
     var tieneAplicaciones by remember(paciente.id) { mutableStateOf(false) }
-    LaunchedEffect(paciente.id, mixtaCapilar, mixtaPodo, mixtaEstetica, mixtaGineco, mixtaReuma) {
+    LaunchedEffect(paciente.id, mixtaCapilar, mixtaPodo, mixtaEstetica, mixtaGineco, mixtaReuma, conteoInfilt) {
         coroutineScope {
+            val infiltD = async { if (conteoInfilt) pe.saniape.app.data.staff.InfiltracionesRepo.tieneRegistros(paciente.id) else null }
             val ginecoD = async { if (mixtaGineco) pe.saniape.app.data.staff.EmbarazoRepo.tieneEmbarazos(paciente.id) else null }
             val capilarD = async { if (mixtaCapilar) pe.saniape.app.data.staff.TricoscopiaRepo.datosMixta(paciente.id, ctx.miTerapeutaId) else null }
             val podoD = async { if (mixtaPodo) pe.saniape.app.data.staff.EvaluacionPodologicaRepo.tieneEvaluaciones(paciente.id) else null }
@@ -438,6 +442,7 @@ private fun PantallaFichaPacienteContenido(
             capilarD.await()?.let { datosCapilar = it }
             podoD.await()?.let { tieneEvalPodo = it }
             reumaD.await()?.let { tieneEvalReuma = it }
+            infiltD.await()?.let { tieneInfilt = it }
             esteticaD.await()?.let { tieneAplicaciones = it }
             ginecoD.await()?.let { tieneEmbarazos = it }
         }
@@ -460,6 +465,17 @@ private fun PantallaFichaPacienteContenido(
     val esPacienteReuma = pe.saniape.app.data.staff.pacienteEsReumatologia(
         ctx.mapaReumatologia, atenciones = atencionesConCitas, tieneEvaluaciones = tieneEvalReuma,
         especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
+    )
+    // 💉 Infiltraciones (25/11/2026): por especialidad (opción propia en Especialidades) o por un
+    // servicio «Infiltración…» (salvo especialidad apagada). Apagada con registros → solo lectura.
+    // Gemelo de `accesoInfilt` en app/(app)/pacientes/[id]/page.tsx.
+    val accesoInfilt = if (!ctx.can("evaluacionArticular")) null else pe.saniape.app.data.staff.accesoInfiltraciones(
+        ctx.mapaInfiltraciones, atenciones = atencionesConCitas,
+        especialidadesDeQuienMira = if (esOdontologia) null else datosDentales.especialidadesDeQuienMira,
+        tieneRegistros = tieneInfilt,
+        activoPorOtraVia = paciente.tratamientos.any { t ->
+            t.estado != "Eliminado" && pe.saniape.app.data.staff.servicioActivaInfiltracion(ctx.mapaInfiltraciones, t.procedimiento, t.especialidadId)
+        },
     )
     // 👂 Audiología (evaluación auditiva, 24/11/2026): misma cadena, por el nombre de la especialidad.
     val esPacienteAudiologia = pe.saniape.app.data.staff.pacienteEsReumatologia(
@@ -1249,6 +1265,8 @@ private fun PantallaFichaPacienteContenido(
                     if (esPacientePodologia) add("evaluacion_pie" to "🦶 Evaluación del pie")
                     // SOLO pacientes de reumatología: mapa articular + actividad (CDAI / DAS28).
                     if (esPacienteReuma) add("evaluacion_articular" to "🦴 Evaluación articular")
+                    // 💉 Infiltraciones articulares: mapa para elegir varias + sustancia, dosis, EVA, lote.
+                    if (accesoInfilt != null) add("infiltraciones" to "💉 Infiltraciones")
                     // SOLO pacientes de audiología: el recorrido de la evaluación auditiva y su audiograma.
                     if (esPacienteAudiologia) add("evaluacion_auditiva" to "👂 Evaluación auditiva")
                     // SOLO pacientes de pediatría (`esPacientePediatria`): curvas OMS + 💉 carné de vacunas.
@@ -1667,6 +1685,14 @@ private fun PantallaFichaPacienteContenido(
                         pe.saniape.app.ui.clinica.audiologia.ContenidoEvaluacionAuditiva(
                             pacienteId = paciente.id, pacienteNombre = paciente.nombre,
                             puedeEditar = (ctx.puede("pacientes") || ctx.puede("sesiones")) && !inactiva,
+                        )
+                    } else Unit
+                    "infiltraciones" -> if (accesoInfilt != null) {
+                        val inactiva = pe.saniape.app.data.staff.fichaInactiva(paciente.estado)
+                        pe.saniape.app.ui.clinica.reumatologia.InfiltracionesTab(
+                            pacienteId = paciente.id,
+                            puedeEditar = (ctx.puede("pacientes") || ctx.puede("sesiones")) && !inactiva &&
+                                accesoInfilt == pe.saniape.app.data.staff.AccesoModulo.EDITAR,
                         )
                     } else Unit
                     "evaluacion_articular" -> if (esPacienteReuma) {

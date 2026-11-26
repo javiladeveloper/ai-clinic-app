@@ -69,8 +69,8 @@ data class ArticulacionDef(val id: String, val nombre: String, val lado: String,
 
 /** Las articulaciones chicas (dedos) se marcan en la mano / el pie ampliado, no sobre el cuerpo. */
 fun zonaAmpliadaDe(id: String): String? = when {
-    id.startsWith("mcf") || id.startsWith("ifp") || id.startsWith("ifd") -> "mano"
-    id.startsWith("mtf") -> "pie"
+    id.startsWith("mcf") || id.startsWith("ifp") || id.startsWith("ifd") || id.startsWith("tmc") -> "mano"
+    id.startsWith("mtf") || id.startsWith("mediopie") -> "pie"
     else -> null
 }
 
@@ -80,7 +80,7 @@ fun zonaAmpliadaDe(id: String): String? = when {
  * visto desde arriba con el dedo gordo a la izquierda. Gemelo de PUNTOS_MANO / PUNTOS_PIE (web).
  */
 val PUNTOS_MANO_REUMA: Map<String, Pair<Float, Float>> = mapOf(
-    "mcf1" to (24f to 60f), "ifp1" to (13f to 49f),
+    "tmc" to (34f to 70f), "mcf1" to (24f to 60f), "ifp1" to (13f to 49f),
     "mcf2" to (41f to 42.5f), "ifp2" to (38f to 26f), "ifd2" to (36f to 14f),
     "mcf3" to (57f to 40f), "ifp3" to (57f to 22.5f), "ifd3" to (57f to 10f),
     "mcf4" to (72f to 41f), "ifp4" to (75f to 25.6f), "ifd4" to (77f to 14f),
@@ -88,6 +88,7 @@ val PUNTOS_MANO_REUMA: Map<String, Pair<Float, Float>> = mapOf(
 )
 val PUNTOS_PIE_REUMA: Map<String, Pair<Float, Float>> = mapOf(
     "mtf1" to (18f to 40f), "mtf2" to (42f to 38f), "mtf3" to (59f to 42f), "mtf4" to (74f to 47f), "mtf5" to (88f to 53f),
+    "mediopie" to (50f to 84f),
 )
 /** Proporción ancho / alto de cada imagen ampliada. */
 const val PROPORCION_MANO_REUMA = 150f / 207f
@@ -119,6 +120,9 @@ private val BASE_ARTICULACIONES: List<BaseArt> = buildList {
     add(BaseArt("cadera", "Cadera", true, false, 86f, 275f))
     add(BaseArt("tobillo", "Tobillo", false, false, 82f, 496f))
     (1..5).forEach { n -> add(BaseArt("mtf$n", "MTF $n (pie)", true, false, px, py)) }
+    // También se infiltran (FISIOSALUD, 25/11/2026): base del pulgar (rizartrosis) y mediopié.
+    add(BaseArt("tmc", "Trapecio-metacarpiana (base del pulgar)", true, false, mx, my))
+    add(BaseArt("mediopie", "Mediopié", false, false, px, py))
 }
 
 val ARTICULACIONES_REUMA: List<ArticulacionDef> = listOf("der", "izq").flatMap { lado ->
@@ -128,6 +132,8 @@ val ARTICULACIONES_REUMA: List<ArticulacionDef> = listOf("der", "izq").flatMap {
     }
 }
 private val ARTICULACION_POR_ID = ARTICULACIONES_REUMA.associateBy { it.id }
+/** Gemelo de `articulacionDe` (web). */
+fun articulacionReumaDe(id: String): ArticulacionDef? = ARTICULACION_POR_ID[id]
 
 /** Tocar una articulación: nada → dolor → inflamación → ambas → nada (null). */
 fun rotarEstadoArticulacion(e: EstadoArticulacion?): EstadoArticulacion? = when {

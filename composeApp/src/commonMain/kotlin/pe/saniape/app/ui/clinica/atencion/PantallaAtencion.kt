@@ -296,7 +296,22 @@ private fun ColumnScope.ContenidoAtencion(
                 "motivo" -> PasoMotivo(vm, d, soloLectura)
                 "vitales" -> PasoVitales(vm, d, soloLectura)
                 "examen" -> PasoExamen(vm, d, soloLectura, acciones)
-                "procedimiento" -> PasoProcedimiento(vm, d, soloLectura, acciones)
+                "procedimiento" -> {
+                    PasoProcedimiento(vm, d, soloLectura, acciones)
+                    // 💉 Servicio «Infiltración…» (FISIOSALUD, 25/11/2026: «es un servicio que nace en un
+                    // tratamiento»): su registro con el mapa articular, en el procedimiento. Mismo plan que
+                    // la evaluación articular y salvo especialidad con las infiltraciones apagadas (web: ConsultaGuiada).
+                    val servicio = d.cita.tratamiento?.procedimiento?.nombre?.takeIf { it.isNotBlank() } ?: d.cita.procedimiento?.nombre
+                    val esInfiltracion = ctx.can("evaluacionArticular") && pe.saniape.app.data.staff.servicioActivaInfiltracion(
+                        ctx.mapaInfiltraciones, servicio, d.cita.tratamiento?.procedimiento?.especialidad_id ?: d.cita.especialidad_id)
+                    if (esInfiltracion && pacienteId != null) {
+                        Spacer(Modifier.height(Sania.dim.md))
+                        pe.saniape.app.ui.clinica.reumatologia.InfiltracionesTab(
+                            pacienteId = pacienteId, puedeEditar = !soloLectura && (ctx.puede("pacientes") || ctx.puede("sesiones")),
+                            citaId = d.cita.id, fechaCita = d.cita.fecha.take(10),
+                        )
+                    }
+                }
                 "diagnostico" -> PasoDiagnostico(vm, d, soloLectura)
                 "plan" -> PasoPlan(
                     vm, d, soloLectura, acciones,
