@@ -1,0 +1,9 @@
+Infiltraciones articulares, etiquetas de pacientes y el reporte por método de pago.
+---
+• 💉 Infiltraciones: marca en el mapa todas las articulaciones de la sesión (también la base del pulgar y el mediopié) y registra sustancia, dosis, guía ecográfica, dolor, lote y caducidad.
+• Sustancias a un toque: Corticoide + Anestésico, Corticoide, Anestésico, Ácido hialurónico, PRP, Colágeno y Proloterapia.
+• En la atención de un servicio «Infiltración…», el registro está en el paso Procedimiento; en la ficha, en la pestaña 💉 Infiltraciones.
+• La historia clínica ahora muestra la evaluación articular y las infiltraciones.
+• 🏷️ Etiquetas en la ficha del paciente para armar grupos; en Pacientes se filtra por etiqueta, especialidad o diagnóstico.
+• 💳 Reportes — «Métodos de pago»: cuánto entró por efectivo, Yape, tarjeta… cada uno por separado, por día, semana o mes, con ⬇ Excel y 🖨 PDF.
+• 🌱 Pacientes nuevos: ahora puedes ver cuáles llegaron por cada tratamiento.
