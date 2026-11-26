@@ -1,0 +1,6 @@
+Vuelto con otro medio al cobrar, y dos agregados nuevos: asistencia del personal e inventario clínico.
+---
+• 💵 Al cobrar una cita: escribe con cuánto paga y la app calcula el vuelto. Si lo das con otro medio (cobraste en efectivo y devuelves por Yape, o al revés), la caja lo cuenta sola y el cierre cuadra.
+• 🕘 Asistencia (agregado): en Más → Asistencia marcas tu entrada y tu salida y ves tus marcas, tardanzas y horas del mes. La hora la pone el servidor.
+• 🧰 Inventario clínico (agregado): al completar una sesión puedes anotar lo que se usó (gel, guantes, vendas…) y se descuenta del consultorio donde atiendes.
+• Los dos agregados se activan por clínica: escríbenos si los quieres en la tuya.
