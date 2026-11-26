@@ -1066,6 +1066,16 @@ private fun PantallaFichaPacienteContenido(
                     AvisoFichaInactiva(puedeReactivar = verContacto)
                 }
 
+                // 🏷️ Etiquetas (grupos del paciente; en Pacientes se filtra por ellas). Como la web.
+                val editaEtiquetas = ctx.puede("pacientes") && !pe.saniape.app.data.staff.fichaInactiva(paciente.estado)
+                if (paciente.etiquetas.isNotEmpty() || editaEtiquetas) {
+                    Spacer(Modifier.height(Sania.dim.sm))
+                    EtiquetasFicha(paciente.id, paciente.etiquetas, editaEtiquetas) { nuevas ->
+                        paciente = paciente.copy(etiquetas = nuevas)
+                        onHuboCambios()
+                    }
+                }
+
                 // Estética: fototipo y contraindicaciones a la vista desde cualquier pestaña
                 // (gemelo de AlertasEstetica.tsx). Sale de los campos propios de la clínica.
                 if (esPacienteEstetica && verHc) {

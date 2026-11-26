@@ -159,6 +159,40 @@ fun porcentajeEscalon(actual: Int, anterior: Int): Int? =
 fun filtrarPorEtapa(filas: List<FilaPacienteNuevo>, etapa: String?): List<FilaPacienteNuevo> =
     if (etapa == null) filas else filas.filter { it.etapa == etapa }
 
+// ── Por tratamiento (25/11/2026, FISIOSALUD: «qué pacientes nuevos llegaron por qué tratamiento»).
+// Gemelo de serviciosDeFilas / filtrarPorServicio / embudoDe (lib/pacientes-nuevos.ts). ──
+
+const val SIN_TRATAMIENTO_NUEVOS = "__sin__"
+
+data class OpcionServicioNuevos(val valor: String, val etiqueta: String, val n: Int)
+
+/** Los tratamientos de las filas, del más frecuente al menos; al final «Sin tratamiento aún». */
+fun serviciosDeFilasNuevos(filas: List<FilaPacienteNuevo>): List<OpcionServicioNuevos> {
+    val cuenta = LinkedHashMap<String, Int>()
+    var sin = 0
+    filas.forEach { f ->
+        val s = f.tratamiento?.servicio?.trim().orEmpty()
+        if (s.isNotEmpty()) cuenta[s] = (cuenta[s] ?: 0) + 1 else sin++
+    }
+    val out = cuenta.entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key.lowercase() })
+        .map { OpcionServicioNuevos(it.key, it.key, it.value) }
+    return if (sin > 0) out + OpcionServicioNuevos(SIN_TRATAMIENTO_NUEVOS, "Sin tratamiento aún", sin) else out
+}
+
+fun filtrarPorServicioNuevos(filas: List<FilaPacienteNuevo>, servicio: String?): List<FilaPacienteNuevo> = when {
+    servicio.isNullOrEmpty() -> filas
+    servicio == SIN_TRATAMIENTO_NUEVOS -> filas.filter { it.tratamiento?.servicio?.trim().isNullOrEmpty() }
+    else -> filas.filter { it.tratamiento?.servicio?.trim() == servicio }
+}
+
+private val ORDEN_ETAPAS = listOf(EtapaNuevo.SIN_EVALUACION, EtapaNuevo.EVALUADO, EtapaNuevo.EN_TRATAMIENTO, EtapaNuevo.PAGO)
+
+/** El embudo de un subconjunto (con un tratamiento elegido, el embudo es solo de esos). */
+fun embudoDeFilasNuevos(filas: List<FilaPacienteNuevo>): EmbudoNuevos {
+    fun n(min: String) = filas.count { ORDEN_ETAPAS.indexOf(it.etapa) >= ORDEN_ETAPAS.indexOf(min) }
+    return EmbudoNuevos(filas.size, n(EtapaNuevo.EVALUADO), n(EtapaNuevo.EN_TRATAMIENTO), n(EtapaNuevo.PAGO))
+}
+
 object PacientesNuevosRepo {
 
     private val http = crearHttpClient()

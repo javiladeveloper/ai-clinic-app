@@ -487,6 +487,8 @@ data class PacienteStaff(
     val apoderadoRecibeAvisos: Boolean = false,
     /** "Paciente de ejemplo" del asistente de inicio (pacientes.es_ejemplo): se marca "Ejemplo". */
     val esEjemplo: Boolean = false,
+    /** 🏷️ Etiquetas para armar grupos (pacientes.etiquetas, 25/11/2026). */
+    val etiquetas: List<String> = emptyList(),
 ) {
     /** Menor de edad (fecha de nacimiento o, si no hay, la edad guardada). */
     val esMenor: Boolean
@@ -608,7 +610,7 @@ object PacientesRepo {
      * (2026-07-31). La ficha sigue usando el completo, que ahí sí hace falta.
      */
     private const val SELECT_LISTA = """
-        id, nombre, dni, edad, fecha_nacimiento, requiere_apoderado, telefono, email, diagnostico, estado, flag, es_ejemplo,
+        id, nombre, dni, edad, fecha_nacimiento, requiere_apoderado, telefono, email, diagnostico, estado, flag, es_ejemplo, etiquetas,
         tratamientos:tratamientos(
             id, estado, terapeuta_id,
             procedimiento:procedimientos(nombre)
@@ -620,7 +622,7 @@ object PacientesRepo {
         talla, peso, fecha_ingreso, alergias, medicacion_actual, antecedentes, observaciones, patologias, tipo_patologia,
         resumen_ia, resumen_ia_fecha, resumen_ia_estado, campos_custom,
         fecha_nacimiento, requiere_apoderado, apoderado_nombre, apoderado_dni, apoderado_parentesco,
-        apoderado_telefono, apoderado_recibe_avisos, es_ejemplo,
+        apoderado_telefono, apoderado_recibe_avisos, es_ejemplo, etiquetas,
         tratamientos:tratamientos(
             id, modalidad, estado, estado_pago, total_sesiones, sesiones_completadas,
             precio_paquete, precio_por_sesion, precio_acordado, terapeuta_id,
@@ -1724,6 +1726,56 @@ object PacientesRepo {
 
     /** Definiciones de campos personalizados del paciente (por clínica, RLS aísla). */
     /** Ids de los pacientes «En tratamiento» sin nada en curso (RPC `pacientes_terminaron_sin_alta`). Si falla, vacío. */
+    // ── 🏷️ Etiquetas y filtros por especialidad / diagnóstico (FISIOSALUD, 25/11/2026; como la web) ──
+
+    /** Guarda las etiquetas del paciente (la RLS acota la clínica). */
+    suspend fun guardarEtiquetas(pacienteId: String, etiquetas: List<String>): Boolean = try {
+        Supabase.client.postgrest["pacientes"].update({ set("etiquetas", etiquetas) }) { filter { eq("id", pacienteId) } }
+        true
+    } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { false }
+
+    /** Las etiquetas que ya usa la clínica (para sugerir y no partir un grupo en dos). */
+    suspend fun etiquetasClinica(): List<String> = runCatching {
+        Supabase.client.postgrest.rpc("etiquetas_de_pacientes").decodeList<JsonObject>().mapNotNull { it.str("etiqueta") }
+    }.getOrDefault(emptyList())
+
+    /**
+     * Los atendidos en esa especialidad (por sus citas), como el `citas_esp:citas!inner` de la web.
+     * Por páginas de 1000 (el tope del servidor). null = no se pudo leer.
+     */
+    suspend fun idsPorEspecialidad(especialidadId: String): Set<String>? = try {
+        val ids = mutableSetOf<String>()
+        var desde = 0L
+        while (true) {
+            val filas = Supabase.client.postgrest["pacientes"]
+                .select(Columns.raw("id, citas_esp:citas!inner(id)")) {
+                    filter { eq("citas_esp.especialidad_id", especialidadId) }
+                    range(desde, desde + 999)
+                }.decodeList<JsonObject>()
+            filas.mapNotNullTo(ids) { it.str("id") }
+            if (filas.size < 1000) break
+            desde += 1000
+        }
+        ids
+    } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
+
+    /** Opciones del filtro «Diagnóstico» (CIE de las atenciones + diagnóstico de citas y tratamientos). */
+    suspend fun diagnosticosClinica(especialidadId: String?): List<OpcionDiagnostico> = runCatching {
+        Supabase.client.postgrest.rpc("diagnosticos_de_pacientes", buildJsonObject {
+            if (especialidadId != null) put("p_especialidad", especialidadId) else put("p_especialidad", kotlinx.serialization.json.JsonNull)
+        }).decodeList<JsonObject>().mapNotNull { o ->
+            OpcionDiagnostico(o.str("clave") ?: return@mapNotNull null, o.str("diagnostico") ?: "", o.str("codigo"), o.int("pacientes") ?: 0)
+        }
+    }.getOrDefault(emptyList())
+
+    /** Los pacientes con ese diagnóstico. null = no se pudo leer. */
+    suspend fun idsConDiagnostico(clave: String, especialidadId: String?): Set<String>? = try {
+        Supabase.client.postgrest.rpc("pacientes_con_diagnostico", buildJsonObject {
+            put("p_clave", clave)
+            if (especialidadId != null) put("p_especialidad", especialidadId) else put("p_especialidad", kotlinx.serialization.json.JsonNull)
+        }).decodeList<JsonObject>().mapNotNull { it.str("paciente_id") }.toSet()
+    } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
+
     suspend fun terminaronSinAlta(): Set<String> = runCatching {
         Supabase.client.postgrest.rpc("pacientes_terminaron_sin_alta").decodeList<String>().toSet()
     }.getOrDefault(emptySet())
@@ -2187,6 +2239,8 @@ object PacientesRepo {
             apoderadoTelefono = o.str("apoderado_telefono"),
             apoderadoRecibeAvisos = o.bool("apoderado_recibe_avisos") == true,
             esEjemplo = o.bool("es_ejemplo") == true,
+            etiquetas = (o["etiquetas"] as? JsonArray)
+                ?.mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { c -> c.isNotBlank() && c != "null" } } ?: emptyList(),
         )
     }
 

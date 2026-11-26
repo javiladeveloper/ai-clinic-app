@@ -64,6 +64,7 @@ class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
 
     init {
         cargar()
+        cargarOpcionesFiltro()
         // Al cambiar la sede activa (o la regla), la lista es OTRA: se vacía y se
         // recarga (sin pintar un instante la lista de la sede anterior).
         viewModelScope.launch {
@@ -87,6 +88,48 @@ class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
 
     /** Los pacientes «En tratamiento» sin nada en curso; null = cargando o sin leer. */
     var idsSinAlta by mutableStateOf<Set<String>?>(null); private set
+
+    // ── 🏷️ Etiqueta · 🩺 Especialidad · Diagnóstico (FISIOSALUD 25/11/2026, como la web) ──
+    var filtroEtiqueta by mutableStateOf<String?>(null); private set
+    var filtroEspecialidad by mutableStateOf<String?>(null); private set
+    var filtroDiagnostico by mutableStateOf<String?>(null); private set
+    /** Los ids que da la base para la especialidad / el diagnóstico elegidos (null = leyendo). */
+    var idsEspecialidad by mutableStateOf<Set<String>?>(null); private set
+    var idsDiagnostico by mutableStateOf<Set<String>?>(null); private set
+    var especialidades by mutableStateOf<List<pe.saniape.app.data.staff.EspecialidadClinica>>(emptyList()); private set
+    var diagnosticos by mutableStateOf<List<pe.saniape.app.data.staff.OpcionDiagnostico>>(emptyList()); private set
+    /** El filtro de diagnóstico es clínico: solo con permiso de historia clínica (como la web). */
+    val puedeFiltrarDiagnostico: Boolean get() = pe.saniape.app.data.staff.verHistoriaClinica(ctx)
+    /** Las etiquetas de la lista cargada (la del filtro). */
+    val etiquetasDisponibles: List<String> get() = pe.saniape.app.data.staff.etiquetasDeLista(pacientes.map { it.etiquetas })
+    val hayFiltrosExtra: Boolean get() = filtroEtiqueta != null || filtroEspecialidad != null || filtroDiagnostico != null
+
+    fun cambiarFiltroEtiqueta(v: String?) { filtroEtiqueta = v }
+    fun cambiarFiltroEspecialidad(v: String?) {
+        filtroEspecialidad = v
+        idsEspecialidad = null
+        if (v != null) viewModelScope.launch { idsEspecialidad = PacientesRepo.idsPorEspecialidad(v) ?: emptySet() }
+        // Los diagnósticos cambian con la especialidad; el elegido puede no estar: se recalcula.
+        if (puedeFiltrarDiagnostico) viewModelScope.launch { diagnosticos = PacientesRepo.diagnosticosClinica(v) }
+        filtroDiagnostico?.let { cambiarFiltroDiagnostico(it) }
+    }
+    fun cambiarFiltroDiagnostico(v: String?) {
+        filtroDiagnostico = v
+        idsDiagnostico = null
+        if (v != null) viewModelScope.launch { idsDiagnostico = PacientesRepo.idsConDiagnostico(v, filtroEspecialidad) ?: emptySet() }
+    }
+    fun limpiarFiltrosExtra() { filtroEtiqueta = null; cambiarFiltroEspecialidad(null); cambiarFiltroDiagnostico(null) }
+
+    /** Las opciones de especialidad y diagnóstico se leen una vez (la base las da ya resueltas). */
+    private fun cargarOpcionesFiltro() {
+        viewModelScope.launch { especialidades = runCatching { PacientesRepo.especialidadesClinicaRecientes() }.getOrDefault(emptyList()) }
+        if (puedeFiltrarDiagnostico) viewModelScope.launch { diagnosticos = PacientesRepo.diagnosticosClinica(null) }
+    }
+
+    /** Un paciente cambió sus etiquetas en la ficha: se refleja en la lista sin recargarla. */
+    fun etiquetasCambiadas(pacienteId: String, etiquetas: List<String>) {
+        pacientes = pacientes.map { if (it.id == pacienteId) it.copy(etiquetas = etiquetas) else it }
+    }
 
     /** [trasCambio] = recién se creó/registró un paciente: no sumarse a una carga en camino. */
     fun cargar(trasCambio: Boolean = false) {
@@ -191,7 +234,10 @@ class PacientesViewModel(private val ctx: ContextoStaff) : ViewModel() {
                     "todos" -> true
                     pe.saniape.app.data.staff.FILTRO_SIN_ALTA -> idsSinAlta?.contains(p.id) == true
                     else -> p.estado == filtroEstado
-                }
+                } &&
+                (filtroEtiqueta == null || pe.saniape.app.data.staff.tieneEtiqueta(p.etiquetas, filtroEtiqueta!!)) &&
+                (filtroEspecialidad == null || idsEspecialidad?.contains(p.id) == true) &&
+                (filtroDiagnostico == null || idsDiagnostico?.contains(p.id) == true)
         }
 }
 

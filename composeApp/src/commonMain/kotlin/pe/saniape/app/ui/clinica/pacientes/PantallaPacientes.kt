@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -69,6 +71,8 @@ fun PantallaPacientes(
     var nuevoAbierto by remember { mutableStateOf(false) }
     // QR de admisión: el paciente nuevo llena su ficha desde su celular (como la web).
     var qrAdmisionAbierto by remember { mutableStateOf(false) }
+    // 🏷️ / 🩺 / Diagnóstico: qué lista de opciones está abierta.
+    var filtroAbierto by remember { mutableStateOf<String?>(null) }
 
     // Venimos de la ficha: releer lo necesario (nada / ese paciente / la lista entera).
     // Sin vuelta (se llegó desde otra pestaña), solo si la lista ya no es fresca.
@@ -141,6 +145,27 @@ fun PantallaPacientes(
                     val sinAlta = pe.saniape.app.data.staff.FILTRO_SIN_ALTA
                     ChipFiltro(pe.saniape.app.data.staff.ETIQUETA_SIN_ALTA, vm.filtroEstado == sinAlta) {
                         vm.cambiarFiltroEstado(if (vm.filtroEstado == sinAlta) null else sinAlta)
+                    }
+                }
+                // 🏷️ Etiqueta · 🩺 Especialidad · Diagnóstico (FISIOSALUD 25/11/2026, como la web).
+                val etiquetas = vm.etiquetasDisponibles
+                val conEsp = vm.especialidades.size > 1
+                val conDx = vm.puedeFiltrarDiagnostico && vm.diagnosticos.isNotEmpty()
+                if (etiquetas.isNotEmpty() || conEsp || conDx || vm.hayFiltrosExtra) {
+                    Spacer(Modifier.height(6.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (etiquetas.isNotEmpty() || vm.filtroEtiqueta != null)
+                            ChipFiltro("🏷️ " + (vm.filtroEtiqueta ?: "Etiqueta") + " ▾", vm.filtroEtiqueta != null) { filtroAbierto = "etiqueta" }
+                        if (conEsp || vm.filtroEspecialidad != null)
+                            ChipFiltro("🩺 " + (vm.especialidades.firstOrNull { it.id == vm.filtroEspecialidad }?.nombre ?: "Especialidad") + " ▾",
+                                vm.filtroEspecialidad != null) { filtroAbierto = "especialidad" }
+                        if (conDx || vm.filtroDiagnostico != null)
+                            ChipFiltro("📋 " + (vm.diagnosticos.firstOrNull { it.clave == vm.filtroDiagnostico }?.let(::textoDiagnostico) ?: "Diagnóstico") + " ▾",
+                                vm.filtroDiagnostico != null) { filtroAbierto = "diagnostico" }
+                        if (vm.hayFiltrosExtra) ChipFiltro("✕ Quitar filtros", false) { vm.limpiarFiltrosExtra() }
+                    }
+                    if ((vm.filtroEspecialidad != null && vm.idsEspecialidad == null) || (vm.filtroDiagnostico != null && vm.idsDiagnostico == null)) {
+                        Text("Buscando…", color = c.textoSuave, fontSize = Sania.txt.mini, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
                 // Pacientes por sede: con una sede elegida la lista es la de ESA sede
@@ -251,6 +276,15 @@ fun PantallaPacientes(
         }
     }
 
+    when (filtroAbierto) {
+        "etiqueta" -> DialogoOpcionesFiltro("🏷️ Etiqueta", vm.etiquetasDisponibles.map { it to it }, vm.filtroEtiqueta,
+            onElegir = { vm.cambiarFiltroEtiqueta(it); filtroAbierto = null }, onCerrar = { filtroAbierto = null })
+        "especialidad" -> DialogoOpcionesFiltro("🩺 Atendidos en", vm.especialidades.map { it.id to it.nombre }, vm.filtroEspecialidad,
+            onElegir = { vm.cambiarFiltroEspecialidad(it); filtroAbierto = null }, onCerrar = { filtroAbierto = null })
+        "diagnostico" -> DialogoOpcionesFiltro("📋 Diagnóstico", vm.diagnosticos.map { it.clave to "${textoDiagnostico(it)} (${it.pacientes})" },
+            vm.filtroDiagnostico, onElegir = { vm.cambiarFiltroDiagnostico(it); filtroAbierto = null }, onCerrar = { filtroAbierto = null })
+    }
+
     if (qrAdmisionAbierto) {
         DialogoQrAdmision(
             clinicaNombre = ctx.clinicaNombre,
@@ -285,6 +319,7 @@ internal fun BadgeEjemplo(modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TarjetaPaciente(p: PacienteStaff, verContacto: Boolean, onClick: () -> Unit) {
     val c = Sania.colors
@@ -327,6 +362,13 @@ private fun TarjetaPaciente(p: PacienteStaff, verContacto: Boolean, onClick: () 
                 ?: activo?.procedimiento
             if (!sub.isNullOrBlank()) {
                 Text(sub, color = c.textoSuave, fontSize = 12.sp, maxLines = 1)
+            }
+            // 🏷️ Etiquetas (grupos): chips chicos de color estable.
+            if (p.etiquetas.isNotEmpty()) {
+                FlowRow(Modifier.padding(top = 3.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    p.etiquetas.take(4).forEach { ChipEtiqueta(it) }
+                    if (p.etiquetas.size > 4) Text("+${p.etiquetas.size - 4}", color = c.textoSuave, fontSize = 10.sp)
+                }
             }
             // Contacto (solo gestor): DNI · teléfono
             if (verContacto) {
@@ -382,5 +424,55 @@ private fun ChipFiltro(texto: String, activo: Boolean, onClick: () -> Unit) {
     ) {
         Text(texto, color = if (activo) c.sobreNavy else c.texto, fontSize = 11.sp,
             fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal)
+    }
+}
+
+private fun textoDiagnostico(d: pe.saniape.app.data.staff.OpcionDiagnostico): String =
+    d.codigo?.takeIf { it.isNotBlank() }?.let { "$it · ${d.diagnostico}" } ?: d.diagnostico
+
+/** Chip de una etiqueta del paciente (mismo color en la lista y en la ficha). */
+@Composable
+internal fun ChipEtiqueta(texto: String, onQuitar: (() -> Unit)? = null, icono: Boolean = false) {
+    val col = androidx.compose.ui.graphics.Color(pe.saniape.app.data.staff.colorEtiqueta(texto))
+    Row(
+        Modifier.clip(RoundedCornerShape(Sania.shape.pill.dp)).background(col.copy(alpha = 0.10f))
+            .border(1.dp, col.copy(alpha = 0.35f), RoundedCornerShape(Sania.shape.pill.dp))
+            .then(if (onQuitar != null) Modifier.clickable { onQuitar() } else Modifier)
+            .padding(horizontal = if (onQuitar != null) 10.dp else 7.dp, vertical = if (onQuitar != null) 6.dp else 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text((if (icono) "🏷️ " else "") + texto, color = col, fontSize = if (onQuitar != null || icono) 12.sp else 10.sp, fontWeight = FontWeight.Bold)
+        if (onQuitar != null) Text("  ✕", color = col, fontSize = 11.sp)
+    }
+}
+
+/** Lista de opciones de un filtro (sin LazyColumn dentro de un AlertDialog: ver la regla de intrínsecos). */
+@Composable
+private fun DialogoOpcionesFiltro(
+    titulo: String, opciones: List<Pair<String, String>>, elegido: String?,
+    onElegir: (String?) -> Unit, onCerrar: () -> Unit,
+) {
+    val c = Sania.colors
+    androidx.compose.ui.window.Dialog(onDismissRequest = onCerrar) {
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(c.superficie).padding(14.dp)) {
+            Text(titulo, color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                if (opciones.isEmpty()) Text("No hay opciones todavía.", color = c.textoSuave, fontSize = 13.sp)
+                opciones.forEach { (valor, texto) ->
+                    val activo = valor == elegido
+                    Text((if (activo) "✓ " else "") + texto, color = if (activo) c.navy else c.texto, fontSize = 14.sp,
+                        fontWeight = if (activo) FontWeight.Bold else FontWeight.Normal,
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { onElegir(if (activo) null else valor) }
+                            .padding(horizontal = 8.dp, vertical = 12.dp))
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
+                if (elegido != null) Text("Quitar filtro", color = c.error, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onElegir(null) }.padding(10.dp))
+                Text("Cerrar", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onCerrar() }.padding(10.dp))
+            }
+        }
     }
 }

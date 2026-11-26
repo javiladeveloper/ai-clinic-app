@@ -123,6 +123,8 @@ fun PantallaPacientesNuevos(
     var mes by remember { mutableStateOf(meses.firstOrNull()?.id ?: hoyClinicaIso().take(7)) }
     var terapeuta by remember { mutableStateOf<String?>(null) }
     var etapa by remember { mutableStateOf<String?>(null) }
+    // Por tratamiento (FISIOSALUD 25/11/2026): «qué pacientes nuevos llegaron por qué tratamiento».
+    var servicio by remember { mutableStateOf<String?>(null) }
     var resultado by remember { mutableStateOf<ResultadoPacientesNuevos?>(null) }
     var cargando by remember { mutableStateOf(true) }
     var refrescando by remember { mutableStateOf(false) }
@@ -198,7 +200,7 @@ fun PantallaPacientesNuevos(
                             ) {
                                 meses.forEach { m ->
                                     ChipFiltro(m.etiqueta, activo = m.id == mes) {
-                                        if (m.id != mes) { mes = m.id; etapa = null }
+                                        if (m.id != mes) { mes = m.id; etapa = null; servicio = null }
                                     }
                                 }
                             }
@@ -209,11 +211,11 @@ fun PantallaPacientesNuevos(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
                                 ChipFiltro("Todos los profesionales", activo = terapeuta == null) {
-                                    terapeuta = null; etapa = null
+                                    terapeuta = null; etapa = null; servicio = null
                                 }
                                 terapeutas.forEach { t ->
                                     ChipFiltro(t.nombre, activo = t.id == terapeuta) {
-                                        terapeuta = t.id; etapa = null
+                                        terapeuta = t.id; etapa = null; servicio = null
                                     }
                                 }
                             }
@@ -252,16 +254,32 @@ fun PantallaPacientesNuevos(
                                         )
                                     }
                                 } else {
+                                    // Con un tratamiento elegido, la lista Y el embudo son solo de esos pacientes.
+                                    val servicios = pe.saniape.app.data.staff.serviciosDeFilasNuevos(rep.filas)
+                                    val filasServicio = pe.saniape.app.data.staff.filtrarPorServicioNuevos(rep.filas, servicio)
+                                    if (servicios.size > 1 || servicio != null) item(key = "servicios") {
+                                        Row(
+                                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        ) {
+                                            ChipFiltro("Todos los tratamientos", activo = servicio == null) { servicio = null; etapa = null }
+                                            servicios.forEach { o ->
+                                                ChipFiltro("${o.etiqueta} (${o.n})", activo = o.valor == servicio) {
+                                                    servicio = if (servicio == o.valor) null else o.valor; etapa = null
+                                                }
+                                            }
+                                        }
+                                    }
                                     item(key = "embudo") {
                                         TarjetaEmbudoNuevos(
-                                            embudo = rep.embudo,
+                                            embudo = if (servicio == null) rep.embudo else pe.saniape.app.data.staff.embudoDeFilasNuevos(filasServicio),
                                             etiqueta = rep.periodo.etiqueta,
-                                            filas = rep.filas,
+                                            filas = filasServicio,
                                             etapa = etapa,
                                             onEtapa = { etapa = if (etapa == it) null else it },
                                         )
                                     }
-                                    val visibles = filtrarPorEtapa(rep.filas, etapa)
+                                    val visibles = filtrarPorEtapa(filasServicio, etapa)
                                     item(key = "filtro") {
                                         Row(
                                             Modifier.fillMaxWidth().padding(top = 4.dp),

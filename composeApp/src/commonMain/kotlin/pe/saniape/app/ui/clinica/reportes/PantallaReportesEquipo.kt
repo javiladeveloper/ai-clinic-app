@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -410,6 +411,96 @@ fun PantallaServiciosTratamientos(ctx: ContextoStaff, onSalir: () -> Unit, onVis
                 if (vs.size > 30 && !verTodos) item(key = "v-mas") {
                     Text("Ver los ${vs.size}", color = c.navy, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.clickable { verTodos = true }.padding(vertical = 8.dp))
+                }
+            }
+        }
+    }
+}
+
+// ── 💳 Métodos de pago (25/11/2026, como la web) ────────────────────────────
+
+/**
+ * Cuánto ingresó por cada método (efectivo, Yape, tarjeta…), cada uno por separado, por día,
+ * semana o mes. Gemelo de components/reportes/MetodosPago.tsx. Solo con permiso de finanzas.
+ * ⬇ Excel (CSV) y 🖨 PDF, como todo reporte.
+ */
+@Composable
+fun PantallaMetodosPago(ctx: ContextoStaff, onSalir: () -> Unit, onVista: (VistaReportes) -> Unit) {
+    val c = Sania.colors
+    val acciones = pe.saniape.app.ui.recordarAcciones()
+    val sedeEstado by SedeActiva.estado.collectAsState()
+    val sede = sedeEstado.filtro?.sedeId
+    var periodo by remember { mutableStateOf(rangoDelMes(hoyClinicaIso())) }
+    var agrupar by remember { mutableStateOf(pe.saniape.app.data.staff.AgruparMetodos.DIA) }
+    var filas by remember { mutableStateOf<List<pe.saniape.app.data.staff.FilaMetodo>?>(null) }
+    var error by remember { mutableStateOf(false) }
+    var cargando by remember { mutableStateOf(true) }
+    LaunchedEffect(periodo, agrupar, sede) {
+        cargando = true
+        val r = pe.saniape.app.data.staff.MetodosPagoRepo.leer(periodo, agrupar, sede)
+        error = r == null; filas = r; cargando = false
+    }
+    MarcoReporte(ctx, "💳 Métodos de pago", VistaReportes.Metodos, onSalir, onVista, periodo, { periodo = it }) {
+        item(key = "agrupar") {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Ver por", color = c.textoSuave, fontSize = 12.sp)
+                pe.saniape.app.data.staff.AgruparMetodos.entries.forEach { a -> ChipPeriodo(a.etiqueta, agrupar == a) { agrupar = a } }
+            }
+        }
+        val m = filas?.let { pe.saniape.app.data.staff.matrizMetodos(it) }
+        when {
+            cargando && m == null -> item(key = "cargando") { Mensaje("Cargando…") }
+            error -> item(key = "error") { Mensaje("No se pudo leer el reporte. Revisa tu conexión.", error = true) }
+            m == null || m.metodos.isEmpty() -> item(key = "vacio") { Mensaje("No hubo ingresos en este periodo.") }
+            else -> {
+                item(key = "exportar") {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ChipPeriodo("⬇ Excel", false) {
+                            acciones.compartirArchivo("metodos-de-pago-${periodo.desde}-a-${periodo.hasta}.csv",
+                                pe.saniape.app.data.staff.csvMetodos(m, agrupar), "text/csv")
+                        }
+                        ChipPeriodo("🖨 PDF", false) {
+                            acciones.abrirHtml(pe.saniape.app.data.staff.htmlMetodos(m, agrupar, "Métodos de pago · ${ctx.clinicaNombre}",
+                                "Del ${fechaCorta(periodo.desde)} al ${fechaCorta(periodo.hasta)} · por ${agrupar.etiqueta.lowercase()}") { textoSoles(it) },
+                                "Métodos de pago")
+                        }
+                    }
+                }
+                item(key = "resumen") {
+                    Tarjeta {
+                        Text("Total ingresado: ${textoSoles(m.total)}", color = c.texto, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Text("${m.cobros} cobros", color = c.textoSuave, fontSize = 12.sp)
+                        Spacer(Modifier.height(8.dp))
+                        m.metodos.forEach { metodo ->
+                            val t = m.porMetodo.getValue(metodo)
+                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(metodo, color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    Text("${t.cobros} cobro${if (t.cobros == 1) "" else "s"} · ${t.porcentaje}%", color = c.textoSuave, fontSize = 11.sp)
+                                    pe.saniape.app.ui.clinica.BarraProgreso((t.porcentaje / 100.0).toFloat(), modifier = Modifier.fillMaxWidth().padding(top = 3.dp))
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                Text(textoSoles(t.total), color = c.ok, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+                items(m.periodos.reversed(), key = { "p-$it" }) { p ->
+                    Tarjeta {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(pe.saniape.app.data.staff.etiquetaPeriodoMetodo(p, agrupar), color = c.texto, fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Text(textoSoles(m.totalPeriodo[p] ?: 0.0), color = c.ok, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        m.metodos.forEach { metodo ->
+                            val v = m.celdas[p]?.get(metodo) ?: return@forEach
+                            Row(Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
+                                Text(metodo, color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                Text(textoSoles(v), color = c.texto, fontSize = 12.sp)
+                            }
+                        }
+                    }
                 }
             }
         }
