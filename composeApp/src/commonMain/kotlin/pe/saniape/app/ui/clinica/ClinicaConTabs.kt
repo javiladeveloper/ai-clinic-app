@@ -103,6 +103,8 @@ fun ClinicaConTabs(
     // Sub-pantallas accesibles desde "Más" (módulos sin tab propio).
     var verSesiones by remember { mutableStateOf(false) }
     var verCaja by remember { mutableStateOf(false) }
+    // 🕘 Asistencia (control de asistencia, 26/11/2026): solo con el agregado activo.
+    var verAsistencia by remember { mutableStateOf(false) }
     // 🤖 Bandeja de Sani: la entrada solo aparece si la clínica tiene Sani (leadai_activo).
     var verSani by remember { mutableStateOf(false) }
     var saniActivo by remember { mutableStateOf(false) }
@@ -186,7 +188,7 @@ fun ClinicaConTabs(
 
     // Con un flujo a pantalla completa abierto, el "atrás" es de ese flujo (tiene
     // su propio ManejarAtras, con la confirmación de salir sin guardar).
-    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verSani || verEspecialidades || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verPresupuestos || verCampanias || verActividad || verMiPlan || verMiCalendario || verAjustes || horarioDe != null || tab != TabClinica.Inicio)) {
+    ManejarAtras(activo = !pantallaCompleta && (verSesiones || verCaja || verAsistencia || verSani || verEspecialidades || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verPresupuestos || verCampanias || verActividad || verMiPlan || verMiCalendario || verAjustes || horarioDe != null || tab != TabClinica.Inicio)) {
         when {
             verPresupuestos -> verPresupuestos = false
             verSani -> verSani = false
@@ -203,6 +205,7 @@ fun ClinicaConTabs(
             verProfesionales -> verProfesionales = false
             verSesiones -> verSesiones = false
             verCaja -> verCaja = false
+            verAsistencia -> verAsistencia = false
             verFinanzas -> verFinanzas = false
             verEspecialidades -> verEspecialidades = false
             verReportes -> vistaReportes = null
@@ -275,7 +278,7 @@ fun ClinicaConTabs(
     val verPacientes = contexto.puede("pacientes") || contexto.modoClinico
 
     fun cerrarOverlays() {
-        verSesiones = false; verCaja = false; verEspecialidades = false; verSani = false
+        verSesiones = false; verCaja = false; verAsistencia = false; verEspecialidades = false; verSani = false
         verFinanzas = false
         verProfesionales = false; horarioDe = null
         vistaReportes = null
@@ -326,7 +329,7 @@ fun ClinicaConTabs(
     LaunchedEffect(contexto.clinicaId, contexto.puede("sani")) {
         saniActivo = contexto.puede("sani") && pe.saniape.app.data.staff.SaniBandejaRepo.leadaiActivo(contexto.clinicaId)
     }
-    val hayOverlay = verSani || verSesiones || verCaja || verEspecialidades || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verPresupuestos || verCampanias || verActividad || verMiPlan || verMiCalendario || verAjustes || horarioDe != null
+    val hayOverlay = verSani || verSesiones || verCaja || verAsistencia || verEspecialidades || verReportes || verProfesionales || verServicios || verFinanzas || verEquipo || verComisiones || verRetencion || verPresupuestos || verCampanias || verActividad || verMiPlan || verMiCalendario || verAjustes || horarioDe != null
     val tabs = buildList {
         add(TabClinica.Inicio)
         if (verAgenda) add(TabClinica.Agenda)
@@ -407,6 +410,7 @@ fun ClinicaConTabs(
                         onCambioClinica = { pe.saniape.app.data.staff.DashboardRepo.limpiarCache(); pe.saniape.app.data.staff.OdontogramaRepo.limpiarCache(); pe.saniape.app.data.staff.FotosRepo.limpiarCache(); pe.saniape.app.data.staff.ChipsRepo.limpiar(); pe.saniape.app.data.staff.FrasesCampoRepo.limpiar(); tab = TabClinica.Inicio; intento++ },
                         onAbrirSesiones = if (contexto.puede("sesiones")) ({ verSesiones = true }) else null,
                         onAbrirCaja = if (contexto.puede("pagos")) ({ verCaja = true }) else null,
+                        onAbrirAsistencia = if (contexto.asistenciaActiva) ({ verAsistencia = true }) else null,
                         onAbrirSani = if (saniActivo) ({ verSani = true }) else null,
                         // 🧾 Presupuestos pendientes: mismo permiso que ver presupuestos (el plan lo muestra la pantalla).
                         onAbrirPresupuestos = if (pe.saniape.app.data.staff.puedeVerPresupuestos { contexto.puede(it) }) ({ verPresupuestos = true }) else null,
@@ -455,6 +459,12 @@ fun ClinicaConTabs(
                 Box(Modifier.fillMaxSize().background(c.fondo)) {
                     pe.saniape.app.tutoriales.PantallaTutorial("Sesiones") { PantallaSesiones(ctx = contexto) }
                 }
+            }
+            AnimatedVisibility(
+                visible = verAsistencia && contexto.asistenciaActiva,
+                enter = entrarDetalle(), exit = salirDetalle(),
+            ) {
+                Box(Modifier.fillMaxSize().background(c.fondo)) { PantallaAsistencia(ctx = contexto) }
             }
             AnimatedVisibility(
                 visible = verCaja && contexto.puede("pagos"),

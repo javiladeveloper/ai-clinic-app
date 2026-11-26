@@ -219,6 +219,9 @@ data class ContextoStaff(
     val mapaGineco: MapaGineco = MapaGineco(),
     val clinicas: List<ClinicaRef>,
     val tienePortal: Boolean,
+    /** 🕘 Control de asistencia y 🧰 inventario clínico: agregados activos en la clínica (26/11/2026). Un backend viejo no los manda → false. */
+    val asistenciaActiva: Boolean = false,
+    val inventarioActivo: Boolean = false,
     /**
      * Multisede (lo resuelve la web en /api/staff/contexto con la MISMA regla que
      * SedeProvider: plan + interruptor + 2 sedes activas). Un backend viejo no

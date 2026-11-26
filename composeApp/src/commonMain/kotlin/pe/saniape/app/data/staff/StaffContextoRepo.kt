@@ -274,6 +274,8 @@ object StaffContextoRepo {
                 ClinicaRef(id, c.str("nombre") ?: "Clínica")
             },
             tienePortal = o.bool("tienePortal"),
+            asistenciaActiva = o.bool("asistenciaActiva"),
+            inventarioActivo = o.bool("inventarioActivo"),
             // Multisede: parseo tolerante. Sin los campos (backend viejo, o
             // clínica de un solo local) todo queda en su default y no cambia nada.
             multiSede = o.bool("multiSede"),

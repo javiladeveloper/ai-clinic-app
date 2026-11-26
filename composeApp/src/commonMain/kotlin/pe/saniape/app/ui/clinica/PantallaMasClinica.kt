@@ -56,6 +56,8 @@ fun PantallaMasClinica(
     onCambioClinica: () -> Unit = {},
     onAbrirSesiones: (() -> Unit)? = null,
     onAbrirCaja: (() -> Unit)? = null,
+    // 🕘 Asistencia: marcar entrada/salida (solo con el agregado activo).
+    onAbrirAsistencia: (() -> Unit)? = null,
     // 🤖 Sani: la bandeja de conversaciones del bot (solo con Sani activo y permiso "sani").
     onAbrirSani: (() -> Unit)? = null,
     // 🧾 Presupuestos pendientes (ver: sesiones, pagos o pacientes; el plan lo muestra la pantalla).
@@ -144,7 +146,7 @@ fun PantallaMasClinica(
                 Spacer(Modifier.height(Sania.dim.lg))
 
                 // Módulos clínicos sin tab propio (Sesiones, Caja…)
-                if (onAbrirSesiones != null || onAbrirCaja != null || onAbrirSani != null || onAbrirPresupuestos != null || onAbrirMiHorario != null || onAbrirMiCalendario != null) {
+                if (onAbrirSesiones != null || onAbrirCaja != null || onAbrirAsistencia != null || onAbrirSani != null || onAbrirPresupuestos != null || onAbrirMiHorario != null || onAbrirMiCalendario != null) {
                     Text("MÓDULOS", color = c.textoSuave, fontSize = Sania.txt.mini, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(Sania.dim.sm))
                     if (onAbrirSesiones != null) {
@@ -174,6 +176,7 @@ fun PantallaMasClinica(
                         }
                         Spacer(Modifier.height(Sania.dim.sm))
                     }
+                    if (onAbrirAsistencia != null) FilaMas("🕘  Asistencia · marcar entrada y salida", onClick = onAbrirAsistencia)
                     if (onAbrirSani != null) FilaMas("🤖  Sani · conversaciones", onClick = onAbrirSani)
                     if (onAbrirPresupuestos != null) {
                         FilaMas("🧾  Presupuestos" + if (ctx.can("presupuestos")) "" else "  🔒", onClick = onAbrirPresupuestos)
