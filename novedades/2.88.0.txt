@@ -1,0 +1,5 @@
+La asistencia se marca solo desde la clínica.
+---
+• 📍 Asistencia: para marcar tu entrada o tu salida, la app revisa que estés en la clínica. Te pedirá permiso de ubicación la primera vez; sin la ubicación encendida no deja marcar.
+• Si estás lejos, te dice a qué distancia estás.
+• Escanear el QR de recepción también exige estar en la clínica.
