@@ -1480,6 +1480,8 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
      * /citas). AVISO que no bloquea; va después de "⚖️ Registrar medidas".
      */
     var ofrecerPie by mutableStateOf<CitaStaff?>(null); private set
+    /** Qué dice la barra: tamizaje, evaluación o seguimiento (27/11/2026: toda atención de podología). */
+    var ofertaPie by mutableStateOf(pe.saniape.app.data.staff.OfertaPie.Evaluacion); private set
     fun cerrarOfertaPie() { ofrecerPie = null }
 
     /**
@@ -1789,15 +1791,16 @@ class AgendaViewModel(private val ctx: ContextoStaff) : ViewModel() {
                     )) {
                     ofrecerMedidas = cita.copy(estado = "Completada")
                 }
-                // Podología: "🦶 Evaluar el pie" si el diagnóstico es de pie diabético.
+                // Podología: "🦶" tras completar TODA atención (evaluación o sesión de seguimiento);
+                // con diagnóstico de pie diabético, el texto habla del tamizaje.
                 if (accion == AccionCita.Completar && !completadaEncolada && cita.pacienteId != null && verHc &&
                     (ctx.puede("pacientes") || ctx.puede("sesiones")) &&
-                    pe.saniape.app.data.staff.diagnosticoPideEvaluacionPie(diagnostico) &&
                     pe.saniape.app.data.staff.citaEsPodologia(
                         ctx.mapaPodologia, cita.especialidadId, cita.especialidadServicioId,
                         cita.terapeutaId?.let { espsPorTerapeuta[it] },
                     )
                 ) {
+                    ofertaPie = pe.saniape.app.data.staff.ofertaPieTrasCompletar(cita.tipo, diagnostico)
                     ofrecerPie = cita.copy(estado = "Completada")
                 }
                 // Fisioterapia: la evaluación estructurada (opcional). Aparte, para no

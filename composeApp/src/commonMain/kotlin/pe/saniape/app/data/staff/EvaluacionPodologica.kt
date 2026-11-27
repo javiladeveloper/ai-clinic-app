@@ -657,6 +657,29 @@ fun diagnosticoPideEvaluacionPie(diagnostico: String?): Boolean {
     return diabeticoPorAntecedentes(t) || Regex("pie (de|en) riesgo", RegexOption.IGNORE_CASE).containsMatchIn(t)
 }
 
+/**
+ * 🦶 EL PIE DENTRO DEL FLUJO (27/11/2026, Jonathan: «el pie sí dentro de la app» y «pie en las
+ * sesiones de seguimiento»). La barra "🦶" salía solo con diagnóstico de pie diabético: para una
+ * uña encarnada, hongos o callos había que saber que la pestaña existía. Ahora sale tras
+ * completar TODA atención de podología, y dice qué toca según el caso. Gemelo de la tarjeta de
+ * «✓ Completar evaluación» / «✓ Completar sesión» de la web.
+ */
+enum class OfertaPie { Tamizaje, Evaluacion, Seguimiento }
+
+/** Qué se ofrece al completar una atención de podología (la Sesión es seguimiento). */
+fun ofertaPieTrasCompletar(tipo: String?, diagnostico: String?): OfertaPie = when {
+    diagnosticoPideEvaluacionPie(diagnostico) -> OfertaPie.Tamizaje
+    tipo == "Sesión" -> OfertaPie.Seguimiento
+    else -> OfertaPie.Evaluacion
+}
+
+/** Título y detalle de la barra, sin el nombre del paciente. */
+fun textoOfertaPie(o: OfertaPie): Pair<String, String> = when (o) {
+    OfertaPie.Tamizaje -> "¿Evaluamos el pie?" to "mapa del pie y tamizaje de pie diabético (IWGDF): riesgo y cada cuánto controlarlo."
+    OfertaPie.Evaluacion -> "¿Marcamos el pie?" to "marca en el dibujo lo que encontraste: uñas, callos, heridas, la pisada."
+    OfertaPie.Seguimiento -> "¿Cómo va el pie?" to "copia el dibujo anterior y cambia solo lo que mejoró o empeoró."
+}
+
 /** Recomendaciones para el informe según la categoría (educación IWGDF 2023). */
 fun recomendacionesRiesgo(categoria: Int?): List<String> {
     if (categoria == null) return emptyList()

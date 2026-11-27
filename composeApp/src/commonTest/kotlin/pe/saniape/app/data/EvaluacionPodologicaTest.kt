@@ -462,4 +462,17 @@ class EvaluacionPodologicaTest {
         listOf("Onicocriptosis", "Uña encarnada", "Heloma plantar", "No diabético, hiperqueratosis", "", null)
             .forEach { kotlin.test.assertFalse(pe.saniape.app.data.staff.diagnosticoPideEvaluacionPie(it), it.toString()) }
     }
+
+    // 27/11/2026, Jonathan: «el pie sí dentro de la app» y «pie en las sesiones de seguimiento».
+    @Test
+    fun el_pie_se_ofrece_tras_toda_atencion_de_podologia() {
+        // Evaluación por una uña encarnada (antes NO se ofrecía: no dice «diabético»).
+        assertEquals(pe.saniape.app.data.staff.OfertaPie.Evaluacion, pe.saniape.app.data.staff.ofertaPieTrasCompletar("Evaluación", "Onicocriptosis hallux derecho"))
+        // Sesión de seguimiento de hongos: cómo va.
+        assertEquals(pe.saniape.app.data.staff.OfertaPie.Seguimiento, pe.saniape.app.data.staff.ofertaPieTrasCompletar("Sesión", null))
+        // Con pie diabético manda el tamizaje, también en una sesión.
+        assertEquals(pe.saniape.app.data.staff.OfertaPie.Tamizaje, pe.saniape.app.data.staff.ofertaPieTrasCompletar("Sesión", "Pie diabético"))
+        assertEquals("¿Cómo va el pie?", pe.saniape.app.data.staff.textoOfertaPie(pe.saniape.app.data.staff.OfertaPie.Seguimiento).first)
+        assertEquals("¿Marcamos el pie?", pe.saniape.app.data.staff.textoOfertaPie(pe.saniape.app.data.staff.OfertaPie.Evaluacion).first)
+    }
 }

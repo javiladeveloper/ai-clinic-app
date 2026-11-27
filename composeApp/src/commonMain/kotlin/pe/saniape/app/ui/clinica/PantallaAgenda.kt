@@ -2111,6 +2111,7 @@ fun PantallaAgenda(
             pe.saniape.app.ui.clinica.agenda.modales.BarraOfertaPie(
                 pacienteNombre = cp.pacienteNombre,
                 cargando = cargandoFicha,
+                oferta = vm.ofertaPie,
                 onEvaluar = { vm.cerrarOfertaPie(); abrirFichaPie(cp) },
                 onCerrar = { vm.cerrarOfertaPie() },
             )

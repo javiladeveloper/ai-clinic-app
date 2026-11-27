@@ -996,6 +996,7 @@ fun BarraOfertaMedidas(
 fun BarraOfertaPie(
     pacienteNombre: String?,
     cargando: Boolean,
+    oferta: pe.saniape.app.data.staff.OfertaPie = pe.saniape.app.data.staff.OfertaPie.Tamizaje,
     onEvaluar: () -> Unit,
     onCerrar: () -> Unit,
 ) {
@@ -1014,10 +1015,10 @@ fun BarraOfertaPie(
         ) {
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
-                    Text("¿Evaluamos el pie?", color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    val (titulo, detalle) = pe.saniape.app.data.staff.textoOfertaPie(oferta)
+                    Text(titulo, color = c.texto, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     Text(
-                        (pacienteNombre?.takeIf { it.isNotBlank() }?.let { "$it: " } ?: "") +
-                            "mapa del pie y tamizaje de pie diabético (IWGDF): riesgo y cada cuánto controlarlo.",
+                        (pacienteNombre?.takeIf { it.isNotBlank() }?.let { "$it: " } ?: "") + detalle,
                         color = c.textoSuave, fontSize = 12.sp,
                     )
                 }
