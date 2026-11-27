@@ -1,0 +1,4 @@
+Los insumos de cada servicio ya vienen anotados al cerrar la sesión.
+---
+• 🧰 Inventario clínico: al completar una sesión, lo que ese servicio suele gastar (gel, guantes…) aparece ya escrito en «¿Se usó algo del inventario?». Solo corriges si fue distinto.
+• 🦶 Podología: al completar cualquier atención de podología, la app te dice qué toca: marcar el pie, anotar cómo va o hacer el tamizaje.
