@@ -16,6 +16,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
@@ -83,6 +84,36 @@ fun parsearMiAsistencia(o: JsonObject): MiAsistencia {
     )
 }
 
+/** Un concepto de un pago de planilla («Faltas (1)», resta). */
+data class LineaPago(val concepto: String, val monto: Double, val resta: Boolean)
+
+/**
+ * Un pago de planilla YA HECHO de quien mira (26/11/2026), tal como lo devuelve
+ * /api/staff/planilla/mia: el periodo y los conceptos vienen en texto del servidor.
+ */
+data class MiPagoPlanilla(
+    val id: String, val periodo: String, val neto: Double,
+    /** «30/11/2026», o null. */
+    val pagadoEl: String?, val metodo: String?, val lineas: List<LineaPago>,
+)
+
+/** Parseo tolerante de «Mis pagos» (sin el agregado o sin pagos: lista vacía). Puro. */
+fun parsearMisPagos(o: JsonObject?): List<MiPagoPlanilla> =
+    (o?.get("pagos") as? JsonArray).orEmpty().mapNotNull {
+        val p = it as? JsonObject ?: return@mapNotNull null
+        MiPagoPlanilla(
+            id = p.txt("id") ?: return@mapNotNull null,
+            periodo = p.txt("periodo") ?: return@mapNotNull null,
+            neto = (p["neto"] as? JsonPrimitive)?.doubleOrNull ?: 0.0,
+            pagadoEl = p.txt("pagado_at")?.take(10)?.split("-")?.takeIf { f -> f.size == 3 }?.reversed()?.joinToString("/"),
+            metodo = p.txt("metodo_pago"),
+            lineas = (p["lineas"] as? JsonArray).orEmpty().mapNotNull { l ->
+                val x = l as? JsonObject ?: return@mapNotNull null
+                LineaPago(x.txt("concepto") ?: return@mapNotNull null, (x["monto"] as? JsonPrimitive)?.doubleOrNull ?: 0.0, x.si("resta"))
+            },
+        )
+    }
+
 /** El cuerpo de marcar: con la llave del QR escaneado va como origen «qr». Puro. */
 fun cuerpoMarcar(qr: String?): JsonObject = buildJsonObject {
     put("accion", "marcar")
@@ -123,6 +154,19 @@ object AsistenciaRepo {
             throw e
         } catch (_: Exception) {
             null
+        }
+    }
+
+    /** 💵 Mis pagos de planilla ya hechos. Lista vacía si no hay, no hay red o el servidor aún no lo tiene. */
+    suspend fun misPagos(): List<MiPagoPlanilla> {
+        val tk = token() ?: return emptyList()
+        return try {
+            val (ok, obj) = leer(http.get("${Supabase.SITE_URL}/api/staff/planilla/mia") { header("Authorization", "Bearer $tk") })
+            if (ok) parsearMisPagos(obj) else emptyList()
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            emptyList()
         }
     }
 

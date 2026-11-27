@@ -51,10 +51,14 @@ fun PantallaAsistencia(ctx: ContextoStaff) {
     var cargando by remember { mutableStateOf(true) }
     var marcando by remember { mutableStateOf(false) }
 
+    // 💵 Sus pagos de planilla ya hechos (cada quien, los suyos).
+    var pagos by remember { mutableStateOf<List<pe.saniape.app.data.staff.MiPagoPlanilla>>(emptyList()) }
+
     suspend fun cargar() {
         val r = AsistenciaRepo.mia()
         if (r != null) datos = r
         cargando = false
+        if (r?.activa == true && r.enLista) pagos = AsistenciaRepo.misPagos()
     }
     LaunchedEffect(ctx.clinicaId) { cargando = true; cargar() }
 
@@ -166,6 +170,30 @@ fun PantallaAsistencia(ctx: ContextoStaff) {
                             Dato("Faltas", d.mes.faltas.toString())
                             Dato("Horas trabajadas", d.mes.horas)
                             if (d.mes.extra != "0 min") Dato("Horas extra", d.mes.extra)
+                        }
+                    }
+                    if (pagos.isNotEmpty()) {
+                        item { Text("💵 Mis pagos", color = c.textoSuave, fontSize = Sania.txt.pequeno, modifier = Modifier.padding(top = Sania.dim.sm)) }
+                        items(pagos, key = { "pago-" + it.id }) { p ->
+                            Column(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(Sania.shape.md.dp)).background(c.superficie)
+                                    .border(1.dp, c.borde, RoundedCornerShape(Sania.shape.md.dp)).padding(Sania.dim.lg),
+                            ) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(p.periodo, color = c.texto, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.SemiBold)
+                                        Text(
+                                            "Pagado" + (p.pagadoEl?.let { " el $it" } ?: "") + (p.metodo?.let { " · $it" } ?: ""),
+                                            color = c.textoSuave, fontSize = Sania.txt.pequeno,
+                                        )
+                                    }
+                                    Text(pe.saniape.app.data.staff.dineroActivo(p.neto), color = c.ok, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                }
+                                if (p.lineas.size > 1) {
+                                    Spacer(Modifier.height(6.dp))
+                                    p.lineas.forEach { l -> Dato(l.concepto, (if (l.resta) "− " else "") + pe.saniape.app.data.staff.dineroActivo(l.monto)) }
+                                }
+                            }
                         }
                     }
                     if (d.dias.isNotEmpty()) {
