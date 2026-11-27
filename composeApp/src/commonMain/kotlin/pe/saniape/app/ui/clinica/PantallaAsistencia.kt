@@ -88,13 +88,26 @@ fun PantallaAsistencia(ctx: ContextoStaff) {
         else resultadoQr = false to "Escaneaste el QR, pero no estás en la lista de personal: no se marcó nada."
     }
 
+    // 💵 Planilla (solo Admin): ver el periodo, armarlo y pagar. Atrás vuelve a Asistencia.
+    var verPlanilla by remember { mutableStateOf(false) }
+    pe.saniape.app.ui.ManejarAtras(activo = verPlanilla) { verPlanilla = false }
+    if (verPlanilla) {
+        PantallaPlanilla(hoy = pe.saniape.app.data.staff.hoyClinicaIso(), onCerrar = { verPlanilla = false })
+        return
+    }
+
     Surface(color = c.fondo, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().background(c.navyDark).padding(horizontal = Sania.dim.xl, vertical = Sania.dim.lg),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("🕘 Asistencia", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold)
+                Text("🕘 Asistencia", color = c.sobreNavy, fontSize = Sania.txt.subtitulo, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                if (ctx.esAdmin && datos?.activa == true) {
+                    Text("💵 Planilla", color = c.sobreNavy, fontSize = Sania.txt.cuerpo, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clip(RoundedCornerShape(50)).border(1.dp, c.sobreNavy, RoundedCornerShape(50))
+                            .clickable { verPlanilla = true }.padding(horizontal = 14.dp, vertical = 6.dp))
+                }
             }
 
             val d = datos

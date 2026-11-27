@@ -1,0 +1,5 @@
+Planilla y tus pagos, ahora en la app.
+---
+• 💵 Mis pagos: en Asistencia ves cada pago de sueldo que te hicieron, con sus descuentos, bonos y adelantos.
+• Administrador: desde Asistencia entra a «Planilla» para ver el periodo, actualizarlo con la asistencia y registrar los pagos desde el celular.
+• Los turnos de noche ya marcan bien la salida al día siguiente.
