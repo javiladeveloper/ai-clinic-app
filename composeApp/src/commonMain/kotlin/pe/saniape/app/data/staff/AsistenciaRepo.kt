@@ -114,11 +114,22 @@ fun parsearMisPagos(o: JsonObject?): List<MiPagoPlanilla> =
         )
     }
 
-/** El cuerpo de marcar: con la llave del QR escaneado va como origen «qr». Puro. */
-fun cuerpoMarcar(qr: String?): JsonObject = buildJsonObject {
+/**
+ * El cuerpo de marcar: con la llave del QR escaneado va como origen «qr». Lleva dónde
+ * está el celular: desde el 27/11/2026 el servidor solo acepta la marca si es dentro
+ * de la clínica. Puro.
+ */
+fun cuerpoMarcar(qr: String?, lat: Double? = null, lng: Double? = null, precision: Double? = null): JsonObject = buildJsonObject {
     put("accion", "marcar")
     if (qr.isNullOrBlank()) put("origen", "app") else { put("origen", "qr"); put("qr", qr) }
+    if (lat != null && lng != null) {
+        put("lat", lat); put("lng", lng)
+        if (precision != null && precision >= 0) put("precision", precision)
+    }
 }
+
+/** Lo que se le dice a quien no dio la ubicación: sin ella no hay marca. */
+const val MENSAJE_SIN_UBICACION = "La asistencia se marca solo desde la clínica. Enciende la ubicación del celular y dale permiso a Sania."
 
 /** «✓ Entrada registrada a las 08:02» a partir de la respuesta de marcar. Puro. */
 fun mensajeDeMarca(o: JsonObject?): String {
@@ -171,13 +182,13 @@ object AsistenciaRepo {
     }
 
     /** Marca la entrada o la salida que toque (lo decide el servidor). */
-    suspend fun marcar(qr: String? = null): ResultadoMarca {
+    suspend fun marcar(qr: String? = null, lat: Double? = null, lng: Double? = null, precision: Double? = null): ResultadoMarca {
         val tk = token() ?: return ResultadoMarca(false, "Tu sesión expiró. Vuelve a entrar.")
         return try {
             val (ok, obj) = leer(http.post("${Supabase.SITE_URL}/api/staff/asistencia") {
                 header("Authorization", "Bearer $tk"); contentType(ContentType.Application.Json)
                 // Con la llave del QR de la recepción, la marca queda como «QR» (el servidor la valida).
-                setBody(cuerpoMarcar(qr).toString())
+                setBody(cuerpoMarcar(qr, lat, lng, precision).toString())
             })
             if (ok) ResultadoMarca(true, mensajeDeMarca(obj))
             else ResultadoMarca(false, obj?.txt("error")?.takeIf { it.isNotBlank() } ?: "No se pudo marcar.")

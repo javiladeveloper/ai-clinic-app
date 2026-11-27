@@ -65,15 +65,38 @@ fun PantallaAsistencia(ctx: ContextoStaff) {
     // Lo que pasó al escanear el QR: se muestra grande, arriba.
     var resultadoQr by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
 
-    fun marcar(qr: String? = null) {
-        if (marcando) return
-        marcando = true
+    // 📍 SOLO DESDE LA CLÍNICA (27/11/2026): primero se pide dónde está el celular y recién
+    // con eso se marca; el servidor decide si está en la clínica. Sin ubicación no hay marca.
+    var qrEnCurso by remember { mutableStateOf<String?>(null) }
+    var pedido by remember { mutableStateOf(0) }
+    fun terminarSinUbicacion() {
+        if (qrEnCurso != null) resultadoQr = false to pe.saniape.app.data.staff.MENSAJE_SIN_UBICACION
+        pe.saniape.app.ui.Toaster.error(pe.saniape.app.data.staff.MENSAJE_SIN_UBICACION)
+        marcando = false
+    }
+    val pedirUbicacion = recordarUbicacionPrecisa { punto ->
+        if (!marcando) return@recordarUbicacionPrecisa   // llegó tarde: ya se avisó
+        pedido++
+        if (punto == null) { terminarSinUbicacion(); return@recordarUbicacionPrecisa }
+        val qr = qrEnCurso
         scope.launch {
-            val r = AsistenciaRepo.marcar(qr)
+            val r = AsistenciaRepo.marcar(qr, punto.lat, punto.lng, punto.precision)
             if (qr != null) resultadoQr = r.ok to r.mensaje
             if (r.ok) pe.saniape.app.ui.Toaster.exito(r.mensaje) else pe.saniape.app.ui.Toaster.error(r.mensaje)
             cargar()
             marcando = false
+        }
+    }
+    fun marcar(qr: String? = null) {
+        if (marcando) return
+        marcando = true
+        qrEnCurso = qr
+        val este = pedido
+        pedirUbicacion()
+        // Si el GPS no responde en 20 s, no se queda «Marcando…» para siempre.
+        scope.launch {
+            kotlinx.coroutines.delay(20_000)
+            if (marcando && pedido == este) terminarSinUbicacion()
         }
     }
 

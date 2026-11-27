@@ -49,4 +49,25 @@ class AsistenciaRepoTest {
         assertEquals("✓ Salida registrada a las 17:05", mensajeDeMarca(obj("""{"ok":true,"tipo":"salida","hora":"17:05"}""")))
         assertEquals("✓ Entrada registrada", mensajeDeMarca(null))
     }
+
+    /**
+     * SOLO DESDE LA CLÍNICA (27/11/2026). Caso: una fisio marca en la recepción (-18.0146,
+     * -70.2536, precisión 12 m). El celular manda dónde está; el servidor decide si vale.
+     */
+    @Test
+    fun laMarcaLlevaDondeEstaElCelular() {
+        val c = cuerpoMarcar(null, -18.0146, -70.2536, 12.0)
+        assertEquals("\"app\"", c["origen"].toString())
+        assertEquals("-18.0146", c["lat"].toString())
+        assertEquals("-70.2536", c["lng"].toString())
+        assertEquals("12.0", c["precision"].toString())
+        // Con el QR va igual, como «qr».
+        val q = cuerpoMarcar("llave", -18.0146, -70.2536, null)
+        assertEquals("\"qr\"", q["origen"].toString())
+        assertTrue(q.containsKey("lat"))
+        assertFalse(q.containsKey("precision"))
+        // Sin punto no se inventa uno: el servidor la rechaza con su mensaje.
+        assertFalse(cuerpoMarcar(null).containsKey("lat"))
+        assertFalse(cuerpoMarcar(null, -18.0, null, 5.0).containsKey("lat"))
+    }
 }
