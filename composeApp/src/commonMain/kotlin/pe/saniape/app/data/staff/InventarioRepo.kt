@@ -32,6 +32,35 @@ fun parsearProductosConsumo(o: JsonObject): List<ProductoConsumoApp> =
         ProductoConsumoApp(p.texto("id") ?: return@mapNotNull null, p.texto("nombre") ?: return@mapNotNull null, p.texto("unidad_contenido") ?: "unidad")
     }
 
+/** Lo que hace falta en el cierre: los productos y la receta de cada servicio (servicio → producto → cantidad). */
+data class InventarioCierre(val productos: List<ProductoConsumoApp>, val recetas: Map<String, Map<String, Double>> = emptyMap())
+
+/** Las recetas por servicio de la respuesta de /api/staff/inventario (solo cantidades mayores que cero). Puro. */
+fun parsearRecetas(o: JsonObject): Map<String, Map<String, Double>> {
+    val out = LinkedHashMap<String, LinkedHashMap<String, Double>>()
+    (o["recetas"] as? JsonArray).orEmpty().forEach {
+        val r = it as? JsonObject ?: return@forEach
+        val servicio = r.texto("procedimiento_id") ?: return@forEach
+        val producto = r.texto("producto_id") ?: return@forEach
+        val n = r.texto("cantidad")?.toDoubleOrNull() ?: return@forEach
+        if (n > 0 && !n.isNaN() && !n.isInfinite()) out.getOrPut(servicio) { LinkedHashMap() }[producto] = n
+    }
+    return out
+}
+
+/** 20.0 → «20»; 1.5 → «1.5» (lo que se ve escrito en el campo). Puro. */
+fun cantidadEscrita(n: Double): String = if (n == kotlin.math.floor(n) && n < 1e9) n.toLong().toString() else n.toString()
+
+/**
+ * LO HABITUAL DEL SERVICIO VIENE PUESTO (27/11/2026, gemelo de `recetaDeServicio` de la web):
+ * producto → cantidad escrita. Solo productos activos; sin servicio o sin receta, vacío. Puro.
+ */
+fun recetaDeServicioApp(datos: InventarioCierre?, procedimientoId: String?): Map<String, String> {
+    if (datos == null || procedimientoId.isNullOrBlank()) return emptyMap()
+    val activos = datos.productos.map { it.id }.toSet()
+    return datos.recetas[procedimientoId].orEmpty().filterKeys { it in activos }.mapValues { cantidadEscrita(it.value) }
+}
+
 /**
  * Lo escrito en el cierre → lo que vale la pena mandar: producto con una
  * cantidad mayor que cero (acepta coma decimal). Puro.
@@ -60,17 +89,18 @@ object InventarioRepo {
 
     private suspend fun token(): String? = Supabase.client.auth.currentSessionOrNull()?.accessToken
 
-    /** Vacío si no hay productos, no hay red o el agregado no está activo. */
-    suspend fun productosConsumo(): List<ProductoConsumoApp> {
-        val tk = token() ?: return emptyList()
+    /** Productos y recetas para el cierre. null = no se pudo leer (sin red, sesión vencida o error). */
+    suspend fun datosCierre(): InventarioCierre? {
+        val tk = token() ?: return null
         return try {
             val resp = http.get("${Supabase.SITE_URL}/api/staff/inventario") { header("Authorization", "Bearer $tk") }
-            if (resp.status.value !in 200..299) return emptyList()
-            parsearProductosConsumo(json.parseToJsonElement(resp.bodyAsText()).jsonObject)
+            if (resp.status.value !in 200..299) return null
+            val o = json.parseToJsonElement(resp.bodyAsText()).jsonObject
+            InventarioCierre(parsearProductosConsumo(o), parsearRecetas(o))
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (_: Exception) {
-            emptyList()
+            null
         }
     }
 

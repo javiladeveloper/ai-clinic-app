@@ -34,9 +34,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import pe.saniape.app.data.staff.InventarioCierre
 import pe.saniape.app.data.staff.InventarioRepo
 import pe.saniape.app.data.staff.ProductoConsumoApp
 import pe.saniape.app.data.staff.itemsDeConsumo
+import pe.saniape.app.data.staff.recetaDeServicioApp
 import pe.saniape.app.ui.Toaster
 import pe.saniape.app.ui.theme.Sania
 
@@ -52,11 +54,26 @@ import pe.saniape.app.ui.theme.Sania
 object ConsumoCierre {
     var activo by mutableStateOf(false)
     var abierto by mutableStateOf(false)
-    var productos by mutableStateOf<List<ProductoConsumoApp>?>(null)
+    /** Productos y recetas; null = aún no se leyó. */
+    var datos by mutableStateOf<InventarioCierre?>(null)
+    val productos: List<ProductoConsumoApp>? get() = datos?.productos
     /** productoId → cantidad escrita. */
     val cantidades = mutableStateMapOf<String, String>()
+    /** Lo anotado vino de la receta del servicio (se dice, para que lo corrijan si fue distinto). */
+    var deReceta by mutableStateOf(false)
 
-    fun reiniciar() { cantidades.clear(); abierto = false }
+    fun reiniciar() { cantidades.clear(); abierto = false; deReceta = false }
+
+    /**
+     * La receta del servicio viene puesta, UNA vez por cierre que se abre y solo si
+     * nadie escribió todavía: quien la borra o la cambia no la ve volver.
+     */
+    fun proponer(procedimientoId: String?) {
+        if (cantidades.isNotEmpty()) return
+        val receta = recetaDeServicioApp(datos, procedimientoId)
+        if (receta.isEmpty()) return
+        cantidades.putAll(receta); abierto = true; deReceta = true
+    }
 }
 
 private val alcanceConsumo = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -75,13 +92,26 @@ fun consumoTrasCompletar(ok: Boolean, citaId: String?, sesionId: String?) {
     }
 }
 
-/** El bloque plegado. [clave] = la atención que se cierra (al cambiar, se vacía). */
+/**
+ * El bloque plegado. [clave] = la atención que se cierra (al cambiar, se vacía).
+ * [procedimientoId] = el servicio de la sesión: si tiene receta, lo habitual viene
+ * ya puesto y el bloque abierto (etapa 2, como la web); el servidor no descuenta
+ * dos veces si el mismo cierre se guarda de nuevo.
+ */
 @Composable
-fun BloqueConsumoCierre(clave: String?) {
+fun BloqueConsumoCierre(clave: String?, procedimientoId: String? = null) {
     if (!ConsumoCierre.activo) return
-    LaunchedEffect(clave) { ConsumoCierre.reiniciar() }
+    LaunchedEffect(clave, procedimientoId) {
+        ConsumoCierre.reiniciar()
+        if (procedimientoId.isNullOrBlank()) return@LaunchedEffect
+        // Con lo que ya se tiene se propone al instante; luego se refresca (las recetas cambian en la web).
+        ConsumoCierre.proponer(procedimientoId)
+        val frescos = InventarioRepo.datosCierre()
+        if (frescos != null) { ConsumoCierre.datos = frescos; if (!ConsumoCierre.deReceta) ConsumoCierre.proponer(procedimientoId) }
+    }
     LaunchedEffect(ConsumoCierre.abierto) {
-        if (ConsumoCierre.abierto && ConsumoCierre.productos == null) ConsumoCierre.productos = InventarioRepo.productosConsumo()
+        // Sin red no se queda en «Cargando…»: se dice que no hay productos.
+        if (ConsumoCierre.abierto && ConsumoCierre.datos == null) ConsumoCierre.datos = InventarioRepo.datosCierre() ?: InventarioCierre(emptyList())
     }
     val c = Sania.colors
     val forma = RoundedCornerShape(Sania.shape.md.dp)
@@ -99,6 +129,9 @@ fun BloqueConsumoCierre(clave: String?) {
         }
         if (ConsumoCierre.abierto) {
             Column(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 12.dp)) {
+                if (ConsumoCierre.deReceta) {
+                    Text("Lo habitual de este servicio; corrige si fue distinto.", color = c.textoSuave, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
+                }
                 val lista = ConsumoCierre.productos
                 when {
                     lista == null -> Text("Cargando productos…", color = c.textoSuave, fontSize = 13.sp)

@@ -437,6 +437,7 @@ fun PantallaSesiones(
             puedePagos = ctx.puede("pagos"),
             pacienteId = sg.pacienteId.orEmpty(),
             tratamientoId = sg.tratamientoId,
+            procedimientoId = sg.procedimientoId,
             esDental = esDental,
             esFisio = esFisio,
             especialidadId = cc.especialidadId,

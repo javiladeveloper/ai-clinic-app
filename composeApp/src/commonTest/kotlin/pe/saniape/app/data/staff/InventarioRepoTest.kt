@@ -26,6 +26,44 @@ class InventarioRepoTest {
         assertTrue(parsearProductosConsumo(Json.parseToJsonElement("{\"activa\":false}").jsonObject).isEmpty())
     }
 
+    /**
+     * LA RECETA DEL SERVICIO VIENE PUESTA (27/11/2026). Caso: «Terapia física» gasta 20 ml de gel
+     * y 1,5 de un producto dado de baja; «Masaje» gasta 2 guantes. Al cerrar una sesión de
+     * Terapia física aparece solo el gel con «20»; sin servicio o sin receta, nada.
+     */
+    @Test
+    fun laRecetaDelServicioVienePuesta() {
+        val o = Json.parseToJsonElement(
+            "{\"productos\":[" +
+                "{\"id\":\"gel\",\"nombre\":\"Gel\",\"unidad_contenido\":\"ml\",\"estado\":\"Activo\"}," +
+                "{\"id\":\"guantes\",\"nombre\":\"Guantes\",\"estado\":\"Activo\"}," +
+                "{\"id\":\"viejo\",\"nombre\":\"Viejo\",\"estado\":\"Inactivo\"}]," +
+                "\"recetas\":[" +
+                "{\"procedimiento_id\":\"tf\",\"producto_id\":\"gel\",\"cantidad\":20}," +
+                "{\"procedimiento_id\":\"tf\",\"producto_id\":\"viejo\",\"cantidad\":\"1.5\"}," +
+                "{\"procedimiento_id\":\"masaje\",\"producto_id\":\"guantes\",\"cantidad\":2}," +
+                "{\"procedimiento_id\":\"masaje\",\"producto_id\":\"gel\",\"cantidad\":0}," +
+                "{\"producto_id\":\"gel\",\"cantidad\":5}]}",
+        ).jsonObject
+        val datos = InventarioCierre(parsearProductosConsumo(o), parsearRecetas(o))
+        assertEquals(mapOf("gel" to "20"), recetaDeServicioApp(datos, "tf"))
+        assertEquals(mapOf("guantes" to "2"), recetaDeServicioApp(datos, "masaje"))
+        assertTrue(recetaDeServicioApp(datos, "otro").isEmpty())
+        assertTrue(recetaDeServicioApp(datos, null).isEmpty())
+        assertTrue(recetaDeServicioApp(null, "tf").isEmpty())
+        // Una respuesta vieja, sin recetas: los productos salen igual y no se propone nada.
+        assertTrue(parsearRecetas(Json.parseToJsonElement("{\"productos\":[]}").jsonObject).isEmpty())
+        // Lo propuesto se manda tal cual al completar.
+        assertEquals(listOf("gel" to 20.0), itemsDeConsumo(recetaDeServicioApp(datos, "tf")))
+    }
+
+    @Test
+    fun laCantidadSeEscribeSinDecimalesDeMas() {
+        assertEquals("20", cantidadEscrita(20.0))
+        assertEquals("1.5", cantidadEscrita(1.5))
+        assertEquals("0.25", cantidadEscrita(0.25))
+    }
+
     @Test
     fun soloSeMandaLoQueTieneCantidad() {
         assertEquals(

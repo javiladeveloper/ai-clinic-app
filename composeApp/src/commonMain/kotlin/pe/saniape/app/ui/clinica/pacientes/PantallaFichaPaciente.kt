@@ -2527,6 +2527,7 @@ private fun PantallaFichaPacienteContenido(
             // Odontología: "¿Qué se le hizo hoy?" solo en tratamientos dentales.
             pacienteId = paciente.id,
             tratamientoId = req.trat.id,
+            procedimientoId = req.trat.procedimientoId,
             esDental = tratEsDental(req.trat),
             esFisio = tratEsFisio(req.trat),
             especialidadId = req.trat.especialidadId,
@@ -2784,6 +2785,8 @@ internal fun ModalCompletarSesion(
     escalas: androidx.compose.runtime.MutableState<Map<String, List<Int?>>>? = null,
     /** 🩺 Signos vitales (opcional): el triaje de la cita de la sesión. Quien llama guarda tras completar. */
     vitales: pe.saniape.app.ui.clinica.fisio.EstadoVitalesCierre? = null,
+    /** 🧰 El servicio de la sesión: si tiene receta de insumos, viene ya puesta en «¿Se usó algo?». */
+    procedimientoId: String? = null,
     onCancelar: () -> Unit,
     // pago = (monto, método) si activó "¿pagó esta sesión?" — el cobro sale en el
     // MISMO paso que el completar, como la web (antes eran 2 viajes: ✓ y luego 💳).
@@ -2962,7 +2965,7 @@ internal fun ModalCompletarSesion(
             pe.saniape.app.ui.clinica.fisio.BloqueSignosVitalesCierre(vitales)
         }
         // 🧰 Inventario clínico: lo usado en la sesión (solo con el agregado activo).
-        pe.saniape.app.ui.clinica.fisio.BloqueConsumoCierre(clave = null)
+        pe.saniape.app.ui.clinica.fisio.BloqueConsumoCierre(clave = ses.id, procedimientoId = procedimientoId)
 
         if (esPsico) {
             pe.saniape.app.ui.clinica.psico.EvolucionSesionCampos(mejorias) { mejorias = it }
